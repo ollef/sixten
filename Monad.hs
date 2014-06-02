@@ -8,12 +8,16 @@ import Data.Monoid
 
 -- import Core
 
+newtype Level = Level Int
+  deriving (Eq, Ord, Show)
+
 data State = State
   { -- tcTypes      :: Map Con (Type () ())
   -- , tcKinds      :: Map TCon (Kind ())
   -- , tcSynonyms   :: Map TCon (Type () ())
     tcIndent     :: !Int -- This has no place here, but is useful for debugging
   , tcFresh      :: !Int
+  , tcLevel      :: !Level
   }
 
 instance Monoid State where
@@ -23,10 +27,11 @@ instance Monoid State where
     -- , tcSynonyms = mempty
       tcIndent   = 0
     , tcFresh    = 0
+    , tcLevel    = Level 1
     }
     where
-  mappend (State x1 y1) (State x2 y2)
-    = State (x1 + x2) (y1 + y2)
+  mappend (State x1 y1 (Level z1)) (State x2 y2 (Level z2))
+    = State (x1 + x2) (y1 + y2) (Level $ z1 + z2)
 
 type TCM s a = StateT State (ErrorT String (ST s)) a
 
@@ -38,6 +43,17 @@ fresh = do
   i <- gets tcFresh
   modify $ \s -> s {tcFresh = i + 1}
   return i
+
+level :: TCM s Level
+level = gets tcLevel
+
+enterLevel :: TCM s a -> TCM s a
+enterLevel x = do
+  Level l <- level
+  modify $ \s -> s {tcLevel = Level $! l + 1}
+  r <- x
+  modify $ \s -> s {tcLevel = Level l}
+  return r
 {-
 
 conType :: ECon -> TCM s (Type k t)
