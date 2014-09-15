@@ -16,8 +16,8 @@ import Util
 data Expr v
   = Var v
   | Type -- Int
-  | Pi  Name !Plicitness (Expr v) (Scope1 Expr v)
-  | Lam Name !Plicitness (Expr v) (Scope1 Expr v)
+  | Pi  !Name !Plicitness (Expr v) (Scope1 Expr v)
+  | Lam !Name !Plicitness (Expr v) (Scope1 Expr v)
   | App (Expr v) !Plicitness (Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 

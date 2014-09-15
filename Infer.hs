@@ -11,6 +11,7 @@ import Data.Either
 import Data.Foldable as F
 import Data.Function
 import qualified Data.Map as M
+import Data.Monoid
 import qualified Data.Set as S
 import Data.STRef
 import Data.Traversable
@@ -125,7 +126,8 @@ normalise expr = case expr of
   where
     normaliseScope c a s = do
       x <- freshForall a
-      c a <$> abstract1 x <$> normalise (instantiate1 (return x) s)
+      ns <- normalise $ instantiate1 (return x) s
+      c a <$> freezeAbstract1 x ns
 
 inferPi :: Input s -> Plicitness -> TCM s (Core s, Core s, Scope1 Core.Expr (MetaVar s))
 inferPi expr p = do
@@ -142,13 +144,40 @@ inferPi expr p = do
         case sol of
           Left _ -> do
             unify (metaType v) Core.Type
-            t1  <- freshExistsV Core.Type
+            t1  <- freshExists Core.Type
             t2  <- freshExistsV Core.Type
-            x   <- freshExists t1
-            return (e, t1, abstract1 x t2)
+            x   <- freshExists $ return t1
+            at2 <- freezeAbstract1 x t2
+            unify t $ Core.Pi ("#" ++ show (metaId t1)) p (return t1) at2
+            return (e, return t1, at2)
           Right c -> go True e c
       _ | reduce                  -> go False e =<< whnf t
       _                           -> throwError "Function needed!"
+
+foldMapM :: Monoid m => (MetaVar s -> m) -> Core s -> TCM s m
+foldMapM f = foldrM go mempty
+  where
+    go v@(metaRef -> Just r) m = (m <>) <$> do
+      sol <- solution r
+      case sol of
+        Right c -> (f v <>) <$> foldMapM f c
+        Left _  -> return $ f v
+    go v m = return $ f v <> m
+
+freezeAbstract1 :: MetaVar s -> Core s -> TCM s (Scope1 Core.Expr (MetaVar s))
+freezeAbstract1 v e = (abstract1 v . join) <$> traverse go e
+  where
+    go v'@(metaRef -> Just r) = do
+      sol <- solution r
+      case sol of
+        Right c -> do
+          fvs <- foldMapM S.singleton c
+          if v `S.member` fvs then
+            join <$> traverse go c
+          else
+            return $ return v'
+        _       -> return $ return v'
+    go v' = return $ return v'
 
 freeze :: Core s -> TCM s (Core s)
 freeze e = join <$> traverse go e
@@ -162,9 +191,7 @@ freeze e = join <$> traverse go e
 
 generalise :: Core s -> Core s -> TCM s (Core s, Core s)
 generalise expr typ = do
-  expr' <- freeze expr -- TODO Shouldn't need to freeze everything
-  typ'  <- freeze typ
-  let fvs = foldMap (:[]) typ'
+  fvs <- foldMapM (:[]) typ
   l    <- level
   let p (metaRef -> Just r) = do
         sol <- solution r
@@ -177,9 +204,9 @@ generalise expr typ = do
       sorted = map go $ topoSort deps
       go [a] = ("$" ++ show (metaId a), a, metaType a)
       go _   = error "Generalise"
-  return ( F.foldr (\(n, x, t) -> Core.Lam n Implicit t . abstract1 x) expr' sorted
-         , F.foldr (\(n, x, t) -> Core.Pi  n Implicit t . abstract1 x) typ'  sorted
-         )
+  genexpr <- F.foldrM (\(n, x, t) e -> Core.Lam n Implicit t <$> freezeAbstract1 x e) expr sorted
+  gentype <- F.foldrM (\(n, x, t) e -> Core.Pi  n Implicit t <$> freezeAbstract1 x e) typ  sorted
+  return (genexpr, gentype)
 
 inferType :: Input s -> TCM s (Core s, Core s)
 inferType expr = case expr of
@@ -187,14 +214,18 @@ inferType expr = case expr of
   Input.Type      -> return (Core.Type, Core.Type)
   Input.Pi n p s  -> do
     v <- freshExists Core.Type
-    (e', _) <- inferType $ instantiate1 (return v) s
-    return (Core.Pi n p Core.Type (abstract1 v e'), Core.Type)
+    (e', t) <- inferType $ instantiate1 (return v) s
+    e'' <- subtype e' t Core.Type
+    ae'' <- freezeAbstract1 v e''
+    return (Core.Pi n p Core.Type ae'', Core.Type)
   Input.Lam n p s -> uncurry generalise <=< enterLevel $ do
     a  <- freshExistsV Core.Type
     b  <- freshExistsV Core.Type
     x  <- freshForall a
     e' <- checkType (instantiate1 (return x) s) b
-    return (Core.Lam n p a $ abstract1 x e', Core.Pi  n p a $ abstract1 x b)
+    ae' <- freezeAbstract1 x e'
+    ab  <- freezeAbstract1 x b
+    return (Core.Lam n p a ae', Core.Pi n p a ab)
   Input.App e1 p e2 -> do
     (e1', vt, s) <- inferPi e1 p
     (e2', t2) <- inferType e2
@@ -264,7 +295,7 @@ subtype = go True
           x' <- subtype (return x) t2 t1
           ex <- subtype (Core.App e p1 x') (instantiate1 x' s1)
                                            (instantiate1 x' s2)
-          return $ Core.Lam n p1 t2 $ abstract1 x ex
+          Core.Lam n p1 t2 <$> freezeAbstract1 x ex
         (Core.Pi n p t1 s1, Core.Var v@(metaRef -> Just r)) -> do
           sol <- solution r
           case sol of
@@ -276,8 +307,8 @@ subtype = go True
               x   <- freshExists t2
               x'  <- subtype (return x) t2 t1
               ex  <- subtype (Core.App e p x') (instantiate1 x' s1) t2'
-              solve r $ Core.Pi n p t2 (abstract1 x t2')
-              return $ Core.Lam n p t2 $ abstract1 x ex
+              solve r . Core.Pi n p t2 =<< freezeAbstract1 x t2'
+              Core.Lam n p t2 <$> freezeAbstract1 x ex
             Right c -> subtype e typ1 c
         (Core.Var v@(metaRef -> Just r), Core.Pi n p t2 s2) -> do
           sol <- solution r
@@ -290,7 +321,7 @@ subtype = go True
               x   <- freshExists t1
               x'  <- subtype (return x) t2 t1
               ex  <- subtype (Core.App e p x') t1' (instantiate1 x' s2)
-              return $ Core.Lam n p t2 $ abstract1 x ex
+              Core.Lam n p t2 <$> freezeAbstract1 x ex
             Right c -> subtype e c typ2
         (_, Core.Pi _ _ t2 s2) -> do
           v <- freshForallV t2
@@ -313,7 +344,7 @@ checkType expr typ = case expr of
         v <- freshForall a
         body <- checkType (instantiate1 (return v) s)
                           (instantiate1 (return v) ts)
-        return $ Core.Lam m p a $ abstract1 v body
+        Core.Lam m p a <$> freezeAbstract1 v body
       _ -> inferIt
   _ -> inferIt
   where
