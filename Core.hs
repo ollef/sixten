@@ -2,11 +2,13 @@
 module Core where
 
 import Bound
+import Bound.Var
 import Control.Applicative
 import Control.Monad
 import Data.Bifunctor
 import Data.Foldable
 import Data.Monoid
+import qualified Data.Set as S
 import Data.Traversable
 import Prelude.Extras
 
@@ -53,3 +55,10 @@ instance Pretty v => Pretty (Expr v) where
       annoPrec = 0
       absPrec  = -1
       appPrec  = 11
+
+etaLam :: Ord v => Name -> Plicitness -> Expr v -> Scope1 Expr v -> Expr v
+etaLam _ p _ (Scope (Core.App e p' (Var (B ()))))
+  | B () `S.notMember` foldMap S.singleton e && p == p'
+    = join $ unvar undefined id <$> e
+etaLam n p t s = Core.Lam n p t s
+
