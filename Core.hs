@@ -18,8 +18,8 @@ import Util
 data Expr v
   = Var v
   | Type -- Int
-  | Pi  !Name !Plicitness (Expr v) (Scope1 Expr v)
-  | Lam !Name !Plicitness (Expr v) (Scope1 Expr v)
+  | Pi  !(Hint Name) !Plicitness (Expr v) (Scope1 Expr v)
+  | Lam !(Hint Name) !Plicitness (Expr v) (Scope1 Expr v)
   | App (Expr v) !Plicitness (Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
@@ -43,11 +43,15 @@ instance Pretty v => Pretty (Expr v) where
     Var v     -> prettyPrec d v
     Type      -> text "Type"
     Pi x p t (Scope s) -> parensIf (d > absPrec) $
-      text "forall" <+> bracesIf (p == Implicit) (text x <+> text ":" <+> prettyPrec annoPrec t)
-                    <> text "." <+> prettyPrec absPrec (fmap (first $ const (text x)) s)
+      text "forall" <+> bracesIf (p == Implicit) (px <+> text ":" <+> prettyPrec annoPrec t)
+                    <> text "." <+> prettyPrec absPrec (fmap (first $ const px) s)
+      where
+        px = pretty $ text <$> x
     Lam x p t (Scope s) -> parensIf (d > absPrec) $
-      text "\\"     <> bracesIf (p == Implicit) (text x <+> text ":" <+> prettyPrec annoPrec t)
-                    <> text "." <+> prettyPrec absPrec (fmap (first $ const (text x)) s)
+      text "\\"     <> bracesIf (p == Implicit) (px <+> text ":" <+> prettyPrec annoPrec t)
+                    <> text "." <+> prettyPrec absPrec (fmap (first $ const px) s)
+      where
+        px = pretty $ text <$> x
     App e1 p e2 -> parensIf (d > appPrec) $
       prettyPrec appPrec e1 <+>
       (if p == Implicit then braces . prettyPrec 0 else prettyPrec (succ appPrec)) e2
@@ -56,7 +60,7 @@ instance Pretty v => Pretty (Expr v) where
       absPrec  = -1
       appPrec  = 11
 
-etaLam :: Ord v => Name -> Plicitness -> Expr v -> Scope1 Expr v -> Expr v
+etaLam :: Ord v => Hint Name -> Plicitness -> Expr v -> Scope1 Expr v -> Expr v
 etaLam _ p _ (Scope (Core.App e p' (Var (B ()))))
   | B () `S.notMember` foldMap S.singleton e && p == p'
     = join $ unvar undefined id <$> e

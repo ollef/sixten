@@ -18,8 +18,8 @@ data Def v = Def v (Expr v)
 data Expr v
   = Var v
   | Type                             -- ^ Type : Type
-  | Pi  Name !Plicitness (Scope1 Expr v) -- ^ Dependent function space
-  | Lam Name !Plicitness (Scope1 Expr v)
+  | Pi  (Hint Name) !Plicitness (Scope1 Expr v) -- ^ Dependent function space
+  | Lam (Hint Name) !Plicitness (Scope1 Expr v)
   | App (Expr v) !Plicitness (Expr v)
   | Anno (Expr v) (Expr v)
   | Wildcard                         -- ^ Attempt to infer it
@@ -47,11 +47,11 @@ instance Pretty v => Pretty (Expr v) where
     Var v     -> prettyPrec d v
     Type      -> text "Type"
     Pi  x p (Scope s) -> parensIf (d > absPrec) $
-      text "forall" <+> bracesIf (p == Implicit) (text x) <> text "."
-                    <+> prettyPrec absPrec (fmap (first $ const (text x)) s)
+      text "forall" <+> bracesIf (p == Implicit) (pretty $ text <$> x) <> text "."
+                    <+> prettyPrec absPrec (fmap (first $ const (pretty $ text <$> x)) s)
     Lam x  p(Scope s) -> parensIf (d > absPrec) $
-      text "\\"     <> bracesIf (p == Implicit) (text x) <> text "."
-                    <+> prettyPrec absPrec (fmap (first $ const (text x)) s)
+      text "\\"     <> bracesIf (p == Implicit) (pretty $ text <$> x) <> text "."
+                    <+> prettyPrec absPrec (fmap (first $ const (pretty $ text <$> x)) s)
     App e1 p e2 -> parensIf (d > appPrec) $
       prettyPrec appPrec e1 <+>
       (if p == Implicit then braces . prettyPrec 0 else prettyPrec (succ appPrec)) e2

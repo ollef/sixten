@@ -71,11 +71,6 @@ refine r d f = solution r >>=
 solution :: Exists s -> TCM s (Either Level (Core s))
 solution = liftST . readSTRef
 
-{-
-isUnsolved :: MetaRef s -> TCM s Bool
-isUnsolved v = not <$> isSolved v
--}
-
 isSolved :: Exists s -> TCM s Bool
 isSolved r = isRight <$> solution r
 
@@ -129,7 +124,8 @@ normalise expr = case expr of
       ns <- normalise $ instantiate1 (return x) s
       c a <$> abstract1M x ns
 
-inferPi :: Input s -> Plicitness -> TCM s (Core s, Core s, Scope1 Core.Expr (MetaVar s))
+inferPi :: Input s -> Plicitness
+        -> TCM s (Core s, Core s, Scope1 Core.Expr (MetaVar s))
 inferPi expr p = do
   (e, t) <- inferType expr
   go True e t
@@ -148,7 +144,7 @@ inferPi expr p = do
             t2  <- freshExistsV Core.Type
             x   <- freshForall $ return t1
             at2 <- abstract1M x t2
-            unify t $ Core.Pi ("#" ++ show (metaId t1)) p (return t1) at2
+            unify t $ Core.Pi (Hint $ "#" ++ show (metaId t1)) p (return t1) at2
             return (e, return t1, at2)
           Right c -> go True e c
       _ | reduce                  -> go False e =<< whnf t
@@ -160,8 +156,8 @@ foldMapM f = foldrM go mempty
     go v@(metaRef -> Just r) m = (m <>) <$> do
       sol <- solution r
       case sol of
-        Right c -> (f v <>) <$> foldMapM f c
         Left _  -> return $ f v
+        Right c -> (f v <>) <$> foldMapM f c
     go v m = return $ f v <> m
 
 abstract1M :: MetaVar s -> Core s -> TCM s (Scope1 Core.Expr (MetaVar s))
@@ -169,13 +165,15 @@ abstract1M v e = do
   changed <- liftST $ newSTRef False
   (Scope . join) <$> traverse (go changed) e
   where
-    -- go :: STRef s Bool -> MetaVar s -> TCM s (Expr (Var () (Expr (MetaVar s))))
+    -- go :: STRef s Bool -> MetaVar s
+    --    -> TCM s (Expr (Var () (Expr (MetaVar s))))
     go changed v' | v == v' = do
       liftST $ writeSTRef changed True
       return $ return $ B ()
     go changed v'@(metaRef -> Just r) = do
       sol <- solution r
       case sol of
+        Left _  -> free v'
         Right c -> do
           changed' <- liftST $ newSTRef False
           c' <- traverse (go changed') c
@@ -184,54 +182,47 @@ abstract1M v e = do
             liftST $ writeSTRef changed True
             return $ join c'
           else
-            return $ return $ return $ return v'
-        _       -> return $ return $ return $ return v'
-    go _ v' = return $ return $ return $ return v'
+            free v'
+    go _ v' = free v'
+    free = return . return . return . return
 
 freeze :: Core s -> TCM s (Core s)
 freeze e = join <$> traverse go e
   where
-    go v@(metaRef -> Just r) = do
-      sol <- solution r
-      case sol of
-        Left _  -> return $ return v
-        Right c -> return c
+    go v@(metaRef -> Just r) = either (const $ return v) id <$> solution r
     go v                     = return $ return v
 
 generalise :: Core s -> Core s -> TCM s (Core s, Core s)
 generalise expr typ = do
   fvs <- foldMapM (:[]) typ
-  l    <- level
-  let p (metaRef -> Just r) = do
-        sol <- solution r
-        case sol of
-          Left l' -> return $ l' > l
-          Right _ -> return False
-      p _ = return False
+  l   <- level
+  let p (metaRef -> Just r) = either (> l) (const False) <$> solution r
+      p _                   = return False
   fvs' <- filterM p fvs
   let deps   = M.fromList [(x, foldMap S.singleton $ metaType x) | x <- fvs']
       sorted = map go $ topoSort deps
-      go [a] = ("$" ++ show (metaId a), a, metaType a)
-      go _   = error "Generalise"
-  genexpr <- F.foldrM (\(n, x, t) e -> Core.Lam n Implicit t <$> abstract1M x e) expr sorted
-  gentype <- F.foldrM (\(n, x, t) e -> Core.Pi  n Implicit t <$> abstract1M x e) typ  sorted
+  genexpr <- F.foldrM ($ Core.etaLam) expr sorted
+  gentype <- F.foldrM ($ Core.Pi)     typ  sorted
   return (genexpr, gentype)
+  where
+    go [a] f = fmap (f (Hint $ "$" ++ show (metaId a)) Implicit $ metaType a) . abstract1M a
+    go _   _ = error "Generalise"
 
 inferType :: Input s -> TCM s (Core s, Core s)
 inferType expr = case expr of
   Input.Var v     -> return (Core.Var v, metaType v)
   Input.Type      -> return (Core.Type, Core.Type)
   Input.Pi n p s  -> do
-    v <- freshForall Core.Type
+    v    <- freshForall Core.Type
     (e', t) <- inferType $ instantiate1 (return v) s
-    e'' <- subtype e' t Core.Type
+    e''  <- subtype e' t Core.Type
     ae'' <- abstract1M v e''
     return (Core.Pi n p Core.Type ae'', Core.Type)
   Input.Lam n p s -> uncurry generalise <=< enterLevel $ do
-    a  <- freshExistsV Core.Type
-    b  <- freshExistsV Core.Type
-    x  <- freshForall a
-    e' <- checkType (instantiate1 (return x) s) b
+    a   <- freshExistsV Core.Type
+    b   <- freshExistsV Core.Type
+    x   <- freshForall a
+    e'  <- checkType (instantiate1 (return x) s) b
     ae' <- abstract1M x e'
     ab  <- abstract1M x b
     return (Core.Lam n p a ae', Core.Pi n p a ab)
@@ -274,9 +265,19 @@ unify = go True
         (_, Core.Var v@(metaRef -> Just r)) -> solveVar r v t1
         (Core.Pi  _ p1 a s1, Core.Pi  _ p2 b s2) | p1 == p2 -> absCase a b s1 s2
         (Core.Lam _ p1 a s1, Core.Lam _ p2 b s2) | p1 == p2 -> absCase a b s1 s2
-        (Core.App e1 p1 e1', Core.App e2 p2 e2') | p1 == p2-> do
-          go True e1 e2
+        -- If we've already tried reducing the application,
+        -- we can only hope to unify it pointwise.
+        (Core.App e1 p1 e1', Core.App e2 p2 e2') | p1 == p2 && not reduce -> do
+          go True e1  e2
           go True e1' e2'
+        {-
+        -- Special case: Avoid reducing applications of equal functions,
+        -- to save some effort. TODO: This needs to backtrack (think of e.g.
+        -- constant function applications, that can be equal even if the
+        -- arguments are different)
+        (Core.App e1 p1 e1', Core.App e2 p2 e2') | p1 == p2 && e1 == e2 ->
+          go True e1' e2'
+        -}
         (Core.Type, Core.Type) -> return ()
         _ | reduce             -> do
           t1' <- whnf t1
