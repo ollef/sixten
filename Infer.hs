@@ -6,6 +6,7 @@ import Control.Applicative
 import Control.Monad.Error
 import Control.Monad.ST()
 import Control.Monad.ST.Class
+import Data.Bifunctor
 import Data.Bitraversable
 import Data.Either
 import Data.Foldable as F
@@ -144,7 +145,7 @@ inferPi expr p = do
             t2  <- freshExistsV Core.Type
             x   <- freshForall $ return t1
             at2 <- abstract1M x t2
-            unify t $ Core.Pi (Hint $ "#" ++ show (metaId t1)) p (return t1) at2
+            unify t $ Core.Pi (Hint Nothing) p (return t1) at2
             return (e, return t1, at2)
           Right c -> go True e c
       _ | reduce                  -> go False e =<< whnf t
@@ -205,7 +206,7 @@ generalise expr typ = do
   gentype <- F.foldrM ($ Core.Pi)     typ  sorted
   return (genexpr, gentype)
   where
-    go [a] f = fmap (f (Hint $ "$" ++ show (metaId a)) Implicit $ metaType a) . abstract1M a
+    go [a] f = fmap (f (Hint Nothing) Implicit $ metaType a) . abstract1M a
     go _   _ = error "Generalise"
 
 inferType :: Input s -> TCM s (Core s, Core s)
@@ -366,8 +367,9 @@ data Empty
 fromEmpty :: Empty -> a
 fromEmpty = error "fromEmpty"
 
-infer :: Input.Expr Empty -> Either String (Core.Expr Int, Core.Expr Int)
-infer e = evalTCM
+infer :: Input.Expr Empty -> Either String (Core.Expr String, Core.Expr String)
+infer e = fmap (bimap (fmap show) (fmap show))
+        $ evalTCM
         $ fmap (\(x, y) -> (metaId <$> x, metaId <$> y))
         $ inferType >=> bimapM freeze freeze
         $ fmap fromEmpty e

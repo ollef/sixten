@@ -4,9 +4,9 @@ module Input where
 import Bound
 import Control.Applicative
 import Control.Monad
-import Data.Bifunctor
 import Data.Foldable
 import Data.Monoid
+import Data.String
 import Data.Traversable
 import Prelude.Extras
 
@@ -18,13 +18,15 @@ data Def v = Def v (Expr v)
 data Expr v
   = Var v
   | Type                             -- ^ Type : Type
-  | Pi  (Hint Name) !Plicitness (Scope1 Expr v) -- ^ Dependent function space
-  | Lam (Hint Name) !Plicitness (Scope1 Expr v)
+  | Pi  !(Hint (Maybe Name)) !Plicitness (Scope1 Expr v) -- ^ Dependent function space
+  | Lam !(Hint (Maybe Name)) !Plicitness (Scope1 Expr v)
   | App (Expr v) !Plicitness (Expr v)
   | Anno (Expr v) (Expr v)
   | Wildcard                         -- ^ Attempt to infer it
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
+-------------------------------------------------------------------------------
+-- Instances
 instance Eq1 Expr; instance Ord1 Expr; instance Show1 Expr
 
 instance Applicative Expr where
@@ -42,23 +44,21 @@ instance Monad Expr where
     Anno e t    -> Anno (e >>= f) (t >>= f)
     Wildcard    -> Wildcard
 
-instance Pretty v => Pretty (Expr v) where
-  prettyPrec d expr = case expr of
-    Var v     -> prettyPrec d v
-    Type      -> text "Type"
-    Pi  x p (Scope s) -> parensIf (d > absPrec) $
-      text "forall" <+> bracesIf (p == Implicit) (pretty $ text <$> x) <> text "."
-                    <+> prettyPrec absPrec (fmap (first $ const (pretty $ text <$> x)) s)
-    Lam x  p(Scope s) -> parensIf (d > absPrec) $
-      text "\\"     <> bracesIf (p == Implicit) (pretty $ text <$> x) <> text "."
-                    <+> prettyPrec absPrec (fmap (first $ const (pretty $ text <$> x)) s)
-    App e1 p e2 -> parensIf (d > appPrec) $
-      prettyPrec appPrec e1 <+>
-      (if p == Implicit then braces . prettyPrec 0 else prettyPrec (succ appPrec)) e2
-    Anno e t  -> parensIf (d > annoPrec) $
-      prettyPrec annoPrec e <+> text ":" <+> prettyPrec annoPrec t
-    Wildcard  -> text "_"
-    where
-      annoPrec = 0
-      absPrec  = -1
-      appPrec  = 11
+instance (IsString v, Pretty v) => Pretty (Expr v) where
+  prettyPrec expr = case expr of
+    Var v     -> prettyPrec v
+    Type      -> pure $ text "Type"
+    Pi  h p s -> withHint h $ \x -> parens `above` absPrec $ do
+      v <- inviolable $ bracesWhen (p == Implicit) $ pure $ text x
+      b <- associate  $ prettyPrec $ instantiate1 (return $ fromString x) s
+      return $ text "forall" <+> v <> text "." <+> b
+    Lam h p s -> withHint h $ \x -> parens `above` absPrec $ do
+      v <- inviolable $ bracesWhen (p == Implicit) $ pure $ text x
+      b <- associate  $ prettyPrec $ instantiate1 (return $ fromString x) s
+      return $ text "\\" <+> v <> text "." <+> b
+    App e1 p e2 -> prettyApp (prettyPrec e1) (bracesWhen (p == Implicit) $ prettyPrec e2)
+    Anno e t  -> parens `above` annoPrec $ do
+      x <- prettyPrec e
+      y <- associate $ prettyPrec t
+      return $ x <+> text ":" <+> y
+    Wildcard  -> pure $ text "_"
