@@ -2,7 +2,7 @@
 module Pretty
   (module Text.PrettyPrint.ANSI.Leijen
   , Pretty, pretty, prettyPrec
-  , above, withName, withSuggestedName, withHint, associate, inviolable
+  , above, withName, withSuggestedName, withHint, withHints, associate, inviolable
   , bracesWhen, parensWhen, prettyApp
   , appPrec, absPrec, arrPrec, annoPrec, casePrec, letPrec
   ) where
@@ -11,6 +11,7 @@ import Bound
 import Control.Applicative
 import Control.Monad.Reader
 import Data.Monoid
+import Data.List
 import Data.Set(Set)
 import qualified Data.Set as S
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>), (<>), Pretty, empty, pretty, prettyList)
@@ -39,16 +40,6 @@ data PrettyState = PrettyState
 
 type PrettyM a = PrettyState -> a
 
-class Pretty a where
-  pretty     :: a -> Doc
-  pretty a = prettyPrec a $ PrettyState (-1) mempty names
-
-  prettyPrec :: a -> PrettyM Doc
-  prettyPrec = return . pretty
-
-  prettyList :: [a] -> PrettyM Doc
-  prettyList xs = list <$> mapM (inviolable . prettyPrec) xs
-
 above :: (a -> a) -> Int -> PrettyM a -> PrettyM a
 above f p' m = do
   p <- asks precedence
@@ -63,16 +54,22 @@ withName f = do
 withSuggestedName :: Name -> (Name -> PrettyM a) -> PrettyM a
 withSuggestedName n f = do
   bs <- asks boundNames
-  if n `S.member` bs then
-    withSuggestedName (n ++ "'") f
-  else
-    local (\s -> s { boundNames = S.insert n bs
-                   , freeNames = filter (/= n) $ freeNames s })
-          (f n)
+  let ns = n:[n ++ show k | k <- [(0 :: Int)..]]
+      n' = head $ filter (`S.notMember` bs) ns
+  local (\s -> s { boundNames = S.insert n' bs
+                 , freeNames  = filter (/= n') $ freeNames s })
+        (f n')
 
 withHint :: Hint (Maybe Name) -> (Name -> PrettyM a) -> PrettyM a
 withHint (Hint Nothing)  = withName
 withHint (Hint (Just n)) = withSuggestedName n
+
+withHints :: [Hint (Maybe Name)] -> ((Int -> Name) -> PrettyM a) -> PrettyM a
+withHints hs p = foldl' go p hs $ error "withHints"
+  where
+    go q h f = withHint h (q . f')
+      where f' x0 0 = x0
+            f' _  n = f $ n - 1
 
 associate :: PrettyM a -> PrettyM a
 associate = local $ \s -> s {precedence = precedence s - 1}
@@ -89,6 +86,16 @@ parensWhen b m = if b then parens <$> inviolable m else m
 prettyApp :: PrettyM Doc -> PrettyM Doc -> PrettyM Doc
 prettyApp p q = parens `above` appPrec $ (<+>) <$> associate p <*> q
 
+class Pretty a where
+  pretty     :: a -> Doc
+  pretty a = prettyPrec a $ PrettyState (-1) mempty names
+
+  prettyPrec :: a -> PrettyM Doc
+  prettyPrec = return . pretty
+
+  prettyList :: [a] -> PrettyM Doc
+  prettyList xs = list <$> mapM (inviolable . prettyPrec) xs
+
 instance Pretty Bool    where pretty = text . show
 instance Pretty Char    where
   pretty = text . show
@@ -102,14 +109,23 @@ instance Pretty Doc     where pretty = id
 
 instance Pretty a => Pretty [a] where prettyPrec = prettyList
 
+instance Pretty a => Pretty (Maybe a) where
+  prettyPrec Nothing  = pure $ text "Nothing"
+  prettyPrec (Just b) = prettyApp (pure $ text "Just") (prettyPrec b)
+
 instance (Pretty b, Pretty a) => Pretty (Var b a) where
   prettyPrec (B b) = prettyApp (pure $ text "B") (prettyPrec b)
   prettyPrec (F a) = prettyApp (pure $ text "F") (prettyPrec a)
+
+instance (Pretty a, Pretty b) => Pretty (Either a b) where
+  prettyPrec (Left a)  = prettyApp (pure $ text "Left")  (prettyPrec a)
+  prettyPrec (Right b) = prettyApp (pure $ text "Right") (prettyPrec b)
 
 instance (Pretty a, Pretty b) => Pretty (a, b) where
   prettyPrec (a, b) = inviolable $ f <$> prettyPrec a
                                      <*> prettyPrec b
     where f x y = tupled [x, y]
+
 instance (Pretty a, Pretty b, Pretty c) => Pretty (a, b, c) where
   prettyPrec (a, b, c) = inviolable $ f <$> prettyPrec a
                                         <*> prettyPrec b

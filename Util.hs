@@ -1,9 +1,10 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable #-}
 module Util where
+import Bound
+import Bound.Var
+import Control.Applicative
 import Data.Foldable
 import Data.Traversable
-
-import Bound
 
 type Scope1 = Scope ()
 type Name = String
@@ -23,3 +24,11 @@ instance Eq (Hint a) where
 
 instance Ord (Hint a) where
   compare _ _ = EQ
+
+type NameHint = Hint (Maybe Name)
+
+unused :: (Monad f, Traversable f) => f (Var b a) -> Maybe (f a)
+unused = traverse $ unvar (const Nothing) pure
+
+unusedScope :: (Monad f, Traversable f) => Scope b f a -> Maybe (f a)
+unusedScope = unused . fromScope
