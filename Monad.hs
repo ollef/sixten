@@ -1,9 +1,9 @@
 {-# LANGUAGE RankNTypes #-}
 module Monad where
-import Control.Monad.Error
-import Control.Monad.State(evalStateT, StateT, gets, modify)
+import Control.Monad.Except
+import Control.Monad.State(evalStateT, StateT, runStateT, gets, modify)
 import Control.Monad.ST
--- import Data.Maybe
+import Data.Bifunctor
 import Data.Monoid
 
 -- import Core
@@ -15,9 +15,10 @@ data State = State
   { -- tcTypes      :: Map Con (Type () ())
   -- , tcKinds      :: Map TCon (Kind ())
   -- , tcSynonyms   :: Map TCon (Type () ())
-    tcIndent     :: !Int -- This has no place here, but is useful for debugging
-  , tcFresh      :: !Int
-  , tcLevel      :: !Level
+    tcIndent     :: {-# UNPACK #-} !Int -- This has no place here, but is useful for debugging
+  , tcFresh      :: {-# UNPACK #-} !Int
+  , tcLevel      :: {-# UNPACK #-} !Level
+  , tcLog        :: ![String]
   }
 
 instance Monoid State where
@@ -28,15 +29,19 @@ instance Monoid State where
       tcIndent   = 0
     , tcFresh    = 0
     , tcLevel    = Level 1
+    , tcLog      = mempty
     }
     where
-  mappend (State x1 y1 (Level z1)) (State x2 y2 (Level z2))
-    = State (x1 + x2) (y1 + y2) (Level $ z1 + z2)
+  mappend (State x1 y1 (Level z1) l1) (State x2 y2 (Level z2) l2)
+    = State (x1 + x2) (y1 + y2) (Level $ z1 + z2) (l1 <> l2)
 
-type TCM s a = StateT State (ErrorT String (ST s)) a
+type TCM s a = StateT State (ExceptT String (ST s)) a
 
 evalTCM :: (forall s. TCM s a) -> Either String a
-evalTCM tcm = runST $ runErrorT $ evalStateT tcm mempty
+evalTCM tcm = runST $ runExceptT $ evalStateT tcm mempty
+
+runTCM :: (forall s. TCM s a) -> Either String (a, [String])
+runTCM tcm = fmap (second tcLog) $ runST $ runExceptT $ runStateT tcm mempty
 
 fresh :: TCM s Int
 fresh = do
@@ -54,6 +59,10 @@ enterLevel x = do
   r <- x
   modify $ \s -> s {tcLevel = Level l}
   return r
+
+log :: String -> TCM s ()
+log s = modify (<> mempty {tcLog = [s]})
+
 {-
 
 conType :: ECon -> TCM s (Type k t)

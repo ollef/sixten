@@ -1,2 +1,13 @@
 Inductive data
 Track irrelevance
+
+Track sizes of things + do uniqueness typing
+
+data Size = Bounded Nat | Infinity
+
+productSize :: Size -> Size -> Maybe Size
+productSize Infinity    _           = Nothing
+productSize _           Infinity    = Just Infinity
+productSize (Bounded m) (Bounded n) = Just $ Bounded $ m + n
+
+Only bound

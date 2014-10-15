@@ -17,13 +17,16 @@ data Def v = Def v (Expr v)
 
 data Expr v
   = Var v
-  | Type                             -- ^ Type : Type
-  | Pi  !(Hint (Maybe Name)) !Plicitness (Scope1 Expr v) -- ^ Dependent function space
-  | Lam !(Hint (Maybe Name)) !Plicitness (Scope1 Expr v)
+  | Type                                      -- ^ Type : Type
+  | Pi  !NameHint !Plicitness (Maybe (Expr v)) (Scope1 Expr v) -- ^ Dependent function space
+  | Lam !NameHint !Plicitness (Scope1 Expr v)
   | App (Expr v) !Plicitness (Expr v)
   | Anno (Expr v) (Expr v)
   | Wildcard                         -- ^ Attempt to infer it
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+-- | Synonym for documentation purposes
+type Type = Expr
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -38,7 +41,7 @@ instance Monad Expr where
   expr >>= f = case expr of
     Var v       -> f v
     Type        -> Type
-    Pi  n p s   -> Pi n p (s >>>= f)
+    Pi  n p t s -> Pi n p ((>>= f) <$> t) (s >>>= f)
     Lam n p s   -> Lam n p (s >>>= f)
     App e1 p e2 -> App (e1 >>= f) p (e2 >>= f)
     Anno e t    -> Anno (e >>= f) (t >>= f)
@@ -48,7 +51,7 @@ instance (IsString v, Pretty v) => Pretty (Expr v) where
   prettyPrec expr = case expr of
     Var v     -> prettyPrec v
     Type      -> pure $ text "Type"
-    Pi  h p s -> withHint h $ \x -> parens `above` absPrec $ do
+    Pi  h p t s -> withHint h $ \x -> parens `above` absPrec $ do
       v <- inviolable $ bracesWhen (p == Implicit) $ pure $ text x
       b <- associate  $ prettyPrec $ instantiate1 (return $ fromString x) s
       return $ text "forall" <+> v <> text "." <+> b

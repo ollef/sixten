@@ -21,6 +21,7 @@ import Util
 type Input = Text
 type Parser a = ParsecT Input () (State SourcePos) a
 
+dbg :: (MonadState a m, Show a, Show b) => String -> ParsecT s u m b -> ParsecT s u m b
 dbg s p = do
   st <- get
   pos <- getPosition
@@ -154,13 +155,15 @@ data Binding
   | Typed [Name] (Expr Name)
   deriving (Eq, Ord, Show)
 
-abstractBindings :: [Binding] -> (Name -> Scope1 Expr Name -> Expr Name) -> Expr Name -> Expr Name
+abstractBindings :: [Binding] -> (NameHint -> Plicitness -> Scope1 Expr Name -> Expr Name) -> Expr Name -> Expr Name
 abstractBindings bs c = flip (foldr f) bs
   where
-    f (Plain x) e    = c x $ abstract1 x e
-    f (Typed xs t) e = foldr (\x -> c x . abstract1 x) e' xs
+    f (Plain x) e    = c (Hint $ Just x) Explicit $ abstract1 x e
+    f (Typed xs t) e = foldr (\x -> (`Anno` Pi (h x) Explicit (Just t) (Scope Wildcard))
+                                  . c (h x) Explicit
+                                  . abstract1 x) e xs
       where
-        e' = e >>= \x -> if x `elem` xs then (return x `Anno` t) else return x
+        h = Hint . Just
 
 atomicBinding :: Parser Binding
 atomicBinding
@@ -183,9 +186,9 @@ atomicExpr
 
 expr :: Parser (Expr Name)
 expr
-  =  abstr (rTok "forall") Pi
+  =  abstr (rTok "forall") (\x y -> Pi x y Nothing)
  <|> abstr (cTok "\\") Lam
- <|> (foldl App <$> atomicExpr <*> many atomicExpr) 
+ <|> (foldl (flip App Explicit) <$> atomicExpr <*> many atomicExpr) 
      `followedBy` [anno, return]
  <?> "expression"
   where
