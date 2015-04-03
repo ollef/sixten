@@ -17,6 +17,7 @@ import Data.Monoid
 import qualified Data.Set as S
 import Data.STRef
 import Data.Traversable as T
+import Text.Trifecta.Result
 
 import qualified Core
 import qualified Input
@@ -427,5 +428,5 @@ infer e = fmap (bimap (bimap (fmap show) (fmap show)) id)
 
 test :: String -> IO ()
 test inp = case (infer . fmap (const undefined)) <$> Parser.test Parser.expr inp of
-  Right (Right x) -> putDoc $ pretty x
-  x               -> print x
+  Success x -> putDoc $ pretty x
+  Failure d -> putDoc d

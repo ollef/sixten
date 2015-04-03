@@ -1,40 +1,39 @@
 module Parser where
 
 import Bound
-import Control.Applicative((<$>), (<$), (<*>), (<*), (*>))
+import Control.Applicative((<$>), (<$), (<*>), (<*), (*>), (<|>))
 import Control.Monad.State
 import Data.Text(Text)
-import qualified Data.Text as Text
 import Data.Char
+import Data.Monoid
 import Data.Ord
 import Data.Set(Set)
 import qualified Data.Set as S
-import Text.Parsec hiding (State, token)
-import Text.Parsec.Pos
-import Text.Parsec.Text()
-
-import Debug.Trace
+import qualified Text.Trifecta as Trifecta
+import Text.Trifecta((<?>))
+import Text.Trifecta.Delta
 
 import Input
 import Util
 
 type Input = Text
-type Parser a = ParsecT Input () (State SourcePos) a
+type Parser a = StateT Delta Trifecta.Parser a
 
-dbg :: (MonadState a m, Show a, Show b) => String -> ParsecT s u m b -> ParsecT s u m b
-dbg s p = do
-  st <- get
-  pos <- getPosition
-  res <- trace ("trying " ++ s ++ " " ++ show pos ++ " st: " ++ show st) p
-  pos' <- getPosition
-  trace (s ++ " " ++ show pos' ++ " = " ++ show res) $ return res
+deltaLine :: Delta -> Int
+deltaLine Columns {}           = 0
+deltaLine Tab {}               = 0
+deltaLine (Lines l _ _ _)      = fromIntegral l + 1
+deltaLine (Directed _ l _ _ _) = fromIntegral l + 1
+
+deltaColumn :: Delta -> Int
+deltaColumn pos = fromIntegral (column pos) + 1
 
 -- | Drop the indentation anchor -- use the current position as the reference
 --   point in the given parser.
 dropAnchor :: Parser a -> Parser a
 dropAnchor p = do
   oldAnchor <- get
-  pos       <- getPosition
+  pos       <- Trifecta.position
   put pos
   result    <- p
   put oldAnchor
@@ -43,39 +42,39 @@ dropAnchor p = do
 -- | Check that the current indentation level is the same as the anchor
 sameCol :: Parser ()
 sameCol = do
-  pos    <- getPosition
+  pos    <- Trifecta.position
   anchor <- get
-  case comparing sourceColumn pos anchor of
-    LT -> unexpected "unindent"
+  case comparing deltaColumn pos anchor of
+    LT -> Trifecta.unexpected "unindent"
     EQ -> return ()
-    GT -> unexpected "indent"
+    GT -> Trifecta.unexpected "indent"
 
 -- | Check that the current indentation level is on the same line as the anchor
 --   or on a successive line but more indented.
 sameLineOrIndented :: Parser ()
 sameLineOrIndented = do
-  pos    <- getPosition
+  pos    <- Trifecta.position
   anchor <- get
-  case (comparing sourceLine pos anchor, comparing sourceColumn pos anchor) of
+  case (comparing deltaLine pos anchor, comparing deltaColumn pos anchor) of
     (EQ, _)  -> return () -- Same line
     (GT, GT) -> return () -- Indented
-    (_,  _)  -> unexpected "unindent"
+    (_,  _)  -> Trifecta.unexpected "unindent"
 
 -- | One or more at the same indentation level.
-many1SameCol :: Parser a -> Parser [a]
-many1SameCol p = many1 (sameCol >> p)
+someSameCol :: Parser a -> Parser [a]
+someSameCol p = Trifecta.some (sameCol >> p)
 
 -- | Zero or more at the same indentation level.
 manySameCol :: Parser a -> Parser [a]
-manySameCol p = many (sameCol >> p)
+manySameCol p = Trifecta.many (sameCol >> p)
 
 -- | One or more on the same line or a successive but indented line.
-many1SI :: Parser a -> Parser [a]
-many1SI p = many1 (sameLineOrIndented >> p)
+someSI :: Parser a -> Parser [a]
+someSI p = Trifecta.some (sameLineOrIndented >> p)
 --
 -- | Zero or more on the same line or a successive but indented line.
 manySI :: Parser a -> Parser [a]
-manySI p = many (sameLineOrIndented >> p)
+manySI p = Trifecta.many (sameLineOrIndented >> p)
 
 -- * Applicative style combinators for checking that the second argument parser
 --   is on the same line or indented compared to the anchor.
@@ -99,7 +98,7 @@ isAtom = (`S.member` atoms)
 
 reserved :: Set Name
 reserved = S.fromList
-  [":", "=", "forall", ".", "_", "\\", "(", ")"]
+  [":", "=", "forall", ".", "_", "\\", "(", ")", "{", "}"]
 
 isReserved  :: Name -> Bool
 isReserved = flip S.member reserved
@@ -109,13 +108,13 @@ nonCompounds :: [Name]
 nonCompounds = [","]
 
 whitespace :: Parser ()
-whitespace = skipMany space
+whitespace = Trifecta.skipMany Trifecta.space
 
 whitespace1 :: Parser ()
-whitespace1 = skipMany1 space
+whitespace1 = Trifecta.skipSome Trifecta.space
 
 identLetter :: Parser Char
-identLetter = satisfy $ \c -> not (isSpace c || isAtom c)
+identLetter = Trifecta.satisfy $ \c -> not (isSpace c || isAtom c)
 
 -- | Add whitespace after something.
 token :: Parser a -> Parser a
@@ -127,53 +126,59 @@ token1 p = p <* whitespace1
 
 -- | Reserved token.
 rTok :: Name -> Parser Name
-rTok = try . token1 . string
+rTok = Trifecta.try . token1 . Trifecta.string
 
 -- | Compound token.
 cTok :: Name -> Parser Name
-cTok = token . try . string
+cTok = token . Trifecta.try . Trifecta.string
 
 ident :: Parser Name
-ident = token (try $ do
-  s <- many1 (notFollowedBy nonCompoundIdent >> identLetter)
+ident = token (Trifecta.try $ do
+  s <- Trifecta.some (Trifecta.notFollowedBy nonCompoundIdent >> identLetter)
   if isReserved s
-    then unexpected $ "reserved identifier " ++ show s
+    then Trifecta.unexpected $ "reserved identifier " ++ show s
     else return s)
   <|> nonCompoundIdent
   <?> "identifier"
   where
-    nonCompoundIdent = choice $ map cTok nonCompounds
+    nonCompoundIdent = Trifecta.choice $ map cTok nonCompounds
 
 defs :: Parser [Def Name]
-defs = dropAnchor $ many1SameCol def
+defs = dropAnchor $ someSameCol def
 
 def :: Parser (Def Name)
 def = Def <$> ident <*% rTok "=" <*>% expr
 
 data Binding
-  = Plain Name
-  | Typed [Name] (Expr Name)
+  = Plain Plicitness [Name]
+  | Typed Plicitness [Name] (Expr Name)
   deriving (Eq, Ord, Show)
 
-abstractBindings :: [Binding] -> (NameHint -> Plicitness -> Scope1 Expr Name -> Expr Name) -> Expr Name -> Expr Name
+abstractBindings :: [Binding] -> (NameHint -> Plicitness -> Maybe (Expr Name) -> Scope1 Expr Name -> Expr Name) -> Expr Name -> Expr Name
 abstractBindings bs c = flip (foldr f) bs
   where
-    f (Plain x) e    = c (Hint $ Just x) Explicit $ abstract1 x e
-    f (Typed xs t) e = foldr (\x -> (`Anno` Pi (h x) Explicit (Just t) (Scope Wildcard))
-                                  . c (h x) Explicit
+    f (Plain p xs) e   = foldr (\x -> c (Hint $ Just x) p Nothing . abstract1 x) e xs
+    f (Typed p xs t) e = foldr (\x -> (`Anno` Pi (h x) p (Just t) (Scope Wildcard))
+                                  . c (h x) Explicit (Just t)
                                   . abstract1 x) e xs
       where
         h = Hint . Just
 
 atomicBinding :: Parser Binding
 atomicBinding
-  =  Plain <$> ident
- <|> Typed <$ cTok "(" <*>% many1SI ident <*% cTok ":" <*>% expr <*% cTok ")"
+  =  Plain Explicit . (:[]) <$> ident
+ <|> Typed Explicit <$ cTok "(" <*>% someSI ident <*% cTok ":" <*>% expr <*% cTok ")"
+ <|> implicit <$ cTok "{" <*>% someSI ident
+              <*> Trifecta.optional (id <$% cTok ":" *> expr)
+              <*% cTok "}"
  <?> "atomic variable binding"
+ where
+  implicit xs Nothing  = Plain Implicit xs
+  implicit xs (Just t) = Typed Implicit xs t
 
 bindings :: Parser [Binding]
 bindings
-  = many1SI atomicBinding
+  = someSI atomicBinding
  <?> "variable bindings"
 
 atomicExpr :: Parser (Expr Name)
@@ -186,27 +191,21 @@ atomicExpr
 
 expr :: Parser (Expr Name)
 expr
-  =  abstr (rTok "forall") (\x y -> Pi x y Nothing)
- <|> abstr (cTok "\\") Lam
- <|> (foldl (flip App Explicit) <$> atomicExpr <*> many atomicExpr) 
+  =  abstr (rTok "forall") Pi
+ <|> abstr (cTok "\\") lam
+ <|> (foldl (flip App Explicit) <$> atomicExpr <*> manySI atomicExpr) 
      `followedBy` [anno, return]
  <?> "expression"
   where
+    lam x p Nothing  = Lam x p
+    lam x p (Just t) = (`Anno` Pi x p (Just t) (Scope Wildcard)) . Lam x p
     followedBy p ps = do
       x <- p
-      choice $ map ($ x) ps
+      Trifecta.choice $ map ($ x) ps
 
     anno e  = Anno e <$% cTok ":" <*>% expr
 
-    abstr t c = do
-      _ <- t
-      sameLineOrIndented
-      bs <- bindings
-      sameLineOrIndented
-      _ <- cTok "."
-      sameLineOrIndented
-      e <- expr
-      return $ abstractBindings bs c e
+    abstr t c = flip abstractBindings c <$ t <*>% bindings <*% cTok "." <*>% expr
 
-test :: Parser a -> String -> Either ParseError a
-test p s = evalState (runParserT (p <* eof) () "test" (Text.pack s)) (initialPos "test")
+test :: Parser a -> String -> Trifecta.Result a
+test p = Trifecta.parseString (evalStateT p mempty <* Trifecta.eof) mempty
