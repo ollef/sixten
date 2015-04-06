@@ -2,10 +2,6 @@
 -- | Case branches
 module Branches where
 
-import Control.Applicative
-import Data.Foldable
-import Data.Traversable
-
 import Bound
 import Util
 

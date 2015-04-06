@@ -2,9 +2,6 @@
 module Util where
 import Bound
 import Bound.Var
-import Control.Applicative
-import Data.Foldable
-import Data.Traversable
 
 type Scope1 = Scope ()
 type Name = String

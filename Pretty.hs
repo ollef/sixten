@@ -8,9 +8,7 @@ module Pretty
   ) where
 
 import Bound
-import Control.Applicative
 import Control.Monad.Reader
-import Data.Monoid
 import Data.List
 import Data.Set(Set)
 import qualified Data.Set as S

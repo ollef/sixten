@@ -1,11 +1,10 @@
 module Parser where
 
 import Bound
-import Control.Applicative((<$>), (<$), (<*>), (<*), (*>), (<|>))
+import Control.Applicative((<|>))
 import Control.Monad.State
 import Data.Text(Text)
 import Data.Char
-import Data.Monoid
 import Data.Ord
 import Data.Set(Set)
 import qualified Data.Set as S
@@ -91,7 +90,7 @@ p <*%  q = p <*  (sameLineOrIndented >> q)
 p *>%  q = p *>  (sameLineOrIndented >> q)
 
 atoms :: Set Char
-atoms = S.fromList ":=()\\."
+atoms = S.fromList "{}:=()\\."
 
 isAtom  :: Char -> Bool
 isAtom = (`S.member` atoms)
@@ -157,12 +156,9 @@ data Binding
 abstractBindings :: [Binding] -> (NameHint -> Plicitness -> Maybe (Expr Name) -> Scope1 Expr Name -> Expr Name) -> Expr Name -> Expr Name
 abstractBindings bs c = flip (foldr f) bs
   where
-    f (Plain p xs) e   = foldr (\x -> c (Hint $ Just x) p Nothing . abstract1 x) e xs
-    f (Typed p xs t) e = foldr (\x -> (`Anno` Pi (h x) p (Just t) (Scope Wildcard))
-                                  . c (h x) Explicit (Just t)
-                                  . abstract1 x) e xs
-      where
-        h = Hint . Just
+    f (Plain p xs) e   = foldr (\x -> c (h x) p Nothing . abstract1 x) e xs
+    f (Typed p xs t) e = foldr (\x -> c (h x) p (Just t) . abstract1 x) e xs
+    h = Hint . Just
 
 atomicBinding :: Parser Binding
 atomicBinding

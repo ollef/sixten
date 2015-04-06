@@ -2,17 +2,17 @@
 module Infer where
 
 import Bound
-import Control.Applicative
 import Control.Monad.Except
+import Control.Monad.State
 import Control.Monad.ST()
 import Control.Monad.ST.Class
-import Data.Bifunctor
 import Data.Bitraversable
 import Data.Either
 import Data.Foldable as F
 import Data.Function
 import Data.List
 import qualified Data.Map as M
+import Data.Maybe
 import Data.Monoid
 import qualified Data.Set as S
 import Data.STRef
@@ -27,16 +27,25 @@ import Pretty
 import TopoSort
 import Util
 
-tr :: (Functor f, Foldable f, Pretty (f String)) => String -> f (MetaVar s) -> TCM s ()
-tr s x = do
+showMeta :: (Functor f, Foldable f, Pretty (f String)) => f (MetaVar s) -> TCM s Doc
+showMeta x = do
   vs <- nub <$> foldMapM (:[]) x
   let p (metaRef -> Just r) = either (const Nothing) Just <$> solution r
       p _                   = return Nothing
   pvs <- T.mapM p vs
-  let solutions = [(show $ metaId v, pretty $ (show . metaId) <$> sol) | (v, Just sol) <- zip vs pvs]
-  Monad.log $ (s ++ ": " ++ show (pretty $ (show . metaId) <$> x)
-           ++ ", vars: " ++ show (map pretty solutions))
+  let sv v = (if isJust $ metaRef v then "∃" else "") ++ show (metaId v)
+  let solutions = [(sv v, pretty $ sv <$> sol) | (v, Just sol) <- zip vs pvs]
+  return $ pretty (sv <$> x) <> text ", vars: " <> pretty solutions
+
+tr :: (Functor f, Foldable f, Pretty (f String)) => String -> f (MetaVar s) -> TCM s ()
+tr s x = do
+  i <- gets tcIndent
+  r <- showMeta x
+  Monad.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ show r
   return ()
+
+modifyIndent :: (Int -> Int) -> TCM s ()
+modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
 
 type Input s = Input.Expr (MetaVar s)
 type Core  s = Core.Expr  (MetaVar s)
@@ -92,12 +101,14 @@ refine r d f = solution r >>=
 solution :: Exists s -> TCM s (Either Level (Core s))
 solution = liftST . readSTRef
 
-isSolved :: Exists s -> TCM s Bool
-isSolved r = isRight <$> solution r
-
 solve :: Exists s -> Core s -> TCM s ()
 solve r x = do
-  whenM (isSolved r) $ throwError "Trying to solve something already solved"
+  whenM (isRight <$> solution r) $ throwError "Trying to solve a variable that's already solved"
+  liftST $ writeSTRef r $ Right x
+
+refineSolved :: Exists s -> Core s -> TCM s ()
+refineSolved r x = do
+  whenM (isLeft <$> solution r) $ throwError "Trying to refine a variable that's not solved"
   liftST $ writeSTRef r $ Right x
 
 freshLet :: Core s -> Core s -> TCM s (MetaVar s)
@@ -151,8 +162,10 @@ inferPi :: Input s -> Plicitness
         -> TCM s (Core s, Core s, Scope1 Core.Expr (MetaVar s))
 inferPi expr p = do
   tr "inferPi" expr
+  modifyIndent succ
   (e, t) <- inferType expr
   (a, b, c) <- go True e t
+  modifyIndent pred
   tr "inferPi res a" a
   tr "inferPi res b" b
   return (a, b, c)
@@ -171,11 +184,13 @@ inferPi expr p = do
             t2  <- freshExistsLV Core.Type l
             x   <- freshForall $ return t1
             at2 <- abstract1M x t2
-            unify t $ Core.Pi (Hint Nothing) p (return t1) at2
+            solve r $ Core.Pi (Hint Nothing) p (return t1) at2
             return (e, return t1, at2)
           Right c -> go True e c
       _ | reduce                  -> go False e =<< whnf t
-      _                           -> throwError "Function needed!"
+      _                           -> do
+        s <- showMeta t
+        throwError $ "Expected function, got " ++ show s
 
 foldMapM :: (Foldable f, Monoid m) => (MetaVar s -> m) -> f (MetaVar s) -> TCM s m
 foldMapM f = foldrM go mempty
@@ -213,6 +228,31 @@ abstract1M v e = do
     go _ v' = free v'
     free = return . return . return . return
 
+{-
+instantiate1M :: Scope1 Core.Expr (MetaVar s) -> Core s -> TCM s (Core s)
+instantiate1M s e = do
+  changed <- liftST $ newSTRef False
+  join <$> traverse (go changed) (fromScope s)
+  where
+    go changed (B ()) = do
+      liftST $ writeSTRef changed True
+      return e
+    go changed (F v@(metaRef -> Just r)) = do
+      sol <- solution r
+      case sol of
+        Left _  -> return $ return v
+        Right c -> do
+          changed' <- liftST $ newSTRef False
+          c' <- traverse (go changed') c
+          hasChanged <- liftST $ readSTRef changed'
+          if hasChanged then do
+            liftST $ writeSTRef changed True
+            return c'
+          else
+            return $ return v
+    go changed (F v) = return $ return v
+-}
+
 freeze :: Core s -> TCM s (Core s)
 freeze e = join <$> traverse go e
   where
@@ -221,8 +261,9 @@ freeze e = join <$> traverse go e
 
 generalise :: Core s -> Core s -> TCM s (Core s, Core s)
 generalise expr typ = do
-  tr "generalise e" expr
-  tr "generalise t" typ
+  tr "generalise e" =<< freeze expr
+  tr "generalise t" =<< freeze typ
+  modifyIndent succ
   fvs <- foldMapM (:[]) typ
   l   <- level
   let p (metaRef -> Just r) = either (> l) (const False) <$> solution r
@@ -232,8 +273,9 @@ generalise expr typ = do
       sorted = map go $ topoSort deps
   genexpr <- F.foldrM ($ Core.etaLam) expr sorted
   gentype <- F.foldrM ($ Core.Pi)     typ  sorted
-  tr "generalise ge" genexpr
-  tr "generalise gt" gentype
+  modifyIndent pred
+  tr "generalise ge" =<< freeze genexpr
+  tr "generalise gt" =<< freeze gentype
   return (genexpr, gentype)
   where
     go [a] f = fmap (f (Hint Nothing) Implicit $ metaType a) . abstract1M a
@@ -242,16 +284,19 @@ generalise expr typ = do
 inferType :: Input s -> TCM s (Core s, Core s)
 inferType expr = do
   tr "inferType" expr
+  modifyIndent succ
   (e, t) <- case expr of
     Input.Var v     -> return (Core.Var v, metaType v)
     Input.Type      -> return (Core.Type, Core.Type)
     Input.Pi n p Nothing s -> do
-      v  <- freshForall Core.Type
-      e' <- checkType (instantiate1 (return v) s) Core.Type
-      s' <- abstract1M v e'
+      tv  <- freshExistsV Core.Type
+      v   <- freshForall tv
+      e'  <- checkType (instantiate1 (return v) s) Core.Type
+      s'  <- abstract1M v e'
       return (Core.Pi n p Core.Type s', Core.Type)
     Input.Pi n p (Just t) s -> do
-      t' <- checkType t Core.Type
+      (t', tt) <- inferType t
+      unify tt Core.Type
       v  <- freshForall t'
       e' <- checkType (instantiate1 (return v) s) Core.Type
       s' <- abstract1M v e'
@@ -276,8 +321,9 @@ inferType expr = do
       t <- freshExistsV Core.Type
       x <- freshExistsV t
       return (x, t)
-  tr "inferType res e" e
-  tr "inferType res t" t
+  modifyIndent pred
+  tr "inferType res e" =<< freeze e
+  tr "inferType res t" =<< freeze t
   return (e, t)
 
 occurs :: Level -> MetaVar s -> Core s -> TCM s ()
@@ -296,11 +342,23 @@ occurs l tv = traverse_ go
               Right typ' -> occurs l tv typ'
 
 unify :: Core s -> Core s -> TCM s ()
-unify = go True
+unify type1 type2 = do
+  tr "unify t1" =<< freeze type1
+  tr "unify t2" =<< freeze type2
+  go True type1 type2
   where
     go reduce t1 t2
       | t1 == t2  = return ()
       | otherwise = case (t1, t2) of
+        (Core.Var (metaRef -> Just r1), Core.Var (metaRef -> Just r2)) -> do
+          sol1 <- solution r1
+          sol2 <- solution r2
+          case (sol1, sol2) of
+            (Left l1, Left l2)
+              | l1 <= l2  -> solve r2 t1
+              | otherwise -> solve r1 t2
+            (Right c1, _) -> go reduce c1 t2
+            (_, Right c2) -> go reduce t1 c2
         (Core.Var v@(metaRef -> Just r), _) -> solveVar r v t2
         (_, Core.Var v@(metaRef -> Just r)) -> solveVar r v t1
         (Core.Pi  _ p1 a s1, Core.Pi  _ p2 b s2) | p1 == p2 -> absCase a b s1 s2
@@ -344,17 +402,25 @@ unify = go True
         Right c -> go True c t
 
 subtype :: Core s -> Core s -> Core s -> TCM s (Core s)
-subtype = go True
+subtype expr type1 type2 = do
+  tr "subtype e"  expr
+  tr "subtype t1" type1
+  tr "subtype t2" type2
+  modifyIndent succ
+  e' <- go True expr type1 type2
+  modifyIndent pred
+  tr "subtype e'" e'
+  return e'
   where
     go reduce e typ1 typ2
       | typ1 == typ2 = return e
       | otherwise = case (typ1, typ2) of
         (Core.Pi n p1 t1 s1, Core.Pi _ p2 t2 s2) | p1 == p2 -> do
-          x  <- freshForall t2
-          x' <- subtype (return x) t2 t1
-          ex <- subtype (Core.App e p1 x') (instantiate1 x' s1)
-                                           (instantiate1 x' s2)
-          Core.etaLam n p1 t2 <$> abstract1M x ex
+          x2 <- freshForall t2
+          x1 <- subtype (return x2) t2 t1
+          ex <- subtype (Core.App e p1 x1) (instantiate1 x1          s1)
+                                           (instantiate1 (return x2) s2)
+          Core.etaLam n p1 t2 <$> abstract1M x2 ex
         (Core.Pi n p t1 s1, Core.Var v@(metaRef -> Just r)) -> do
           sol <- solution r
           case sol of
@@ -363,11 +429,12 @@ subtype = go True
               unify (metaType v) Core.Type
               t2  <- freshExistsLV Core.Type l
               t2' <- freshExistsLV Core.Type l
-              x   <- freshForall t2
-              solve r . Core.Pi n p t2 =<< abstract1M x t2'
-              x'  <- subtype (return x) t2 t1
-              ex  <- subtype (Core.App e p x') (instantiate1 x' s1) t2'
-              Core.etaLam n p t2 <$> abstract1M x ex
+              x2  <- freshExists t2
+              solve r . Core.Pi n p t2 =<< abstract1M x2 t2'
+              x1  <- subtype (return x2) t2 t1
+              ex  <- subtype (Core.App e p x1) (instantiate1 x1 s1) t2'
+              refineSolved r . Core.Pi n p t2 =<< abstract1M x2 t2'
+              Core.etaLam n p t2 <$> abstract1M x2 ex
             Right c -> subtype e typ1 c
         (Core.Var v@(metaRef -> Just r), Core.Pi n p t2 s2) -> do
           sol <- solution r
@@ -377,18 +444,22 @@ subtype = go True
               unify (metaType v) Core.Type
               t1  <- freshExistsLV Core.Type l
               t1' <- freshExistsLV Core.Type l
-              x   <- freshForall t1
-              solve r . Core.Pi n p t1 =<< abstract1M x t1'
-              x'  <- subtype (return x) t2 t1
-              ex  <- subtype (Core.App e p x') t1' (instantiate1 x' s2)
-              Core.etaLam n p t2 <$> abstract1M x ex
+              x2  <- freshForall t2
+              Monad.log $ show $ metaId x2
+              solve r . Core.Pi n p t1 =<< abstract1M x2 t1'
+              x1  <- subtype (return x2) t2 t1
+              ex  <- subtype (Core.App e p x1) t1' (instantiate1 (return x2) s2)
+              refineSolved r . Core.Pi n p t1 =<< abstract1M x2 t1'
+              Core.etaLam n p t2 <$> abstract1M x2 ex
             Right c -> subtype e c typ2
-        (_, Core.Pi _ _ t2 s2) -> do
-          v <- freshForallV t2
-          subtype e typ1 (instantiate1 v s2)
-        (Core.Pi _ p1 t1 s2, _) -> do
-          v <- freshExists t1
-          subtype (Core.App e p1 $ return v) (instantiate1 (return v) s2) typ2
+        {- TODO what should this case be?
+        (_, Core.Pi n2 p2 t2 s2) -> do
+          v2 <- freshForallV t2
+          subtype e typ1 (instantiate1 v2 s2)
+        -}
+        (Core.Pi _ p1 t1 s1, _) -> do
+          v1 <- freshExists t1
+          subtype (Core.App e p1 $ return v1) (instantiate1 (return v1) s1) typ2
         _ | reduce -> do
           typ1' <- whnf typ1
           typ2' <- whnf typ2
@@ -398,8 +469,9 @@ subtype = go True
 checkType :: Input s -> Core s -> TCM s (Core s)
 checkType expr typ = do
   tr "checkType" expr
-  tr "checkType t" typ
-  case expr of
+  tr "checkType t" =<< freeze typ
+  modifyIndent succ
+  res <- case expr of
     Input.Lam m p s -> do
       typ' <- whnf typ
       case typ' of
@@ -410,6 +482,9 @@ checkType expr typ = do
           Core.Lam m p a <$> abstract1M v body
         _ -> inferIt
     _ -> inferIt
+  modifyIndent pred
+  tr "checkType res" res
+  return res
     where
       inferIt = do
         (expr', typ') <- inferType expr
@@ -419,11 +494,9 @@ data Empty
 fromEmpty :: Empty -> a
 fromEmpty = error "fromEmpty"
 
-infer :: Input.Expr Empty -> Either String ((Core.Expr String, Core.Expr String), [String])
-infer e = fmap (bimap (bimap (fmap show) (fmap show)) id)
-        $ runTCM
-        $ fmap (\(x, y) -> (show <$> x, show <$> y))
-        $ bimapM freeze freeze <=< uncurry generalise <=< (enterLevel . inferType)
+infer :: Input.Expr Empty -> (Either String (Doc, Doc), [String])
+infer e = runTCM
+        $ bimapM showMeta showMeta <=< bimapM freeze freeze <=< uncurry generalise <=< (enterLevel . inferType)
         $ fmap fromEmpty e
 
 test :: String -> IO ()

@@ -2,12 +2,9 @@
 module Input where
 
 import Bound
-import Control.Applicative
 import Control.Monad
-import Data.Foldable
 import Data.Monoid
 import Data.String
-import Data.Traversable
 import Prelude.Extras
 
 import Util
@@ -51,10 +48,15 @@ instance (IsString v, Pretty v) => Pretty (Expr v) where
   prettyPrec expr = case expr of
     Var v     -> prettyPrec v
     Type      -> pure $ text "Type"
-    Pi  h p t s -> withHint h $ \x -> parens `above` absPrec $ do
+    Pi  h p Nothing s -> withHint h $ \x -> parens `above` absPrec $ do
       v <- inviolable $ bracesWhen (p == Implicit) $ pure $ text x
       b <- associate  $ prettyPrec $ instantiate1 (return $ fromString x) s
       return $ text "forall" <+> v <> text "." <+> b
+    Pi  h p (Just t) s -> withHint h $ \x -> parens `above` absPrec $ do
+      pt <- inviolable $ prettyPrec t
+      v <- inviolable $ bracesWhen (p == Implicit) $ pure $ text x
+      b <- associate  $ prettyPrec $ instantiate1 (return $ fromString x) s
+      return $ text "forall" <+> v <+> text ":" <+> pt <> text "." <+> b
     Lam h p s -> withHint h $ \x -> parens `above` absPrec $ do
       v <- inviolable $ bracesWhen (p == Implicit) $ pure $ text x
       b <- associate  $ prettyPrec $ instantiate1 (return $ fromString x) s

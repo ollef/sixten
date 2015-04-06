@@ -3,9 +3,7 @@ module Core where
 
 import Bound
 import Bound.Var
-import Control.Applicative
 import Control.Monad
-import Data.Foldable
 import Data.Monoid
 import Data.List as List
 import qualified Data.Set as S

@@ -35,13 +35,13 @@ instance Monoid State where
   mappend (State x1 y1 (Level z1) l1) (State x2 y2 (Level z2) l2)
     = State (x1 + x2) (y1 + y2) (Level $ z1 + z2) (l1 <> l2)
 
-type TCM s a = StateT State (ExceptT String (ST s)) a
+type TCM s a = ExceptT String (StateT State (ST s)) a
 
 evalTCM :: (forall s. TCM s a) -> Either String a
-evalTCM tcm = runST $ runExceptT $ evalStateT tcm mempty
+evalTCM tcm = runST $ evalStateT (runExceptT tcm) mempty
 
-runTCM :: (forall s. TCM s a) -> Either String (a, [String])
-runTCM tcm = fmap (second tcLog) $ runST $ runExceptT $ runStateT tcm mempty
+runTCM :: (forall s. TCM s a) -> (Either String a, [String])
+runTCM tcm = second tcLog $ runST $ runStateT (runExceptT tcm) mempty
 
 fresh :: TCM s Int
 fresh = do
