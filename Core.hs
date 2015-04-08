@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, Rank2Types, ViewPatterns #-}
+{-# LANGUAGE DeriveAnyClass, DeriveFoldable, DeriveFunctor, DeriveTraversable, Rank2Types, ViewPatterns #-}
 module Core where
 
 import Bound
@@ -20,7 +20,7 @@ data Expr v
   | Type -- Int
   | Pi  !NameHint !Plicitness (Type v) (Scope1 Expr v)
   | Lam !NameHint !Plicitness (Type v) (Scope1 Expr v)
-  | App (Expr v)  !Plicitness (Expr v)
+  | App  (Expr v) !Plicitness (Expr v)
   | Case (Expr v) (Branches Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 

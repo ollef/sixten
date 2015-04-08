@@ -5,9 +5,9 @@ import Control.Applicative((<|>))
 import Control.Monad.State
 import Data.Text(Text)
 import Data.Char
+import qualified Data.HashSet as HS
 import Data.Ord
-import Data.Set(Set)
-import qualified Data.Set as S
+import qualified Text.Parser.Token.Highlight as Highlight
 import qualified Text.Trifecta as Trifecta
 import Text.Trifecta((<?>))
 import Text.Trifecta.Delta
@@ -89,71 +89,37 @@ p <*%  q = p <*  (sameLineOrIndented >> q)
 (*>%) :: Parser a -> Parser b -> Parser b
 p *>%  q = p *>  (sameLineOrIndented >> q)
 
-atoms :: Set Char
-atoms = S.fromList "{}:=()\\."
-
-isAtom  :: Char -> Bool
-isAtom = (`S.member` atoms)
-
-reserved :: Set Name
-reserved = S.fromList
-  [":", "=", "forall", ".", "_", "\\", "(", ")", "{", "}"]
-
-isReserved  :: Name -> Bool
-isReserved = flip S.member reserved
-
--- | Idents that parse as single tokens in expressions regardless of whitespace.
-nonCompounds :: [Name]
-nonCompounds = [","]
-
-whitespace :: Parser ()
-whitespace = Trifecta.skipMany Trifecta.space
-
-whitespace1 :: Parser ()
-whitespace1 = Trifecta.skipSome Trifecta.space
-
-identLetter :: Parser Char
-identLetter = Trifecta.satisfy $ \c -> not (isSpace c || isAtom c)
-
--- | Add whitespace after something.
-token :: Parser a -> Parser a
-token p = p <* whitespace
-
--- | Add mandatory whitespace after something.
-token1 :: Parser a -> Parser a
-token1 p = p <* whitespace1
-
--- | Reserved token.
-rTok :: Name -> Parser Name
-rTok = Trifecta.try . token1 . Trifecta.string
-
--- | Compound token.
-cTok :: Name -> Parser Name
-cTok = token . Trifecta.try . Trifecta.string
+idStyle :: Trifecta.CharParsing m => Trifecta.IdentifierStyle m
+idStyle = Trifecta.IdentifierStyle "Dependent" start letter res Highlight.Identifier Highlight.ReservedIdentifier
+  where
+    start  = Trifecta.satisfy isAlpha    <|> Trifecta.oneOf "_"
+    letter = Trifecta.satisfy isAlphaNum <|> Trifecta.oneOf "_'"
+    res    = HS.fromList ["forall", "_", "Type"]
 
 ident :: Parser Name
-ident = token (Trifecta.try $ do
-  s <- Trifecta.some (Trifecta.notFollowedBy nonCompoundIdent >> identLetter)
-  if isReserved s
-    then Trifecta.unexpected $ "reserved identifier " ++ show s
-    else return s)
-  <|> nonCompoundIdent
-  <?> "identifier"
-  where
-    nonCompoundIdent = Trifecta.choice $ map cTok nonCompounds
+ident = Trifecta.ident idStyle
+
+reserved :: String -> Parser ()
+reserved = Trifecta.reserve idStyle
 
 defs :: Parser [Def Name]
 defs = dropAnchor $ someSameCol def
 
+symbol :: String -> Parser Name
+symbol = Trifecta.symbol
+
 def :: Parser (Def Name)
-def = Def <$> ident <*% rTok "=" <*>% expr
+def = Def <$> ident <*% symbol "=" <*>% expr
 
 data Binding
   = Plain Plicitness [Name]
   | Typed Plicitness [Name] (Expr Name)
   deriving (Eq, Ord, Show)
 
-abstractBindings :: [Binding] -> (NameHint -> Plicitness -> Maybe (Expr Name) -> Scope1 Expr Name -> Expr Name) -> Expr Name -> Expr Name
+abstractBindings :: [Binding]
+                 -> (NameHint -> Plicitness -> Maybe (Expr Name)
+                              -> Scope1 Expr Name -> Expr Name)
+                 -> Expr Name -> Expr Name
 abstractBindings bs c = flip (foldr f) bs
   where
     f (Plain p xs) e   = foldr (\x -> c (h x) p Nothing . abstract1 x) e xs
@@ -162,13 +128,14 @@ abstractBindings bs c = flip (foldr f) bs
 
 atomicBinding :: Parser Binding
 atomicBinding
-  =  Plain Explicit . (:[]) <$> ident
- <|> Typed Explicit <$ cTok "(" <*>% someSI ident <*% cTok ":" <*>% expr <*% cTok ")"
- <|> implicit <$ cTok "{" <*>% someSI ident
-              <*> Trifecta.optional (id <$% cTok ":" *> expr)
-              <*% cTok "}"
+  =  Plain Explicit . (:[]) <$> bident
+ <|> Typed Explicit <$ symbol "(" <*>% someSI bident <*% symbol ":" <*>% expr <*% symbol ")"
+ <|> implicit <$ symbol "{" <*>% someSI bident
+              <*> Trifecta.optional (id <$% symbol ":" *> expr)
+              <*% symbol "}"
  <?> "atomic variable binding"
  where
+  bident = ident <|> "_" <$ reserved "_"
   implicit xs Nothing  = Plain Implicit xs
   implicit xs (Just t) = Typed Implicit xs t
 
@@ -179,17 +146,17 @@ bindings
 
 atomicExpr :: Parser (Expr Name)
 atomicExpr
-  =  Type <$ rTok "Type"
- <|> Wildcard <$ rTok "_"
- <|> Var  <$> ident
- <|> cTok "(" *>% expr <*% cTok ")"
+  =  Type     <$ reserved "Type"
+ <|> Wildcard <$ reserved "_"
+ <|> Var      <$> ident
+ <|> symbol "(" *>% expr <*% symbol ")"
  <?> "atomic expression"
 
 expr :: Parser (Expr Name)
 expr
-  =  abstr (rTok "forall") Pi
- <|> abstr (cTok "\\") lam
- <|> (foldl (flip App Explicit) <$> atomicExpr <*> manySI atomicExpr) 
+  =  abstr (reserved "forall") Pi
+ <|> abstr (symbol   "\\") lam
+ <|> (foldl (flip App Explicit) <$> atomicExpr <*> manySI atomicExpr)
      `followedBy` [anno, return]
  <?> "expression"
   where
@@ -199,9 +166,9 @@ expr
       x <- p
       Trifecta.choice $ map ($ x) ps
 
-    anno e  = Anno e <$% cTok ":" <*>% expr
+    anno e  = Anno e <$% symbol ":" <*>% expr
 
-    abstr t c = flip abstractBindings c <$ t <*>% bindings <*% cTok "." <*>% expr
+    abstr t c = flip abstractBindings c <$ t <*>% bindings <*% symbol "." <*>% expr
 
 test :: Parser a -> String -> Trifecta.Result a
 test p = Trifecta.parseString (evalStateT p mempty <* Trifecta.eof) mempty

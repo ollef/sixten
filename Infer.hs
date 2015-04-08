@@ -445,7 +445,7 @@ subtype expr type1 type2 = do
               t1  <- freshExistsLV Core.Type l
               t1' <- freshExistsLV Core.Type l
               x2  <- freshForall t2
-              Monad.log $ show $ metaId x2
+              Monad.log $ show (metaId (let Core.Var v = t1 in v), metaId (let Core.Var v = t1' in v), metaId x2)
               solve r . Core.Pi n p t1 =<< abstract1M x2 t1'
               x1  <- subtype (return x2) t2 t1
               ex  <- subtype (Core.App e p x1) t1' (instantiate1 (return x2) s2)
