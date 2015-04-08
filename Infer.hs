@@ -76,6 +76,7 @@ freshExistsL :: Core s -> Level -> TCM s (MetaVar s)
 freshExistsL a l = do
   i   <- fresh
   ref <- liftST $ newSTRef $ Left l
+  Monad.log $ "exists: " ++ show i
   return $ MetaVar i a (Just ref)
 
 freshExistsV :: Monad g => Core s -> TCM s (g (MetaVar s))
@@ -177,9 +178,9 @@ inferPi expr p = do
         go True (Core.App e Implicit v) (instantiate1 v s)
       Core.Var v@(metaRef -> Just r) -> do
         sol <- solution r
+        unify (metaType v) Core.Type
         case sol of
           Left l -> do
-            unify (metaType v) Core.Type
             t1  <- freshExistsL Core.Type l
             t2  <- freshExistsLV Core.Type l
             x   <- freshForall $ return t1
@@ -350,7 +351,8 @@ unify type1 type2 = do
     go reduce t1 t2
       | t1 == t2  = return ()
       | otherwise = case (t1, t2) of
-        (Core.Var (metaRef -> Just r1), Core.Var (metaRef -> Just r2)) -> do
+        (Core.Var v1@(metaRef -> Just r1), Core.Var v2@(metaRef -> Just r2)) -> do
+          unify (metaType v1) (metaType v2)
           sol1 <- solution r1
           sol2 <- solution r2
           case (sol1, sol2) of
@@ -421,6 +423,7 @@ subtype expr type1 type2 = do
           ex <- subtype (Core.App e p1 x1) (instantiate1 x1          s1)
                                            (instantiate1 (return x2) s2)
           Core.etaLam n p1 t2 <$> abstract1M x2 ex
+        {-
         (Core.Pi n p t1 s1, Core.Var v@(metaRef -> Just r)) -> do
           sol <- solution r
           case sol of
@@ -436,6 +439,7 @@ subtype expr type1 type2 = do
               refineSolved r . Core.Pi n p t2 =<< abstract1M x2 t2'
               Core.etaLam n p t2 <$> abstract1M x2 ex
             Right c -> subtype e typ1 c
+        -}
         (Core.Var v@(metaRef -> Just r), Core.Pi n p t2 s2) -> do
           sol <- solution r
           case sol of
@@ -445,21 +449,18 @@ subtype expr type1 type2 = do
               t1  <- freshExistsLV Core.Type l
               t1' <- freshExistsLV Core.Type l
               x2  <- freshForall t2
-              Monad.log $ show (metaId (let Core.Var v = t1 in v), metaId (let Core.Var v = t1' in v), metaId x2)
               solve r . Core.Pi n p t1 =<< abstract1M x2 t1'
               x1  <- subtype (return x2) t2 t1
               ex  <- subtype (Core.App e p x1) t1' (instantiate1 (return x2) s2)
               refineSolved r . Core.Pi n p t1 =<< abstract1M x2 t1'
               Core.etaLam n p t2 <$> abstract1M x2 ex
             Right c -> subtype e c typ2
-        {- TODO what should this case be?
-        (_, Core.Pi n2 p2 t2 s2) -> do
+        (_, Core.Pi _ Implicit t2 s2) -> do
           v2 <- freshForallV t2
           subtype e typ1 (instantiate1 v2 s2)
-        -}
-        (Core.Pi _ p1 t1 s1, _) -> do
+        (Core.Pi _ Implicit t1 s1, _) -> do
           v1 <- freshExists t1
-          subtype (Core.App e p1 $ return v1) (instantiate1 (return v1) s1) typ2
+          subtype (Core.App e Implicit $ return v1) (instantiate1 (return v1) s1) typ2
         _ | reduce -> do
           typ1' <- whnf typ1
           typ2' <- whnf typ2
