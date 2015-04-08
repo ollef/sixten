@@ -5,6 +5,7 @@ module Pretty
   , above, withName, withSuggestedName, withHint, withHints, associate, inviolable
   , bracesWhen, parensWhen, prettyApp
   , appPrec, absPrec, arrPrec, annoPrec, casePrec, letPrec
+  , showWide
   ) where
 
 import Bound
@@ -131,3 +132,6 @@ instance (Pretty a, Pretty b, Pretty c) => Pretty (a, b, c) where
     where f x y z = tupled [x, y, z]
 
 instance Pretty a => Pretty (Hint a) where prettyPrec (Hint x) = prettyPrec x
+
+showWide :: Doc -> String
+showWide d = displayS (renderPretty 1.0 200 d) ""

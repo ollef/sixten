@@ -1,9 +1,11 @@
-{-# LANGUAGE DeriveAnyClass, DeriveFoldable, DeriveFunctor, DeriveTraversable, Rank2Types, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, Rank2Types, ViewPatterns #-}
 module Core where
 
 import Bound
+import Bound.Scope
 import Bound.Var
 import Control.Monad
+import Data.Bifunctor
 import Data.Monoid
 import Data.List as List
 import qualified Data.Set as S
@@ -52,6 +54,16 @@ usedPiView _                                     = Nothing
 lamView :: Expr v -> Maybe (NameHint, Plicitness, Type v, Scope1 Expr v)
 lamView (Lam n p e s) = Just (n, p, e, s)
 lamView _             = Nothing
+
+appsView :: Expr v -> (Expr v, [(Plicitness, Expr v)])
+appsView = second reverse . go
+  where
+    go (App e1 p e2) = (e1', (p, e2) : es)
+      where (e1', es) = go e1
+    go e = (e, [])
+
+apps :: Expr v -> [(Plicitness, Expr v)] -> Expr v
+apps = foldl (uncurry . App)
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -103,3 +115,11 @@ etaLam _ p _ (Scope (Core.App e p' (Var (B ()))))
   | B () `S.notMember` foldMap S.singleton e && p == p'
     = join $ unvar (error "etaLam impossible") id <$> e
 etaLam n p t s = Core.Lam n p t s
+
+betaApp :: Expr v -> Plicitness -> Expr v -> Expr v
+betaApp e1@(Lam _ p1 _ s) p2 e2 | p1 == p2 = case (e2, bindings s) of
+  (Var _, _) -> instantiate1 e2 s
+  (_, _:_:_) -> App e1 p1 e2
+  _          -> instantiate1 e2 s
+
+betaApp e1 p e2 = App e1 p e2

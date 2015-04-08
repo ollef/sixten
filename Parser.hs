@@ -154,10 +154,11 @@ atomicExpr
 
 expr :: Parser (Expr Name)
 expr
-  =  abstr (reserved "forall") Pi
+  =  (abstr (reserved "forall") Pi
  <|> abstr (symbol   "\\") lam
- <|> (foldl (flip App Explicit) <$> atomicExpr <*> manySI atomicExpr)
-     `followedBy` [anno, return]
+ <|> foldl (uncurry . App) <$> atomicExpr <*> manySI argument)
+     `followedBy` [anno, arr Explicit, return]
+ <|> ((symbol "{" *>% expr <*% symbol "}") `followedBy` [arr Implicit])
  <?> "expression"
   where
     lam x p Nothing  = Lam x p
@@ -168,7 +169,14 @@ expr
 
     anno e  = Anno e <$% symbol ":" <*>% expr
 
+    arr p e = (Pi (Hint Nothing) p (Just e) . Scope . Var . F)
+           <$% symbol "->" <*>% expr
+
     abstr t c = flip abstractBindings c <$ t <*>% bindings <*% symbol "." <*>% expr
+
+    argument :: Parser (Plicitness, Expr Name)
+    argument =  (,) Implicit <$ symbol "{" <*>% expr <*% symbol "}"
+            <|> (,) Explicit <$> atomicExpr
 
 test :: Parser a -> String -> Trifecta.Result a
 test p = Trifecta.parseString (evalStateT p mempty <* Trifecta.eof) mempty
