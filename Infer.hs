@@ -3,167 +3,24 @@ module Infer where
 
 import Bound
 import Control.Monad.Except
-import Control.Monad.State
 import Control.Monad.ST()
-import Control.Monad.ST.Class
-import Data.Bifunctor
 import Data.Bitraversable
-import Data.Either
 import Data.Foldable as F
-import Data.Function
-import Data.List
 import qualified Data.Map as M
-import Data.Maybe
 import Data.Monoid
 import qualified Data.Set as S
-import Data.STRef
-import Data.Traversable as T
 import Text.Trifecta.Result
 
 import qualified Core
 import qualified Input
+import Meta
 import Monad
+import Normalise
 import qualified Parser
 import Pretty
 import TopoSort
+import Unify
 import Util
-
-showMeta :: (Functor f, Foldable f, Pretty (f String)) => f (MetaVar s) -> TCM s Doc
-showMeta x = do
-  vs <- nub <$> foldMapM (:[]) x
-  let p (metaRef -> Just r) = either (const Nothing) Just <$> solution r
-      p _                   = return Nothing
-  pvs <- T.mapM p vs
-  let sv v = "[" ++ (if isJust $ metaRef v then "∃" else "") ++ show (metaId v) ++ ":" ++ show (pretty $ sv <$> metaType v) ++ "]"
-  let solutions = [(sv v, pretty $ fmap sv <$> msol) | (v, msol) <- zip vs pvs]
-  return $ pretty (sv <$> x) <> text ", vars: " <> pretty solutions
-
-tr :: (Functor f, Foldable f, Pretty (f String)) => String -> f (MetaVar s) -> TCM s ()
-tr s x = do
-  i <- gets tcIndent
-  r <- showMeta x
-  Monad.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ showWide r
-  return ()
-
-modifyIndent :: (Int -> Int) -> TCM s ()
-modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
-
-type Input s = Input.Expr (MetaVar s)
-type Core  s = Core.Expr  (MetaVar s)
-
-type Exists s = STRef s (Either Level (Core s))
-
-data MetaVar s = MetaVar
-  { metaId    :: {-# UNPACK #-} !Int
-  , metaType  :: Core s
-  , metaHint  :: {-# UNPACK #-} !NameHint
-  , metaRef   :: {-# UNPACK #-} !(Maybe (Exists s))
-  }
-
-instance Eq (MetaVar s) where
-  (==) = (==) `on` metaId
-
-instance Ord (MetaVar s) where
-  compare = compare `on` metaId
-
-instance Show (MetaVar s) where
-  showsPrec d (MetaVar i a h _) = showParen (d > 10) $
-    showString "Meta" . showChar ' ' . showsPrec 11 i .
-    showChar ' ' . showsPrec 11 a . showChar ' ' . showsPrec 11 h .
-    showChar ' ' . showString "<Ref>"
-
-freshExists :: NameHint -> Core s -> TCM s (MetaVar s)
-freshExists h a = freshExistsL h a =<< level
-
-freshExistsL :: NameHint -> Core s -> Level -> TCM s (MetaVar s)
-freshExistsL h a l = do
-  i   <- fresh
-  ref <- liftST $ newSTRef $ Left l
-  Monad.log $ "exists: " ++ show i
-  return $ MetaVar i a h (Just ref)
-
-freshExistsV :: Monad g => NameHint -> Core s -> TCM s (g (MetaVar s))
-freshExistsV h a = return <$> freshExists h a
-
-freshExistsLV :: Monad g => NameHint -> Core s -> Level -> TCM s (g (MetaVar s))
-freshExistsLV h a l = return <$> freshExistsL h a l
-
-freshForall :: NameHint -> Core s -> TCM s (MetaVar s)
-freshForall h a = do
-  i <- fresh
-  Monad.log $ "forall: " ++ show i
-  return $ MetaVar i a h Nothing
-
-freshForallV :: Monad g => NameHint -> Core s -> TCM s (g (MetaVar s))
-freshForallV h a = return <$> freshForall h a
-
-refine :: Exists s -> Core s -> (Core s -> TCM s (Core s)) -> TCM s (Core s)
-refine r d f = solution r >>=
-  either (const $ return d) (\e -> do
-    e' <- f e
-    liftST $ writeSTRef r (Right e')
-    return e'
-  )
-
-solution :: Exists s -> TCM s (Either Level (Core s))
-solution = liftST . readSTRef
-
-solve :: Exists s -> Core s -> TCM s ()
-solve r x = do
-  whenM (isRight <$> solution r) $ throwError "Trying to solve a variable that's already solved"
-  liftST $ writeSTRef r $ Right x
-
-refineSolved :: Exists s -> Core s -> TCM s ()
-refineSolved r x = do
-  whenM (isLeft <$> solution r) $ throwError "Trying to refine a variable that's not solved"
-  liftST $ writeSTRef r $ Right x
-
-freshLet :: NameHint -> Core s -> Core s -> TCM s (MetaVar s)
-freshLet h e t = do
-  i   <- fresh
-  ref <- liftST $ newSTRef $ Right e
-  return $ MetaVar i t h (Just ref)
-
-freshLetV :: Monad g => NameHint -> Core s -> Core s -> TCM s (g (MetaVar s))
-freshLetV h e t = return <$> freshLet h e t
-
-whnf :: Core s -> TCM s (Core s)
-whnf expr = case expr of
-  Core.Var (metaRef -> Nothing) -> return expr
-  Core.Var (metaRef -> Just r)  -> refine r expr whnf
-  Core.Var _                    -> throwError "whnf impossible"
-  Core.Type                     -> return expr
-  Core.Pi {}                    -> return expr
-  Core.Lam {}                   -> return expr
-  Core.App e1 p e2              -> do
-    e1' <- whnf e1
-    case e1' of
-      Core.Lam h p' t2 s | p == p' -> do
-        e2' <- freshLetV h e2 t2
-        whnf $ instantiate1 e2' s
-      _ -> return expr
-  Core.Case _ _ -> undefined -- TODO
-
-normalise :: Core s -> TCM s (Core s)
-normalise expr = case expr of
-  Core.Var (metaRef -> Nothing) -> return expr
-  Core.Var (metaRef -> Just r)  -> refine r expr normalise
-  Core.Var _                    -> throwError "normalise impossible"
-  Core.Type                     -> return expr
-  Core.Pi n p a s               -> normaliseScope n (Core.Pi n p)  a s
-  Core.Lam n p a s              -> normaliseScope n (Core.Lam n p) a s
-  Core.App e1 p e2              -> do
-    e1' <- normalise e1
-    e2' <- normalise e2
-    case e1' of
-      Core.Lam _ p' _ s | p == p' -> normalise $ instantiate1 e2' s
-      _                           -> return $ Core.App e1' p e2'
-  Core.Case _ _ -> undefined -- TODO
-  where
-    normaliseScope h c a s = do
-      x <- freshForall h a
-      ns <- normalise $ instantiate1 (return x) s
-      c a <$> abstract1M x ns
 
 inferPi :: Input s -> Plicitness
         -> TCM s (Core s, Core s, Scope1 Core.Expr (MetaVar s))
@@ -199,80 +56,6 @@ inferPi expr p = do
       _                           -> do
         s <- showMeta t
         throwError $ "Expected function, got " ++ show s
-
-foldMapM :: (Foldable f, Monoid m) => (MetaVar s -> m) -> f (MetaVar s) -> TCM s m
-foldMapM f = foldrM go mempty
-  where
-    go v m = (<> m) . (<> f v) <$> do
-      tvs <- foldMapM f $ metaType v
-      (<> tvs) <$> case metaRef v of
-        Just r -> do
-          sol <- solution r
-          case sol of
-            Left _  -> return mempty
-            Right c -> foldMapM f c
-        Nothing -> return $ f v <> m
-
-abstract1M :: MetaVar s -> Core s -> TCM s (Scope1 Core.Expr (MetaVar s))
-abstract1M v e = do
-  Monad.log $ "abstracting " ++ show (metaId v)
-  e' <- freeze e
-  changed <- liftST $ newSTRef False
-  (Scope . join) <$> traverse (go changed) e'
-  where
-    -- go :: STRef s Bool -> MetaVar s
-    --    -> TCM s (Expr (Var () (Expr (MetaVar s))))
-    go changed v' | v == v' = do
-      liftST $ writeSTRef changed True
-      return $ return $ B ()
-    go changed v'@(metaRef -> Just r) = do
-      tfvs <- foldMapM S.singleton $ metaType v'
-      when (v `S.member` tfvs) $ Monad.log $ "escape " ++ show (metaId v)
-      sol <- solution r
-      case sol of
-        Left _  -> free v'
-        Right c -> do
-          changed' <- liftST $ newSTRef False
-          c' <- traverse (go changed') c
-          hasChanged <- liftST $ readSTRef changed'
-          if hasChanged then do
-            liftST $ writeSTRef changed True
-            return $ join c'
-          else
-            free v'
-    go _ v' = free v'
-    free = return . return . return . return
-
-{-
-instantiate1M :: Scope1 Core.Expr (MetaVar s) -> Core s -> TCM s (Core s)
-instantiate1M s e = do
-  changed <- liftST $ newSTRef False
-  join <$> traverse (go changed) (fromScope s)
-  where
-    go changed (B ()) = do
-      liftST $ writeSTRef changed True
-      return e
-    go changed (F v@(metaRef -> Just r)) = do
-      sol <- solution r
-      case sol of
-        Left _  -> return $ return v
-        Right c -> do
-          changed' <- liftST $ newSTRef False
-          c' <- traverse (go changed') c
-          hasChanged <- liftST $ readSTRef changed'
-          if hasChanged then do
-            liftST $ writeSTRef changed True
-            return c'
-          else
-            return $ return v
-    go changed (F v) = return $ return v
--}
-
-freeze :: Core s -> TCM s (Core s)
-freeze e = join <$> traverse go e
-  where
-    go v@(metaRef -> Just r) = either (const $ do mt <- freeze (metaType v); return $ return v {metaType = mt}) freeze =<< solution r
-    go v                     = return $ return v
 
 generalise :: Core s -> Core s -> TCM s (Core s, Core s)
 generalise expr typ = do
@@ -346,79 +129,6 @@ inferType expr = do
   tr "inferType res e" e
   tr "              t" t
   return (e, t)
-
-occurs :: Level -> MetaVar s -> Core s -> TCM s ()
-occurs l tv = traverse_ go
-  where
-    go tv'@(MetaVar _ typ _ mr)
-      | tv == tv'                    = throwError "occurs check"
-      | otherwise = do
-        occurs l tv typ
-        case mr of
-          Nothing -> return ()
-          Just r  -> do
-            sol <- solution r
-            case sol of
-              Left l'    -> liftST $ writeSTRef r $ Left $ min l l'
-              Right typ' -> occurs l tv typ'
-
-unify :: Core s -> Core s -> TCM s ()
-unify type1 type2 = do
-  tr "unify t1" type1
-  tr "      t2" type2
-  go True type1 type2
-  where
-    go reduce t1 t2
-      | t1 == t2  = return ()
-      | otherwise = case (t1, t2) of
-        (Core.Var v1@(metaRef -> Just r1), Core.Var v2@(metaRef -> Just r2)) -> do
-          unify (metaType v1) (metaType v2)
-          sol1 <- solution r1
-          sol2 <- solution r2
-          case (sol1, sol2) of
-            (Left l1, Left l2)
-              | l1 <= l2  -> solve r2 t1
-              | otherwise -> solve r1 t2
-            (Right c1, _) -> go reduce c1 t2
-            (_, Right c2) -> go reduce t1 c2
-        -- If we have 'unify (f xs) t', where 'f' is an existential, and 'xs'
-        -- are distinct universally quantified variables, then 'f = \xs. t' is
-        -- a most general solution (See Miller, Dale (1991) "A Logic
-        -- programming...")
-        (Core.appsView -> (Core.Var v@(metaRef -> Just r), distinctForalls -> Just pvs), _) -> solveVar r v pvs t2
-        (_, Core.appsView -> (Core.Var v@(metaRef -> Just r), distinctForalls -> Just pvs)) -> solveVar r v pvs t1
-        (Core.Pi  h p1 a s1, Core.Pi  _ p2 b s2) | p1 == p2 -> absCase h a b s1 s2
-        (Core.Lam h p1 a s1, Core.Lam _ p2 b s2) | p1 == p2 -> absCase h a b s1 s2
-
-        -- If we've already tried reducing the application,
-        -- we can only hope to unify it pointwise.
-        (Core.App e1 p1 e1', Core.App e2 p2 e2') | p1 == p2 && not reduce -> do
-          go True e1  e2
-          go True e1' e2'
-        (Core.Type, Core.Type) -> return ()
-        _ | reduce             -> do
-          t1' <- whnf t1
-          t2' <- whnf t2
-          go False t1' t2'
-        _                      -> throwError "Can't unify types"
-    absCase h a b s1 s2 = do
-      go True a b
-      v <- freshForall h a
-      go True (instantiate1 (return v) s1) (instantiate1 (return v) s2)
-    distinctForalls pes | distinct pes = traverse isForall pes
-                        | otherwise    = Nothing
-    isForall (p, Core.Var v@(metaRef -> Nothing)) = Just (p, v)
-    isForall _                                    = Nothing
-    distinct pes = S.size (S.fromList es) == length es where es = map snd pes
-    solveVar r v pvs t = do
-      sol <- solution r
-      case sol of
-        Left l  -> do
-          occurs l v t
-          solve r =<< lams pvs t
-        Right c -> go True (Core.apps c (map (second return) pvs)) t
-    lams pvs t = F.foldrM (\(p, v) -> fmap (Core.Lam (Hint Nothing) p $ metaType v) . abstract1M v) t pvs
-
 
 subtype :: Core s -> Core s -> Core s -> TCM s (Core s, Core s)
 subtype expr type1 type2 = do
