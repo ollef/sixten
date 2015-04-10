@@ -118,8 +118,7 @@ etaLam n p t s = Core.Lam n p t s
 
 betaApp :: Expr v -> Plicitness -> Expr v -> Expr v
 betaApp e1@(Lam _ p1 _ s) p2 e2 | p1 == p2 = case (e2, bindings s) of
-  (Var _, _) -> instantiate1 e2 s
+  -- (Var _, _) -> instantiate1 e2 s
   (_, _:_:_) -> App e1 p1 e2
   _          -> instantiate1 e2 s
-
 betaApp e1 p e2 = App e1 p e2

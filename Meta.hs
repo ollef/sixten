@@ -138,7 +138,7 @@ abstract1M v e = do
       return $ return $ B ()
     go changed v'@(metaRef -> Just r) = do
       tfvs <- foldMapM S.singleton $ metaType v'
-      when (v `S.member` tfvs) $ Monad.log $ "escape " ++ show (metaId v)
+      when (v `S.member` tfvs) $ throwError $ "cannot abstract, " ++ show (metaHint v) ++ " " ++ show (metaId v) ++ " would escape"
       sol <- solution r
       case sol of
         Left _  -> free v'

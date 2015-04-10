@@ -106,7 +106,7 @@ subtype expr type1 type2 = do
           let h = h1 <> h2
           x2  <- freshForall h t2
           (x1, _)   <- subtype (return x2) t2 t1
-          (ex, s2') <- subtype (App e p1 x1)
+          (ex, s2') <- subtype (betaApp e p1 x1)
                                 (instantiate1 x1 s1)
                                 (instantiate1 x1 s2)
           e2    <- etaLam h p1 t2 <$> abstract1M x2 ex
