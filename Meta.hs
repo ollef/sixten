@@ -5,7 +5,6 @@ import Bound
 import Control.Monad.Except
 import Control.Monad.State
 import Control.Monad.ST.Class
-import Data.Either
 import Data.Foldable
 import Data.Function
 import Data.Maybe
@@ -19,30 +18,6 @@ import qualified Input
 import Monad
 import Pretty
 import Util
-
-showMeta :: (Functor f, Foldable f, Pretty (f String)) => f (MetaVar s) -> TCM s Doc
-showMeta x = do
-  vs <- foldMapM S.singleton x
-  let p (metaRef -> Just r) = either (const Nothing) Just <$> solution r
-      p _                   = return Nothing
-  let vsl = S.toList vs
-  pvs <- T.mapM p vsl
-  let sv v = "[" ++ (if isJust $ metaRef v then "∃" else "") ++ show (metaId v) ++ ":" ++ show (pretty $ sv <$> metaType v) ++ "]"
-  let solutions = [(sv v, pretty $ fmap sv <$> msol) | (v, msol) <- zip vsl pvs]
-  return $ pretty (sv <$> x) <> text ", vars: " <> pretty solutions
-
-tr :: (Functor f, Foldable f, Pretty (f String)) => String -> f (MetaVar s) -> TCM s ()
-tr s x = do
-  i <- gets tcIndent
-  r <- showMeta x
-  Monad.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ showWide r
-  return ()
-
-modifyIndent :: (Int -> Int) -> TCM s ()
-modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
-
-type Input s = Input.Expr (MetaVar s)
-type Core  s = Core.Expr  (MetaVar s)
 
 type Exists s = STRef s (Either Level (Core s))
 
@@ -65,8 +40,26 @@ instance Show (MetaVar s) where
     showChar ' ' . showsPrec 11 a . showChar ' ' . showsPrec 11 h .
     showChar ' ' . showString "<Ref>"
 
-freshExists :: NameHint -> Core s -> TCM s (MetaVar s)
-freshExists h a = freshExistsL h a =<< level
+type Input s = Input.Expr (MetaVar s)
+type Core  s = Core.Expr  (MetaVar s)
+
+showMeta :: (Functor f, Foldable f, Pretty (f String)) => f (MetaVar s) -> TCM s Doc
+showMeta x = do
+  vs <- foldMapM S.singleton x
+  let p (metaRef -> Just r) = either (const Nothing) Just <$> solution r
+      p _                   = return Nothing
+  let vsl = S.toList vs
+  pvs <- T.mapM p vsl
+  let sv v = "[" ++ (if isJust $ metaRef v then "∃" else "") ++ show (metaId v) ++ ":" ++ show (pretty $ sv <$> metaType v) ++ "]"
+  let solutions = [(sv v, pretty $ fmap sv <$> msol) | (v, msol) <- zip vsl pvs]
+  return $ pretty (sv <$> x) <> text ", vars: " <> pretty solutions
+
+tr :: (Functor f, Foldable f, Pretty (f String)) => String -> f (MetaVar s) -> TCM s ()
+tr s x = do
+  i <- gets tcIndent
+  r <- showMeta x
+  Monad.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ showWide r
+  return ()
 
 freshExistsL :: NameHint -> Core s -> Level -> TCM s (MetaVar s)
 freshExistsL h a l = do
@@ -74,6 +67,9 @@ freshExistsL h a l = do
   ref <- liftST $ newSTRef $ Left l
   Monad.log $ "exists: " ++ show i
   return $ MetaVar i a h (Just ref)
+
+freshExists :: NameHint -> Core s -> TCM s (MetaVar s)
+freshExists h a = freshExistsL h a =<< level
 
 freshExistsV :: Monad g => NameHint -> Core s -> TCM s (g (MetaVar s))
 freshExistsV h a = return <$> freshExists h a
@@ -90,26 +86,21 @@ freshForall h a = do
 freshForallV :: Monad g => NameHint -> Core s -> TCM s (g (MetaVar s))
 freshForallV h a = return <$> freshForall h a
 
-refine :: Exists s -> Core s -> (Core s -> TCM s (Core s)) -> TCM s (Core s)
-refine r d f = solution r >>=
-  either (const $ return d) (\e -> do
-    e' <- f e
-    liftST $ writeSTRef r (Right e')
-    return e'
-  )
-
 solution :: Exists s -> TCM s (Either Level (Core s))
 solution = liftST . readSTRef
 
 solve :: Exists s -> Core s -> TCM s ()
-solve r x = do
-  whenM (isRight <$> solution r) $ throwError "Trying to solve a variable that's already solved"
-  liftST $ writeSTRef r $ Right x
+solve r x = liftST $ writeSTRef r $ Right x
 
-refineSolved :: Exists s -> Core s -> TCM s ()
-refineSolved r x = do
-  whenM (isLeft <$> solution r) $ throwError "Trying to refine a variable that's not solved"
-  liftST $ writeSTRef r $ Right x
+refineIfSolved :: Exists s -> Core s -> (Core s -> TCM s (Core s)) -> TCM s (Core s)
+refineIfSolved r d f = do
+  sol <- solution r
+  case sol of
+    Left _  -> return d
+    Right e -> do
+      e' <- f e
+      solve r e'
+      return e'
 
 freshLet :: NameHint -> Core s -> Core s -> TCM s (MetaVar s)
 freshLet h e t = do

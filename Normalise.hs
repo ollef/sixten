@@ -11,7 +11,7 @@ import Monad
 whnf :: Core s -> TCM s (Core s)
 whnf expr = case expr of
   Var (metaRef -> Nothing) -> return expr
-  Var (metaRef -> Just r)  -> refine r expr whnf
+  Var (metaRef -> Just r)  -> refineIfSolved r expr whnf
   Var _                    -> throwError "whnf impossible"
   Type                     -> return expr
   Pi {}                    -> return expr
@@ -28,7 +28,7 @@ whnf expr = case expr of
 normalise :: Core s -> TCM s (Core s)
 normalise expr = case expr of
   Var (metaRef -> Nothing) -> return expr
-  Var (metaRef -> Just r)  -> refine r expr normalise
+  Var (metaRef -> Just r)  -> refineIfSolved r expr normalise
   Var _                    -> throwError "normalise impossible"
   Type                     -> return expr
   Pi n p a s               -> normaliseScope n (Pi n p)  a s

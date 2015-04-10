@@ -63,6 +63,9 @@ enterLevel x = do
 log :: String -> TCM s ()
 log s = modify (<> mempty {tcLog = [s]})
 
+modifyIndent :: (Int -> Int) -> TCM s ()
+modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
+
 {-
 
 conType :: ECon -> TCM s (Type k t)

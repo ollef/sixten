@@ -52,13 +52,12 @@ unify type1 type2 = do
             (_, Right c2) -> go reduce t1 c2
         -- If we have 'unify (f xs) t', where 'f' is an existential, and 'xs'
         -- are distinct universally quantified variables, then 'f = \xs. t' is
-        -- a most general solution (See Miller, Dale (1991) "A Logic
+        -- a most general solution (see Miller, Dale (1991) "A Logic
         -- programming...")
         (appsView -> (Var v@(metaRef -> Just r), distinctForalls -> Just pvs), _) -> solveVar r v pvs t2
         (_, appsView -> (Var v@(metaRef -> Just r), distinctForalls -> Just pvs)) -> solveVar r v pvs t1
         (Pi  h p1 a s1, Pi  _ p2 b s2) | p1 == p2 -> absCase h a b s1 s2
         (Lam h p1 a s1, Lam _ p2 b s2) | p1 == p2 -> absCase h a b s1 s2
-
         -- If we've already tried reducing the application,
         -- we can only hope to unify it pointwise.
         (App e1 p1 e1', App e2 p2 e2') | p1 == p2 && not reduce -> do
@@ -125,7 +124,7 @@ subtype expr type1 type2 = do
               x2  <- freshForall h t2
               (x1, t11') <- subtype (return x2) t2 t11
               (ex, s2')  <- subtype (betaApp e p x1) t12 (instantiate1 (return x2) s2)
-              refineSolved r . Pi h p t11' =<< abstract1M x2 s2'
+              solve r . Pi h p t11' =<< abstract1M x2 s2'
               e2    <- etaLam h p t2 <$> abstract1M x2 ex
               typ2' <- Pi h p t2 <$> abstract1M x2 s2'
               return (e2, typ2')

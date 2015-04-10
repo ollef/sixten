@@ -25,15 +25,16 @@ instance Ord (Hint a) where
 
 type NameHint = Hint (Maybe Name)
 
+-- | Alternative means that 'Just's don't get appended
 instance Alternative m => Monoid (Hint (m a)) where
   mempty = Hint empty
   mappend (Hint a) (Hint b) = Hint (a <|> b)
 
-unused :: (Monad f, Traversable f) => f (Var b a) -> Maybe (f a)
-unused = traverse $ unvar (const Nothing) pure
+unusedVar :: (Monad f, Traversable f) => f (Var b a) -> Maybe (f a)
+unusedVar = traverse $ unvar (const Nothing) pure
 
 unusedScope :: (Monad f, Traversable f) => Scope b f a -> Maybe (f a)
-unusedScope = unused . fromScope
+unusedScope = unusedVar . fromScope
 
 abstractNothing :: Monad f => f a -> Scope b f a
 abstractNothing = Scope . return . F
