@@ -3,7 +3,7 @@ module Pretty
   (module Text.PrettyPrint.ANSI.Leijen
   , Pretty, pretty, prettyPrec
   , above, withName, withSuggestedName, withHint, withHints, associate, inviolable
-  , bracesWhen, parensWhen, prettyApp
+  , bracesWhen, banged, bangedWhen, parensWhen, prettyApp
   , appPrec, absPrec, arrPrec, annoPrec, casePrec, letPrec
   , showWide
   ) where
@@ -11,18 +11,20 @@ module Pretty
 import Bound
 import Control.Monad.Reader
 import Data.List
+import Data.Monoid
 import Data.Set(Set)
 import qualified Data.Set as S
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>), (<>), Pretty, empty, pretty, prettyList)
 
 import Util
 
-appPrec, absPrec, arrPrec, annoPrec, casePrec, letPrec :: Int
+appPrec, absPrec, arrPrec, annoPrec, casePrec, dotPrec, letPrec :: Int
 appPrec    = 11
 absPrec    =  1
 arrPrec    =  1
 annoPrec   =  0
 casePrec   =  1
+dotPrec    = 12
 letPrec    =  1
 
 names :: [Name]
@@ -78,6 +80,12 @@ inviolable = local $ \s -> s {precedence = -1}
 
 bracesWhen ::  Bool -> PrettyM Doc -> PrettyM Doc
 bracesWhen b m = if b then braces <$> inviolable m else m
+
+banged :: PrettyM Doc -> PrettyM Doc
+banged p = (<>) <$> pure (text "!") <*> (parens `above` dotPrec) p
+
+bangedWhen :: Bool -> PrettyM Doc -> PrettyM Doc
+bangedWhen b = if b then banged else id
 
 parensWhen ::  Bool -> PrettyM Doc -> PrettyM Doc
 parensWhen b m = if b then parens <$> inviolable m else m

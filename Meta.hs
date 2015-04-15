@@ -41,7 +41,7 @@ instance Show (MetaVar s) where
     showChar ' ' . showString "<Ref>"
 
 type Input s = Input.Expr (MetaVar s)
-type Core  s = Core.Expr  (MetaVar s)
+type Core  s = Core.Expr Plicitness (MetaVar s)
 
 showMeta :: (Functor f, Foldable f, Pretty (f String)) => f (MetaVar s) -> TCM s Doc
 showMeta x = do
@@ -124,7 +124,7 @@ foldMapM f = foldrM go mempty
             Right c -> foldMapM f c
         Nothing -> return $ f v <> m
 
-abstract1M :: MetaVar s -> Core s -> TCM s (Scope1 Core.Expr (MetaVar s))
+abstract1M :: MetaVar s -> Core s -> TCM s (Scope1 (Core.Expr Plicitness) (MetaVar s))
 abstract1M v e = do
   Monad.log $ "abstracting " ++ show (metaId v)
   e' <- freeze e

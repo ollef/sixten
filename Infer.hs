@@ -4,19 +4,16 @@ module Infer where
 import Bound
 import Control.Monad.Except
 import Control.Monad.ST()
-import Data.Bitraversable
 import Data.Foldable as F
 import qualified Data.Map as M
+import Data.Monoid
 import qualified Data.Set as S
-import Text.Trifecta.Result
 
 import qualified Core
 import qualified Input
 import Meta
 import Monad
 import Normalise
-import qualified Parser
-import Pretty
 import TopoSort
 import Unify
 import Util
@@ -31,11 +28,11 @@ checkType expr typ = do
       typ' <- whnf typ
       case typ' of
         Core.Pi h p' a ts | p == p' -> do
-          v <- freshForall h a
+          v <- freshForall (h <> m) a
           (body, ts') <- checkType (instantiate1 (return v) s)
                                    (instantiate1 (return v) ts)
-          expr' <- Core.Lam m p a <$> abstract1M v body
-          typ'' <- Core.Pi m p a <$> abstract1M v ts'
+          expr' <- Core.Lam (m <> h) p a <$> abstract1M v body
+          typ'' <- Core.Pi  (h <> m) p a <$> abstract1M v ts'
           return (expr', typ'')
         _ -> inferIt
     _ -> inferIt
@@ -92,7 +89,7 @@ inferType expr = do
   return (e, t)
 
 inferPi :: Input s -> Plicitness
-        -> TCM s (Core s, Core s, Scope1 Core.Expr (MetaVar s))
+        -> TCM s (Core s, Core s, Scope1 (Core.Expr Plicitness) (MetaVar s))
 inferPi expr p = do
   tr "inferPi" expr
   modifyIndent succ
@@ -153,22 +150,3 @@ generalise expr typ = do
   where
     go [a] f = fmap (f (metaHint a) Implicit $ metaType a) . abstract1M a
     go _   _ = error "Generalise"
-
-data Empty
-fromEmpty :: Empty -> a
-fromEmpty = error "fromEmpty"
-
-infer :: Input.Expr Empty -> (Either String (Doc, Doc), [String])
-infer e = runTCM
-        $ bimapM showMeta showMeta <=< bimapM freeze freeze <=< uncurry generalise <=< (enterLevel . inferType)
-        $ fmap fromEmpty e
-
-test :: String -> IO ()
-test inp = case (infer . fmap (const undefined)) <$> Parser.test Parser.expr inp of
-  Success (res, l) -> do
-    putDoc $ pretty l
-    putStrLn ""
-    putStrLn ""
-    putDoc $ pretty res
-    putStrLn ""
-  Failure d        -> putDoc d

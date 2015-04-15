@@ -149,31 +149,28 @@ atomicExpr
   =  Type     <$ reserved "Type"
  <|> Wildcard <$ reserved "_"
  <|> Var      <$> ident
+ <|> abstr (reserved "forall") Pi
+ <|> abstr (symbol   "\\")     lam
  <|> symbol "(" *>% expr <*% symbol ")"
  <?> "atomic expression"
+  where
+    lam x p Nothing  = Lam x p
+    lam x p (Just t) = (`Anno` Pi x p (Just t) (Scope Wildcard)) . Lam x p
+    abstr t c = flip abstractBindings c <$ t <*>% bindings <*% symbol "." <*>% expr
 
 expr :: Parser (Expr Name)
 expr
-  =  (abstr (reserved "forall") Pi
- <|> abstr (symbol   "\\") lam
- <|> foldl (uncurry . App) <$> atomicExpr <*> manySI argument)
+  = (foldl (uncurry . App) <$> atomicExpr <*> manySI argument)
      `followedBy` [anno, arr Explicit, return]
  <|> ((symbol "{" *>% expr <*% symbol "}") `followedBy` [arr Implicit])
  <?> "expression"
   where
-    lam x p Nothing  = Lam x p
-    lam x p (Just t) = (`Anno` Pi x p (Just t) (Scope Wildcard)) . Lam x p
     followedBy p ps = do
       x <- p
       Trifecta.choice $ map ($ x) ps
-
     anno e  = Anno e <$% symbol ":" <*>% expr
-
     arr p e = (Pi (Hint Nothing) p (Just e) . Scope . Var . F)
            <$% symbol "->" <*>% expr
-
-    abstr t c = flip abstractBindings c <$ t <*>% bindings <*% symbol "." <*>% expr
-
     argument :: Parser (Plicitness, Expr Name)
     argument =  (,) Implicit <$ symbol "{" <*>% expr <*% symbol "}"
             <|> (,) Explicit <$> atomicExpr
