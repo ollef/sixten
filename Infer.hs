@@ -41,6 +41,12 @@ checkType expr typ = do
           expr' <- Core.Lam (m <> h) p a <$> abstract1M v body
           typ'' <- Core.Pi  (h <> m) p a <$> abstract1M v ts'
           return (expr', typ'')
+        Core.Pi h p' a ts | plicitness p' == Implicit -> do
+          v <- freshForall h a
+          (expr', ts') <- checkType expr (instantiate1 (return $ F v) ts)
+          typ''  <- Core.Pi  h p' a <$> abstract1M v ts'
+          expr'' <- Core.Lam h p' a <$> abstract1M v expr'
+          return (expr'', typ'')
         _ -> inferIt
     _ -> inferIt
   modifyIndent pred
@@ -141,10 +147,13 @@ generalise expr typ = do
   modifyIndent succ
 
   fvs <- foldMapM (:[]) typ
+  Monad.log $ show fvs
   l   <- level
+  Monad.log $ show l
   let p (metaRef -> Just r) = either (> l) (const False) <$> solution r
       p _                   = return False
   fvs' <- filterM p fvs
+  Monad.log $ show fvs'
 
   deps <- M.fromList <$> forM fvs' (\x -> do
     ds <- foldMapM S.singleton $ metaType x
@@ -176,19 +185,25 @@ checkRecursiveDefs :: (Hashable v, Ord v, Show v)
                    => Vector (NameHint, InputScope s Int v, InputScope s Int v)
                    -> TCM s v (Vector (CoreScope s Int v, CoreScope s Int v))
 checkRecursiveDefs ds = do
-  evs <- V.forM ds $ \(v, _, _) -> do
-    tv <- freshExistsV mempty Core.Type
-    freshForall v tv
-  let instantiatedDs = flip V.map ds $ \(_, e, t) ->
-        ( instantiate (return . return . (evs V.!)) e
-        , instantiate (return . return . (evs V.!)) t
-        )
-  checkedDs <- V.forM instantiatedDs $ \(e, t) -> do
-    (t', _) <- checkType t Core.Type
-    (e', t'') <- checkType e t'
-    return (e', t'')
+  (evs, checkedDs) <- enterLevel $ do
+    evs <- V.forM ds $ \(v, _, _) -> do
+      tv <- freshExistsV mempty Core.Type
+      freshForall v tv
+    let instantiatedDs = flip V.map ds $ \(_, e, t) ->
+          ( instantiate (return . return . (evs V.!)) e
+          , instantiate (return . return . (evs V.!)) t
+          )
+    checkedDs <- V.forM instantiatedDs $ \(e, t) -> do
+      (t', _) <- checkType t Core.Type
+      (e', t'') <- checkType e t'
+      return (e', t'')
+    return (evs, checkedDs)
   V.forM checkedDs $ \(e, t) -> do
     (ge, gt) <- generalise e t
-    s  <- abstractM (`V.elemIndex` evs) ge
-    ts <- abstractM (`V.elemIndex` evs) gt
+    ge' <- freeze ge
+    gt' <- freeze gt
+    tr "checkRecursiveDefs ge'" ge'
+    tr "                   gt'" gt'
+    s  <- abstractM (`V.elemIndex` evs) ge'
+    ts <- abstractM (`V.elemIndex` evs) gt'
     return (s, ts)

@@ -10,9 +10,13 @@ import Data.Monoid
 
 import Annotation
 import Core
+import Pretty
 
 newtype Level = Level Int
   deriving (Eq, Ord, Show)
+
+instance Pretty Level where
+  pretty (Level i) = pretty i
 
 data State v = State
   { tcContext    :: Program Annotation v

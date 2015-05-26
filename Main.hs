@@ -2,9 +2,11 @@ module Main where
 
 import Bound
 import Bound.Var
+import Control.Monad.Except
 import Control.Monad.State
 import Data.Bifoldable
 import Data.Bifunctor
+import Data.Bitraversable
 import Data.Hashable
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Map as M
@@ -37,18 +39,19 @@ inferProgram p f = mapM_ tcGroup sorted
                              | ((s, t), (n, _, _))
                                <- zip (zip abstractedScopes abstractedTypes) tls]
       checkedTls <- checkRecursiveDefs $ V.fromList abstractedTls
-      let vf           = fmap (unvar id $ error "inferProgram")
-          checkedTls'  = bimap vf vf <$> checkedTls
-          checkedTls'' = bimap (fmap B) (fmap B) <$> checkedTls'
+      let vf  = traverse (unvar return $ const $ throwError "inferProgram")
+      checkedTls'  <- traverse (bitraverse vf vf) checkedTls
+      let checkedTls'' = bimap (fmap B) (fmap B) <$> checkedTls'
       reledTls   <- Relevance.checkRecursiveDefs checkedTls''
       let names   = V.fromList [n | (n, _, _) <- tls]
-          vf'     = fmap (unvar id $ error "inferProgram")
-          instTls = HM.fromList
-            [(names V.! i, ( instantiate (return . (names V.!)) $ vf' e
-                           , instantiate (return . (names V.!)) $ vf' t
+          vf'     = traverse (unvar return $ const $ throwError "inferProgram'")
+      reledTls' <- traverse (bitraverse vf' vf') $ V.map (\(e, t, r) -> (r, e, t)) reledTls
+      let instTls = HM.fromList
+            [(names V.! i, ( instantiate (return . (names V.!)) e
+                           , instantiate (return . (names V.!)) t
                            , Annotation r Explicit
                            ))
-            | (i, (e, t, r)) <- zip [0..] $ V.toList reledTls
+            | (i, (r, e, t)) <- zip [0..] $ V.toList reledTls'
             ]
       addContext instTls
 

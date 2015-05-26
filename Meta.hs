@@ -55,8 +55,8 @@ type CoreScope  s b v = Scope b (Core.Expr Plicitness) (Var v (MetaVar s v))
 showMeta :: (Functor f, Foldable f, Show v, Pretty (f String)) => f (Var v (MetaVar s v)) -> TCM s v' Doc
 showMeta x = do
   vs <- foldMapM S.singleton x
-  let p (metaRef -> Just r) = either (const Nothing) Just <$> solution r
-      p _                   = return Nothing
+  let p (metaRef -> Just r) = solution r
+      p _                   = return $ Left $ Level (-1)
   let vsl = S.toList vs
   pvs <- T.mapM p vsl
   let sv v = "<" ++ (if isJust $ metaRef v then "∃" else "") ++ show (metaId v) ++ ":" ++ show (pretty $ unvar show sv <$> metaType v) ++ ">"
