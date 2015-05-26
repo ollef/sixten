@@ -3,19 +3,20 @@ module Input where
 
 import Bound
 import Control.Monad
+import Data.Map(Map)
 import Data.Monoid
 import Data.String
 import Prelude.Extras
 
+import Annotation
+import Hint
 import Util
 import Pretty
-
-data Def v = Def v (Expr v)
 
 data Expr v
   = Var v
   | Type                                      -- ^ Type : Type
-  | Pi  !NameHint !Plicitness (Maybe (Expr v)) (Scope1 Expr v) -- ^ Dependent function space
+  | Pi  !NameHint !Plicitness (Maybe (Type v)) (Scope1 Expr v) -- ^ Dependent function space
   | Lam !NameHint !Plicitness (Scope1 Expr v)
   | App (Expr v) !Plicitness (Expr v)
   | Anno (Expr v) (Expr v)
@@ -24,6 +25,23 @@ data Expr v
 
 -- | Synonym for documentation purposes
 type Type = Expr
+
+-- * Smart constructors
+lam :: NameHint -> Plicitness -> Maybe (Type v) -> Scope1 Expr v -> Expr v
+lam x p Nothing  = Lam x p
+lam x p (Just t) = (`Anno` Pi x p (Just t) (Scope Wildcard)) . Lam x p
+
+anno :: Expr v -> Expr v -> Expr v
+anno e Wildcard = e
+anno e t        = Anno e t
+
+-- | A definition or type declaration on the top-level
+data TopLevel v
+  = DefLine  (Maybe v) (Expr v) -- ^ Maybe v means that we can use wildcard names that refer e.g. to the previous top-level thing
+  | TypeDecl v         (Type v)
+  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+type Program v = Map v (Expr v, Type v)
 
 -------------------------------------------------------------------------------
 -- Instances

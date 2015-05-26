@@ -1,7 +1,8 @@
 module Parser where
 
 import Bound
-import Control.Applicative((<|>))
+import Control.Applicative((<|>), Alternative)
+import Control.Monad.Except
 import Control.Monad.State
 import Data.Text(Text)
 import Data.Char
@@ -12,11 +13,19 @@ import qualified Text.Trifecta as Trifecta
 import Text.Trifecta((<?>))
 import Text.Trifecta.Delta
 
+import Annotation
+import Hint
 import Input
 import Util
 
 type Input = Text
 type Parser a = StateT Delta Trifecta.Parser a
+
+parseString :: Parser a -> String -> Trifecta.Result a
+parseString p = Trifecta.parseString (evalStateT p mempty <* Trifecta.eof) mempty
+
+parseFromFile :: MonadIO m => Parser a -> FilePath -> m (Maybe a)
+parseFromFile p = Trifecta.parseFromFile (evalStateT p mempty <* Trifecta.eof)
 
 deltaLine :: Delta -> Int
 deltaLine Columns {}           = 0
@@ -102,78 +111,91 @@ ident = Trifecta.ident idStyle
 reserved :: String -> Parser ()
 reserved = Trifecta.reserve idStyle
 
-defs :: Parser [Def Name]
-defs = dropAnchor $ someSameCol def
+wildcard :: Parser ()
+wildcard = reserved "_"
+
+identOrWildcard :: Parser (Maybe Name)
+identOrWildcard = Just <$> ident
+               <|> Nothing <$ wildcard
 
 symbol :: String -> Parser Name
 symbol = Trifecta.symbol
 
-def :: Parser (Def Name)
-def = Def <$> ident <*% symbol "=" <*>% expr
-
 data Binding
-  = Plain Plicitness [Name]
-  | Typed Plicitness [Name] (Expr Name)
+  = Plain Plicitness [Maybe Name]
+  | Typed Plicitness [Maybe Name] (Expr Name)
   deriving (Eq, Ord, Show)
 
-abstractBindings :: [Binding]
-                 -> (NameHint -> Plicitness -> Maybe (Expr Name)
+abstractBindings :: (NameHint -> Plicitness -> Maybe (Expr Name)
                               -> Scope1 Expr Name -> Expr Name)
+                 -> [Binding]
                  -> Expr Name -> Expr Name
-abstractBindings bs c = flip (foldr f) bs
+abstractBindings c = flip $ foldr f
   where
-    f (Plain p xs) e   = foldr (\x -> c (h x) p Nothing . abstract1 x) e xs
-    f (Typed p xs t) e = foldr (\x -> c (h x) p (Just t) . abstract1 x) e xs
-    h = Hint . Just
+    f (Plain p xs)   e = foldr (\x -> c (h x) p Nothing  . abstractMaybe1 x) e xs
+    f (Typed p xs t) e = foldr (\x -> c (h x) p (Just t) . abstractMaybe1 x) e xs
+    abstractMaybe1 = maybe abstractNone abstract1
+    h = Hint
 
 atomicBinding :: Parser Binding
 atomicBinding
-  =  Plain Explicit . (:[]) <$> bident
- <|> Typed Explicit <$ symbol "(" <*>% someSI bident <*% symbol ":" <*>% expr <*% symbol ")"
- <|> implicit <$ symbol "{" <*>% someSI bident
+  =  Plain Explicit . (:[]) <$> identOrWildcard
+ <|> Typed Explicit <$ symbol "(" <*>% someSI identOrWildcard <*% symbol ":" <*>% expr <*% symbol ")"
+ <|> implicit <$ symbol "{" <*>% someSI identOrWildcard
               <*> Trifecta.optional (id <$% symbol ":" *> expr)
               <*% symbol "}"
  <?> "atomic variable binding"
  where
-  bident = ident <|> "_" <$ reserved "_"
   implicit xs Nothing  = Plain Implicit xs
   implicit xs (Just t) = Typed Implicit xs t
 
-bindings :: Parser [Binding]
-bindings
+someBindings :: Parser [Binding]
+someBindings
   = someSI atomicBinding
+ <?> "variable bindings"
+
+manyBindings :: Parser [Binding]
+manyBindings
+  = manySI atomicBinding
  <?> "variable bindings"
 
 atomicExpr :: Parser (Expr Name)
 atomicExpr
   =  Type     <$ reserved "Type"
- <|> Wildcard <$ reserved "_"
+ <|> Wildcard <$ wildcard
  <|> Var      <$> ident
  <|> abstr (reserved "forall") Pi
  <|> abstr (symbol   "\\")     lam
  <|> symbol "(" *>% expr <*% symbol ")"
  <?> "atomic expression"
   where
-    lam x p Nothing  = Lam x p
-    lam x p (Just t) = (`Anno` Pi x p (Just t) (Scope Wildcard)) . Lam x p
-    abstr t c = flip abstractBindings c <$ t <*>% bindings <*% symbol "." <*>% expr
+    abstr t c = abstractBindings c <$ t <*>% someBindings <*% symbol "." <*>% expr
+
+followedBy :: (Monad m, Alternative m) => m a -> [a -> m b] -> m b
+followedBy p ps = do
+  x <- p
+  Trifecta.choice $ map ($ x) ps
 
 expr :: Parser (Expr Name)
 expr
   = (foldl (uncurry . App) <$> atomicExpr <*> manySI argument)
-     `followedBy` [anno, arr Explicit, return]
+     `followedBy` [typeAnno, arr Explicit, return]
  <|> ((symbol "{" *>% expr <*% symbol "}") `followedBy` [arr Implicit])
  <?> "expression"
   where
-    followedBy p ps = do
-      x <- p
-      Trifecta.choice $ map ($ x) ps
-    anno e  = Anno e <$% symbol ":" <*>% expr
+    typeAnno e  = Anno e <$% symbol ":" <*>% expr
     arr p e = (Pi (Hint Nothing) p (Just e) . Scope . Var . F)
            <$% symbol "->" <*>% expr
     argument :: Parser (Plicitness, Expr Name)
     argument =  (,) Implicit <$ symbol "{" <*>% expr <*% symbol "}"
             <|> (,) Explicit <$> atomicExpr
 
-test :: Parser a -> String -> Trifecta.Result a
-test p = Trifecta.parseString (evalStateT p mempty <* Trifecta.eof) mempty
+topLevel :: Parser (TopLevel Name)
+topLevel =  ident    `followedBy` [typeDecl, def . Just]
+        <|> wildcard `followedBy` [const $ def Nothing]
+  where
+    typeDecl n = TypeDecl n <$% symbol ":" <*>% expr
+    def n = DefLine n <$>% (abstractBindings lam <$> manyBindings <*% symbol "=" <*>% expr)
+
+program :: Parser [TopLevel Name]
+program = dropAnchor (manySameCol $ dropAnchor topLevel)

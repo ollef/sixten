@@ -3,7 +3,7 @@ module Pretty
   (module Text.PrettyPrint.ANSI.Leijen
   , Pretty, pretty, prettyPrec
   , above, withName, withSuggestedName, withHint, withHints, associate, inviolable
-  , bracesWhen, banged, bangedWhen, parensWhen, prettyApp
+  , bracesWhen, tilde, tildeWhen, parensWhen, prettyApp
   , appPrec, absPrec, arrPrec, annoPrec, casePrec, letPrec
   , showWide
   ) where
@@ -16,6 +16,8 @@ import Data.Set(Set)
 import qualified Data.Set as S
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>), (<>), Pretty, empty, pretty, prettyList)
 
+import Annotation
+import Hint
 import Util
 
 appPrec, absPrec, arrPrec, annoPrec, casePrec, dotPrec, letPrec :: Int
@@ -81,11 +83,11 @@ inviolable = local $ \s -> s {precedence = -1}
 bracesWhen ::  Bool -> PrettyM Doc -> PrettyM Doc
 bracesWhen b m = if b then braces <$> inviolable m else m
 
-banged :: PrettyM Doc -> PrettyM Doc
-banged p = (<>) <$> pure (text "!") <*> (parens `above` dotPrec) p
+tilde :: PrettyM Doc -> PrettyM Doc
+tilde p = (<>) <$> pure (text "~") <*> (parens `above` dotPrec) p
 
-bangedWhen :: Bool -> PrettyM Doc -> PrettyM Doc
-bangedWhen b = if b then banged else id
+tildeWhen :: Bool -> PrettyM Doc -> PrettyM Doc
+tildeWhen b = if b then tilde else id
 
 parensWhen ::  Bool -> PrettyM Doc -> PrettyM Doc
 parensWhen b m = if b then parens <$> inviolable m else m
@@ -113,6 +115,7 @@ instance Pretty Integer where pretty = text . show
 instance Pretty Float   where pretty = text . show
 instance Pretty Double  where pretty = text . show
 instance Pretty Doc     where pretty = id
+instance Pretty Annotation where pretty = text . show
 
 instance Pretty a => Pretty [a] where prettyPrec = prettyList
 

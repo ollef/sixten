@@ -4,55 +4,54 @@ import Control.Monad.Except
 import Control.Monad.State(evalStateT, StateT, runStateT, gets, modify)
 import Control.Monad.ST
 import Data.Bifunctor
+import Data.Hashable
+import qualified Data.HashMap.Lazy as HM
 import Data.Monoid
 
--- import Core
+import Annotation
+import Core
 
 newtype Level = Level Int
   deriving (Eq, Ord, Show)
 
-data State = State
-  { -- tcTypes      :: Map Con (Type () ())
-  -- , tcKinds      :: Map TCon (Kind ())
-  -- , tcSynonyms   :: Map TCon (Type () ())
-    tcIndent     :: {-# UNPACK #-} !Int -- This has no place here, but is useful for debugging
+data State v = State
+  { tcContext    :: Program Annotation v
+  , tcIndent     :: {-# UNPACK #-} !Int -- This has no place here, but is useful for debugging
   , tcFresh      :: {-# UNPACK #-} !Int
   , tcLevel      :: {-# UNPACK #-} !Level
   , tcLog        :: ![String]
   }
 
-instance Monoid State where
+instance (Eq v, Hashable v) => Monoid (State v) where
   mempty = State
-    { -- tcTypes    = M.fromList builtinTypes
-    -- , tcKinds    = M.fromList builtinKinds
-    -- , tcSynonyms = mempty
-      tcIndent   = 0
+    { tcContext  = mempty
+    , tcIndent   = 0
     , tcFresh    = 0
     , tcLevel    = Level 1
     , tcLog      = mempty
     }
     where
-  mappend (State x1 y1 (Level z1) l1) (State x2 y2 (Level z2) l2)
-    = State (x1 + x2) (y1 + y2) (Level $ z1 + z2) (l1 <> l2)
+  mappend (State cxt1 x1 y1 (Level z1) l1) (State cxt2 x2 y2 (Level z2) l2)
+    = State (cxt1 <> cxt2) (x1 + x2) (y1 + y2) (Level $ z1 + z2) (l1 <> l2)
 
-type TCM s a = ExceptT String (StateT State (ST s)) a
+type TCM s v a = ExceptT String (StateT (State v) (ST s)) a
 
-evalTCM :: (forall s. TCM s a) -> Either String a
+evalTCM :: (Eq v, Hashable v) => (forall s. TCM s v a) -> Either String a
 evalTCM tcm = runST $ evalStateT (runExceptT tcm) mempty
 
-runTCM :: (forall s. TCM s a) -> (Either String a, [String])
-runTCM tcm = second tcLog $ runST $ runStateT (runExceptT tcm) mempty
+runTCM :: (Eq v, Hashable v) => (forall s. TCM s v a) -> (Either String a, [String])
+runTCM tcm = second (reverse . tcLog) $ runST $ runStateT (runExceptT tcm) mempty
 
-fresh :: TCM s Int
+fresh :: TCM s v Int
 fresh = do
   i <- gets tcFresh
   modify $ \s -> s {tcFresh = i + 1}
   return i
 
-level :: TCM s Level
+level :: TCM s v Level
 level = gets tcLevel
 
-enterLevel :: TCM s a -> TCM s a
+enterLevel :: TCM s v a -> TCM s v a
 enterLevel x = do
   Level l <- level
   modify $ \s -> s {tcLevel = Level $! l + 1}
@@ -60,10 +59,19 @@ enterLevel x = do
   modify $ \s -> s {tcLevel = Level l}
   return r
 
-log :: String -> TCM s ()
-log s = modify (<> mempty {tcLog = [s]})
+log :: String -> TCM s v ()
+log l = modify $ \s -> s {tcLog = l : tcLog s}
 
-modifyIndent :: (Int -> Int) -> TCM s ()
+addContext :: (Eq v, Hashable v) => Program Annotation v -> TCM s v ()
+addContext p = modify $ \s -> s {tcContext = p <> tcContext s}
+
+context :: (Eq v, Hashable v, Show v)
+        => v -> TCM s v (Expr Annotation v, Type Annotation v, Annotation)
+context v = do
+  mres <- gets $ HM.lookup v . tcContext
+  maybe (throwError $ "Not in scope: " ++ show v) return mres
+
+modifyIndent :: (Int -> Int) -> TCM s v ()
 modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
 
 {-

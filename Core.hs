@@ -6,6 +6,7 @@ import Bound.Scope
 import Bound.Var
 import Control.Monad
 import Data.Bifunctor
+import Data.HashMap.Lazy(HashMap)
 import Data.Monoid
 import Data.List as List
 import qualified Data.Set as S
@@ -13,7 +14,9 @@ import Data.String
 import Data.Traversable as T
 import Prelude.Extras
 
+import Annotation
 import Branches
+import Hint
 import Pretty
 import Util
 
@@ -28,8 +31,19 @@ data Expr d v
   | Case (Expr d v) (Branches (Expr d) v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
+instance Bifunctor Expr where
+  bimap f g expr = case expr of
+    Var v       -> Var $ g v
+    Type        -> Type
+    Pi  x d t s -> Pi  x (f d) (bimap f g t) $ bimapScope f g s
+    Lam x d t s -> Lam x (f d) (bimap f g t) $ bimapScope f g s
+    App e1 d e2 -> App (bimap f g e1) (f d) (bimap f g e2)
+    Case _ _    -> undefined -- TODO
+
 -- | Synonym for documentation purposes
 type Type = Expr
+
+type Program d v = HashMap v (Expr d v, Type d v, d)
 
 -------------------------------------------------------------------------------
 -- * Views
@@ -93,14 +107,14 @@ instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
     Var v     -> prettyPrec v
     Type      -> pure $ text "Type"
     Pi  _ p t (unusedScope -> Just e) -> parens `above` arrPrec $ do
-      a <- bangedWhen (isIrrelevant p) $ bracesWhen (isImplicit p) $ prettyPrec t
+      a <- tildeWhen (isIrrelevant p) $ bracesWhen (isImplicit p) $ prettyPrec t
       b <- associate $ prettyPrec e
       return $ a <+> text "->" <+> b
     (bindingsView usedPiView -> Just (hpts, s)) -> binding (\x -> text "forall" <+> x <> text ".") hpts s
     Pi {} -> error "impossible prettyPrec pi"
     (bindingsView lamView -> Just (hpts, s)) -> binding (\x -> text "\\" <> x <> text ".") hpts s
     Lam {} -> error "impossible prettyPrec lam"
-    App e1 p e2 -> prettyApp (prettyPrec e1) (bangedWhen (isIrrelevant p) $ bracesWhen (isImplicit p) $ prettyPrec e2)
+    App e1 p e2 -> prettyApp (prettyPrec e1) (tildeWhen (isIrrelevant p) $ bracesWhen (isImplicit p) $ prettyPrec e2)
     Case _ _ -> undefined
     where
       binding doc hpts s = parens `above` absPrec $ do
@@ -108,7 +122,7 @@ instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
         withHints hs $ \f -> do
           let grouped = [ (n : [n' | (Hint n', _) <- hpts'], p, t)
                         | (Hint n, (_, p, t)):hpts' <- List.group $ zip (map Hint [0..]) hpts]
-              go (map (text . f) -> xs, p, t) = bangedWhen (isIrrelevant p) $
+              go (map (text . f) -> xs, p, t) = tildeWhen (isIrrelevant p) $
                 ( (if isImplicit p then braces else parens)
                 . ((hsep xs <+> text ":") <+>)) <$>
                 prettyPrec (unvar (fromString . f) id <$> t)
