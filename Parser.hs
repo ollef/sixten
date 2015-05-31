@@ -1,3 +1,4 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Parser where
 
 import Bound
@@ -19,13 +20,41 @@ import Input
 import Util
 
 type Input = Text
-type Parser a = StateT Delta Trifecta.Parser a
+newtype Parser a = Parser {runParser :: StateT Delta Trifecta.Parser a}
+  deriving ( Monad, MonadPlus, MonadState Delta
+           , Functor, Applicative, Alternative
+           , Trifecta.Parsing, Trifecta.CharParsing
+           , Trifecta.DeltaParsing
+           )
 
 parseString :: Parser a -> String -> Trifecta.Result a
-parseString p = Trifecta.parseString (evalStateT p mempty <* Trifecta.eof) mempty
+parseString p = Trifecta.parseString (evalStateT (runParser p) mempty <* Trifecta.eof) mempty
 
 parseFromFile :: MonadIO m => Parser a -> FilePath -> m (Maybe a)
-parseFromFile p = Trifecta.parseFromFile (evalStateT p mempty <* Trifecta.eof)
+parseFromFile p = Trifecta.parseFromFile
+                $ evalStateT (runParser p) mempty <* Trifecta.eof
+
+instance Trifecta.TokenParsing Parser where
+  someSpace = Trifecta.skipSome (Trifecta.satisfy isSpace) *> (comments <|> pure ())
+           <|> comments
+    where
+      comments = (lineComment <|> multilineComment) *> Trifecta.whiteSpace
+
+lineComment :: Parser ()
+lineComment =
+  () <$ Trifecta.string "--"
+     <* Trifecta.manyTill Trifecta.anyChar (Trifecta.char '\n')
+     <?> "line comment"
+
+multilineComment :: Parser ()
+multilineComment =
+  () <$ Trifecta.string "{-" <* inner
+  <?> "multi-line comment"
+  where
+    inner =  Trifecta.string "-}"
+         <|> multilineComment *> inner
+         <|> Trifecta.anyChar *> inner
+
 
 deltaLine :: Delta -> Int
 deltaLine Columns {}           = 0
@@ -106,10 +135,10 @@ idStyle = Trifecta.IdentifierStyle "Dependent" start letter res Highlight.Identi
     res    = HS.fromList ["forall", "_", "Type"]
 
 ident :: Parser Name
-ident = Trifecta.ident idStyle
+ident = Trifecta.token $ Trifecta.ident idStyle
 
 reserved :: String -> Parser ()
-reserved = Trifecta.reserve idStyle
+reserved = Trifecta.token . Trifecta.reserve idStyle
 
 wildcard :: Parser ()
 wildcard = reserved "_"
@@ -119,7 +148,7 @@ identOrWildcard = Just <$> ident
                <|> Nothing <$ wildcard
 
 symbol :: String -> Parser Name
-symbol = Trifecta.symbol
+symbol = Trifecta.token . Trifecta.symbol
 
 data Binding
   = Plain Plicitness [Maybe Name]

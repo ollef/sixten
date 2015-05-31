@@ -147,13 +147,10 @@ generalise expr typ = do
   modifyIndent succ
 
   fvs <- foldMapM (:[]) typ
-  Monad.log $ show fvs
   l   <- level
-  Monad.log $ show l
   let p (metaRef -> Just r) = either (> l) (const False) <$> solution r
       p _                   = return False
   fvs' <- filterM p fvs
-  Monad.log $ show fvs'
 
   deps <- M.fromList <$> forM fvs' (\x -> do
     ds <- foldMapM S.singleton $ metaType x
@@ -200,10 +197,8 @@ checkRecursiveDefs ds = do
     return (evs, checkedDs)
   V.forM checkedDs $ \(e, t) -> do
     (ge, gt) <- generalise e t
-    ge' <- freeze ge
-    gt' <- freeze gt
-    tr "checkRecursiveDefs ge'" ge'
-    tr "                   gt'" gt'
-    s  <- abstractM (`V.elemIndex` evs) ge'
-    ts <- abstractM (`V.elemIndex` evs) gt'
+    tr "checkRecursiveDefs ge" ge
+    tr "                   gt" gt
+    s  <- abstractM (`V.elemIndex` evs) ge
+    ts <- abstractM (`V.elemIndex` evs) gt
     return (s, ts)
