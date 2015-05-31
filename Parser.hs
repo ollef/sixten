@@ -2,7 +2,7 @@
 module Parser where
 
 import Bound
-import Control.Applicative((<|>), Alternative)
+import Control.Applicative((<**>), (<|>), Alternative)
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Text(Text)
@@ -200,31 +200,26 @@ atomicExpr
   where
     abstr t c = abstractBindings c <$ t <*>% someBindings <*% symbol "." <*>% expr
 
-followedBy :: (Monad m, Alternative m) => m a -> [a -> m b] -> m b
-followedBy p ps = do
-  x <- p
-  Trifecta.choice $ map ($ x) ps
-
 expr :: Parser (Expr Name)
 expr
   = (foldl (uncurry . App) <$> atomicExpr <*> manySI argument)
-     `followedBy` [typeAnno, arr Explicit, return]
- <|> ((symbol "{" *>% expr <*% symbol "}") `followedBy` [arr Implicit])
+    <**> (typeAnno <|> arr Explicit <|> pure id)
+ <|> ((symbol "{" *>% expr <*% symbol "}") <**> arr Implicit)
  <?> "expression"
   where
-    typeAnno e  = Anno e <$% symbol ":" <*>% expr
-    arr p e = (Pi (Hint Nothing) p (Just e) . Scope . Var . F)
+    typeAnno = flip Anno <$% symbol ":" <*>% expr
+    arr p    = (\e' e -> Pi (Hint Nothing) p (Just e) $ Scope $ Var $ F e')
            <$% symbol "->" <*>% expr
     argument :: Parser (Plicitness, Expr Name)
     argument =  (,) Implicit <$ symbol "{" <*>% expr <*% symbol "}"
             <|> (,) Explicit <$> atomicExpr
 
 topLevel :: Parser (TopLevel Name)
-topLevel =  ident    `followedBy` [typeDecl, def . Just]
-        <|> wildcard `followedBy` [const $ def Nothing]
+topLevel =  ident    <**> (typeDecl <|> def Just)
+        <|> wildcard <**> def (const Nothing)
   where
-    typeDecl n = TypeDecl n <$% symbol ":" <*>% expr
-    def n = DefLine n <$>% (abstractBindings lam <$> manyBindings <*% symbol "=" <*>% expr)
+    typeDecl = flip TypeDecl <$% symbol ":" <*>% expr
+    def f = (\e n -> DefLine (f n) e) <$>% (abstractBindings lam <$> manyBindings <*% symbol "=" <*>% expr)
 
 program :: Parser [TopLevel Name]
 program = dropAnchor (manySameCol $ dropAnchor topLevel)
