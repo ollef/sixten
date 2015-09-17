@@ -37,7 +37,7 @@ forall ~{b : Type}~{X : b}{F : ~b -> Type}. F ~X -> F ~X
 -}
 data MetaRel s = MetaRel
   { metaRelId  :: Int
-  , metaRelRef :: Maybe (STRef s (Either Level (RelevanceM s)))
+  , metaRelRef :: STRef s (Either Level (RelevanceM s))
   }
 
 instance Eq (MetaRel s) where (==) = (==) `on` metaRelId
@@ -163,7 +163,22 @@ subtype expr typ1 typ2 = case (typ1, typ2) of
   _ -> error "relevance subtype" -- TODO
 
 leRel :: RelevanceM s -> RelevanceM s -> TCM s v ()
-leRel r1 r2 = undefined
+leRel rel1 rel2 = case (rel1, rel2) of
+  (RVar v1, RVar v2)
+    | v1 == v2 -> return ()
+    | otherwise -> do
+      sol1 <- liftST $ readSTRef $ metaRelRef v1
+      sol2 <- liftST $ readSTRef $ metaRelRef v2
+      case (sol1, sol2) of
+        (Right rel1', _) -> leRel rel1' rel2
+        (_, Right rel2') -> leRel rel1 rel2'
+        (Left l1, Left l2) -> do
+          liftST $ writeSTRef (metaRelRef v1) $ Left $! min l1 l2
+          undefined
+  (Irrelevant, Relevant) -> return ()
+  (Irrelevant, Irrelevant) -> return ()
+  (Relevant, Relevant) -> return ()
+  _ -> throwError "leRel"
 
 infer :: (Hashable v, Ord v, Show v)
       => Input s v -> RelevanceM s -> TCM s v (Output s v, Output s v)
