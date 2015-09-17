@@ -44,16 +44,6 @@ unify type1 type2 = do
     go reduce t1 t2
       | t1 == t2  = return ()
       | otherwise = case (t1, t2) of
-        (Var (F v1@(metaRef -> Just r1)), Var (F v2@(metaRef -> Just r2))) -> do
-          unify (metaType v1) (metaType v2)
-          sol1 <- solution r1
-          sol2 <- solution r2
-          case (sol1, sol2) of
-            (Left l1, Left l2)
-              | l1 <= l2  -> solve r2 t1
-              | otherwise -> solve r1 t2
-            (Right c1, _) -> go reduce c1 t2
-            (_, Right c2) -> go reduce t1 c2
         -- If we have 'unify (f xs) t', where 'f' is an existential, and 'xs'
         -- are distinct universally quantified variables, then 'f = \xs. t' is
         -- a most general solution (see Miller, Dale (1991) "A Logic

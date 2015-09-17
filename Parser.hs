@@ -55,7 +55,6 @@ multilineComment =
          <|> multilineComment *> inner
          <|> Trifecta.anyChar *> inner
 
-
 deltaLine :: Delta -> Int
 deltaLine Columns {}           = 0
 deltaLine Tab {}               = 0
@@ -115,17 +114,19 @@ manySI p = Trifecta.many (sameLineOrIndented >> p)
 
 -- * Applicative style combinators for checking that the second argument parser
 --   is on the same line or indented compared to the anchor.
-infixl 4 <$>%, <$%, <*>%, <*%, *>%
+infixl 4 <$>%, <$%, <*>%, <*%, *>%, <**>%
 (<$>%) :: (a -> b) -> Parser a -> Parser b
 f <$>% p = f <$> (sameLineOrIndented >> p)
 (<$%) :: a -> Parser b -> Parser a
-f <$%  p = f <$  (sameLineOrIndented >> p)
+f <$% p = f <$  (sameLineOrIndented >> p)
 (<*>%) :: Parser (a -> b) -> Parser a -> Parser b
-p <*>% q = p <*> (sameLineOrIndented >> q)
+p <*>%q = p <*> (sameLineOrIndented >> q)
 (<*%) :: Parser a -> Parser b -> Parser a
-p <*%  q = p <*  (sameLineOrIndented >> q)
+p <*% q = p <*  (sameLineOrIndented >> q)
 (*>%) :: Parser a -> Parser b -> Parser b
-p *>%  q = p *>  (sameLineOrIndented >> q)
+p *>% q = p *>  (sameLineOrIndented >> q)
+(<**>%) :: Parser a -> Parser (a -> b) -> Parser b
+p <**>% q = p <**> (sameLineOrIndented >> q)
 
 idStyle :: Trifecta.CharParsing m => Trifecta.IdentifierStyle m
 idStyle = Trifecta.IdentifierStyle "Dependent" start letter res Highlight.Identifier Highlight.ReservedIdentifier
@@ -215,11 +216,11 @@ expr
             <|> (,) Explicit <$> atomicExpr
 
 topLevel :: Parser (TopLevel Name)
-topLevel =  ident    <**> (typeDecl <|> def Just)
-        <|> wildcard <**> def (const Nothing)
+topLevel =  ident    <**>% (typeDecl <|> def Just)
+        <|> wildcard <**>% def (const Nothing)
   where
-    typeDecl = flip TypeDecl <$% symbol ":" <*>% expr
-    def f = (\e n -> DefLine (f n) e) <$>% (abstractBindings lam <$> manyBindings <*% symbol "=" <*>% expr)
+    typeDecl = flip TypeDecl <$ symbol ":" <*>% expr
+    def f = (\e n -> DefLine (f n) e) <$> (abstractBindings lam <$> manyBindings <*% symbol "=" <*>% expr)
 
 program :: Parser [TopLevel Name]
 program = dropAnchor (manySameCol $ dropAnchor topLevel)

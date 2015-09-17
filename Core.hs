@@ -6,6 +6,8 @@ import Bound.Scope
 import Bound.Var
 import Control.Monad
 import Data.Bifunctor
+import Data.Bifoldable
+import Data.Bitraversable
 import Data.HashMap.Lazy(HashMap)
 import Data.Monoid
 import Data.List as List
@@ -24,7 +26,7 @@ import Util
 -- decorated by @d@s.
 data Expr d v
   = Var v
-  | Type -- Int
+  | Type
   | Pi  !NameHint !d (Type d v) (Scope1 (Expr d) v)
   | Lam !NameHint !d (Type d v) (Scope1 (Expr d) v)
   | App  (Expr d v) !d (Expr d v)
@@ -32,12 +34,18 @@ data Expr d v
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 instance Bifunctor Expr where
-  bimap f g expr = case expr of
-    Var v       -> Var $ g v
-    Type        -> Type
-    Pi  x d t s -> Pi  x (f d) (bimap f g t) $ bimapScope f g s
-    Lam x d t s -> Lam x (f d) (bimap f g t) $ bimapScope f g s
-    App e1 d e2 -> App (bimap f g e1) (f d) (bimap f g e2)
+  bimap = bimapDefault
+
+instance Bifoldable Expr where
+  bifoldMap = bifoldMapDefault
+
+instance Bitraversable Expr where
+  bitraverse f g expr = case expr of
+    Var v       -> Var <$> g v
+    Type        -> pure Type
+    Pi  x d t s -> Pi  x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
+    Lam x d t s -> Lam x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
+    App e1 d e2 -> App <$> bitraverse f g e1 <*> f d <*> bitraverse f g e2
     Case _ _    -> undefined -- TODO
 
 -- | Synonym for documentation purposes
