@@ -1,6 +1,7 @@
 module Main where
 
 import Bound
+import Bound.Scope
 import Bound.Var
 import Control.Monad.Except
 import Control.Monad.State
@@ -44,14 +45,16 @@ inferProgram p f = mapM_ tcGroup sorted
       let checkedTls'' = bimap (fmap B) (fmap B) <$> checkedTls'
       reledTls   <- Relevance.checkRecursiveDefs checkedTls''
       let names   = V.fromList [n | (n, _, _) <- tls]
-          vf'     = traverse (unvar return $ const $ throwError "inferProgram'")
+          vf'     = bitraverseScope Relevance.fromMetaAnnotation
+                               (unvar return $ const $ throwError "inferProgram'")
       reledTls' <- traverse (bitraverse vf' vf') $ V.map (\(e, t, r) -> (r, e, t)) reledTls
+      reledTls'' <- traverse (traverse Relevance.fromRelevanceM) $ V.map (\(r, e, t) -> ((e, t), r)) reledTls'
       let instTls = HM.fromList
             [(names V.! i, ( instantiate (return . (names V.!)) e
                            , instantiate (return . (names V.!)) t
                            , Annotation r Explicit
                            ))
-            | (i, (r, e, t)) <- zip [0..] $ V.toList reledTls'
+            | (i, ((e, t), r)) <- zip [0..] $ V.toList reledTls''
             ]
       addContext instTls
 
