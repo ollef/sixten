@@ -68,7 +68,6 @@ tr s x = do
   i <- gets tcIndent
   r <- showMeta x
   Monad.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ showWide r
-  return ()
 
 freshExistsL :: NameHint -> Core s v -> Level -> TCM s v' (MetaVar s v)
 freshExistsL h a l = do

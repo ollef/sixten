@@ -5,6 +5,7 @@ import Bound
 import Bound.Var
 import Control.Monad.Except
 import Control.Monad.ST.Class
+import Control.Monad.State
 import Data.Bifunctor
 import Data.Hashable
 import Data.Monoid
@@ -29,17 +30,11 @@ All args of type Type or function into Type are irrelevant, e.g.
 ~(arg : Type)       -> B
 ~(arg : ~A -> Type) -> B
 
-TODO
 Args only used irrelevantly using the above rules are irrelevant, e.g. X in
 
 forall ~{b : Type}~{X : b}{F : ~b -> Type}. F ~X -> F ~X
 
 -}
-
--- Variables have a relevance. They are irrelevant if their type is into type,
--- or if they are only used irrelevantly
---
--- Arguments have relevance -- all arguments into functions into Type
 
 data MetaRel s = MetaRel
   { metaRelId  :: Int
@@ -134,11 +129,17 @@ type InputScope  s b v = Scope b (Expr Plicitness) (Var v (Meta s v))
 type Output      s v   = Expr (MetaAnnotation s) (Var v (Meta s v))
 type OutputScope s b v = Scope b (Expr (MetaAnnotation s)) (Var v (Meta s v))
 
+tr :: (Pretty (f String), Functor f, Show v) => String -> f (Var v (Meta s v)) -> TCM s v ()
+tr s x = do
+  i <- gets tcIndent
+  let r = pretty $ fmap show x
+  Monad.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ showWide r
+
 returnsType :: HasPlicitness p => Expr p v -> Bool
 returnsType expr = case expr of
   Var _  -> False
   Type   -> True
-  Pi  {} -> True
+  Pi _ _ _ s  -> returnsType $ fromScope s
   Lam {} -> False
   App e1 p e2 -> case e1 of
     Lam _ p' _ s | plicitness p == plicitness p' -> returnsType $ instantiate1 e2 s
@@ -157,68 +158,22 @@ makeIrrelevant expr = case expr of
     meta = MetaAnnotation Irrelevant . plicitness
     makeScopeIrrelevant = toScope . makeIrrelevant . fromScope
 
-inferType :: (Hashable v, Ord v, Show v)
-          => Input s v -> TCM s v (Output s v, MetaRel s)
-inferType typ
-  | returnsType typ = do
-    rel <- freshMetaRel
-    liftST $ writeSTRef (metaRelRef rel) $ Just Irrelevant
-    return (makeIrrelevant typ, rel)
+inferArg :: (Hashable v, Ord v, Show v)
+          => Input s v -> TCM s v (Output s v, RelevanceM s)
+inferArg typ
+  | returnsType typ = return (makeIrrelevant typ, Irrelevant)
   | otherwise = do
-    (argType', _) <- infer' typ Relevant
+    argType' <- check typ Type Irrelevant
     rel <- freshMetaRel
-    return (argType', rel)
+    return (argType', pure rel)
 
-infer' :: (Hashable v, Ord v, Show v)
-      => Input s v -> RelevanceM s -> TCM s v (Output s v, Output s v)
-infer' expr surroundingRel = case expr of
-  Var (F v) -> do
-    leRel surroundingRel $ metaRel v
-    return (Var $ F v, metaType v)
-  Var (B v)   -> do
-    (_, t, a) <- context v
-    leRel surroundingRel $ relevanceM a
-    return (Var $ B v, bimap toMetaAnnotation B t)
-  Type  -> return (Type, Type)
-  Pi  x p argType s -> do
-    (argType', rel) <- inferType argType
-    x' <- F <$> freshForall (pure rel) argType'
-    (e', _) <- infer' (instantiate1 (pure x') s) surroundingRel
-    sol <- liftST $ readSTRef $ metaRelRef rel
-    r <- case sol of
-      Just r -> return r
-      Nothing -> do
-        liftST $ writeSTRef (metaRelRef rel) $ Just Relevant
-        return Relevant
-    return
-      ( Pi x (MetaAnnotation r p) argType' $ abstract1 x' e'
-      , Type
-      )
-  Lam x p argType s -> do
-    (argType', rel) <- inferType argType
-    x' <- F <$> freshForall (pure rel) argType'
-    (e', returnType) <- infer' (instantiate1 (pure x') s) surroundingRel
-    sol <- liftST $ readSTRef $ metaRelRef rel
-    r <- case sol of
-      Just r -> return r
-      Nothing -> do
-        liftST $ writeSTRef (metaRelRef rel) $ Just Irrelevant
-        return Irrelevant
-    return
-      ( Lam x (MetaAnnotation r p) argType' $ abstract1 x' e'
-      , Pi x (MetaAnnotation r p) argType' $ abstract1 x' returnType
-      )
-  App e1 p e2 -> do
-    (e1', e1type) <- infer' e1 surroundingRel
-    case e1type of
-      Pi _ (MetaAnnotation r p') _ s | p == p' -> do
-        (e2', e2type) <- infer' e2 r
-        return
-          ( App e1' (MetaAnnotation r p) e2'
-          , instantiate1 e2type s
-          )
-      _ -> throwError "infer' App"
-  Case _ _ -> undefined -- TODO
+inferTop :: (Hashable v, Ord v, Show v)
+          => Input s v -> TCM s v (Output s v, RelevanceM s)
+inferTop typ
+  | returnsType typ = return (makeIrrelevant typ, Irrelevant)
+  | otherwise = do
+    (argType', _) <- infer typ Irrelevant
+    return (argType', Relevant)
 
 leRel :: RelevanceM s -> RelevanceM s -> TCM s v ()
 leRel rel1 rel2 = case (rel1, rel2) of
@@ -270,52 +225,6 @@ unifyRel rel1 rel2 = case (rel1, rel2) of
   (Relevant, Relevant) -> return ()
   _ -> throwError "unifyRel"
 
-{-
-checkArg :: (Hashable v, Ord v, Show v)
-         => Input s v -> Output s v -> TCM s v (Output s v, RelevanceM s)
-checkArg expr typ = do
-  (expr', typ', rel) <- inferArg expr
-  expr'' <- subtype expr' typ' typ
-  return (expr'', rel)
-
--- | If something has the type of the expression, then its relevance is...
-inferArg :: (Hashable v, Ord v, Show v)
-         => Input s v -> TCM s v (Output s v, Output s v, RelevanceM s)
-inferArg expr = case expr of
-  Var (F v)   -> do
-    r <- freshMetaRel
-    return (Var $ F v, metaType v, pure r)
-  Var (B v)   -> do
-    (_, t, a) <- context v
-    return (Var $ B v, bimap toMetaAnnotation B t, relevanceM a)
-  Type        -> return (Type, Type, Irrelevant)
-  Pi  x p t s -> do
-    (t', trel) <- checkArg t Type
-    v          <- freshForall trel t'
-    (e', srel) <- checkArg (instantiate1 (return $ F v) s) Type
-    leRel trel srel
-    return ( Pi x (MetaAnnotation trel p) t' $ abstract1 (F v) e'
-           , Type
-           , srel
-           )
-  Lam x p t1 s -> do
-    (t1', t1rel)   <- checkArg t1 Type
-    v              <- freshForall t1rel t1'
-    (e', s', srel) <- inferArg (instantiate1 (return $ F v) s)
-    return ( Lam x (MetaAnnotation t1rel p) t1' $ abstract1 (F v) e'
-           , Pi  x (MetaAnnotation t1rel p) t1' $ abstract1 (F v) s'
-           , srel
-           )
-  App e1 p e2 -> do
-    (e1', ft, e1rel) <- inferArg e1
-    case ft of
-      Pi _ rp@(MetaAnnotation rel p') argt s | p == p' -> do
-        e2' <- check e2 argt rel
-        return (App e1' rp e2', instantiate1 e2' s, e1rel)
-      _ -> throwError "infer relevance inferArg"
-  _ -> throwError "infer relevance inferArg"
--}
-
 infer :: (Hashable v, Ord v, Show v)
       => Input s v -> RelevanceM s -> TCM s v (Output s v, Output s v)
 infer expr surroundingRel = case expr of
@@ -328,20 +237,18 @@ infer expr surroundingRel = case expr of
     return (Var $ B v, bimap toMetaAnnotation B t)
   Type        -> return (Type, Type)
   Pi x p t1 s -> do
-    t1'   <- check t1 Type Irrelevant
-    t1rel <- freshMetaRel
-    v     <- freshForall (pure t1rel) t1'
+    (t1', t1rel) <- inferArg t1
+    v     <- freshForall t1rel t1'
     e'    <- check (instantiate1 (pure $ F v) s) Type surroundingRel
-    return ( Pi x (MetaAnnotation (pure t1rel) p) t1' $ abstract1 (F v) e'
+    return ( Pi x (MetaAnnotation t1rel p) t1' $ abstract1 (F v) e'
            , Type
            )
   Lam x p t1 s -> do
-    t1'       <- check t1 Type Irrelevant
-    t1rel     <- freshMetaRel
-    v         <- freshForall (pure t1rel) t1'
+    (t1', t1rel) <- inferArg t1
+    v         <- freshForall t1rel t1'
     (e', t2') <- infer (instantiate1 (pure $ F v) s) surroundingRel
-    return ( Lam x (MetaAnnotation (pure t1rel) p) t1' $ abstract1 (F v) e'
-           , Pi x  (MetaAnnotation (pure t1rel) p) t1' $ abstract1 (F v) t2'
+    return ( Lam x (MetaAnnotation t1rel p) t1' $ abstract1 (F v) e'
+           , Pi  x (MetaAnnotation t1rel p) t1' $ abstract1 (F v) t2'
            )
   App e1 p e2 -> do
     (e1', ft) <- infer e1 surroundingRel
@@ -366,7 +273,6 @@ subtype expr typ1 typ2 = case (typ1, typ2) of
     return expr
   (Pi h1 (MetaAnnotation r1 p1) t1 s1,  Pi h2 (MetaAnnotation r2 p2) t2 s2) | p1 == p2 -> do
     x2 <- freshForall r1 t2
-    leRel r2 r1
     x1 <- subtype (return $ F x2) t2 t1
     expr2 <- subtype (betaApp expr (MetaAnnotation r1 p1) x1)
                      (instantiate1 x1 s1)
@@ -384,17 +290,6 @@ unify typ1 typ2 = case (typ1, typ2) of
     unify t2' t1'
   _ -> throwError $ "rel subtype: " ++ show (pretty (show <$> typ1, show <$> typ2))
 
-
-{-
-checkTopLevel :: (Hashable v, Ord v, Show v)
-              => Input s v -> Input s v
-              -> TCM s v (Output s v, Output s v, RelevanceM s)
-checkTopLevel e t = do
-  (t', rel) <- checkArg t Type
-  e'        <- check e t' rel
-  return (e', t', rel)
--}
-
 checkRecursiveDefs :: (Hashable v, Ord v, Show v)
                    => Vector (InputScope s Int v, InputScope s Int v)
                    -> TCM s v (Vector (OutputScope s Int v, OutputScope s Int v, RelevanceM s))
@@ -402,35 +297,17 @@ checkRecursiveDefs ds = case traverse unusedScope $ snd <$> ds of
   Nothing -> throwError "Mutually recursive types not supported"
   Just ts -> do
     evs <- V.forM ts $ \t -> do
-      (t', rel) <- inferType t
-      ev <- freshForall (pure rel) t'
+      (t', rel) <- inferTop t
+      ev <- freshForall rel t'
       return (ev, t', rel)
     let instantiatedDs = flip V.imap ds $ \i (s, _) ->
           (evs V.! i, instantiate (pure . pure . (\(ev, _, _) -> ev) . (evs V.!)) s)
     checkedDs <- V.forM instantiatedDs $ \((m, t, rel), e) -> do
-      (e', _) <- infer' e (pure rel)
-      return (m, e', t)
+      (e', t') <- infer e rel
+      e'' <- subtype e' t' t
+      return (m, e'', t)
     V.forM checkedDs $ \(m, e, t) -> do
       let f  = unvar (const Nothing) $ flip V.elemIndex $ (\(ev, _, _) -> ev) <$> evs
           s  = abstract f e
           st = abstract f t
       return (s, st, metaRel m)
-
-{-
-checkRecursiveDefs :: (Ord v, Show v)
-                   => Vector (NameHint, Scope Int Input.Expr (Var v (MetaVar s v)), Core s v)
-                   -> TCM s v (Vector (NameHint, Scope Int (Core.Expr Plicitness) (Var v (MetaVar s v)), Core s v))
-checkRecursiveDefs ds = do
-  evs <- V.forM ds $ \(v, _, _) -> do
-    tv <- freshExistsV mempty Core.Type
-    freshForall v tv
-  let instantiatedDs = flip V.map ds $ \(v, e, t) ->
-        (v, instantiate (return . return . (evs V.!)) e, t)
-  checkedDs <- V.forM instantiatedDs $ \(v, e, t) -> do
-    (e', t') <- checkType e t
-    return (v, e', t')
-  V.forM checkedDs $ \(v, e, t) -> do
-    (ge, gt) <- generalise e t
-    s <- abstractM (flip V.elemIndex evs) ge
-    return (v, s, gt)
-    -}
