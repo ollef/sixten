@@ -66,7 +66,7 @@ test inp = do
     Just (Left err) -> putStrLn err
     Just (Right p)  -> case runTCM (inferProgram p (Hint . Just) >> gets tcContext) of
       (Left err, tr) -> do mapM_ putStrLn tr; putStrLn err
-      (Right res, _) -> print $ (show . pretty) <$> res
+      (Right res, _) -> mapM_ print $ (show . pretty) <$> HM.toList res
 
 main :: IO ()
 main = do

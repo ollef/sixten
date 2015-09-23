@@ -3,6 +3,7 @@ id x = x
 -- How should we infer the type of id?
 -- forall {a : Type}. a -> a
 -- \{a : Type}. \(x : a). x
+id' x = x
 
 idT : Type -> Type
 idT t = t
@@ -15,5 +16,8 @@ test x = x
 
 test2 : forall {t f a}. f a -> f a
 test2 {t} x = const x (\(x : t). x)
+
+APP : forall {a b}. (forall (x : a). b x) -> forall (x : a). b x
+APP f x = f x
 
 -- test3 x = const x (\y. y)

@@ -7,6 +7,7 @@ import Control.Monad.Except
 import Control.Monad.ST.Class
 import Control.Monad.State
 import Data.Bifunctor
+import Data.Bitraversable
 import Data.Hashable
 import Data.Monoid
 import Data.STRef
@@ -135,46 +136,6 @@ tr s x = do
   let r = pretty $ fmap show x
   Monad.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ showWide r
 
-returnsType :: HasPlicitness p => Expr p v -> Bool
-returnsType expr = case expr of
-  Var _  -> False
-  Type   -> True
-  Pi _ _ _ s  -> returnsType $ fromScope s
-  Lam {} -> False
-  App e1 p e2 -> case e1 of
-    Lam _ p' _ s | plicitness p == plicitness p' -> returnsType $ instantiate1 e2 s
-    _ -> False
-  Case _ _ -> undefined -- TODO
-
-makeIrrelevant :: HasPlicitness p => Expr p v -> Expr (MetaAnnotation s) v
-makeIrrelevant expr = case expr of
-  Var v -> Var v
-  Type -> Type
-  Pi  x p t s -> Pi  x (meta p) (makeIrrelevant t) (makeScopeIrrelevant s)
-  Lam x p t s -> Lam x (meta p) (makeIrrelevant t) (makeScopeIrrelevant s)
-  App e1 p e2 -> App (makeIrrelevant e1) (meta p) (makeIrrelevant e2)
-  Case _ _ -> undefined -- TODO
-  where
-    meta = MetaAnnotation Irrelevant . plicitness
-    makeScopeIrrelevant = toScope . makeIrrelevant . fromScope
-
-inferArg :: (Hashable v, Ord v, Show v)
-          => Input s v -> TCM s v (Output s v, RelevanceM s)
-inferArg typ
-  | returnsType typ = return (makeIrrelevant typ, Irrelevant)
-  | otherwise = do
-    argType' <- check typ Type Irrelevant
-    rel <- freshMetaRel
-    return (argType', pure rel)
-
-inferTop :: (Hashable v, Ord v, Show v)
-          => Input s v -> TCM s v (Output s v, RelevanceM s)
-inferTop typ
-  | returnsType typ = return (makeIrrelevant typ, Irrelevant)
-  | otherwise = do
-    (argType', _) <- infer typ Irrelevant
-    return (argType', Relevant)
-
 leRel :: RelevanceM s -> RelevanceM s -> TCM s v ()
 leRel rel1 rel2 = case (rel1, rel2) of
   (Irrelevant, _) -> return ()
@@ -225,9 +186,60 @@ unifyRel rel1 rel2 = case (rel1, rel2) of
   (Relevant, Relevant) -> return ()
   _ -> throwError "unifyRel"
 
+returnsType :: HasPlicitness p => Expr p v -> Bool
+returnsType expr = case expr of
+  Var _  -> False
+  Type   -> True
+  Pi _ _ _ s  -> returnsType $ fromScope s
+  Lam {} -> False
+  App e1 p e2 -> case e1 of
+    Lam _ p' _ s | plicitness p == plicitness p' -> returnsType $ instantiate1 e2 s
+    _ -> False
+  Case _ _ -> undefined -- TODO
+
+makeRel :: HasPlicitness p => RelevanceM s -> Expr p v -> Expr (MetaAnnotation s) v
+makeRel rel expr = case expr of
+  Var v -> Var v
+  Type -> Type
+  Pi  x p t s 
+    | returnsType t -> Pi x (irrelMeta p) (makeRel Irrelevant t) (makeRelScope s)
+    | otherwise     -> Pi x (meta p) (makeRel rel t) (makeRelScope s)
+  Lam x p t s -> Lam x (meta p) (makeRel rel t) (makeRelScope s)
+  App e1 p e2 -> App (makeRel rel e1) (meta p) (makeRel rel e2)
+  Case _ _ -> undefined -- TODO
+  where
+    irrelMeta = MetaAnnotation Irrelevant . plicitness
+    meta = MetaAnnotation rel . plicitness
+    makeRelScope = toScope . makeRel rel . fromScope
+
+inferArg :: (Hashable v, Ord v, Show v)
+          => Input s v -> Bool -> TCM s v (Output s v, RelevanceM s)
+inferArg argType knownDef
+  | returnsType argType = return (makeRel Irrelevant argType, Irrelevant)
+  | otherwise = do
+    argType' <- check argType Type Irrelevant False
+    if knownDef then do
+      rel <- freshMetaRel
+      return (argType', pure rel)
+    else
+      return (argType', Relevant)
+
+inferTop :: (Hashable v, Ord v, Show v)
+          => Input s v -> TCM s v (Output s v, RelevanceM s)
+inferTop typ
+  | returnsType typ = return (makeRel Irrelevant typ, Irrelevant)
+  | otherwise = do
+    typ' <- check typ Type Irrelevant True
+    return (typ', Relevant)
+
+generalise :: Output s v -> Output s v -> TCM s v (Output s v, Output s v)
+generalise e t = bitraverse (bitraverse f pure) (bitraverse f pure) (e, t)
+  where
+    f = fmap toMetaAnnotation . fromMetaAnnotation
+
 infer :: (Hashable v, Ord v, Show v)
-      => Input s v -> RelevanceM s -> TCM s v (Output s v, Output s v)
-infer expr surroundingRel = case expr of
+      => Input s v -> RelevanceM s -> Bool -> TCM s v (Output s v, Output s v)
+infer expr surroundingRel knownDef = case expr of
   Var (F v) -> do
     leRel surroundingRel $ metaRel v
     return (Var $ F v, metaType v)
@@ -237,32 +249,32 @@ infer expr surroundingRel = case expr of
     return (Var $ B v, bimap toMetaAnnotation B t)
   Type        -> return (Type, Type)
   Pi x p t1 s -> do
-    (t1', t1rel) <- inferArg t1
+    (t1', t1rel) <- inferArg t1 knownDef
     v     <- freshForall t1rel t1'
-    e'    <- check (instantiate1 (pure $ F v) s) Type surroundingRel
+    e'    <- check (instantiate1 (pure $ F v) s) Type surroundingRel knownDef
     return ( Pi x (MetaAnnotation t1rel p) t1' $ abstract1 (F v) e'
            , Type
            )
-  Lam x p t1 s -> do
-    (t1', t1rel) <- inferArg t1
+  Lam x p t1 s -> uncurry generalise =<< do
+    (t1', t1rel) <- inferArg t1 knownDef
     v         <- freshForall t1rel t1'
-    (e', t2') <- infer (instantiate1 (pure $ F v) s) surroundingRel
+    (e', t2') <- infer (instantiate1 (pure $ F v) s) surroundingRel knownDef
     return ( Lam x (MetaAnnotation t1rel p) t1' $ abstract1 (F v) e'
            , Pi  x (MetaAnnotation t1rel p) t1' $ abstract1 (F v) t2'
            )
   App e1 p e2 -> do
-    (e1', ft) <- infer e1 surroundingRel
+    (e1', ft) <- infer e1 surroundingRel knownDef
     case ft of
       Pi _ rp@(MetaAnnotation rel p') argt s | plicitness p == p' -> do
-        e2' <- check e2 argt rel
+        e2' <- check e2 argt rel knownDef
         return (App e1' rp e2', instantiate1 e2' s)
       _ -> throwError "infer relevance infer1"
   _ -> throwError "infer relevance infer2"
 
 check :: (Hashable v, Ord v, Show v)
-      => Input s v -> Output s v -> RelevanceM s -> TCM s v (Output s v)
-check expr typ rel = do
-  (expr', typ') <- infer expr rel
+      => Input s v -> Output s v -> RelevanceM s -> Bool -> TCM s v (Output s v)
+check expr typ rel knownDef = do
+  (expr', typ') <- infer expr rel knownDef
   subtype expr' typ' typ
 
 subtype :: (Hashable v, Ord v, Show v)
@@ -273,6 +285,7 @@ subtype expr typ1 typ2 = case (typ1, typ2) of
     return expr
   (Pi h1 (MetaAnnotation r1 p1) t1 s1,  Pi h2 (MetaAnnotation r2 p2) t2 s2) | p1 == p2 -> do
     x2 <- freshForall r1 t2
+    leRel r1 r2
     x1 <- subtype (return $ F x2) t2 t1
     expr2 <- subtype (betaApp expr (MetaAnnotation r1 p1) x1)
                      (instantiate1 x1 s1)
@@ -303,7 +316,7 @@ checkRecursiveDefs ds = case traverse unusedScope $ snd <$> ds of
     let instantiatedDs = flip V.imap ds $ \i (s, _) ->
           (evs V.! i, instantiate (pure . pure . (\(ev, _, _) -> ev) . (evs V.!)) s)
     checkedDs <- V.forM instantiatedDs $ \((m, t, rel), e) -> do
-      (e', t') <- infer e rel
+      (e', t') <- infer e rel True
       e'' <- subtype e' t' t
       return (m, e'', t)
     V.forM checkedDs $ \(m, e, t) -> do
