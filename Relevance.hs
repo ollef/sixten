@@ -277,31 +277,58 @@ check expr typ rel knownDef = do
   (expr', typ') <- infer expr rel knownDef
   subtype expr' typ' typ
 
+whnf ::  Output s v -> TCM s v' (Output s v)
+whnf expr = case expr of
+  Var _ -> return expr
+  Type                         -> return expr
+  Pi {}                        -> return expr
+  Lam {}                       -> return expr
+  App e1 p e2                  -> do
+    e1' <- whnf e1
+    case e1' of
+      Lam _ p' _ s | p == p'  -> do
+        whnf $ instantiate1 e2 s
+      _                        -> return expr
+  Case _ _                     -> undefined -- TODO
+
 subtype :: (Hashable v, Ord v, Show v)
         => Output s v -> Output s v -> Output s v -> TCM s v' (Output s v)
-subtype expr typ1 typ2 = case (typ1, typ2) of
-  (Var (F v1), Var (F v2)) -> do
-    leRel (metaRel v2) (metaRel v1)
-    return expr
-  (Pi h1 (MetaAnnotation r1 p1) t1 s1,  Pi h2 (MetaAnnotation r2 p2) t2 s2) | p1 == p2 -> do
-    x2 <- freshForall r1 t2
-    leRel r1 r2
-    x1 <- subtype (return $ F x2) t2 t1
-    expr2 <- subtype (betaApp expr (MetaAnnotation r1 p1) x1)
-                     (instantiate1 x1 s1)
-                     (instantiate1 (return $ F x2) s2)
-    return $ etaLam (h1 <> h2) (MetaAnnotation r2 p2) t2 (abstract1 (F x2) expr2)
-  _ -> do unify typ1 typ2; return expr
+subtype expr type1 type2 = go True expr type1 type2
+  where
+    go reduce e typ1 typ2 = case (typ1, typ2) of
+      (Var (F v1), Var (F v2)) -> do
+        leRel (metaRel v2) (metaRel v1)
+        return e
+      (Pi h1 (MetaAnnotation r1 p1) t1 s1,  Pi h2 (MetaAnnotation r2 p2) t2 s2) | p1 == p2 -> do
+        x2 <- freshForall r1 t2
+        leRel r1 r2
+        x1 <- go True (return $ F x2) t2 t1
+        e2 <- go True (betaApp e (MetaAnnotation r1 p1) x1)
+                      (instantiate1 x1 s1)
+                      (instantiate1 (return $ F x2) s2)
+        return $ etaLam (h1 <> h2) (MetaAnnotation r2 p2) t2 (abstract1 (F x2) e2)
+      _ | reduce -> do
+        typ1' <- whnf typ1
+        typ2' <- whnf typ2
+        go False e typ1' typ2'
+      _ -> do unify typ1 typ2; return e
 
 unify :: (Eq v, Show v) => Output s v -> Output s v -> TCM s v' ()
-unify typ1 typ2 | typ1 == typ2 = return ()
-unify typ1 typ2 = case (typ1, typ2) of
-  (Var (F v1), Var (F v2)) -> unifyRel (metaRel v1) (metaRel v2)
-  (App t1 (MetaAnnotation r1 p1) t1', App t2 (MetaAnnotation r2 p2) t2') | p1 == p2 -> do
-    unifyRel r1 r2
-    unify t1 t2
-    unify t2' t1'
-  _ -> throwError $ "rel subtype: " ++ show (pretty (show <$> typ1, show <$> typ2))
+unify type1 type2 = go True type1 type2
+  where
+    go reduce typ1 typ2
+      | typ1 == typ2 = return ()
+      | otherwise = case (typ1, typ2) of
+        (Var (F v1), Var (F v2)) -> unifyRel (metaRel v1) (metaRel v2)
+        (App t1 (MetaAnnotation r1 p1) t1', App t2 (MetaAnnotation r2 p2) t2') | p1 == p2 -> do
+          unifyRel r1 r2
+          go True t1 t2
+          go True t2' t1'
+        _ | reduce -> do
+          typ1' <- whnf typ1
+          typ2' <- whnf typ2
+          go False typ1' typ2'
+        _ -> throwError $ "rel unify: " ++ show (pretty (show <$> typ1, show <$> typ2))
 
 checkRecursiveDefs :: (Hashable v, Ord v, Show v)
                    => Vector (InputScope s Int v, InputScope s Int v)

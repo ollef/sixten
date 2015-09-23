@@ -1,7 +1,5 @@
-Top-level definitions
-  V Parse
-  Type-check
 Restructure codebase
+  Reduce duplication between Relevance and typechecking (e.g. whnf)
 Lets
 Javascript code generation
 ADTs and cases
