@@ -223,4 +223,4 @@ topLevel =  ident    <**>% (typeDecl <|> def Just)
     def f = (\e n -> DefLine (f n) e) <$> (abstractBindings lam <$> manyBindings <*% symbol "=" <*>% expr)
 
 program :: Parser [TopLevel Name]
-program = dropAnchor (manySameCol $ dropAnchor topLevel)
+program = Trifecta.whiteSpace >> dropAnchor (manySameCol $ dropAnchor topLevel)
