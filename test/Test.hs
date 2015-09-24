@@ -21,6 +21,6 @@ APP : forall {a b}. (forall (x : a). b x) -> forall (x : a). b x
 APP f x = f x
 
 app : forall {a b}. (a -> b) -> a -> b
-app f x = APP f x
+app = APP
 
-test3 f x = app f x
+-- test3 f x = app f x

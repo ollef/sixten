@@ -103,8 +103,8 @@ subtype expr type1 type2 = do
           x2  <- freshForall h t2
           (x1, _)   <- subtype (return $ F x2) t2 t1
           (ex, s2') <- subtype (betaApp e p1 x1)
-                                (instantiate1 x1 s1)
-                                (instantiate1 (return $ F x2) s2)
+                               (instantiate1 x1 s1)
+                               (instantiate1 (return $ F x2) s2)
           e2    <- etaLam h p1 t2 <$> abstract1M x2 ex
           typ2' <- Pi h p1 t2 <$> abstract1M x2 s2'
           return (e2, typ2')
@@ -125,15 +125,20 @@ subtype expr type1 type2 = do
               typ2' <- Pi h p t2 <$> abstract1M x2 s2'
               return (e2, typ2')
             Right c -> subtype e c typ2
-        (_, Pi h Implicit t2 s2) -> do
+        (_, Var (F (metaRef -> Just r))) -> do
+          sol <- solution r
+          case sol of
+            Left _ -> do unify typ1 typ2; return (e, typ2)
+            Right c -> subtype e typ1 c
+        (_, Pi h p t2 s2) -> do
           x2 <- freshForall h t2
           (e2, s2') <- subtype e typ1 (instantiate1 (return $ F x2) s2)
-          e2'   <- etaLam h Implicit t2 <$> abstract1M x2 e2
-          typ2' <- Pi     h Implicit t2 <$> abstract1M x2 s2'
+          e2'   <- etaLam h p t2 <$> abstract1M x2 e2
+          typ2' <- Pi     h p t2 <$> abstract1M x2 s2'
           return (e2', typ2')
-        (Pi h Implicit t1 s1, _) -> do
+        (Pi h p t1 s1, _) -> do
           v1 <- freshExistsV h t1
-          subtype (betaApp e Implicit v1) (instantiate1 v1 s1) typ2
+          subtype (betaApp e p v1) (instantiate1 v1 s1) typ2
         _ | reduce -> do
           typ1' <- whnf typ1
           typ2' <- whnf typ2
