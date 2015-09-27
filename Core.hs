@@ -33,21 +33,6 @@ data Expr d v
   | Case (Expr d v) (Branches (Expr d) v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-instance Bifunctor Expr where
-  bimap = bimapDefault
-
-instance Bifoldable Expr where
-  bifoldMap = bifoldMapDefault
-
-instance Bitraversable Expr where
-  bitraverse f g expr = case expr of
-    Var v       -> Var <$> g v
-    Type        -> pure Type
-    Pi  x d t s -> Pi  x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
-    Lam x d t s -> Lam x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
-    App e1 d e2 -> App <$> bitraverse f g e1 <*> f d <*> bitraverse f g e2
-    Case _ _    -> undefined -- TODO
-
 -- | Synonym for documentation purposes
 type Type = Expr
 
@@ -108,6 +93,21 @@ instance Monad (Expr d) where
     Lam x p t s -> Lam x p (t >>= f) (s >>>= f)
     App e1 p e2 -> App (e1 >>= f) p (e2 >>= f)
     Case e brs  -> Case (e >>= f) (brs >>>= f)
+
+instance Bifunctor Expr where
+  bimap = bimapDefault
+
+instance Bifoldable Expr where
+  bifoldMap = bifoldMapDefault
+
+instance Bitraversable Expr where
+  bitraverse f g expr = case expr of
+    Var v       -> Var <$> g v
+    Type        -> pure Type
+    Pi  x d t s -> Pi  x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
+    Lam x d t s -> Lam x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
+    App e1 d e2 -> App <$> bitraverse f g e1 <*> f d <*> bitraverse f g e2
+    Case _ _    -> undefined -- TODO
 
 instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
       => Pretty (Expr d v) where

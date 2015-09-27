@@ -43,3 +43,6 @@ if b = b
 
 if' : forall {a}. Bool -> a -> a -> a
 if' b = b
+
+fun : Type -> Type
+fun a = a -> a
