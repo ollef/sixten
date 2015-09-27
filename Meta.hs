@@ -21,38 +21,39 @@ import qualified Core
 import qualified Input
 import Monad
 import Pretty
-import Util
 
-type Exists s v = STRef s (Either Level (Core s v))
+type Exists s d a v = STRef s (Either Level (CoreM s d a v))
 
-data MetaVar s v = MetaVar
+data MetaVar s d a v = MetaVar
   { metaId    :: {-# UNPACK #-} !Int
-  , metaType  :: Core s v
+  , metaType  :: CoreM s d a v
   , metaHint  :: {-# UNPACK #-} !NameHint
-  , metaRef   :: {-# UNPACK #-} !(Maybe (Exists s v))
+  , metaData  :: !d
+  , metaRef   :: {-# UNPACK #-} !(Maybe (Exists s d a v))
   }
 
-instance Eq (MetaVar s v) where
+type CoreM s d a v = Core.Expr a (Var v (MetaVar s d a v))
+type InputM s d a v = Input.Expr (Var v (MetaVar s d a v))
+type ScopeM b f s d a v = Scope b (f a) (Var v (MetaVar s d a v))
+
+instance Eq (MetaVar s d a v) where
   (==) = (==) `on` metaId
 
-instance Ord (MetaVar s v) where
+instance Ord (MetaVar s d a v) where
   compare = compare `on` metaId
 
-instance Hashable (MetaVar s v) where
+instance Hashable (MetaVar s d a v) where
   hashWithSalt s = hashWithSalt s . metaId
 
-instance Show v => Show (MetaVar s v) where
-  showsPrec d (MetaVar i a h _) = showParen (d > 10) $
+instance (Show d, Show a, Show v) => Show (MetaVar s d a v) where
+  showsPrec d (MetaVar i a h dat _) = showParen (d > 10) $
     showString "Meta" . showChar ' ' . showsPrec 11 i .
     showChar ' ' . showsPrec 11 a . showChar ' ' . showsPrec 11 h .
+    showChar ' ' . showsPrec 11 dat .
     showChar ' ' . showString "<Ref>"
 
-type Input      s   v = Input.Expr (Var v (MetaVar s v))
-type InputScope s b v = Scope b Input.Expr (Var v (MetaVar s v))
-type Core       s   v = Core.Expr Plicitness (Var v (MetaVar s v))
-type CoreScope  s b v = Scope b (Core.Expr Plicitness) (Var v (MetaVar s v))
-
-showMeta :: (Functor f, Foldable f, Show v, Pretty (f String)) => f (Var v (MetaVar s v)) -> TCM s v' Doc
+showMeta :: (HasRelevance a, HasPlicitness a, Eq a, Functor f, Foldable f, Show v, Pretty (f String))
+         => f (Var v (MetaVar s d a v)) -> TCM s v' Doc
 showMeta x = do
   vs <- foldMapM S.singleton x
   let p (metaRef -> Just r) = solution r
@@ -63,44 +64,45 @@ showMeta x = do
   let solutions = [(sv v, pretty $ fmap (unvar show sv) <$> msol) | (v, msol) <- zip vsl pvs]
   return $ pretty (unvar show sv <$> x) <> text ", vars: " <> pretty solutions
 
-tr :: (Functor f, Foldable f, Pretty (f String), Show v) => String -> f (Var v (MetaVar s v)) -> TCM s v' ()
+tr :: (HasRelevance a, HasPlicitness a, Eq a, Functor f, Foldable f, Pretty (f String), Show v)
+   => String -> f (Var v (MetaVar s d a v)) -> TCM s v' ()
 tr s x = do
   i <- gets tcIndent
   r <- showMeta x
   Monad.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ showWide r
 
-freshExistsL :: NameHint -> Core s v -> Level -> TCM s v' (MetaVar s v)
-freshExistsL h a l = do
+existsAtLevel :: NameHint -> CoreM s d a v -> d -> Level -> TCM s v' (MetaVar s d a v)
+existsAtLevel hint typ dat l = do
   i   <- fresh
   ref <- liftST $ newSTRef $ Left l
   Monad.log $ "exists: " ++ show i
-  return $ MetaVar i a h (Just ref)
+  return $ MetaVar i typ hint dat (Just ref)
 
-freshExists :: NameHint -> Core s v -> TCM s v' (MetaVar s v)
-freshExists h a = freshExistsL h a =<< level
+exists :: NameHint -> CoreM s d a v -> d -> TCM s v' (MetaVar s d a v)
+exists hint typ dat = existsAtLevel hint typ dat =<< level
 
-freshExistsV :: Monad g => NameHint -> Core s v -> TCM s v' (g (Var v (MetaVar s v)))
-freshExistsV h a = return . F <$> freshExists h a
+existsVar :: Applicative g => NameHint -> CoreM s d a v -> d -> TCM s v' (g (Var v (MetaVar s d a v)))
+existsVar hint typ dat = pure . F <$> exists hint typ dat
 
-freshExistsLV :: Monad g => NameHint -> Core s v -> Level -> TCM s v' (g (Var v (MetaVar s v)))
-freshExistsLV h a l = return . F <$> freshExistsL h a l
+existsVarAtLevel :: Applicative g => NameHint -> CoreM s d a v -> d -> Level -> TCM s v' (g (Var v (MetaVar s d a v)))
+existsVarAtLevel hint typ dat l = pure . F <$> existsAtLevel hint typ dat l
 
-freshForall :: NameHint -> Core s v -> TCM s v' (MetaVar s v)
-freshForall h a = do
+forall_ :: NameHint -> CoreM s d a v -> d -> TCM s v' (MetaVar s d a v)
+forall_ hint typ dat = do
   i <- fresh
   Monad.log $ "forall: " ++ show i
-  return $ MetaVar i a h Nothing
+  return $ MetaVar i typ hint dat Nothing
 
-freshForallV :: Monad g => NameHint -> Core s v -> TCM s v' (g (Var v (MetaVar s v)))
-freshForallV h a = return . F <$> freshForall h a
+forallVar :: Applicative g => NameHint -> CoreM s d a v -> d -> TCM s v' (g (Var v (MetaVar s d a v)))
+forallVar hint typ dat = pure . F <$> forall_ hint typ dat
 
-solution :: Exists s v -> TCM s v' (Either Level (Core s v))
+solution :: Exists s d a v -> TCM s v' (Either Level (CoreM s d a v))
 solution = liftST . readSTRef
 
-solve :: Exists s v -> Core s v -> TCM s v' ()
+solve :: Exists s d a v -> CoreM s d a v -> TCM s v' ()
 solve r x = liftST $ writeSTRef r $ Right x
 
-refineIfSolved :: Exists s v -> Core s v -> (Core s v -> TCM s v' (Core s v)) -> TCM s v' (Core s v)
+refineIfSolved :: Exists s d a v -> CoreM s d a v -> (CoreM s d a v -> TCM s v' (CoreM s d a v)) -> TCM s v' (CoreM s d a v)
 refineIfSolved r d f = do
   sol <- solution r
   case sol of
@@ -110,19 +112,19 @@ refineIfSolved r d f = do
       solve r e'
       return e'
 
-freshLet :: NameHint -> Core s v -> Core s v -> TCM s v' (MetaVar s v)
-freshLet h e t = do
+letMeta :: NameHint -> CoreM s d a v -> CoreM s d a v -> d -> TCM s v' (MetaVar s d a v)
+letMeta hint expr typ dat = do
   i   <- fresh
-  ref <- liftST $ newSTRef $ Right e
-  return $ MetaVar i t h (Just ref)
+  ref <- liftST $ newSTRef $ Right expr
+  return $ MetaVar i typ hint dat (Just ref)
 
-freshLetV :: Monad g => NameHint -> Core s v -> Core s v -> TCM s v' (g (Var v (MetaVar s v)))
-freshLetV h e t = (return . F) <$> freshLet h e t
+letVar :: Applicative g => NameHint -> CoreM s d a v -> CoreM s d a v -> d -> TCM s v' (g (Var v (MetaVar s d a v)))
+letVar hint expr typ dat = pure . F <$> letMeta hint expr typ dat
 
-foldMapM :: (Foldable f, Monoid m) => (MetaVar s v -> m) -> f (Var v (MetaVar s v)) -> TCM s v' m
+foldMapM :: (Foldable f, Monoid m) => (MetaVar s d a v -> m) -> f (Var v (MetaVar s d a v)) -> TCM s v' m
 foldMapM f = foldrM go mempty
   where
-    go (B _) m = return m
+    go (B _) m = pure m
     go (F v) m = (<> m) . (<> f v) <$> do
       tvs <- foldMapM f $ metaType v
       (<> tvs) <$> case metaRef v of
@@ -133,14 +135,14 @@ foldMapM f = foldrM go mempty
             Right c -> foldMapM f c
         Nothing -> return $ f v <> m
 
-abstractM :: Show v
-          => (MetaVar s v -> Maybe b)
-          -> Core s v
-          -> TCM s v' (Scope b (Core.Expr Plicitness) (Var v (MetaVar s v)))
+abstractM :: (Show d, Show a, Show v)
+          => (MetaVar s d a v -> Maybe b)
+          -> CoreM s d a v
+          -> TCM s v' (ScopeM b Core.Expr s d a v)
 abstractM f e = do
   e' <- freeze e
   changed <- liftST $ newSTRef False
-  (Scope . join) <$> traverse (go changed) e'
+  Scope . join <$> traverse (go changed) e'
   where
     -- go :: STRef s Bool -> Var Name (MetaVar s)
     --    -> TCM s (Expr (Var () (Expr (Var Name (MetaVar s)))))
@@ -166,15 +168,15 @@ abstractM f e = do
     go _ v' = free v'
     free = return . return . return . return
 
-abstract1M :: Show v
-           => MetaVar s v
-           -> Core s v
-           -> TCM s v' (Scope1 (Core.Expr Plicitness) (Var v (MetaVar s v)))
+abstract1M :: (Show d, Show a, Show v)
+           => MetaVar s d a v
+           -> CoreM s d a v
+           -> TCM s v' (ScopeM () Core.Expr s d a v)
 abstract1M v e = do
   Monad.log $ "abstracting " ++ show (metaId v)
   abstractM (\v' -> if v == v' then Just () else Nothing) e
 
-freeze :: Core s v -> TCM s v' (Core s v)
+freeze :: CoreM s d a v -> TCM s v' (CoreM s d a v)
 freeze e = join <$> traverse go e
   where
     go (F v@(metaRef -> Just r)) = either (const $ do mt <- freeze (metaType v); return $ return $ F v {metaType = mt})

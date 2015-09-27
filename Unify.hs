@@ -20,10 +20,12 @@ import Normalise
 import Pretty
 import Util
 
-occurs :: Level -> MetaVar s v -> Core s v -> TCM s v' ()
+type Core s v = CoreM s () Plicitness v
+
+occurs :: Level -> MetaVar s () Plicitness v -> Core s v -> TCM s v' ()
 occurs l tv = traverse_ (traverse_ go)
   where
-    go tv'@(MetaVar _ typ _ mr)
+    go tv'@(MetaVar _ typ _ _ mr)
       | tv == tv'                    = throwError "occurs check"
       | otherwise = do
         occurs l tv typ
@@ -59,14 +61,14 @@ unify type1 type2 = do
           go True e1' e2'
         (Type, Type) -> return ()
         _ | reduce             -> do
-          t1' <- whnf t1
-          t2' <- whnf t2
+          t1' <- whnf mempty plicitness t1
+          t2' <- whnf mempty plicitness t2
           go False t1' t2'
         _                      -> throwError $ "Can't unify types: "
                                             ++ show (pretty (show <$> type1, show <$> type2))
     absCase h a b s1 s2 = do
       go True a b
-      v <- freshForallV h a
+      v <- forallVar h a ()
       go True (instantiate1 v s1) (instantiate1 v s2)
     distinctForalls pes | distinct pes = traverse isForall pes
                         | otherwise    = Nothing
@@ -83,8 +85,8 @@ unify type1 type2 = do
     lams pvs t = foldrM (\(p, v) -> fmap (Lam (Hint Nothing) p $ metaType v) . abstract1M v) t pvs
 
 subtype :: (Hashable v, Ord v, Show v)
-        => Core s v -> Core s v -> Core s v -> TCM s v (Core s v, Core s v)
-subtype expr type1 type2 = do
+        => Plicitness -> Core s v -> Core s v -> Core s v -> TCM s v (Core s v, Core s v)
+subtype surrounding expr type1 type2 = do
   tr "subtype e"  expr
   tr "        t1" type1
   tr "        t2" type2
@@ -100,9 +102,10 @@ subtype expr type1 type2 = do
       | otherwise = case (typ1, typ2) of
         (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> do
           let h = h1 <> h2
-          x2  <- freshForall h t2
-          (x1, _)   <- subtype (return $ F x2) t2 t1
-          (ex, s2') <- subtype (betaApp e p1 x1)
+          x2  <- forall_ h t2 ()
+          (x1, _)   <- subtype p1 (return $ F x2) t2 t1
+          (ex, s2') <- subtype surrounding
+                               (betaApp e p1 x1)
                                (instantiate1 x1 s1)
                                (instantiate1 (return $ F x2) s2)
           e2    <- etaLam h p1 t2 <$> abstract1M x2 ex
@@ -114,33 +117,33 @@ subtype expr type1 type2 = do
             Left l -> do
               occurs l v typ2
               unify (metaType v) Type
-              t11  <- freshExistsLV (metaHint v) Type l
-              t12 <- freshExistsLV (metaHint v) Type l
+              t11  <- existsVarAtLevel (metaHint v) Type () l
+              t12 <- existsVarAtLevel (metaHint v) Type () l
               solve r $ Pi h p t11 $ abstractNone t12
-              x2  <- freshForall h t2
-              (x1, t11') <- subtype (return $ F x2) t2 t11
-              (ex, s2')  <- subtype (betaApp e p x1) t12 (instantiate1 (return $ F x2) s2)
+              x2  <- forall_ h t2 ()
+              (x1, t11') <- subtype p (return $ F x2) t2 t11
+              (ex, s2')  <- subtype surrounding (betaApp e p x1) t12 (instantiate1 (return $ F x2) s2)
               solve r . Pi h p t11' =<< abstract1M x2 s2'
               e2    <- etaLam h p t2 <$> abstract1M x2 ex
               typ2' <- Pi h p t2 <$> abstract1M x2 s2'
               return (e2, typ2')
-            Right c -> subtype e c typ2
+            Right c -> subtype surrounding e c typ2
         (_, Var (F (metaRef -> Just r))) -> do
           sol <- solution r
           case sol of
             Left _ -> do unify typ1 typ2; return (e, typ2)
-            Right c -> subtype e typ1 c
-        (_, Pi h p t2 s2) -> do
-          x2 <- freshForall h t2
-          (e2, s2') <- subtype e typ1 (instantiate1 (return $ F x2) s2)
+            Right c -> subtype surrounding e typ1 c
+        (_, Pi h p t2 s2) | p == Implicit || surrounding == Implicit -> do
+          x2 <- forall_ h t2 ()
+          (e2, s2') <- subtype surrounding e typ1 (instantiate1 (return $ F x2) s2)
           e2'   <- etaLam h p t2 <$> abstract1M x2 e2
           typ2' <- Pi     h p t2 <$> abstract1M x2 s2'
           return (e2', typ2')
         (Pi h p t1 s1, _) -> do
-          v1 <- freshExistsV h t1
-          subtype (betaApp e p v1) (instantiate1 v1 s1) typ2
+          v1 <- existsVar h t1 ()
+          subtype surrounding (betaApp e p v1) (instantiate1 v1 s1) typ2
         _ | reduce -> do
-          typ1' <- whnf typ1
-          typ2' <- whnf typ2
+          typ1' <- whnf mempty plicitness typ1
+          typ2' <- whnf mempty plicitness typ2
           go False e typ1' typ2'
         _ -> do unify typ1 typ2; return (e, typ2)

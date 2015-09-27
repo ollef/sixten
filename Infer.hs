@@ -2,7 +2,6 @@
 module Infer where
 
 import Bound
-import Bound.Var
 import Control.Monad.Except
 import Control.Monad.ST()
 import Data.Bifunctor
@@ -25,25 +24,29 @@ import TopoSort
 import Unify
 import Util
 
-checkType :: (Hashable v, Ord v, Show v) => Input s v -> Core s v -> TCM s v (Core s v, Core s v)
-checkType expr typ = do
+type Input s v = InputM s () Plicitness v
+
+checkType :: (Hashable v, Ord v, Show v)
+          => Plicitness -> Input s v -> Core s v -> TCM s v (Core s v, Core s v)
+checkType surrounding expr typ = do
   tr "checkType e" expr
   tr "          t" =<< freeze typ
   modifyIndent succ
   (rese, rest) <- case expr of
     Input.Lam m p s -> do
-      typ' <- whnf typ
+      typ' <- whnf mempty plicitness typ
       case typ' of
         Core.Pi h p' a ts | p == p' -> do
-          v <- freshForall (h <> m) a
-          (body, ts') <- checkType (instantiate1 (return $ F v) s)
+          v <- forall_ (h <> m) a ()
+          (body, ts') <- checkType surrounding
+                                   (instantiate1 (return $ F v) s)
                                    (instantiate1 (return $ F v) ts)
           expr' <- Core.Lam (m <> h) p a <$> abstract1M v body
           typ'' <- Core.Pi  (h <> m) p a <$> abstract1M v ts'
           return (expr', typ'')
         Core.Pi h p' a ts | plicitness p' == Implicit -> do
-          v <- freshForall h a
-          (expr', ts') <- checkType expr (instantiate1 (return $ F v) ts)
+          v <- forall_ h a ()
+          (expr', ts') <- checkType surrounding expr (instantiate1 (return $ F v) ts)
           typ''  <- Core.Pi  h p' a <$> abstract1M v ts'
           expr'' <- Core.Lam h p' a <$> abstract1M v expr'
           return (expr'', typ'')
@@ -55,11 +58,12 @@ checkType expr typ = do
   return (rese, rest)
     where
       inferIt = do
-        (expr', typ') <- inferType expr
-        subtype expr' typ' typ
+        (expr', typ') <- inferType surrounding expr
+        subtype surrounding expr' typ' typ
 
-inferType :: (Hashable v, Ord v, Show v) => Input s v -> TCM s v (Core s v, Core s v)
-inferType expr = do
+inferType :: (Hashable v, Ord v, Show v)
+          => Plicitness -> Input s v -> TCM s v (Core s v, Core s v)
+inferType surrounding expr = do
   tr "inferType" expr
   modifyIndent succ
   (e, t) <- case expr of
@@ -69,73 +73,74 @@ inferType expr = do
     Input.Var (F v) -> return (Core.Var $ F v, metaType v)
     Input.Type      -> return (Core.Type, Core.Type)
     Input.Pi n p Nothing s -> do
-      tv  <- freshExistsV mempty Core.Type
-      v   <- freshForall n tv
-      (e', _)  <- checkType (instantiate1 (return $ F v) s) Core.Type
+      tv  <- existsVar mempty Core.Type ()
+      v   <- forall_ n tv ()
+      (e', _)  <- checkType surrounding (instantiate1 (return $ F v) s) Core.Type
       s'  <- abstract1M v e'
       return (Core.Pi n p tv s', Core.Type)
     Input.Pi n p (Just t) s -> do
-      (t', _) <- checkType t Core.Type
-      v  <- freshForall n t'
-      (e', _) <- checkType (instantiate1 (return $ F v) s) Core.Type
+      (t', _) <- checkType p t Core.Type
+      v  <- forall_ n t' ()
+      (e', _) <- checkType surrounding (instantiate1 (return $ F v) s) Core.Type
       s' <- abstract1M v e'
       return (Core.Pi n p t' s', Core.Type)
     Input.Lam n p s -> uncurry generalise <=< enterLevel $ do
-      a   <- freshExistsV mempty Core.Type
-      b   <- freshExistsV mempty Core.Type
-      x   <- freshForall n a
-      (e', b')  <- checkType (instantiate1 (return $ F x) s) b
+      a   <- existsVar mempty Core.Type ()
+      b   <- existsVar mempty Core.Type ()
+      x   <- forall_ n a ()
+      (e', b')  <- checkType surrounding (instantiate1 (return $ F x) s) b
       s'  <- abstract1M x e'
       ab  <- abstract1M x b'
       return (Core.Lam n p a s', Core.Pi n p a ab)
     Input.App e1 p e2 -> do
-      (e1', vt, s) <- inferPi e1 p
-      (e2', _) <- checkType e2 vt
+      (e1', vt, s) <- inferPi surrounding e1 p
+      (e2', _) <- checkType p e2 vt
       return (Core.App e1' p e2', instantiate1 e2' s)
     Input.Anno e t  -> do
-      (t', _) <- checkType t Core.Type
-      checkType e t'
+      (t', _) <- checkType surrounding t Core.Type
+      checkType surrounding e t'
     Input.Wildcard  -> do
-      t <- freshExistsV mempty Core.Type
-      x <- freshExistsV mempty t
+      t <- existsVar mempty Core.Type ()
+      x <- existsVar mempty t ()
       return (x, t)
   modifyIndent pred
   tr "inferType res e" e
   tr "              t" t
   return (e, t)
 
+-- TODO can this be replaced with subtyping?
 inferPi :: (Hashable v, Ord v, Show v)
-        => Input s v -> Plicitness
-        -> TCM s v (Core s v, Core s v, CoreScope s () v)
-inferPi expr p = do
+        => Plicitness -> Input s v -> Plicitness
+        -> TCM s v (Core s v, Core s v, ScopeM () Core.Expr s () Plicitness v)
+inferPi surrounding expr p = do
   tr "inferPi" expr
   modifyIndent succ
-  (e, t) <- inferType expr
+  (e, t) <- inferType surrounding expr
   (a, b, c) <- go True e t
   modifyIndent pred
   tr "inferPi res a" a
   tr "            b" b
-  cv <- freshForallV mempty Core.Type
+  cv <- forallVar mempty Core.Type ()
   tr "            c" $ instantiate1 cv c
   return (a, b, c)
   where
     go reduce e t = case t of
       Core.Pi _ p' vt s | p == p' -> return (e, vt, s)
       Core.Pi h Implicit vt s     -> do
-        v <- freshExistsV h vt
+        v <- existsVar h vt ()
         go True (Core.betaApp e Implicit v) (instantiate1 v s)
       Core.Var (F v@(metaRef -> Just r)) -> do
         sol <- solution r
         unify (metaType v) Core.Type
         case sol of
           Left l -> do
-            t1 <- freshExistsLV (metaHint v) Core.Type l
-            t2 <- freshExistsLV (metaHint v) Core.Type l
+            t1 <- existsVarAtLevel (metaHint v) Core.Type () l
+            t2 <- existsVarAtLevel (metaHint v) Core.Type () l
             let at2 = abstractNone t2
             solve r $ Core.Pi mempty p t1 at2
             return (e, t1, at2)
           Right c -> go True e c
-      _ | reduce                  -> go False e =<< whnf t
+      _ | reduce                  -> go False e =<< whnf mempty plicitness t
       _                           -> do
         s <- showMeta t
         throwError $ "Expected function, got " ++ show s
@@ -168,31 +173,28 @@ generalise expr typ = do
     go [a] f = fmap (f (metaHint a) Implicit $ metaType a) . abstract1M a
     go _   _ = error "Generalise"
 
-checkAndGeneralise :: (Hashable v, Ord v, Show v)
-                   => Input s v -> Core s v
-                   -> TCM s v (Core.Expr Plicitness v, Core.Type Plicitness v)
-checkAndGeneralise e t = do
-  (tce, tct) <- enterLevel $ checkType e t
-  (ge, gt)   <- generalise tce tct
-  ge'        <- traverse (unvar return $ const $ throwError "escaped type variable") ge
-  gt'        <- traverse (unvar return $ const $ throwError "escaped type variable") gt
-  return (ge', gt')
-
 checkRecursiveDefs :: (Hashable v, Ord v, Show v)
-                   => Vector (NameHint, InputScope s Int v, InputScope s Int v)
-                   -> TCM s v (Vector (CoreScope s Int v, CoreScope s Int v))
+                   => Vector
+                     ( NameHint
+                     , Scope Int Input.Expr (Var v (MetaVar s () Plicitness v))
+                     , Scope Int Input.Expr (Var v (MetaVar s () Plicitness v))
+                     )
+                   -> TCM s v
+                     ( Vector (ScopeM Int Core.Expr s () Plicitness v
+                     , ScopeM Int Core.Expr s () Plicitness v)
+                     )
 checkRecursiveDefs ds = do
   (evs, checkedDs) <- enterLevel $ do
     evs <- V.forM ds $ \(v, _, _) -> do
-      tv <- freshExistsV mempty Core.Type
-      freshForall v tv
+      tv <- existsVar mempty Core.Type ()
+      forall_ v tv ()
     let instantiatedDs = flip V.map ds $ \(_, e, t) ->
           ( instantiate (return . return . (evs V.!)) e
           , instantiate (return . return . (evs V.!)) t
           )
     checkedDs <- V.forM instantiatedDs $ \(e, t) -> do
-      (t', _) <- checkType t Core.Type
-      (e', t'') <- checkType e t'
+      (t', _) <- checkType Explicit t Core.Type
+      (e', t'') <- checkType Explicit e t'
       return (e', t'')
     return (evs, checkedDs)
   V.forM checkedDs $ \(e, t) -> do

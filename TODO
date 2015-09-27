@@ -1,6 +1,5 @@
 Restructure codebase
-  Reduce duplication between Relevance and typechecking (e.g. whnf)
-Lets
+Lets and recursive definitions
 Javascript code generation
 ADTs and cases
   Parse
@@ -8,11 +7,17 @@ ADTs and cases
   Codegen
 Laziness
 Row polymorphism
+  r : Row : Type
+  {l = A} : {l : A} : Type
+
+  Exists {X} (P : X -> Type) = {witness : x, proof : P witness}
+
   record {l : A | {l : B | r}} ?= record {l : A intersect B | r}
+  intersection A B = {intersect : a, intersect : b}
     or not allowed?
   Parse
   Type-check
-  Should make lenses
+  Should make lenses?
   Codegen
 Type classes
   Parse
