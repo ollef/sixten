@@ -156,38 +156,54 @@ unifyRel rel1 rel2 = case (rel1, rel2) of
   (Relevance r1, Relevance r2) | r1 == r2 -> return ()
   _ -> throwError "unifyRel"
 
--- TODO: This needs to use whnf
-returnsType :: HasPlicitness p => Expr p v -> Bool
-returnsType expr = case expr of
-  Var _  -> False
-  Type   -> True
-  Pi _ _ _ s  -> returnsType $ fromScope s
-  Lam {} -> False
-  App e1 p e2 -> case e1 of
-    Lam _ p' _ s | plicitness p == plicitness p' -> returnsType $ instantiate1 e2 s
-    _ -> False
-  Case _ _ -> undefined -- TODO
+returnsType :: (Eq v, Hashable v, Show v)
+            => Input s v -> TCM s v Bool
+returnsType = go True
+  where
+    go reduce expr = case expr of
+      Type   -> return True
+      Lam {} -> return False
+      Pi h _ t s  -> do
+        x <- forallVar h (first meta t) r
+        returnsType $ instantiate1 x s
+      Case _ _ -> undefined -- TODO
+      _ | reduce -> do
+        expr' <- whnf metaRelevance toMetaAnnotation $ first meta expr
+        go False $ first plicitness expr'
+      _ -> return False
+    meta = MetaAnnotation r . plicitness
+    r = Relevance Relevant -- unimportant
 
-makeRel :: HasPlicitness p => RelevanceM s -> Expr p v -> Expr (MetaAnnotation s) v
+makeRel :: (Eq v, Hashable v, Show v)
+        => RelevanceM s -> Input s v -> TCM s v (Output s v)
 makeRel rel expr = case expr of
-  Var v -> Var v
-  Type -> Type
-  Pi  x p t s 
-    | returnsType t -> Pi x (irrelMeta p) (makeRel (Relevance Irrelevant) t) (makeRelScope s)
-    | otherwise     -> Pi x (meta p) (makeRel rel t) (makeRelScope s)
-  Lam x p t s -> Lam x (meta p) (makeRel rel t) (makeRelScope s)
-  App e1 p e2 -> App (makeRel rel e1) (meta p) (makeRel rel e2)
+  Var v -> return $ Var v
+  Type -> return Type
+  Pi h p t s -> do
+    rType <- returnsType t
+    if rType
+    then Pi h (irrelMeta p) <$> makeRel (Relevance Irrelevant) t <*> makeRelScope h t s
+    else Pi h (meta p) <$> makeRel rel t <*> makeRelScope h t s
+  Lam h p t s -> Lam h (meta p) <$> makeRel rel t <*> makeRelScope h t s
+  App e1 p e2 -> App <$> makeRel rel e1 <*> pure (meta p) <*> makeRel rel e2
   Case _ _ -> undefined -- TODO
   where
     irrelMeta = MetaAnnotation (Relevance Irrelevant) . plicitness
     meta = MetaAnnotation rel . plicitness
-    makeRelScope = toScope . makeRel rel . fromScope
+    makeRelScope h t s = do
+      x <- forall_ h (first meta t) rel
+      e <- makeRel rel $ instantiate1 (pure $ F x) s
+      return $ abstract1 (F x) e
 
 inferArg :: (Hashable v, Ord v, Show v)
          => Input s v -> Bool -> TCM s v (Output s v, RelevanceM s)
-inferArg argType knownDef
-  | returnsType argType = return (makeRel (Relevance Irrelevant) argType, Relevance Irrelevant)
-  | otherwise = do
+inferArg argType knownDef = do
+  rType <- returnsType argType
+  if rType
+  then do
+    argType' <- makeRel (Relevance Irrelevant) argType
+    return (argType', Relevance Irrelevant)
+  else do
     argType' <- check argType Type (Relevance Irrelevant) False
     if knownDef then do
       rel <- freshMetaRel
@@ -197,9 +213,13 @@ inferArg argType knownDef
 
 inferTop :: (Hashable v, Ord v, Show v)
          => Input s v -> TCM s v (Output s v, RelevanceM s)
-inferTop typ
-  | returnsType typ = return (makeRel (Relevance Irrelevant) typ, Relevance Irrelevant)
-  | otherwise = do
+inferTop typ = do
+  rType <- returnsType typ
+  if rType
+  then do
+    typ' <- makeRel (Relevance Irrelevant) typ
+    return (typ', Relevance Irrelevant)
+  else do
     typ' <- check typ Type (Relevance Irrelevant) True
     return (typ', Relevance Relevant)
 
