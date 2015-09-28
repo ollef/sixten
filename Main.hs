@@ -16,6 +16,7 @@ import System.Environment
 
 import Annotation
 import qualified Desugar
+import Erasure
 import Hint
 import Infer
 import qualified Relevance
@@ -66,7 +67,10 @@ test inp = do
     Just (Left err) -> putStrLn err
     Just (Right p)  -> case runTCM (inferProgram p (Hint . Just) >> gets tcContext) of
       (Left err, tr) -> do mapM_ putStrLn tr; putStrLn err
-      (Right res, _) -> mapM_ print $ (show . pretty) <$> HM.toList res
+      (Right res, _) -> do
+        mapM_ print $ (show . pretty) <$> HM.toList res
+        putStrLn "------------- erased ------------------"
+        mapM_ print $ (show . pretty) <$> [(x, erase e) | (x, (e, _, a)) <- HM.toList res, isRelevant a]
 
 main :: IO ()
 main = do
