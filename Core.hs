@@ -138,10 +138,22 @@ instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
           b  <- associate $ prettyPrec $ instantiate (return . fromString . f) s
           return $ doc vs <+> b
 
-etaLam :: (Ord v, HasPlicitness d)
+etaLamM :: (Ord v, Monad m)
+        => (d -> d -> m Bool)
+        -> Hint (Maybe Name) -> d -> Expr d v -> Scope1 (Expr d) v -> m (Expr d v)
+etaLamM isEq n p t s@(Scope (Core.App e p' (Var (B ()))))
+  | B () `S.notMember` toSet (second (const ()) <$> e) = do
+    eq <- isEq p p'
+    return $ if eq then
+      join $ unvar (error "etaLam impossible") id <$> e
+    else
+      Core.Lam n p t s
+etaLamM _ n p t s = return $ Core.Lam n p t s
+
+etaLam :: (Ord v, Eq d)
        => Hint (Maybe Name) -> d -> Expr d v -> Scope1 (Expr d) v -> Expr d v
 etaLam _ p _ (Scope (Core.App e p' (Var (B ()))))
-  | B () `S.notMember` toSet (second (const ()) <$> e) && plicitness p == plicitness p'
+  | B () `S.notMember` toSet (second (const ()) <$> e) && p == p'
     = join $ unvar (error "etaLam impossible") id <$> e
 etaLam n p t s = Core.Lam n p t s
 

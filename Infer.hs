@@ -44,7 +44,7 @@ checkType surrounding expr typ = do
           expr' <- Core.Lam (m <> h) p a <$> abstract1M v body
           typ'' <- Core.Pi  (h <> m) p a <$> abstract1M v ts'
           return (expr', typ'')
-        Core.Pi h p' a ts | plicitness p' == Implicit -> do
+        Core.Pi h p' a ts | p' == Implicit -> do
           v <- forall_ h a ()
           (expr', ts') <- checkType surrounding expr (instantiate1 (return $ F v) ts)
           typ''  <- Core.Pi  h p' a <$> abstract1M v ts'

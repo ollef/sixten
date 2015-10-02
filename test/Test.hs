@@ -15,6 +15,9 @@ const x y = x
 idConst : forall {t f a}. f a -> f a
 idConst {t} x = const x (\(x : t). x)
 
+useConst : forall {a b}. ((a -> a -> a) -> b) -> b
+useConst f = f const
+
 APP : forall {a b}. (forall (x : a). b x) -> forall (x : a). b x
 APP f x = f x
 
@@ -29,6 +32,15 @@ app2 f x = APP f x
 app3 : forall {a b}. (a -> b) -> a -> b
 app3 f x = APP f x
 
+if : Bool -> forall {a}. a -> a -> a
+if b = b
+
+fun : Type -> Type
+fun a = a -> a
+
+if' : forall {a}. Bool -> a -> a -> a
+if' b = b
+
 Bool : Type
 Bool = forall {a}. a -> a -> a
 
@@ -38,11 +50,9 @@ True x y = x
 False : Bool
 False x y = y
 
-if : Bool -> forall {a}. a -> a -> a
-if b = b
 
-if' : forall {a}. Bool -> a -> a -> a
-if' b = b
+and : Bool -> Bool -> Bool
+and b1 b2 = if' b1 b2 False
 
-fun : Type -> Type
-fun a = a -> a
+or : Bool -> Bool -> Bool
+or b1 b2 = if' b1 True b2

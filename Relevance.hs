@@ -288,12 +288,29 @@ subtype expr type1 type2 = go True expr type1 type2
         e2 <- go True (betaApp e (MetaAnnotation r1 p1) x1)
                       (instantiate1 x1 s1)
                       (instantiate1 (return $ F x2) s2)
-        return $ etaLam (h1 <> h2) (MetaAnnotation r2 p2) t2 (abstract1 (F x2) e2)
+        etaLamM sameMetaAnnotation
+                (h1 <> h2)
+                (MetaAnnotation r2 p2)
+                t2
+                (abstract1 (F x2) e2)
       _ | reduce -> do
         typ1' <- whnf metaRelevance toMetaAnnotation typ1
         typ2' <- whnf metaRelevance toMetaAnnotation typ2
         go False e typ1' typ2'
       _ -> do unify typ1 typ2; return e
+
+sameMetaAnnotation :: MetaAnnotation s -> MetaAnnotation s -> TCM s v Bool
+sameMetaAnnotation (MetaAnnotation r1 p1) (MetaAnnotation r2 p2)
+  | p1 /= p2  = return False
+  | otherwise = (==) <$> go r1 <*> go r2
+  where
+    go :: RelevanceM s -> TCM s v (RelevanceM s)
+    go r@(Relevance _) = return r
+    go r@(RVar v) = do
+      sol <- liftST $ readSTRef $ metaRelRef v
+      case sol of
+        Nothing -> return r
+        Just r' -> go r'
 
 unify :: (Eq v, Hashable v, Show v) => Output s v -> Output s v -> TCM s v ()
 unify type1 type2 = go True type1 type2

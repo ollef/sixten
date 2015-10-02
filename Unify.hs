@@ -100,6 +100,12 @@ subtype surrounding expr type1 type2 = do
     go reduce e typ1 typ2
       | typ1 == typ2 = return (e, typ2)
       | otherwise = case (typ1, typ2) of
+        (Var (B v1), _) -> do
+          (typ1', _, _) <- context v1
+          subtype surrounding e (bimap plicitness B typ1') typ2
+        (_, Var (B v2)) -> do
+          (typ2', _, _) <- context v2
+          subtype surrounding e typ1 $ bimap plicitness B typ2'
         (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> do
           let h = h1 <> h2
           x2  <- forall_ h t2 ()
@@ -117,7 +123,7 @@ subtype surrounding expr type1 type2 = do
             Left l -> do
               occurs l v typ2
               unify (metaType v) Type
-              t11  <- existsVarAtLevel (metaHint v) Type () l
+              t11 <- existsVarAtLevel (metaHint v) Type () l
               t12 <- existsVarAtLevel (metaHint v) Type () l
               solve r $ Pi h p t11 $ abstractNone t12
               x2  <- forall_ h t2 ()
@@ -137,7 +143,7 @@ subtype surrounding expr type1 type2 = do
           x2 <- forall_ h t2 ()
           (e2, s2') <- subtype surrounding e typ1 (instantiate1 (return $ F x2) s2)
           e2'   <- etaLam h p t2 <$> abstract1M x2 e2
-          typ2' <- Pi     h p t2 <$> abstract1M x2 s2'
+          typ2' <- Pi h p t2 <$> abstract1M x2 s2'
           return (e2', typ2')
         (Pi h p t1 s1, _) -> do
           v1 <- existsVar h t1 ()
