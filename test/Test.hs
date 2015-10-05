@@ -56,3 +56,21 @@ and b1 b2 = if' b1 b2 False
 
 or : Bool -> Bool -> Bool
 or b1 b2 = if' b1 True b2
+
+-- data Strategy = Eager | Lazy
+
+-- strategize : Strategy -> Type -> Type
+
+-- data BaseList (s : Strategy) a = Nil | Cons a (s (BaseList s a))
+
+-- List a   = BaseList Eager a
+-- Stream a = BaseList Lazy a
+--
+--
+-- data List a = Nil | Cons a (List a)
+--
+-- {x = 12, y = 13} : {x : Int, y : Int} : Row Type
+--
+-- (x : a : A, y : b : A | ) : Row A
+--
+--

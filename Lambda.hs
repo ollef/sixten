@@ -4,6 +4,8 @@ import Bound
 import Control.Monad
 import Data.Monoid
 import Data.String
+import Data.Vector(Vector)
+import qualified Data.Vector as Vector
 import Prelude.Extras
 
 import Hint
@@ -49,10 +51,11 @@ bindingsView _ _ = Nothing
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Expr v) where
-  prettyPrec expr = case expr of
-    Var v     -> prettyPrec v
-    (bindingsView lamView -> Just (hs, s)) -> parens `above` absPrec $ withHints hs $ \f -> do
-      ps <- associate $ prettyPrec $ instantiate (return . fromString . f) s
-      return $ text "\\" <> hsep (zipWith (\x -> text . f . const x) [0..] hs)  <> text "." <+> ps
+  prettyM expr = case expr of
+    Var v     -> prettyM v
+    (bindingsView lamView -> Just (hs, s)) -> parens `above` absPrec $
+      withNameHints (Vector.fromList hs) $ \ns ->
+        prettyM "\\" <> hsep (map prettyM $ Vector.toList ns) <> prettyM "." <+>
+        associate (prettyM $ instantiate (pure . fromText . (ns Vector.!)) s)
     Lam {} -> error "impossible prettyPrec lam"
-    App e1 e2 -> prettyApp (prettyPrec e1) $ prettyPrec e2
+    App e1 e2 -> prettyApp (prettyM e1) (prettyM e2)

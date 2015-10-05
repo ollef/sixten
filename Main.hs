@@ -68,7 +68,7 @@ test inp = do
     Just (Right p)  -> case runTCM (inferProgram p (Hint . Just) >> gets tcContext) of
       (Left err, tr) -> do mapM_ putStrLn tr; putStrLn err
       (Right res, _) -> do
-        mapM_ print $ (show . pretty) <$> HM.toList res
+        mapM_ print $ (show . pretty . (\(x, (y, z, a)) -> (x, (y, z, show a)))) <$> HM.toList res
         putStrLn "------------- erased ------------------"
         mapM_ print $ (show . pretty) <$> [(x, erase e) | (x, (e, _, a)) <- HM.toList res, isRelevant a]
 

@@ -6,6 +6,7 @@ import Control.Applicative((<**>), (<|>), Alternative)
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Text(Text)
+import qualified Data.Text as Text
 import Data.Char
 import qualified Data.HashSet as HS
 import Data.Ord
@@ -149,7 +150,7 @@ identOrWildcard = Just <$> ident
                <|> Nothing <$ wildcard
 
 symbol :: String -> Parser Name
-symbol = Trifecta.token . Trifecta.symbol
+symbol = fmap Text.pack . Trifecta.token . Trifecta.symbol
 
 data Binding
   = Plain Plicitness [Maybe Name]

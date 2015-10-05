@@ -5,6 +5,41 @@ ADTs and cases
   Parse
   Type-check
   Codegen
+Specialisation pragma
+  data Strategy = Eager | Lazy
+
+  WithStrategy : Strategy -> Type -> Type
+  WithStrategy Eager t = t
+  WithStrategy Lazy t = Ref (Either (() -> t) t)
+
+  force : {s : Strategy} -> WithStrategy s t -> t
+  force {Eager} t = t
+  force {Lazy} t = runST $ do
+    x <- readRef t
+    case x of
+      Left f -> let result = f () in writeRef t result; return result
+      Right result -> return result
+
+  delay : {s : Strategy} -> (() -> t) -> WithStrategy s t
+  delay {Eager} f = f ()
+  delay {Lazy} f = newRef (Left f)
+
+  data List s a = Nil | Cons a (WithStrategy s (List s a))
+
+  map : <s> -> (a -> b) -> List s a -> List s b
+  map f Nil = Nil
+  map <s> f (Cons x xs) = Cons (f x) (delay {s} (map f xs))
+
+  map s = case s of
+    Eager -> mapEager
+    Lazy  -> mapLazy
+
+  mapEager f Nil = Nil
+  mapEager f (Cons x xs) = Cons (f x) (mapEager f xs)
+
+  mapLazy f Nil = Nil
+  mapLazy f (Cons x xs) = Cons (f x) (newRef (Left (mapLazy f xs)))
+
 Laziness
 Row polymorphism
   r : Row : Type

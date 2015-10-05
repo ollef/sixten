@@ -13,7 +13,7 @@ import Data.Monoid
 import Data.List as List
 import qualified Data.Set as S
 import Data.String
-import Data.Traversable as T
+import qualified Data.Vector as Vector
 import Prelude.Extras
 
 import Annotation
@@ -46,10 +46,10 @@ bindingsView
   -> Expr d v -> Maybe ([(NameHint, d, Type d (Var Int v))], Scope Int (Expr d) v)
 bindingsView f expr@(f -> Just _) = Just $ go 0 $ F <$> expr
   where
-    go x (f -> Just (n, p, e, s)) = ((n, p, e) : ns, s')
+    go x (f -> Just (n, p, e, s)) = (pure (n, p, e) <> ns, s')
       where
         (ns, s') = (go $! (x + 1)) (instantiate1 (return $ B x) s)
-    go _ e = ([], toScope e)
+    go _ e = (mempty, toScope e)
 bindingsView _ _ = Nothing
 
 piView :: Expr d v -> Maybe (NameHint, d, Type d v, Scope1 (Expr d) v)
@@ -111,32 +111,33 @@ instance Bitraversable Expr where
 
 instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
       => Pretty (Expr d v) where
-  prettyPrec expr = case expr of
-    Var v     -> prettyPrec v
+  prettyM expr = case expr of
+    Var v     -> prettyM v
     Type      -> pure $ text "Type"
-    Pi  _ p t (unusedScope -> Just e) -> parens `above` arrPrec $ do
-      a <- tildeWhen (isIrrelevant p) $ bracesWhen (isImplicit p) $ prettyPrec t
-      b <- associate $ prettyPrec e
-      return $ a <+> text "->" <+> b
-    (bindingsView usedPiView -> Just (hpts, s)) -> binding (\x -> text "forall" <+> x <> text ".") hpts s
+    Pi  _ p t (unusedScope -> Just e) -> parens `above` arrPrec $
+      ((pure tilde <>) `iff` isIrrelevant p $ braces `iff` isImplicit p $ prettyM t)
+      <+> prettyM "->" <+>
+      associate (prettyM e)
+    (bindingsView usedPiView -> Just (hpts, s)) -> binding (\x -> prettyM "forall" <+> x <> prettyM ".") hpts s
     Pi {} -> error "impossible prettyPrec pi"
-    (bindingsView lamView -> Just (hpts, s)) -> binding (\x -> text "\\" <> x <> text ".") hpts s
+    (bindingsView lamView -> Just (hpts, s)) -> binding (\x -> prettyM "\\" <> x <> prettyM ".") hpts s
     Lam {} -> error "impossible prettyPrec lam"
-    App e1 p e2 -> prettyApp (prettyPrec e1) (tildeWhen (isIrrelevant p) $ bracesWhen (isImplicit p) $ prettyPrec e2)
-    Case _ _ -> undefined
+    App e1 p e2 -> prettyApp (prettyM e1) ((pure tilde <>) `iff` isIrrelevant p $ braces `iff` isImplicit p $ prettyM e2)
+    Case e brs -> parens `above` casePrec $
+      prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> prettyM brs
     where
       binding doc hpts s = parens `above` absPrec $ do
-        let hs = [h | (h, _, _) <- hpts]
-        withHints hs $ \f -> do
+        let hs = Vector.fromList $ fmap (\(h, _, _) -> h) hpts
+        withNameHints hs $ \ns -> do
           let grouped = [ (n : [n' | (Hint n', _) <- hpts'], p, t)
-                        | (Hint n, (_, p, t)):hpts' <- List.group $ zip (map Hint [0..]) hpts]
-              go (map (text . f) -> xs, p, t) = tildeWhen (isIrrelevant p) $
-                ( (if isImplicit p then braces else parens)
-                . ((hsep xs <+> text ":") <+>)) <$>
-                prettyPrec (unvar (fromString . f) id <$> t)
-          vs <- inviolable $ hcat <$> T.mapM go grouped
-          b  <- associate $ prettyPrec $ instantiate (return . fromString . f) s
-          return $ doc vs <+> b
+                        | (Hint n, (_, p, t)):hpts' <- List.group $ zip (map Hint [(0 :: Int)..]) hpts]
+              go (xs, p, t) = (pure tilde <>) `iff` isIrrelevant p $
+                (if isImplicit p then braces else parens) $
+                hsep (map prettyM xs) <+> prettyM ":" <+>
+                prettyM (unvar (fromText . (ns Vector.!)) id <$> t)
+          (doc $ inviolable $ hcat $ map go grouped) <+>
+            associate (prettyM $ instantiate (pure . fromText . (ns Vector.!)) s)
+
 
 etaLamM :: (Ord v, Monad m)
         => (d -> d -> m Bool)

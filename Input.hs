@@ -9,6 +9,7 @@ import Data.String
 import Prelude.Extras
 
 import Annotation
+import Branches
 import Hint
 import Util
 import Pretty
@@ -19,6 +20,7 @@ data Expr v
   | Pi  !NameHint !Plicitness (Maybe (Type v)) (Scope1 Expr v) -- ^ Dependent function space
   | Lam !NameHint !Plicitness (Scope1 Expr v)
   | App (Expr v) !Plicitness (Expr v)
+  | Case (Expr v) (Branches Expr v)
   | Anno (Expr v) (Expr v)
   | Wildcard                         -- ^ Attempt to infer it
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
@@ -59,29 +61,27 @@ instance Monad Expr where
     Pi  n p t s -> Pi n p ((>>= f) <$> t) (s >>>= f)
     Lam n p s   -> Lam n p (s >>>= f)
     App e1 p e2 -> App (e1 >>= f) p (e2 >>= f)
+    Case e brs  -> Case (e >>= f) (brs >>>= f)
     Anno e t    -> Anno (e >>= f) (t >>= f)
     Wildcard    -> Wildcard
 
 instance (IsString v, Pretty v) => Pretty (Expr v) where
-  prettyPrec expr = case expr of
-    Var v     -> prettyPrec v
+  prettyM expr = case expr of
+    Var v     -> prettyM v
     Type      -> pure $ text "Type"
-    Pi  h p Nothing s -> withHint h $ \x -> parens `above` absPrec $ do
-      v <- inviolable $ bracesWhen (p == Implicit) $ pure $ text x
-      b <- associate  $ prettyPrec $ instantiate1 (return $ fromString x) s
-      return $ text "forall" <+> v <> text "." <+> b
-    Pi  h p (Just t) s -> withHint h $ \x -> parens `above` absPrec $ do
-      pt <- inviolable $ prettyPrec t
-      v <- inviolable $ bracesWhen (p == Implicit) $ pure $ text x
-      b <- associate  $ prettyPrec $ instantiate1 (return $ fromString x) s
-      return $ text "forall" <+> v <+> text ":" <+> pt <> text "." <+> b
-    Lam h p s -> withHint h $ \x -> parens `above` absPrec $ do
-      v <- inviolable $ bracesWhen (p == Implicit) $ pure $ text x
-      b <- associate  $ prettyPrec $ instantiate1 (return $ fromString x) s
-      return $ text "\\" <+> v <> text "." <+> b
-    App e1 p e2 -> prettyApp (prettyPrec e1) (bracesWhen (p == Implicit) $ prettyPrec e2)
-    Anno e t  -> parens `above` annoPrec $ do
-      x <- prettyPrec e
-      y <- associate $ prettyPrec t
-      return $ x <+> text ":" <+> y
+    Pi  h p Nothing s -> withNameHint h $ \x -> parens `above` absPrec $
+      prettyM "forall" <+> inviolable (braces `iff` (p == Implicit) $ prettyM x)
+      <> prettyM "." <+> associate  (prettyM $ instantiate1 (pure $ fromText x) s)
+    Pi  h p (Just t) s -> withNameHint h $ \x -> parens `above` absPrec $
+      prettyM "forall" <+> inviolable (braces `iff` (p == Implicit) $ prettyM x)
+      <+> prettyM ":" <+> inviolable (prettyM t)
+      <> prettyM "." <+> associate  (prettyM $ instantiate1 (pure $ fromText x) s)
+    Lam h p s -> withNameHint h $ \x -> parens `above` absPrec $
+      prettyM "\\" <+> inviolable (braces `iff` (p == Implicit) $ prettyM x)
+        <> prettyM "." <+> associate  (prettyM $ instantiate1 (pure $ fromText x) s)
+    App e1 p e2 -> prettyApp (prettyM e1) (braces `iff` (p == Implicit) $ prettyM e2)
+    Case e brs -> parens `above` casePrec $
+      prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> prettyM brs
+    Anno e t  -> parens `above` annoPrec $
+      prettyM e <+> prettyM ":" <+> associate (prettyM t)
     Wildcard  -> pure $ text "_"
