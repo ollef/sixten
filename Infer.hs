@@ -93,9 +93,13 @@ inferType surrounding expr = do
       ab  <- abstract1M x b'
       return (Core.Lam n p a s', Core.Pi n p a ab)
     Input.App e1 p e2 -> do
-      (e1', vt, s) <- inferPi surrounding e1 p
-      (e2', _) <- checkType p e2 vt
-      return (Core.App e1' p e2', instantiate1 e2' s)
+      a <- existsVar mempty Core.Type ()
+      b <- existsVar mempty Core.Type ()
+      (e1', Core.Pi _ p' argType' resultType')
+        <- checkType surrounding e1 $ Core.Pi mempty p a $ abstractNone b
+      unless (p == p') $ throwError "app ppp"
+      (e2', _) <- checkType p e2 argType'
+      return (Core.App e1' p e2', instantiate1 e2' resultType')
     Input.Anno e t  -> do
       (t', _) <- checkType surrounding t Core.Type
       checkType surrounding e t'
@@ -107,43 +111,6 @@ inferType surrounding expr = do
   tr "inferType res e" e
   tr "              t" t
   return (e, t)
-
--- TODO can this be replaced with subtyping?
-inferPi :: (Hashable v, Ord v, Show v)
-        => Plicitness -> Input s v -> Plicitness
-        -> TCM s v (Core s v, Core s v, ScopeM () Core.Expr s () Plicitness v)
-inferPi surrounding expr p = do
-  tr "inferPi" expr
-  modifyIndent succ
-  (e, t) <- inferType surrounding expr
-  (a, b, c) <- go True e t
-  modifyIndent pred
-  tr "inferPi res a" a
-  tr "            b" b
-  cv <- forallVar mempty Core.Type ()
-  tr "            c" $ instantiate1 cv c
-  return (a, b, c)
-  where
-    go reduce e t = case t of
-      Core.Pi _ p' vt s | p == p' -> return (e, vt, s)
-      Core.Pi h Implicit vt s     -> do
-        v <- existsVar h vt ()
-        go True (Core.betaApp e Implicit v) (instantiate1 v s)
-      Core.Var (F v@(metaRef -> Just r)) -> do
-        sol <- solution r
-        unify (metaType v) Core.Type
-        case sol of
-          Left l -> do
-            t1 <- existsVarAtLevel (metaHint v) Core.Type () l
-            t2 <- existsVarAtLevel (metaHint v) Core.Type () l
-            let at2 = abstractNone t2
-            solve r $ Core.Pi mempty p t1 at2
-            return (e, t1, at2)
-          Right c -> go True e c
-      _ | reduce                  -> go False e =<< whnf mempty plicitness t
-      _                           -> do
-        s <- showMeta t
-        throwError $ "Expected function, got " ++ show s
 
 generalise :: (Ord v, Show v) => Core s v -> Core s v -> TCM s v (Core s v, Core s v)
 generalise expr typ = do

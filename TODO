@@ -8,27 +8,35 @@ ADTs and cases
 Specialisation pragma
   data Strategy = Eager | Lazy
 
-  WithStrategy : Strategy -> Type -> Type
-  WithStrategy Eager t = t
-  WithStrategy Lazy t = Ref (Either (() -> t) t)
+  @ : Type -> Strategy -> Type
+  t @ Eager = t
+  t @ Lazy = Ref (Lazy t)
 
-  force : {s : Strategy} -> WithStrategy s t -> t
+  data Lazy a = Thunk (() -> a) | Blackhole | Forced a
+
+  force : {s : Strategy} -> t @ s -> t
   force {Eager} t = t
-  force {Lazy} t = runST $ do
+  force {Lazy} t = run do
     x <- readRef t
     case x of
-      Left f -> let result = f () in writeRef t result; return result
-      Right result -> return result
+      Thunk f -> do
+        writeRef t Blackhole
+        let result = f ()
+        writeRef t (Forced result)
+        return result
+      Blackhole -> error "<loop>"
+      Forced result -> return result
 
-  delay : {s : Strategy} -> (() -> t) -> WithStrategy s t
+  delay : {s : Strategy} -> (() -> t) -> t @ s
   delay {Eager} f = f ()
   delay {Lazy} f = newRef (Left f)
 
-  data List s a = Nil | Cons a (WithStrategy s (List s a))
+  data List s a = Nil | Cons a (List s a @ s)
 
-  map : <s> -> (a -> b) -> List s a -> List s b
-  map f Nil = Nil
-  map <s> f (Cons x xs) = Cons (f x) (delay {s} (map f xs))
+  map : {s} -> (a -> b) -> List s a -> List s b
+  map {s} = case s in \f xs. case xs of
+    Nil -> Nil
+    Cons x xs' -> Cons (f x) (map f xs')
 
   map s = case s of
     Eager -> mapEager

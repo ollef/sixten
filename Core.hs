@@ -133,9 +133,9 @@ instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
                         | (Hint n, (_, p, t)):hpts' <- List.group $ zip (map Hint [(0 :: Int)..]) hpts]
               go (xs, p, t) = (pure tilde <>) `iff` isIrrelevant p $
                 (if isImplicit p then braces else parens) $
-                hsep (map prettyM xs) <+> prettyM ":" <+>
+                hsep (map (prettyM . (ns Vector.!)) xs) <+> prettyM ":" <+>
                 prettyM (unvar (fromText . (ns Vector.!)) id <$> t)
-          (doc $ inviolable $ hcat $ map go grouped) <+>
+          doc (inviolable $ hcat $ map go grouped) <+>
             associate (prettyM $ instantiate (pure . fromText . (ns Vector.!)) s)
 
 
