@@ -4,7 +4,6 @@ import Bound
 import Control.Monad
 import Data.Monoid
 import Data.String
-import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Prelude.Extras
 

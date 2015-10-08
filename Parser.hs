@@ -9,6 +9,7 @@ import Data.Text(Text)
 import qualified Data.Text as Text
 import Data.Char
 import qualified Data.HashSet as HS
+import qualified Data.Vector as Vector
 import Data.Ord
 import qualified Text.Parser.Token.Highlight as Highlight
 import qualified Text.Trifecta as Trifecta
@@ -16,6 +17,7 @@ import Text.Trifecta((<?>))
 import Text.Trifecta.Delta
 
 import Annotation
+import Branches
 import Hint
 import Input
 import Util
@@ -134,7 +136,7 @@ idStyle = Trifecta.IdentifierStyle "Dependent" start letter res Highlight.Identi
   where
     start  = Trifecta.satisfy isAlpha    <|> Trifecta.oneOf "_"
     letter = Trifecta.satisfy isAlphaNum <|> Trifecta.oneOf "_'"
-    res    = HS.fromList ["forall", "_", "Type"]
+    res    = HS.fromList ["forall", "_", "Type", "case", "of"]
 
 ident :: Parser Name
 ident = Trifecta.token $ Trifecta.ident idStyle
@@ -151,6 +153,12 @@ identOrWildcard = Just <$> ident
 
 symbol :: String -> Parser Name
 symbol = fmap Text.pack . Trifecta.token . Trifecta.symbol
+
+literal :: Parser Literal
+literal = Trifecta.token Trifecta.integer
+
+constructor :: Parser Constr
+constructor = ident
 
 data Binding
   = Plain Plicitness [Maybe Name]
@@ -197,10 +205,21 @@ atomicExpr
  <|> Var      <$> ident
  <|> abstr (reserved "forall") Pi
  <|> abstr (symbol   "\\")     lam
+ <|> Case <$ reserved "case" <*>% expr <*% reserved "of" <*>% dropAnchor branches
  <|> symbol "(" *>% expr <*% symbol ")"
  <?> "atomic expression"
   where
     abstr t c = abstractBindings c <$ t <*>% someBindings <*% symbol "." <*>% expr
+
+branches :: Parser (Branches Expr Name)
+branches = dropAnchor $  ConBranches <$> manySameCol conBranch
+                     <|> LitBranches <$> manySameCol litBranch
+                                     <*> (sameCol >> (reserved "_" *>% symbol "->" *>% expr))
+  where
+    litBranch = (,) <$> literal <*% symbol "->" <*>% expr
+    conBranch = con <$> constructor <*> manySI ident <*% symbol "->" <*>% expr
+    con c hs e = (c, (Hint . Just) <$> v, abstract (`Vector.elemIndex` v) e)
+      where v = Vector.fromList hs
 
 expr :: Parser (Expr Name)
 expr

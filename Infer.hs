@@ -71,7 +71,7 @@ inferType surrounding expr = do
       (_, typ, _) <- context v
       return (return $ B v, bimap plicitness B typ)
     Input.Var (F v) -> return (Core.Var $ F v, metaType v)
-    Input.Type      -> return (Core.Type, Core.Type)
+    Input.Type -> return (Core.Type, Core.Type)
     Input.Pi n p Nothing s -> do
       tv  <- existsVar mempty Core.Type ()
       v   <- forall_ n tv ()
@@ -85,21 +85,23 @@ inferType surrounding expr = do
       s' <- abstract1M v e'
       return (Core.Pi n p t' s', Core.Type)
     Input.Lam n p s -> uncurry generalise <=< enterLevel $ do
-      a   <- existsVar mempty Core.Type ()
-      b   <- existsVar mempty Core.Type ()
-      x   <- forall_ n a ()
+      a <- existsVar mempty Core.Type ()
+      b <- existsVar mempty Core.Type ()
+      x <- forall_ n a ()
       (e', b')  <- checkType surrounding (instantiate1 (return $ F x) s) b
-      s'  <- abstract1M x e'
-      ab  <- abstract1M x b'
+      s' <- abstract1M x e'
+      ab <- abstract1M x b'
       return (Core.Lam n p a s', Core.Pi n p a ab)
     Input.App e1 p e2 -> do
       a <- existsVar mempty Core.Type ()
       b <- existsVar mempty Core.Type ()
-      (e1', Core.Pi _ p' argType' resultType')
-        <- checkType surrounding e1 $ Core.Pi mempty p a $ abstractNone b
-      unless (p == p') $ throwError "app ppp"
-      (e2', _) <- checkType p e2 argType'
-      return (Core.App e1' p e2', instantiate1 e2' resultType')
+      (e1', e1type) <- checkType surrounding e1 $ Core.Pi mempty p a
+                                                $ abstractNone b
+      case e1type of
+        Core.Pi _ p' a' b' | p == p' -> do
+          (e2', _) <- checkType p e2 a'
+          return (Core.App e1' p e2', instantiate1 e2' b')
+        _ -> throwError "inferType: expected pi type"
     Input.Anno e t  -> do
       (t', _) <- checkType surrounding t Core.Type
       checkType surrounding e t'
