@@ -1,8 +1,8 @@
+Switch to lenses
 Javascript code generation
 Let definitions
 Restructure codebase
 ADTs and cases
-  Parse
   Type-check
   Codegen
 Specialisation pragma

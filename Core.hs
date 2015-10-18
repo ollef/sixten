@@ -21,11 +21,13 @@ import Branches
 import Hint
 import Pretty
 import Util
+import qualified Input
 
 -- | Expressions with variables of type @v@, with abstractions and applications
 -- decorated by @d@s.
 data Expr d v
   = Var v
+  | Con Constr
   | Type
   | Pi  !NameHint !d (Type d v) (Scope1 (Expr d) v)
   | Lam !NameHint !d (Type d v) (Scope1 (Expr d) v)
@@ -36,7 +38,7 @@ data Expr d v
 -- | Synonym for documentation purposes
 type Type = Expr
 
-type Program d v = HashMap v (Expr d v, Type d v, d)
+type Program d v = HashMap v (Input.Definition (Expr d) v, Type d v, d)
 
 -------------------------------------------------------------------------------
 -- * Views
@@ -88,6 +90,7 @@ instance Monad (Expr d) where
   return = Var
   expr >>= f = case expr of
     Var v       -> f v
+    Con c       -> Con c
     Type        -> Type
     Pi  x p t s -> Pi x p (t >>= f) (s >>>= f)
     Lam x p t s -> Lam x p (t >>= f) (s >>>= f)
@@ -103,6 +106,7 @@ instance Bifoldable Expr where
 instance Bitraversable Expr where
   bitraverse f g expr = case expr of
     Var v       -> Var <$> g v
+    Con c       -> pure $ Con c
     Type        -> pure Type
     Pi  x d t s -> Pi  x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
     Lam x d t s -> Lam x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
@@ -113,6 +117,7 @@ instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
       => Pretty (Expr d v) where
   prettyM expr = case expr of
     Var v     -> prettyM v
+    Con c     -> prettyM c
     Type      -> pure $ text "Type"
     Pi  _ p t (unusedScope -> Just e) -> parens `above` arrPrec $
       ((pure tilde <>) `iff` isIrrelevant p $ braces `iff` isImplicit p $ prettyM t)

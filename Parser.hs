@@ -9,6 +9,7 @@ import Data.Text(Text)
 import qualified Data.Text as Text
 import Data.Char
 import qualified Data.HashSet as HS
+import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Ord
 import qualified Text.Parser.Token.Highlight as Highlight
@@ -18,6 +19,7 @@ import Text.Trifecta.Delta
 
 import Annotation
 import Branches
+import Data
 import Hint
 import Input
 import Util
@@ -115,6 +117,9 @@ someSI p = Trifecta.some (sameLineOrIndented >> p)
 manySI :: Parser a -> Parser [a]
 manySI p = Trifecta.many (sameLineOrIndented >> p)
 
+sepBySI :: Parser a -> Parser sep -> Parser [a]
+sepBySI p sep = (:) <$> p <*> manySI (sep *>% p)
+
 -- * Applicative style combinators for checking that the second argument parser
 --   is on the same line or indented compared to the anchor.
 infixl 4 <$>%, <$%, <*>%, <*%, *>%, <**>%
@@ -136,7 +141,7 @@ idStyle = Trifecta.IdentifierStyle "Dependent" start letter res Highlight.Identi
   where
     start  = Trifecta.satisfy isAlpha    <|> Trifecta.oneOf "_"
     letter = Trifecta.satisfy isAlphaNum <|> Trifecta.oneOf "_'"
-    res    = HS.fromList ["forall", "_", "Type", "case", "of"]
+    res    = HS.fromList ["forall", "_", "Type", "case", "of", "where"]
 
 ident :: Parser Name
 ident = Trifecta.token $ Trifecta.ident idStyle
@@ -176,6 +181,23 @@ abstractBindings c = flip $ foldr f
     abstractMaybe1 = maybe abstractNone abstract1
     h = Hint
 
+bindingNames :: [Binding] -> Vector (Maybe Name)
+bindingNames bs = Vector.fromList $ bs >>= flatten
+  where
+    flatten (Plain _ names) = names
+    flatten (Typed _ names _) = names
+
+abstractBindingTelescope :: [Binding] -> Vector (NameHint, Plicitness, Scope Int Expr Name)
+abstractBindingTelescope bs
+  = Vector.imap (\i (n, p, t) -> (Hint n, p, abstract (abstr i) t)) unabstracted
+  where
+    unabstracted = Vector.fromList $ bs >>= flatten
+    abstr i v = case Vector.elemIndex (Just v) $ bindingNames bs of
+      Just n | n < i -> Just n
+      _ -> Nothing
+    flatten (Plain p names) = [(name, p, Wildcard) | name <- names]
+    flatten (Typed p names t) = [(name, p, t) | name <- names]
+
 atomicBinding :: Parser Binding
 atomicBinding
   =  Plain Explicit . (:[]) <$> identOrWildcard
@@ -203,7 +225,7 @@ atomicExpr
   =  Type     <$ reserved "Type"
  <|> Wildcard <$ wildcard
  <|> Var      <$> ident
- <|> abstr (reserved "forall") Pi
+ <|> abstr (reserved "forall") piType
  <|> abstr (symbol   "\\")     lam
  <|> Case <$ reserved "case" <*>% expr <*% reserved "of" <*>% dropAnchor branches
  <|> symbol "(" *>% expr <*% symbol ")"
@@ -229,18 +251,35 @@ expr
  <?> "expression"
   where
     typeAnno = flip Anno <$% symbol ":" <*>% expr
-    arr p    = (\e' e -> Pi (Hint Nothing) p (Just e) $ Scope $ Var $ F e')
+    arr p    = (\e' e -> Pi (Hint Nothing) p e $ Scope $ Var $ F e')
            <$% symbol "->" <*>% expr
     argument :: Parser (Plicitness, Expr Name)
     argument =  (,) Implicit <$ symbol "{" <*>% expr <*% symbol "}"
             <|> (,) Explicit <$> atomicExpr
 
-topLevel :: Parser (TopLevel Name)
-topLevel =  ident    <**>% (typeDecl <|> def Just)
-        <|> wildcard <**>% def (const Nothing)
-  where
-    typeDecl = flip TypeDecl <$ symbol ":" <*>% expr
-    def f = (\e n -> DefLine (f n) e) <$> (abstractBindings lam <$> manyBindings <*% symbol "=" <*>% expr)
+topLevel :: Parser (TopLevelParsed Name)
+topLevel = dataDef <|> def
 
-program :: Parser [TopLevel Name]
+def :: Parser (TopLevelParsed Name)
+def = ident    <**>% (typeDecl <|> mkDef Just)
+  <|> wildcard <**>% mkDef (const Nothing)
+  where
+    typeDecl = flip ParsedTypeDecl <$ symbol ":" <*>% expr
+    mkDef f = (\e n -> ParsedDefLine (f n) e) <$> (abstractBindings lam <$> manyBindings <*% symbol "=" <*>% expr)
+
+dataDef :: Parser (TopLevelParsed Name)
+dataDef = mkDataDef <$ reserved "data" <*>% constructor <*> manyBindings
+    <*% reserved "where" <*>% dropAnchor (manySI conDef)
+  where
+    conDef = ConstrDef <$> constructor <*% symbol ":" <*>% expr
+    mkDataDef tc bindings cs = ParsedData tc
+                             $ DataDef (abstractBindingTelescope bindings)
+                                       (map abstrConstrDef cs)
+      where
+        abstrConstrDef (ConstrDef name typ)
+          = ConstrDef name
+          $ abstract ((`Vector.elemIndex` bindingNames bindings) . Just) typ
+
+
+program :: Parser [TopLevelParsed Name]
 program = Trifecta.whiteSpace >> dropAnchor (manySameCol $ dropAnchor topLevel)

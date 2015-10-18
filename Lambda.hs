@@ -13,6 +13,7 @@ import Util
 
 data Expr v
   = Var v
+  | Con Constr
   | Lam !NameHint (Scope1 Expr v)
   | App (Expr v) (Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
@@ -30,6 +31,7 @@ instance Applicative Expr where
 instance Monad Expr where
   return = Var
   Var v >>= f = f v
+  Con c >>= _ = Con c
   Lam h s >>= f = Lam h $ s >>>= f
   App e1 e2 >>= f = App (e1 >>= f) (e2 >>= f)
 
@@ -51,7 +53,8 @@ bindingsView _ _ = Nothing
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Expr v) where
   prettyM expr = case expr of
-    Var v     -> prettyM v
+    Var v -> prettyM v
+    Con c -> prettyM c
     (bindingsView lamView -> Just (hs, s)) -> parens `above` absPrec $
       withNameHints (Vector.fromList hs) $ \ns ->
         prettyM "\\" <> hsep (map prettyM $ Vector.toList ns) <> prettyM "." <+>

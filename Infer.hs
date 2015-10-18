@@ -72,13 +72,7 @@ inferType surrounding expr = do
       return (return $ B v, bimap plicitness B typ)
     Input.Var (F v) -> return (Core.Var $ F v, metaType v)
     Input.Type -> return (Core.Type, Core.Type)
-    Input.Pi n p Nothing s -> do
-      tv  <- existsVar mempty Core.Type ()
-      v   <- forall_ n tv ()
-      (e', _)  <- checkType surrounding (instantiate1 (return $ F v) s) Core.Type
-      s'  <- abstract1M v e'
-      return (Core.Pi n p tv s', Core.Type)
-    Input.Pi n p (Just t) s -> do
+    Input.Pi n p t s -> do
       (t', _) <- checkType p t Core.Type
       v  <- forall_ n t' ()
       (e', _) <- checkType surrounding (instantiate1 (return $ F v) s) Core.Type
@@ -102,6 +96,8 @@ inferType surrounding expr = do
           (e2', _) <- checkType p e2 a'
           return (Core.App e1' p e2', instantiate1 e2' b')
         _ -> throwError "inferType: expected pi type"
+    Input.Case e brs -> do
+      undefined
     Input.Anno e t  -> do
       (t', _) <- checkType surrounding t Core.Type
       checkType surrounding e t'
@@ -142,15 +138,30 @@ generalise expr typ = do
     go [a] f = fmap (f (metaHint a) Implicit $ metaType a) . abstract1M a
     go _   _ = error "Generalise"
 
+checkDataType = undefined
+subDefType = undefined
+generaliseDef = undefined
+abstractDefM = undefined
+
+checkDefType :: (Hashable v, Ord v, Show v)
+             => Input.Definition Input.Expr (Var v (MetaVar s () Plicitness v))
+             -> Core s v
+             -> TCM s v ( Input.Definition (Core.Expr Plicitness) (Var v (MetaVar s () Plicitness v))
+                      , Core s v
+                      )
+checkDefType (Input.Definition e) typ = first Input.Definition <$> checkType Explicit e typ
+checkDefType (Input.DataDefinition d) typ = first Input.DataDefinition <$> checkDataType d typ
+
 checkRecursiveDefs :: (Hashable v, Ord v, Show v)
                    => Vector
                      ( NameHint
-                     , Scope Int Input.Expr (Var v (MetaVar s () Plicitness v))
+                     , Input.Definition Input.Expr (Var Int (Var v (MetaVar s () Plicitness v)))
                      , Scope Int Input.Expr (Var v (MetaVar s () Plicitness v))
                      )
                    -> TCM s v
-                     ( Vector (ScopeM Int Core.Expr s () Plicitness v
-                     , ScopeM Int Core.Expr s () Plicitness v)
+                     (Vector ( Input.Definition (Core.Expr Plicitness) (Var Int (Var v (MetaVar s () Plicitness v)))
+                             , ScopeM Int Core.Expr s () Plicitness v
+                             )
                      )
 checkRecursiveDefs ds = do
   (evs, checkedDs) <- enterLevel $ do
@@ -158,18 +169,18 @@ checkRecursiveDefs ds = do
       tv <- existsVar mempty Core.Type ()
       forall_ v tv ()
     let instantiatedDs = flip V.map ds $ \(_, e, t) ->
-          ( instantiate (return . return . (evs V.!)) e
+          ( Input.instantiateDef (return . return . (evs V.!)) e
           , instantiate (return . return . (evs V.!)) t
           )
-    checkedDs <- V.forM instantiatedDs $ \(e, t) -> do
+    checkedDs <- sequence $ flip V.imap instantiatedDs $ \i (d, t) -> do
       (t', _) <- checkType Explicit t Core.Type
-      (e', t'') <- checkType Explicit e t'
-      return (e', t'')
+      (d', t'') <- checkDefType d t'
+      subDefType d' t'' (metaType $ evs V.! i)
     return (evs, checkedDs)
-  V.forM checkedDs $ \(e, t) -> do
-    (ge, gt) <- generalise e t
-    tr "checkRecursiveDefs ge" ge
+  V.forM checkedDs $ \(d, t) -> do
+    (gd, gt) <- generaliseDef d t
+    -- tr "checkRecursiveDefs gd" gd
     tr "                   gt" gt
-    s  <- abstractM (`V.elemIndex` evs) ge
+    s  <- abstractDefM (`V.elemIndex` evs) gd
     ts <- abstractM (`V.elemIndex` evs) gt
     return (s, ts)

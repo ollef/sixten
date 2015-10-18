@@ -56,3 +56,6 @@ recursiveAbstract es = (abstract (`HM.lookup` vs) . snd) <$> es
 
 fromText :: IsString a => Text -> a
 fromText = fromString . Text.unpack
+
+shower :: (Show a, IsString b) => a -> b
+shower = fromString . show

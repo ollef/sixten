@@ -71,6 +71,16 @@ tr s x = do
   r <- showMeta x
   Monad.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ showWide r
 
+trp :: Pretty a => String -> a -> TCM s v ()
+trp s x = do
+  i <- gets tcIndent
+  Monad.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ showWide (pretty x)
+
+trs :: Show a => String -> a -> TCM s v ()
+trs s x = do
+  i <- gets tcIndent
+  Monad.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ show x
+
 existsAtLevel :: NameHint -> CoreM s d a v -> d -> Level -> TCM s v' (MetaVar s d a v)
 existsAtLevel hint typ dat l = do
   i   <- fresh

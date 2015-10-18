@@ -10,6 +10,7 @@ import Data.Monoid
 
 import Annotation
 import Core
+import qualified Input
 import Pretty
 
 newtype Level = Level Int
@@ -70,7 +71,7 @@ addContext :: (Eq v, Hashable v) => Program Annotation v -> TCM s v ()
 addContext p = modify $ \s -> s {tcContext = p <> tcContext s}
 
 context :: (Eq v, Hashable v, Show v)
-        => v -> TCM s v (Expr Annotation v, Type Annotation v, Annotation)
+        => v -> TCM s v (Input.Definition (Expr Annotation) v, Type Annotation v, Annotation)
 context v = do
   mres <- gets $ HM.lookup v . tcContext
   maybe (throwError $ "Not in scope: " ++ show v) return mres

@@ -53,7 +53,6 @@ False x y = y
 a : forall {a}. a
 a = a
 
-
 and : Bool -> Bool -> Bool
 and b1 b2 = if' b1 b2 False
 

@@ -91,21 +91,21 @@ subtype surrounding expr type1 type2 = do
   tr "        t1" type1
   tr "        t2" type2
   modifyIndent succ
-  (e', type') <- go True expr type1 type2
+  (e', type') <- go True True expr type1 type2
   modifyIndent pred
   tr "subtype res e'" e'
   tr "            type'" type'
   return (e', type')
   where
-    go reduce e typ1 typ2
+    go reduce1 reduce2 e typ1 typ2
       | typ1 == typ2 = return (e, typ2)
       | otherwise = case (typ1, typ2) of
-        (Var (B v1), _) -> do
-          (typ1', _, _) <- context v1
-          subtype surrounding e (bimap plicitness B typ1') typ2
-        (_, Var (B v2)) -> do
-          (typ2', _, _) <- context v2
-          subtype surrounding e typ1 $ bimap plicitness B typ2'
+        (Var (B _), _) | reduce1 -> do
+          typ1' <- whnf mempty plicitness typ1
+          go False reduce2 e typ1' typ2
+        (_, Var (B _)) | reduce2 -> do
+          typ2' <- whnf mempty plicitness typ2
+          go reduce1 False e typ1 typ2'
         (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> do
           let h = h1 <> h2
           x2  <- forall_ h t2 ()
@@ -148,8 +148,8 @@ subtype surrounding expr type1 type2 = do
         (Pi h p t1 s1, _) -> do
           v1 <- existsVar h t1 ()
           subtype surrounding (betaApp e p v1) (instantiate1 v1 s1) typ2
-        _ | reduce -> do
+        _ | reduce1 || reduce2-> do
           typ1' <- whnf mempty plicitness typ1
           typ2' <- whnf mempty plicitness typ2
-          go False e typ1' typ2'
+          go False False e typ1' typ2'
         _ -> do unify typ1 typ2; return (e, typ2)

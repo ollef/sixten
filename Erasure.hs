@@ -11,6 +11,7 @@ type Lambda = Lambda.Expr
 erase :: HasRelevance a => Core a v -> Lambda v
 erase expr = case expr of
   Core.Var v -> Lambda.Var v
+  Core.Con c -> Lambda.Con c
   Core.Type -> undefined
   Core.Pi _ _ _ s -> erase $ instantiate1 undefined s
   Core.Lam h a _ s -> case relevance a of
