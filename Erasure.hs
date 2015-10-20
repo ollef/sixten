@@ -3,6 +3,8 @@ import Bound
 
 import Annotation
 import qualified Core
+import Data
+import qualified Input
 import qualified Lambda
 
 type Core = Core.Expr
@@ -21,3 +23,8 @@ erase expr = case expr of
     Irrelevant -> erase e1
     Relevant -> Lambda.App (erase e1) (erase e2)
   Core.Case {} -> undefined -- TODO
+
+eraseDef :: HasRelevance a => Input.Definition (Core a) v -> Input.Definition Lambda v
+eraseDef (Input.Definition e) = Input.Definition $ erase e
+eraseDef (Input.DataDefinition DataDef {})
+  = Input.DataDefinition $ DataDef mempty mempty

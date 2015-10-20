@@ -72,7 +72,7 @@ test inp = do
       (Right res, _) -> do
         mapM_ print $ (show . pretty . (\(x, (y, z, a)) -> (x, (y, z, show a)))) <$> HM.toList res
         putStrLn "------------- erased ------------------"
-        -- mapM_ print $ (show . pretty) <$> [(x, erase e) | (x, (e, _, a)) <- HM.toList res, isRelevant a]
+        mapM_ print $ (show . pretty) <$> [(x, eraseDef e) | (x, (e, _, a)) <- HM.toList res, isRelevant a]
 
 main :: IO ()
 main = do

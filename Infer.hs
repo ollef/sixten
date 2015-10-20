@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE BangPatterns, ViewPatterns #-}
 module Infer where
 
 import Bound
@@ -14,8 +14,9 @@ import Data.Vector(Vector)
 import qualified Data.Vector as V
 
 import Annotation
-import Hint
+import Data
 import qualified Core
+import Hint
 import qualified Input
 import Meta
 import Monad
@@ -71,6 +72,7 @@ inferType surrounding expr = do
       (_, typ, _) <- context v
       return (return $ B v, bimap plicitness B typ)
     Input.Var (F v) -> return (Core.Var $ F v, metaType v)
+    Input.Con c -> undefined
     Input.Type -> return (Core.Type, Core.Type)
     Input.Pi n p t s -> do
       (t', _) <- checkType p t Core.Type
@@ -138,19 +140,71 @@ generalise expr typ = do
     go [a] f = fmap (f (metaHint a) Implicit $ metaType a) . abstract1M a
     go _   _ = error "Generalise"
 
-checkDataType = undefined
-subDefType = undefined
-generaliseDef = undefined
-abstractDefM = undefined
+checkConstrDef typ (ConstrDef c (bindingsView Input.piView -> Just (args, ret))) = do
+  args' <- forM args $ \(h, p, arg) -> do
+    (arg', _) <- checkType p arg Core.Type
+    return (h, p, arg')
+  ret' <- checkType _ ret Core.Type
+  unify ret typ
+  return $ ConstrDef c _
+checkConstrDef _ _ = throwError "checkConstrDef"
 
-checkDefType :: (Hashable v, Ord v, Show v)
-             => Input.Definition Input.Expr (Var v (MetaVar s () Plicitness v))
-             -> Core s v
-             -> TCM s v ( Input.Definition (Core.Expr Plicitness) (Var v (MetaVar s () Plicitness v))
+extractParams :: Core.Expr p v -> Vector (NameHint, p, Scope Int (Core.Expr p) v)
+extractParams (bindingsView Core.piView -> Just (ps, fromScope -> Core.Type))
+  = V.fromList [(h, d, toScope t) | (h, d, t) <- ps]
+extractParams _ = error "extractParams"
+
+checkDataType :: (Hashable v, Ord v, Show v)
+              => Var v (MetaVar s () Plicitness v)
+              -> DataDef Input.Expr (Var v (MetaVar s () Plicitness v))
+              -> Core s v
+              -> TCM s v ( Data.DataDef (Core.Expr Plicitness) (Var v (MetaVar s () Plicitness v))
+                         , Core s v
+                         )
+checkDataType v d@(DataDef _ps cs) t = do
+  (dt', t') <- checkType Explicit (dataType d Input.Pi (Scope Input.Type)) t
+  let ps' = extractParams dt'
+      retType = undefined
+  cs' <- forM cs $ checkConstrDef retType
+  return (DataDef ps' cs', t')
+
+subDefType :: (Ord v, Show v, Hashable v)
+           => Input.Definition (Core.Expr Plicitness) (Var v (MetaVar s () Plicitness v))
+           -> Core s v
+           -> Core s v
+           -> TCM s v ( Input.Definition (Core.Expr Plicitness) (Var v (MetaVar s () Plicitness v))
                       , Core s v
                       )
-checkDefType (Input.Definition e) typ = first Input.Definition <$> checkType Explicit e typ
-checkDefType (Input.DataDefinition d) typ = first Input.DataDefinition <$> checkDataType d typ
+subDefType (Input.Definition e) t t' = first Input.Definition <$> subtype Explicit e t t'
+subDefType (Input.DataDefinition d) t t' = do unify t t'; return (Input.DataDefinition d, t')
+
+generaliseDef :: (Ord v, Show v)
+              => Input.Definition (Core.Expr Plicitness) (Var v (MetaVar s () Plicitness v))
+              -> Core s v
+              -> TCM s v ( Input.Definition (Core.Expr Plicitness) (Var v (MetaVar s () Plicitness v))
+                         , Core s v
+                         )
+generaliseDef (Input.Definition d) t = first Input.Definition <$> generalise d t
+generaliseDef (Input.DataDefinition d) t = return (Input.DataDefinition d, t)
+
+abstractDefM :: (Show d, Show a, Show v)
+             => (MetaVar s d a v -> Maybe b)
+             -> Input.Definition (Core.Expr a) (Var v (MetaVar s d a v))
+             -> TCM s v (Input.Definition (Core.Expr a) (Var b (Var v (MetaVar s d a v))))
+abstractDefM f (Input.Definition e) = Input.Definition . fromScope <$> abstractM f e
+abstractDefM f (Input.DataDefinition e) = Input.DataDefinition <$> abstractDataDefM f e
+
+abstractDataDefM = undefined
+
+checkDefType :: (Hashable v, Ord v, Show v)
+             => Var v (MetaVar s () Plicitness v)
+             -> Input.Definition Input.Expr (Var v (MetaVar s () Plicitness v))
+             -> Core s v
+             -> TCM s v ( Input.Definition (Core.Expr Plicitness) (Var v (MetaVar s () Plicitness v))
+                        , Core s v
+                        )
+checkDefType _ (Input.Definition e) typ = first Input.Definition <$> checkType Explicit e typ
+checkDefType v (Input.DataDefinition d) typ = first Input.DataDefinition <$> checkDataType v d typ
 
 checkRecursiveDefs :: (Hashable v, Ord v, Show v)
                    => Vector
@@ -174,7 +228,7 @@ checkRecursiveDefs ds = do
           )
     checkedDs <- sequence $ flip V.imap instantiatedDs $ \i (d, t) -> do
       (t', _) <- checkType Explicit t Core.Type
-      (d', t'') <- checkDefType d t'
+      (d', t'') <- checkDefType (F $ evs V.! i) d t'
       subDefType d' t'' (metaType $ evs V.! i)
     return (evs, checkedDs)
   V.forM checkedDs $ \(d, t) -> do

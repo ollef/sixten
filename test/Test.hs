@@ -61,13 +61,12 @@ or b1 b2 = if' b1 True b2
 
 -- data Strategy = Eager | Lazy
 
--- strategize : Strategy -> Type -> Type
+-- strategy : Strategy -> Type -> Type
 
--- data BaseList (s : Strategy) a = Nil | Cons a (s (BaseList s a))
+-- data BaseList (s : Strategy) a = Nil | Cons a (strategy s (BaseList s a))
 
 -- List a   = BaseList Eager a
 -- Stream a = BaseList Lazy a
---
 --
 -- data List a = Nil | Cons a (List a)
 --
@@ -75,4 +74,16 @@ or b1 b2 = if' b1 True b2
 --
 -- (x : a : A, y : b : A | ) : Row A
 --
+-- data Unit : Type {0} where
+--   unit : Unit
 --
+-- data Pair {s t : Size}(a : Type s)(b : Type t) where
+--   pair : a -> b -> Pair a b
+--
+-- Vector : {s : Size}(n : Nat) -> Type {s} -> Type {n * s}
+-- Vector 0 _ = Unit
+-- Vector (S n) A = A * Vector n A
+--
+-- sum : (n : Nat) -> ^(Vector n Int) -> Int
+-- sum 0 unit = 0
+-- sum (S n) ^(pair a rest) = a + sum n ^rest

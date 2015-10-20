@@ -90,6 +90,12 @@ recursiveAbstractDefs es = (abstractDef (`HM.lookup` vs) . snd) <$> es
     vs = HM.fromList $ zip (toList $ fst <$> es) [(0 :: Int)..]
 
 -------------------------------------------------------------------------------
+-- * Views
+piView :: Expr v -> Maybe (NameHint, Plicitness, Type v, Scope1 Expr v)
+piView (Pi n p e s) = Just (n, p, e, s)
+piView _            = Nothing
+
+-------------------------------------------------------------------------------
 -- Instances
 instance Eq1 Expr; instance Ord1 Expr; instance Show1 Expr
 

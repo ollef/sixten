@@ -42,18 +42,6 @@ type Program d v = HashMap v (Input.Definition (Expr d) v, Type d v, d)
 
 -------------------------------------------------------------------------------
 -- * Views
--- | View consecutive bindings at the same time
-bindingsView
-  :: (forall v'. Expr d v' -> Maybe (NameHint, d, Type d v', Scope1 (Expr d) v'))
-  -> Expr d v -> Maybe ([(NameHint, d, Type d (Var Int v))], Scope Int (Expr d) v)
-bindingsView f expr@(f -> Just _) = Just $ go 0 $ F <$> expr
-  where
-    go x (f -> Just (n, p, e, s)) = (pure (n, p, e) <> ns, s')
-      where
-        (ns, s') = (go $! (x + 1)) (instantiate1 (return $ B x) s)
-    go _ e = (mempty, toScope e)
-bindingsView _ _ = Nothing
-
 piView :: Expr d v -> Maybe (NameHint, d, Type d v, Scope1 (Expr d) v)
 piView (Pi n p e s) = Just (n, p, e, s)
 piView _            = Nothing

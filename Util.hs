@@ -1,3 +1,4 @@
+{-# LANGUAGE Rank2Types, ViewPatterns #-}
 module Util where
 
 import Bound
@@ -9,6 +10,7 @@ import Data.Hashable
 import qualified Data.HashMap.Lazy as HM
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HS
+import Data.Monoid
 import Data.Set(Set)
 import qualified Data.Set as S
 import Data.String
@@ -59,3 +61,16 @@ fromText = fromString . Text.unpack
 
 shower :: (Show a, IsString b) => a -> b
 shower = fromString . show
+
+-- | View consecutive bindings at the same time
+bindingsView
+  :: Monad expr
+  => (forall v'. expr v' -> Maybe (h, d, expr v', Scope1 expr v'))
+  -> expr v -> Maybe ([(h, d, expr (Var Int v))], Scope Int expr v)
+bindingsView f expr@(f -> Just _) = Just $ go 0 $ F <$> expr
+  where
+    go x (f -> Just (n, p, e, s)) = (pure (n, p, e) <> ns, s')
+      where
+        (ns, s') = (go $! (x + 1)) (instantiate1 (return $ B x) s)
+    go _ e = (mempty, toScope e)
+bindingsView _ _ = Nothing
