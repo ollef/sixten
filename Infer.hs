@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns, ViewPatterns #-}
+{-# LANGUAGE BangPatterns, ViewPatterns, RecursiveDo #-}
 module Infer where
 
 import Bound
@@ -40,8 +40,8 @@ checkType surrounding expr typ = do
         Core.Pi h p' a ts | p == p' -> do
           v <- forall_ (h <> m) a ()
           (body, ts') <- checkType surrounding
-                                   (instantiate1 (return $ F v) s)
-                                   (instantiate1 (return $ F v) ts)
+                                   (instantiate1 (pure $ F v) s)
+                                   (instantiate1 (pure $ F v) ts)
           expr' <- Core.Lam (m <> h) p a <$> abstract1M v body
           typ'' <- Core.Pi  (h <> m) p a <$> abstract1M v ts'
           return (expr', typ'')
@@ -140,18 +140,26 @@ generalise expr typ = do
     go [a] f = fmap (f (metaHint a) Implicit $ metaType a) . abstract1M a
     go _   _ = error "Generalise"
 
-checkConstrDef typ (ConstrDef c (bindingsView Input.piView -> Just (args, ret))) = do
-  args' <- forM args $ \(h, p, arg) -> do
-    (arg', _) <- checkType p arg Core.Type
-    return (h, p, arg')
-  ret' <- checkType _ ret Core.Type
-  unify ret typ
-  return $ ConstrDef c _
+checkConstrDef :: (Ord v, Show v, Hashable v)
+               => Core s v
+               -> ConstrDef (Input s v)
+               -> TCM s v (ConstrDef (Core s v))
+checkConstrDef typ (ConstrDef c (bindingsView Input.piView -> Just (args, ret))) = mdo
+  let inst = instantiate (\n -> let (a, _, _, _) = args' V.! n in pure $ F a)
+  args' <- forM (V.fromList args) $ \(h, p, arg) -> do
+    (arg', _) <- checkType p (inst arg) Core.Type
+    v <- forall_ h arg' ()
+    return (v, h, p, arg')
+  (ret', _) <- checkType Explicit (inst ret) Core.Type
+  unify ret' typ
+  res <- F.foldrM (\(v, h, p, arg') rest ->
+         Core.Pi h p arg' <$> abstract1M v rest) ret' args'
+  return $ ConstrDef c res
 checkConstrDef _ _ = throwError "checkConstrDef"
 
 extractParams :: Core.Expr p v -> Vector (NameHint, p, Scope Int (Core.Expr p) v)
 extractParams (bindingsView Core.piView -> Just (ps, fromScope -> Core.Type))
-  = V.fromList [(h, d, toScope t) | (h, d, t) <- ps]
+  = V.fromList ps
 extractParams _ = error "extractParams"
 
 checkDataType :: (Hashable v, Ord v, Show v)
@@ -161,12 +169,27 @@ checkDataType :: (Hashable v, Ord v, Show v)
               -> TCM s v ( Data.DataDef (Core.Expr Plicitness) (Var v (MetaVar s () Plicitness v))
                          , Core s v
                          )
-checkDataType v d@(DataDef _ps cs) t = do
-  (dt', t') <- checkType Explicit (dataType d Input.Pi (Scope Input.Type)) t
-  let ps' = extractParams dt'
-      retType = undefined
-  cs' <- forM cs $ checkConstrDef retType
-  return (DataDef ps' cs', t')
+checkDataType name d@(DataDef _ps cs) typ = mdo
+  (dt', t') <- checkType Explicit (dataType d Input.Pi (Scope Input.Type)) typ
+
+  let inst = instantiate (\n -> let (v, _, _, _) = ps' V.! n in pure $ F v)
+  let inst' = instantiate (\n -> let (v, _, _, _) = ps' V.! n in pure $ F v)
+
+  ps' <- forM (extractParams dt') $ \(h, p, s) -> do
+    let is = inst s
+    v <- forall_ h is ()
+    return (v, h, p, is)
+
+  let vs = (\(v, _, _, _) -> v) <$> ps'
+      retType = Core.apps (pure name) [(p, pure $ F v) | (v, _, p, _) <- V.toList ps']
+
+  params <- forM ps' $ \(_, h, p, t) -> (,,) h p <$> abstractM (`V.elemIndex` vs) t
+
+  cs' <- forM cs $ \(ConstrDef c t) -> do
+    res <- checkConstrDef retType (ConstrDef c $ inst' t)
+    traverse (abstractM (`V.elemIndex` vs)) res
+
+  return (DataDef params cs', t')
 
 subDefType :: (Ord v, Show v, Hashable v)
            => Input.Definition (Core.Expr Plicitness) (Var v (MetaVar s () Plicitness v))

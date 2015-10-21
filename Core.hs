@@ -127,7 +127,7 @@ instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
               go (xs, p, t) = (pure tilde <>) `iff` isIrrelevant p $
                 (if isImplicit p then braces else parens) $
                 hsep (map (prettyM . (ns Vector.!)) xs) <+> prettyM ":" <+>
-                prettyM (unvar (fromText . (ns Vector.!)) id <$> t)
+                prettyM (instantiate (pure . fromText . (ns Vector.!)) t)
           doc (inviolable $ hcat $ map go grouped) <+>
             associate (prettyM $ instantiate (pure . fromText . (ns Vector.!)) s)
 

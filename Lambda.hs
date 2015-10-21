@@ -35,20 +35,9 @@ instance Monad Expr where
   Lam h s >>= f = Lam h $ s >>>= f
   App e1 e2 >>= f = App (e1 >>= f) (e2 >>= f)
 
-lamView :: Expr v -> Maybe (NameHint, Scope1 Expr v)
-lamView (Lam h s) = Just (h, s)
+lamView :: Expr v -> Maybe (NameHint, (), Expr v, Scope1 Expr v)
+lamView (Lam h s) = Just (h, (), Con mempty, s)
 lamView _         = Nothing
-
-bindingsView
-  :: (forall v'. Expr v' -> Maybe (NameHint, Scope1 Expr v'))
-  -> Expr v -> Maybe ([NameHint], Scope Int Expr v)
-bindingsView f expr@(f -> Just _) = Just $ go 0 $ F <$> expr
-  where
-    go x (f -> Just (n, s)) = (n : ns, s')
-      where
-        (ns, s') = (go $! (x + 1)) (instantiate1 (return $ B x) s)
-    go _ e = ([], toScope e)
-bindingsView _ _ = Nothing
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Expr v) where
@@ -56,7 +45,7 @@ instance (Eq v, IsString v, Pretty v)
     Var v -> prettyM v
     Con c -> prettyM c
     (bindingsView lamView -> Just (hs, s)) -> parens `above` absPrec $
-      withNameHints (Vector.fromList hs) $ \ns ->
+      withNameHints (Vector.fromList ((\(h, _, _) -> h) <$> hs)) $ \ns ->
         prettyM "\\" <> hsep (map prettyM $ Vector.toList ns) <> prettyM "." <+>
         associate (prettyM $ instantiate (pure . fromText . (ns Vector.!)) s)
     Lam {} -> error "impossible prettyPrec lam"
