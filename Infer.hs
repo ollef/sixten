@@ -2,6 +2,8 @@
 module Infer where
 
 import Bound
+import Bound.Var
+import Control.Applicative
 import Control.Monad.Except
 import Control.Monad.ST()
 import Data.Bifunctor
@@ -210,14 +212,28 @@ generaliseDef :: (Ord v, Show v)
 generaliseDef (Input.Definition d) t = first Input.Definition <$> generalise d t
 generaliseDef (Input.DataDefinition d) t = return (Input.DataDefinition d, t)
 
-abstractDefM :: (Show d, Show a, Show v)
-             => (MetaVar s d a v -> Maybe b)
-             -> Input.Definition (Core.Expr a) (Var v (MetaVar s d a v))
-             -> TCM s v (Input.Definition (Core.Expr a) (Var b (Var v (MetaVar s d a v))))
+abstractDefM :: (Show a, Show v)
+             => (MetaVar s () a v -> Maybe b)
+             -> Input.Definition (Core.Expr a) (Var v (MetaVar s () a v))
+             -> TCM s v (Input.Definition (Core.Expr a) (Var b (Var v (MetaVar s () a v))))
 abstractDefM f (Input.Definition e) = Input.Definition . fromScope <$> abstractM f e
 abstractDefM f (Input.DataDefinition e) = Input.DataDefinition <$> abstractDataDefM f e
 
-abstractDataDefM = undefined
+abstractDataDefM :: (Show a, Show v)
+                 => (MetaVar s () a v -> Maybe b)
+                 -> DataDef (Core.Expr a) (Var v (MetaVar s () a v))
+                 -> TCM s v' (DataDef (Core.Expr a) (Var b (Var v (MetaVar s () a v))))
+abstractDataDefM f (DataDef ps cs) = mdo
+  let inst = instantiate (pure . F . (vs V.!))
+      vs = (\(_, _, _, v) -> v) <$> ps'
+  ps' <- forM ps $ \(h, p, s) -> let is = inst s in (,,,) h p is <$> forall_ h is ()
+  let f' x = F <$> f x <|> B <$> V.elemIndex x vs
+  aps <- forM ps' $ \(h, p, s, _) -> (,,) h p <$> (toScope . fmap assoc . fromScope) <$> abstractM f' s
+  acs <- forM cs $ \c -> traverse (fmap (toScope . fmap assoc . fromScope) . abstractM f' . inst) c
+  return $ DataDef aps acs
+  where
+    assoc :: Var (Var a b) c -> Var a (Var b c)
+    assoc = unvar (unvar B (F . B)) (F . F)
 
 checkDefType :: (Hashable v, Ord v, Show v)
              => Var v (MetaVar s () Plicitness v)

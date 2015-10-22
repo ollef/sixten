@@ -158,7 +158,7 @@ abstractM f e = do
     --    -> TCM s (Expr (Var () (Expr (Var Name (MetaVar s)))))
     go changed (F (f -> Just b)) = do
       liftST $ writeSTRef changed True
-      return $ return $ B b
+      return $ pure $ B b
     go changed (F v'@(metaRef -> Just r)) = do
       tfvs <- foldMapM S.singleton $ metaType v'
       let mftfvs = S.filter (isJust . f) tfvs
@@ -176,7 +176,7 @@ abstractM f e = do
           else
             free $ F v'
     go _ v' = free v'
-    free = return . return . return . return
+    free = pure . pure . pure . pure
 
 abstract1M :: (Show d, Show a, Show v)
            => MetaVar s d a v
@@ -189,6 +189,6 @@ abstract1M v e = do
 freeze :: CoreM s d a v -> TCM s v' (CoreM s d a v)
 freeze e = join <$> traverse go e
   where
-    go (F v@(metaRef -> Just r)) = either (const $ do mt <- freeze (metaType v); return $ return $ F v {metaType = mt})
+    go (F v@(metaRef -> Just r)) = either (const $ do mt <- freeze (metaType v); return $ pure $ F v {metaType = mt})
                                           freeze =<< solution r
-    go v                         = return $ return v
+    go v                         = return $ pure v
