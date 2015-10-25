@@ -280,6 +280,5 @@ dataDef = mkDataDef <$ reserved "data" <*>% constructor <*> manyBindings
           = ConstrDef name
           $ abstract ((`Vector.elemIndex` bindingNames bindings) . Just) typ
 
-
 program :: Parser [TopLevelParsed Name]
 program = Trifecta.whiteSpace >> dropAnchor (manySameCol $ dropAnchor topLevel)

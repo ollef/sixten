@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, RecursiveDo #-}
 module Relevance where
 
 import Bound
@@ -16,6 +16,7 @@ import qualified Data.Vector as V
 
 import Annotation
 import Core
+import Data
 import Hint
 import Meta
 import Monad
@@ -183,6 +184,7 @@ makeRel rel expr = do
   modifyIndent succ
   res <- case expr of
     Var v -> return $ Var v
+    Con c -> return $ Con c
     Type -> return Type
     Pi h p t s -> do
       rType <- returnsType t
@@ -297,7 +299,6 @@ infer expr surroundingRel knownDef = do
   tr "infer res t" typ
   return (expr', typ)
 
-
 check :: (Hashable v, Ord v, Show v)
       => Input s v -> Output s v -> RelevanceM s -> Bool -> TCM s v (Output s v)
 check expr typ rel knownDef = do
@@ -381,8 +382,40 @@ unify type1 type2 = do
           go False typ1' typ2'
         _ -> throwError $ "rel unify: " ++ show (pretty (show <$> typ1, show <$> typ2))
 
-inferDef = undefined
-subtypeDef = undefined
+inferConstr :: (Ord v, Show v, Hashable v) => ConstrDef (Input s v) -> TCM s v (ConstrDef (Output s v))
+inferConstr (ConstrDef c t) = ConstrDef c <$> check t Type (Relevance Relevant) False
+
+inferDef :: (Ord v, Show v, Hashable v)
+         => Input.Definition (Expr Plicitness) (Var v (MetaVar s (RelevanceM s) (MetaAnnotation s) v))
+         -> RelevanceM s
+         -> TCM s v (Input.Definition (Expr (MetaAnnotation s))
+                                      (Var v (MetaVar s (RelevanceM s) (MetaAnnotation s) v)), Output s v)
+inferDef (Input.Definition e) surroundingRel = first Input.Definition <$> infer e surroundingRel False
+inferDef (Input.DataDefinition (DataDef ps cs)) _surroundingRel = mdo
+  let inst = instantiate (\n -> let (v, _, _, _) = ps' V.! n in pure $ pure v)
+  ps' <- forM ps $ \(h, p, s) -> do
+    t <- makeRel (Relevance Irrelevant) $ inst s
+    v <- forall_ h t $ Relevance Irrelevant
+    return (v, h, p, t)
+  let abstr = abstract (unvar (const Nothing) $ flip V.elemIndex ((\(v, _, _, _) -> v) <$> ps'))
+      ps'' = (\(_, h, p, t) -> (h, p, abstr t)) <$> ps'
+  cs' <- mapM inferConstr $ fmap (fmap inst) cs
+  let cs'' = fmap abstr <$> cs'
+      res = DataDef ps'' cs''
+      resType = dataType res (\h -> Pi h . MetaAnnotation (Relevance Irrelevant)) (Scope Type)
+  return (Input.DataDefinition res, resType)
+
+subtypeDef :: (Ord v, Show v, Hashable v)
+           => Input.Definition (Expr (MetaAnnotation s))
+                               (Var v (MetaVar s (RelevanceM s) (MetaAnnotation s) v))
+           -> Output s v
+           -> Output s v
+           -> TCM s v (Input.Definition (Expr (MetaAnnotation s))
+                                              (Var v (MetaVar s (RelevanceM s) (MetaAnnotation s) v)))
+subtypeDef (Input.Definition e) t t' = Input.Definition <$> subtype e t t'
+subtypeDef (Input.DataDefinition d) t t' = do
+  unify t t'
+  return $ Input.DataDefinition d
 
 checkRecursiveDefs :: (Hashable v, Ord v, Show v)
                    => Vector (Input.Definition (Core.Expr Plicitness) (Var Int (Var v (MetaVar s (RelevanceM s) (MetaAnnotation s) v))), InputScope s Int v)
@@ -397,7 +430,7 @@ checkRecursiveDefs ds = case traverse unusedScope $ snd <$> ds of
     let instantiatedDs = flip V.imap ds $ \i (d, _) ->
           (evs V.! i, Input.instantiateDef (pure . pure . (\(ev, _, _) -> ev) . (evs V.!)) d)
     checkedDs <- V.forM instantiatedDs $ \((m, t, rel), d) -> do
-      (d', t') <- inferDef d rel False
+      (d', t') <- inferDef d rel
       d'' <- subtypeDef d' t' t
       return (m, d'', t)
     V.forM checkedDs $ \(m, d, t) -> do
