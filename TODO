@@ -2,9 +2,8 @@ Switch to lenses
 Javascript code generation
 Let definitions
 Restructure codebase
-ADTs and cases
+Cases
   Type-check
-  Codegen
 Specialisation pragma
   data Strategy = Eager | Lazy
 

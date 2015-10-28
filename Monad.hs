@@ -6,12 +6,15 @@ import Control.Monad.ST
 import Data.Bifunctor
 import Data.Hashable
 import qualified Data.HashMap.Lazy as HM
+import Data.HashMap.Lazy(HashMap)
 import Data.Monoid
 
 import Annotation
 import Core
+import Data
 import qualified Input
 import Pretty
+import Util
 
 newtype Level = Level Int
   deriving (Eq, Ord, Show)
@@ -20,24 +23,26 @@ instance Pretty Level where
   pretty (Level i) = pretty i
 
 data State v = State
-  { tcContext    :: Program Annotation v
-  , tcIndent     :: {-# UNPACK #-} !Int -- This has no place here, but is useful for debugging
-  , tcFresh      :: {-# UNPACK #-} !Int
-  , tcLevel      :: {-# UNPACK #-} !Level
-  , tcLog        :: ![String]
+  { tcContext :: Program Annotation v
+  , tcConstrs :: HashMap Constr (Type Annotation v)
+  , tcIndent  :: {-# UNPACK #-} !Int -- This has no place here, but is useful for debugging
+  , tcFresh   :: {-# UNPACK #-} !Int
+  , tcLevel   :: {-# UNPACK #-} !Level
+  , tcLog     :: ![String]
   }
 
 instance (Eq v, Hashable v) => Monoid (State v) where
   mempty = State
-    { tcContext  = mempty
-    , tcIndent   = 0
-    , tcFresh    = 0
-    , tcLevel    = Level 1
-    , tcLog      = mempty
+    { tcContext = mempty
+    , tcConstrs = mempty
+    , tcIndent  = 0
+    , tcFresh   = 0
+    , tcLevel   = Level 1
+    , tcLog     = mempty
     }
     where
-  mappend (State cxt1 x1 y1 (Level z1) l1) (State cxt2 x2 y2 (Level z2) l2)
-    = State (cxt1 <> cxt2) (x1 + x2) (y1 + y2) (Level $ z1 + z2) (l1 <> l2)
+  mappend (State cxt1 cs1 x1 y1 (Level z1) l1) (State cxt2 cs2 x2 y2 (Level z2) l2)
+    = State (cxt1 <> cxt2) (cs1 <> cs2) (x1 + x2) (y1 + y2) (Level $ z1 + z2) (l1 <> l2)
 
 type TCM s v a = ExceptT String (StateT (State v) (ST s)) a
 
@@ -68,13 +73,25 @@ log :: String -> TCM s v ()
 log l = modify $ \s -> s {tcLog = l : tcLog s}
 
 addContext :: (Eq v, Hashable v) => Program Annotation v -> TCM s v ()
-addContext p = modify $ \s -> s {tcContext = p <> tcContext s}
+addContext prog = modify $ \s -> s
+  { tcContext = prog <> tcContext s
+  , tcConstrs = cs   <> tcConstrs s
+  } where
+    cs = HM.fromList $ do
+      (_, (Input.DataDefinition d, _, _)) <- HM.toList prog
+      ConstrDef c t <- quantifiedConstrTypes (\h -> Pi h . Annotation Irrelevant) d
+      return (c, t)
 
 context :: (Eq v, Hashable v, Show v)
         => v -> TCM s v (Input.Definition (Expr Annotation) v, Type Annotation v, Annotation)
 context v = do
   mres <- gets $ HM.lookup v . tcContext
   maybe (throwError $ "Not in scope: " ++ show v) return mres
+
+constructor :: Constr -> TCM s v (Type Annotation v)
+constructor c = do
+  mres <- gets $ HM.lookup c . tcConstrs
+  maybe (throwError $ "Not in scope: constructor " ++ show c) return mres
 
 modifyIndent :: (Int -> Int) -> TCM s v ()
 modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}

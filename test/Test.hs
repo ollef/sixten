@@ -59,10 +59,6 @@ and b1 b2 = if' b1 b2 False
 or : Bool -> Bool -> Bool
 or b1 b2 = if' b1 True b2
 
-data Maybe a where
-  Nothing : Maybe a
-  Just : a -> Maybe a
-
 -- data Strategy = Eager | Lazy
 
 -- strategy : Strategy -> Type -> Type

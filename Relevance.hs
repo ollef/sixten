@@ -109,30 +109,33 @@ type Output      s v   = CoreM s (RelevanceM s) (MetaAnnotation s) v
 type OutputScope s b v = ScopeM b Expr s (RelevanceM s) (MetaAnnotation s) v
 
 leRel :: RelevanceM s -> RelevanceM s -> TCM s v ()
-leRel rel1 rel2 = case (rel1, rel2) of
-  (Relevance Irrelevant, _) -> return ()
-  (_, Relevance Relevant) -> return ()
-  (RVar v1, RVar v2)
-    | v1 == v2 -> return ()
-    | otherwise -> do
-      sol1 <- liftST $ readSTRef $ metaRelRef v1
-      sol2 <- liftST $ readSTRef $ metaRelRef v2
-      case (sol1, sol2) of
-        (Just rel1', _) -> leRel rel1' rel2
-        (_, Just rel2') -> leRel rel1 rel2'
-        -- TODO: Figure out if unification is enough at this stage
-        (Nothing, Nothing) -> liftST $ writeSTRef (metaRelRef v2) $ Just rel1
-  (RVar v1, _) -> do
-    sol <- liftST $ readSTRef $ metaRelRef v1
-    case sol of
-      Just rel1' -> leRel rel1' rel2
-      Nothing -> liftST $ writeSTRef (metaRelRef v1) $ Just rel2
-  (_, RVar v2) -> do
-    sol <- liftST $ readSTRef $ metaRelRef v2
-    case sol of
-      Just rel2' -> leRel rel1 rel2'
-      Nothing -> liftST $ writeSTRef (metaRelRef v2) $ Just rel1
-  _ -> throwError $ "leRel" ++ show (rel1, rel2)
+leRel rel1 rel2 = do
+  trs "leRel rel1" rel1
+  trs "leRel rel2" rel2
+  case (rel1, rel2) of
+    (Relevance Irrelevant, _) -> return ()
+    (_, Relevance Relevant) -> return ()
+    (RVar v1, RVar v2)
+      | v1 == v2 -> return ()
+      | otherwise -> do
+        sol1 <- liftST $ readSTRef $ metaRelRef v1
+        sol2 <- liftST $ readSTRef $ metaRelRef v2
+        case (sol1, sol2) of
+          (Just rel1', _) -> leRel rel1' rel2
+          (_, Just rel2') -> leRel rel1 rel2'
+          -- TODO: Figure out if unification is enough at this stage
+          (Nothing, Nothing) -> liftST $ writeSTRef (metaRelRef v2) $ Just rel1
+    (RVar v1, _) -> do
+      sol <- liftST $ readSTRef $ metaRelRef v1
+      case sol of
+        Just rel1' -> leRel rel1' rel2
+        Nothing -> liftST $ writeSTRef (metaRelRef v1) $ Just rel2
+    (_, RVar v2) -> do
+      sol <- liftST $ readSTRef $ metaRelRef v2
+      case sol of
+        Just rel2' -> leRel rel1 rel2'
+        Nothing -> liftST $ writeSTRef (metaRelRef v2) $ Just rel1
+    _ -> throwError $ "leRel" ++ show (rel1, rel2)
 
 unifyRel :: RelevanceM s -> RelevanceM s -> TCM s v ()
 unifyRel rel1 rel2 = case (rel1, rel2) of
@@ -165,6 +168,7 @@ returnsType = go True
     go reduce expr = case expr of
       Type   -> return True
       Lam {} -> return False
+      Con _  -> return False
       Pi h _ t s  -> do
         x <- forallVar h (first meta t) r
         returnsType $ instantiate1 x s
@@ -383,7 +387,12 @@ unify type1 type2 = do
         _ -> throwError $ "rel unify: " ++ show (pretty (show <$> typ1, show <$> typ2))
 
 inferConstr :: (Ord v, Show v, Hashable v) => ConstrDef (Input s v) -> TCM s v (ConstrDef (Output s v))
-inferConstr (ConstrDef c t) = ConstrDef c <$> check t Type (Relevance Relevant) False
+inferConstr (ConstrDef c t) = do
+  trs "inferConstr" c
+  modifyIndent succ
+  res <- ConstrDef c <$> check t Type (Relevance Irrelevant) False
+  modifyIndent pred
+  return res
 
 inferDef :: (Ord v, Show v, Hashable v)
          => Input.Definition (Expr Plicitness) (Var v (MetaVar s (RelevanceM s) (MetaAnnotation s) v))
@@ -392,6 +401,8 @@ inferDef :: (Ord v, Show v, Hashable v)
                                       (Var v (MetaVar s (RelevanceM s) (MetaAnnotation s) v)), Output s v)
 inferDef (Input.Definition e) surroundingRel = first Input.Definition <$> infer e surroundingRel False
 inferDef (Input.DataDefinition (DataDef ps cs)) _surroundingRel = mdo
+  trs "inferDef" ()
+  modifyIndent succ
   let inst = instantiate (\n -> let (v, _, _, _) = ps' V.! n in pure $ pure v)
   ps' <- forM ps $ \(h, p, s) -> do
     t <- makeRel (Relevance Irrelevant) $ inst s
@@ -403,6 +414,7 @@ inferDef (Input.DataDefinition (DataDef ps cs)) _surroundingRel = mdo
   let cs'' = fmap abstr <$> cs'
       res = DataDef ps'' cs''
       resType = dataType res (\h -> Pi h . MetaAnnotation (Relevance Irrelevant)) (Scope Type)
+  modifyIndent pred
   return (Input.DataDefinition res, resType)
 
 subtypeDef :: (Ord v, Show v, Hashable v)

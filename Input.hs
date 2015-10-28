@@ -7,7 +7,7 @@ import Data.Bitraversable
 import Data.Foldable
 import Data.Hashable
 import qualified Data.HashMap.Lazy as HM
-import Data.Map(Map)
+import Data.HashMap.Lazy(HashMap)
 import Data.Monoid
 import Data.String
 import Prelude.Extras
@@ -61,19 +61,25 @@ data Definition expr v
   | DataDefinition (DataDef expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-instance Pretty (expr v) => Pretty (Definition expr v) where
+instance (IsString v, Monad expr, Pretty (expr v)) => Pretty (Definition expr v) where
   prettyM (Definition d) = prettyM d
   prettyM (DataDefinition d) = prettyM d
 
-type Program v = Map v (Definition Expr v, Type v)
+type Program v = HashMap v (Definition Expr v, Type v)
 
 abstractDef :: Monad expr
             => (a -> Maybe b) -> Definition expr a -> Definition expr (Var b a)
 abstractDef f (Definition d) = Definition $ fromScope $ abstract f d
 abstractDef f (DataDefinition d) = DataDefinition $ abstractDataDef f d
 
-instantiateDef :: (b -> expr a) -> Definition expr (Var b a) -> Definition expr a
-instantiateDef = undefined
+instantiateDef :: Monad expr
+               => (b -> expr a) -> Definition expr (Var b a) -> Definition expr a
+instantiateDef f (Definition d) = Definition $ instantiate f $ toScope d
+instantiateDef f (DataDefinition d) = DataDefinition $ instantiateDataDef f d
+
+instance Bound Definition where
+  Definition d >>>= f = Definition $ d >>= f
+  DataDefinition d >>>= f = DataDefinition $ d >>>= f
 
 bitraverseDef :: (Applicative f, Bitraversable expr)
               => (a -> f a')

@@ -9,9 +9,9 @@ import Control.Monad.ST()
 import Data.Bifunctor
 import Data.Foldable as F
 import Data.Hashable
-import qualified Data.Map as M
+import qualified Data.HashMap.Lazy as HM
 import Data.Monoid
-import qualified Data.Set as S
+import qualified Data.HashSet as HS
 import Data.Vector(Vector)
 import qualified Data.Vector as V
 
@@ -74,7 +74,9 @@ inferType surrounding expr = do
       (_, typ, _) <- context v
       return (return $ B v, bimap plicitness B typ)
     Input.Var (F v) -> return (Core.Var $ F v, metaType v)
-    Input.Con c -> undefined
+    Input.Con c -> do
+      typ <- constructor c
+      return (Core.Con c, bimap plicitness B typ)
     Input.Type -> return (Core.Type, Core.Type)
     Input.Pi n p t s -> do
       (t', _) <- checkType p t Core.Type
@@ -114,7 +116,8 @@ inferType surrounding expr = do
   tr "              t" t
   return (e, t)
 
-generalise :: (Ord v, Show v) => Core s v -> Core s v -> TCM s v (Core s v, Core s v)
+generalise :: (Show v, Ord v)
+           => Core s v -> Core s v -> TCM s v (Core s v, Core s v)
 generalise expr typ = do
   tr "generalise e" expr
   tr "           t" typ
@@ -126,8 +129,8 @@ generalise expr typ = do
       p _                   = return False
   fvs' <- filterM p fvs
 
-  deps <- M.fromList <$> forM fvs' (\x -> do
-    ds <- foldMapM S.singleton $ metaType x
+  deps <- HM.fromList <$> forM fvs' (\x -> do
+    ds <- foldMapM HS.singleton $ metaType x
     return (x, ds)
    )
   let sorted = map go $ topoSort deps
@@ -146,7 +149,7 @@ checkConstrDef :: (Ord v, Show v, Hashable v)
                => Core s v
                -> ConstrDef (Input s v)
                -> TCM s v (ConstrDef (Core s v))
-checkConstrDef typ (ConstrDef c (bindingsView Input.piView -> Just (args, ret))) = mdo
+checkConstrDef typ (ConstrDef c (bindingsView Input.piView -> (args, ret))) = mdo
   let inst = instantiate (\n -> let (a, _, _, _) = args' V.! n in pure $ F a)
   args' <- forM (V.fromList args) $ \(h, p, arg) -> do
     (arg', _) <- checkType p (inst arg) Core.Type
@@ -157,10 +160,9 @@ checkConstrDef typ (ConstrDef c (bindingsView Input.piView -> Just (args, ret)))
   res <- F.foldrM (\(v, h, p, arg') rest ->
          Core.Pi h p arg' <$> abstract1M v rest) ret' args'
   return $ ConstrDef c res
-checkConstrDef _ _ = throwError "checkConstrDef"
 
 extractParams :: Core.Expr p v -> Vector (NameHint, p, Scope Int (Core.Expr p) v)
-extractParams (bindingsView Core.piView -> Just (ps, fromScope -> Core.Type))
+extractParams (bindingsView Core.piView -> (ps, fromScope -> Core.Type))
   = V.fromList ps
 extractParams _ = error "extractParams"
 
@@ -171,13 +173,11 @@ checkDataType :: (Hashable v, Ord v, Show v)
               -> TCM s v ( Data.DataDef (Core.Expr Plicitness) (Var v (MetaVar s () Plicitness v))
                          , Core s v
                          )
-checkDataType name d@(DataDef _ps cs) typ = mdo
-  (dt', t') <- checkType Explicit (dataType d Input.Pi (Scope Input.Type)) typ
-
+checkDataType name (DataDef _ps cs) typ = mdo
   let inst = instantiate (\n -> let (v, _, _, _) = ps' V.! n in pure $ F v)
   let inst' = instantiate (\n -> let (v, _, _, _) = ps' V.! n in pure $ F v)
 
-  ps' <- forM (extractParams dt') $ \(h, p, s) -> do
+  ps' <- forM (extractParams typ) $ \(h, p, s) -> do
     let is = inst s
     v <- forall_ h is ()
     return (v, h, p, is)
@@ -191,7 +191,7 @@ checkDataType name d@(DataDef _ps cs) typ = mdo
     res <- checkConstrDef retType (ConstrDef c $ inst' t)
     traverse (abstractM (`V.elemIndex` vs)) res
 
-  return (DataDef params cs', t')
+  return (DataDef params cs', typ)
 
 subDefType :: (Ord v, Show v, Hashable v)
            => Input.Definition (Core.Expr Plicitness) (Var v (MetaVar s () Plicitness v))
@@ -262,8 +262,8 @@ checkRecursiveDefs ds = do
       tv <- existsVar mempty Core.Type ()
       forall_ v tv ()
     let instantiatedDs = flip V.map ds $ \(_, e, t) ->
-          ( Input.instantiateDef (return . return . (evs V.!)) e
-          , instantiate (return . return . (evs V.!)) t
+          ( Input.instantiateDef (pure . pure . (evs V.!)) e
+          , instantiate (pure . pure . (evs V.!)) t
           )
     checkedDs <- sequence $ flip V.imap instantiatedDs $ \i (d, t) -> do
       (t', _) <- checkType Explicit t Core.Type

@@ -111,9 +111,9 @@ instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
       ((pure tilde <>) `iff` isIrrelevant p $ braces `iff` isImplicit p $ prettyM t)
       <+> prettyM "->" <+>
       associate (prettyM e)
-    (bindingsView usedPiView -> Just (hpts, s)) -> binding (\x -> prettyM "forall" <+> x <> prettyM ".") hpts s
+    (bindingsViewM usedPiView -> Just (hpts, s)) -> binding (\x -> prettyM "forall" <+> x <> prettyM ".") hpts s
     Pi {} -> error "impossible prettyPrec pi"
-    (bindingsView lamView -> Just (hpts, s)) -> binding (\x -> prettyM "\\" <> x <> prettyM ".") hpts s
+    (bindingsViewM lamView -> Just (hpts, s)) -> binding (\x -> prettyM "\\" <> x <> prettyM ".") hpts s
     Lam {} -> error "impossible prettyPrec lam"
     App e1 p e2 -> prettyApp (prettyM e1) ((pure tilde <>) `iff` isIrrelevant p $ braces `iff` isImplicit p $ prettyM e2)
     Case e brs -> parens `above` casePrec $

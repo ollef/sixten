@@ -1,10 +1,11 @@
 module TopoSort where
 import Data.List
-import Data.Map(Map)
-import qualified Data.Map as M
+import Data.HashMap.Lazy(HashMap)
+import qualified Data.HashMap.Lazy as HM
 import Data.Maybe
-import Data.Set(Set)
-import qualified Data.Set as S
+import Data.Hashable
+import Data.HashSet(HashSet)
+import qualified Data.HashSet as HS
 -- import Test.QuickCheck
 -- import Test.QuickCheck.Instances
 
@@ -13,14 +14,15 @@ fixPoint f x | fx == x   = x
              | otherwise = fixPoint f fx
   where fx = f x
 
-closure :: Ord a => Map a (Set a) -> Map a (Set a)
+closure :: (Eq a, Hashable a)
+        => HashMap a (HashSet a) -> HashMap a (HashSet a)
 closure edges = fixPoint (fmap step) edges
-  where step s = mconcat $ s : catMaybes [M.lookup a edges | a <- S.toList s]
-
-subset :: (Ord a, Ord b) => Map a (Set b) -> Map a (Set b) -> Bool
-subset = M.isSubmapOfBy S.isSubsetOf
+  where step s = mconcat $ s : catMaybes [HM.lookup a edges | a <- HS.toList s]
 
 {-
+subset :: HashMap a (HashSet b) -> HashMap a (HashSet b) -> Bool
+subset = HM.isSubmapOfBy HS.isSubsetOf
+
 prop_closure_extensive :: Map Int (Set Int) -> Bool
 prop_closure_extensive m = m `subset` closure m
 prop_closure_increasing :: Map Int (Set Int) -> Map Int (Set Int) -> Property
@@ -29,11 +31,11 @@ prop_closure_idempotent :: Map Int (Set Int) -> Bool
 prop_closure_idempotent m = closure (closure m) == closure m
 -}
 
-topoSort :: Ord a => Map a (Set a) -> [[a]]
-topoSort edges = groupBy eq . insertionSort cmp $ M.keys edges
+topoSort :: (Eq a, Hashable a) => HashMap a (HashSet a) -> [[a]]
+topoSort edges = groupBy eq . insertionSort cmp $ HM.keys edges
   where
     cedges = closure edges
-    lt a b = S.member a (M.findWithDefault mempty b cedges)
+    lt a b = HS.member a (HM.lookupDefault mempty b cedges)
     eq a b = lt a b && lt b a
     cmp a b | lt a b    = LT
             | otherwise = GT
@@ -67,5 +69,5 @@ prop_topoSortDeps edges = all correct $ concat xxs
     index i = fromMaybe (error "bad!") $ findIndex (i `elem`) xxs
 -}
 
-mmap :: (Ord a, Ord b) => [(a, [b])] -> Map a (Set b)
-mmap xs = M.fromList [(a, S.fromList bs) | (a, bs) <- xs]
+-- mmap :: (Ord a, Ord b) => [(a, [b])] -> Map a (Set b)
+-- mmap xs = M.fromList [(a, S.fromList bs) | (a, bs) <- xs]

@@ -1,10 +1,11 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts #-}
 module Data where
 
 import Bound
 import Bound.Scope
 import Bound.Var
 import Data.Bitraversable
+import Data.String
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
@@ -17,6 +18,25 @@ data DataDef typ v = DataDef
   { dataParams       :: Vector (NameHint, Plicitness, Scope Int typ v)
   , dataConstructors :: [ConstrDef (Scope Int typ v)]
   } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+quantifiedConstrTypes :: (Eq v, Monad typ)
+                      => (NameHint -> Plicitness
+                                   -> typ (Var Int v)
+                                   -> Scope1 typ (Var Int v)
+                                   -> typ (Var Int v))
+                      -> DataDef typ v
+                      -> [ConstrDef (typ v)]
+quantifiedConstrTypes pifun (DataDef ps cs) =
+   map (fmap $ fmap (unvar err id) . abstr . fromScope) cs
+   where
+     abstr x = Vector.ifoldr (\i (h, p, s) -> pifun h p (fromScope s)
+                                            . abstract1 (B i))
+                             x
+                             ps
+     err = error "quantifiedConstrTypes"
+
+constructorNames :: DataDef typ v -> [Constr]
+constructorNames = map constrName . dataConstructors
 
 bitraverseDataDef :: (Applicative f, Bitraversable typ)
                   => (a -> f a')
@@ -31,9 +51,18 @@ instance Bound DataDef where
   DataDef ps cs >>>= f = DataDef ((\(h, p, s) -> (h, p, s >>>= f)) <$> ps)
                                  (fmap (>>>= f) <$> cs)
 
--- TODO
-instance Pretty (DataDef typ v) where
-  prettyM _ = prettyM "data ..."
+instance (IsString v, Monad typ, Pretty (typ v)) => Pretty (DataDef typ v) where
+  prettyM (DataDef ps ts) = prettyM "data" <+> prettyM "_" <+> (withNameHints hs $ \ns ->
+    let inst = instantiate $ pure . fromText . (ns Vector.!) in
+    hcat (Vector.toList $ Vector.imap (param inst ns) ps) <+> prettyM "where" <$$>
+       indent 2 (vcat (map (prettyM . fmap inst) ts))
+    )
+    where
+      param inst ns i (_, p, t) = mappend (pure tilde) `iff` isIrrelevant p
+                                $ braces `iff` isImplicit p
+                                $ parens `iff` isExplicit p
+                                $ prettyM (ns Vector.! i) <+> prettyM ":" <+> prettyM (inst t)
+      hs = (\(h, _, _) -> h) <$> ps
 
 dataType :: (Eq v, Monad typ)
          => DataDef typ v
@@ -53,6 +82,9 @@ data ConstrDef typ = ConstrDef
   , constrType :: typ
   } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
+instance Pretty typ => Pretty (ConstrDef typ) where
+  prettyM (ConstrDef n t) = prettyM n <+> prettyM ":" <+> prettyM t
+
 abstractDataDef :: Functor typ
                 => (a -> Maybe b) -> DataDef typ a -> DataDef typ (Var b a)
 abstractDataDef f (DataDef ps cs) = DataDef ((\(h, p, s) -> (h, p, fmap f' s)) <$> ps)
@@ -60,5 +92,9 @@ abstractDataDef f (DataDef ps cs) = DataDef ((\(h, p, s) -> (h, p, fmap f' s)) <
   where
     f' a = maybe (F a) B $ f a
 
-instance Pretty typ => Pretty (ConstrDef typ) where
-  prettyM (ConstrDef n t) = prettyM n <+> prettyM ":" <+> prettyM t
+instantiateDataDef :: Monad typ
+                   => (b -> typ a) -> DataDef typ (Var b a) -> DataDef typ a
+instantiateDataDef f (DataDef ps cs) = DataDef ((\(h, p, s) -> (h, p, s >>>= f')) <$> ps)
+                                               (fmap (>>>= f') <$> cs)
+  where
+    f' = unvar f pure

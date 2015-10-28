@@ -44,7 +44,7 @@ instance (Eq v, IsString v, Pretty v)
   prettyM expr = case expr of
     Var v -> prettyM v
     Con c -> prettyM c
-    (bindingsView lamView -> Just (hs, s)) -> parens `above` absPrec $
+    (bindingsViewM lamView -> Just (hs, s)) -> parens `above` absPrec $
       withNameHints (Vector.fromList ((\(h, _, _) -> h) <$> hs)) $ \ns ->
         prettyM "\\" <> hsep (map prettyM $ Vector.toList ns) <> prettyM "." <+>
         associate (prettyM $ instantiate (pure . fromText . (ns Vector.!)) s)

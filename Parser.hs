@@ -269,7 +269,7 @@ def = ident    <**>% (typeDecl <|> mkDef Just)
 
 dataDef :: Parser (TopLevelParsed Name)
 dataDef = mkDataDef <$ reserved "data" <*>% constructor <*> manyBindings
-    <*% reserved "where" <*>% dropAnchor (manySI conDef)
+    <*% reserved "where" <*> dropAnchor (manySameCol conDef)
   where
     conDef = ConstrDef <$> constructor <*% symbol ":" <*>% expr
     mkDataDef tc bindings cs = ParsedData tc

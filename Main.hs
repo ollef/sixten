@@ -8,14 +8,15 @@ import Control.Monad.State
 import Data.Bifoldable
 import Data.Bifunctor
 import Data.Bitraversable
-import Data.Hashable
-import qualified Data.HashMap.Strict as HM
-import qualified Data.Map as M
+import qualified Data.HashMap.Lazy as HM
+import qualified Data.HashSet as HS
+import Data.Monoid
 import qualified Data.Text.IO as Text
 import qualified Data.Vector as V
 import System.Environment
 
 import Annotation
+import Data
 import qualified Desugar
 import Erasure
 import Hint
@@ -28,18 +29,25 @@ import Monad
 import TopoSort
 import Util
 
-inferProgram :: (Hashable v, Ord v, Show v)
-             => Input.Program v -> (v -> NameHint) -> TCM s v ()
-inferProgram p f = mapM_ tcGroup sorted
+inferProgram :: Input.Program Name -> TCM s Name ()
+inferProgram p = mapM_ tcGroup sorted
   where
-    -- TODO: Add constructors to dependencies
-    deps   = M.map (bifoldMap toSet toSet) p
-    sorted = fmap (\n -> (n, p M.! n)) <$> topoSort deps
+    deps   = HM.map (bifoldMap defNames toHashSet) p
+    defNames (Input.DataDefinition d) = toHashSet (constructorNames d) <> toHashSet d
+    defNames x = toHashSet x
+    sorted = fmap (\n -> (n, bimap (>>>= instCon) (>>= instCon) $ p HM.! n)) <$> topoSort deps
+    -- TODO check for duplicate constructors
+    constructors = HS.fromList
+                 $ concat [ constructorNames d
+                          | (Input.DataDefinition d, _) <- HM.elems p]
+    instCon v
+      | v `HS.member` constructors = Input.Con v
+      | otherwise = pure v
 
     tcGroup tls = do
       let abstractedScopes = Input.recursiveAbstractDefs [(n, d) | (n, (d, _)) <- tls]
           abstractedTypes = recursiveAbstract [(n, t) | (n, (_, t)) <- tls]
-          abstractedTls = [(f n, fmap (fmap B) s, fmap B t)
+          abstractedTls = [(Hint $ Just n, fmap (fmap B) s, fmap B t)
                           | ((s, t), (n, _))
                             <- zip (zip abstractedScopes abstractedTypes) tls]
       checkedTls <- checkRecursiveDefs $ V.fromList abstractedTls
@@ -67,7 +75,7 @@ test inp = do
   case mp of
     Nothing         -> return ()
     Just (Left err) -> Text.putStrLn err
-    Just (Right p)  -> case runTCM (inferProgram p (Hint . Just) >> gets tcContext) of
+    Just (Right p)  -> case runTCM (inferProgram p >> gets tcContext) of
       (Left err, tr) -> do mapM_ putStrLn tr; putStrLn err
       (Right res, _) -> do
         mapM_ print $ (show . pretty . (\(x, (y, z, a)) -> (x, (y, z, show a)))) <$> HM.toList res
