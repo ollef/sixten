@@ -266,10 +266,13 @@ infer expr surroundingRel knownDef = do
     Var (F v) -> do
       leRel surroundingRel $ metaData v
       return (Var $ F v, metaType v)
-    Var (B v)   -> do
+    Var (B v) -> do
       (_, t, a) <- context v
       leRel surroundingRel $ toRelevanceM a
       return (Var $ B v, bimap toMetaAnnotation B t)
+    Con c -> do
+      t <- constructor c
+      return (Con c, bimap toMetaAnnotation B t)
     Type        -> return (Type, Type)
     Pi x p t1 s -> do
       (t1', t1rel) <- inferArg t1 knownDef
@@ -297,7 +300,7 @@ infer expr surroundingRel knownDef = do
             ft' <- whnf metaRelevance toMetaAnnotation ft
             go False e1' ft'
           _ -> throwError $ "infer relevance infer1" ++ show (pretty $ fmap show expr)
-    _ -> throwError "infer relevance infer2"
+    Case {} -> undefined -- TODO
   modifyIndent pred
   tr "infer res e" expr'
   tr "infer res t" typ

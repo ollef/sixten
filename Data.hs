@@ -29,7 +29,7 @@ quantifiedConstrTypes :: (Eq v, Monad typ)
 quantifiedConstrTypes pifun (DataDef ps cs) =
    map (fmap $ fmap (unvar err id) . abstr . fromScope) cs
    where
-     abstr x = Vector.ifoldr (\i (h, p, s) -> pifun h p (fromScope s)
+     abstr x = Vector.ifoldr (\i (h, _p, s) -> pifun h Implicit (fromScope s)
                                             . abstract1 (B i))
                              x
                              ps

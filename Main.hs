@@ -32,14 +32,17 @@ import Util
 inferProgram :: Input.Program Name -> TCM s Name ()
 inferProgram p = mapM_ tcGroup sorted
   where
-    deps   = HM.map (bifoldMap defNames toHashSet) p
+    deps   = HM.map (bifoldMap defNames toHashSet) p <> HM.fromList constructorMappings
     defNames (Input.DataDefinition d) = toHashSet (constructorNames d) <> toHashSet d
     defNames x = toHashSet x
-    sorted = fmap (\n -> (n, bimap (>>>= instCon) (>>= instCon) $ p HM.! n)) <$> topoSort deps
+    sorted = fmap (\n -> (n, bimap (>>>= instCon) (>>= instCon) $ p HM.! n))
+           . filter (`HM.member` p) <$> topoSort deps
     -- TODO check for duplicate constructors
-    constructors = HS.fromList
-                 $ concat [ constructorNames d
-                          | (Input.DataDefinition d, _) <- HM.elems p]
+    constructorMappings = [ (c, HS.singleton n)
+                          | (n, (Input.DataDefinition d, _)) <- HM.toList p
+                          , c <- constructorNames d
+                          ]
+    constructors = HS.fromList $ map fst constructorMappings
     instCon v
       | v `HS.member` constructors = Input.Con v
       | otherwise = pure v
