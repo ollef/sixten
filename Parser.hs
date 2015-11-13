@@ -5,6 +5,7 @@ import Bound
 import Control.Applicative((<**>), (<|>), Alternative)
 import Control.Monad.Except
 import Control.Monad.State
+import Data.Bifunctor
 import Data.Text(Text)
 import qualified Data.Text as Text
 import Data.Char
@@ -220,6 +221,13 @@ manyBindings
   = manySI atomicBinding
  <?> "variable bindings"
 
+caseBinding :: Parser [(Maybe Name, Plicitness)]
+caseBinding = implicit <$ symbol "{" <*>% someSI identOrWildcard <*% symbol "}"
+           <|> explicit <$> identOrWildcard
+  where
+    implicit xs = [(x, Implicit) | x <- xs]
+    explicit x = [(x, Explicit)]
+
 atomicExpr :: Parser (Expr Name)
 atomicExpr
   =  Type     <$ reserved "Type"
@@ -239,9 +247,10 @@ branches = dropAnchor $  ConBranches <$> manySameCol conBranch
                                      <*> (sameCol >> (reserved "_" *>% symbol "->" *>% expr))
   where
     litBranch = (,) <$> literal <*% symbol "->" <*>% expr
-    conBranch = con <$> constructor <*> manySI ident <*% symbol "->" <*>% expr
-    con c hs e = (c, (Hint . Just) <$> v, abstract (`Vector.elemIndex` v) e)
-      where v = Vector.fromList hs
+    conBranch = con <$> constructor <*> (concat <$> manySI caseBinding) <*% symbol "->" <*>% expr
+    con c bs e = (c, vs, abstract ((`Vector.elemIndex` hs) . Just) e)
+      where vs = Vector.fromList $ first Hint <$> bs
+            hs = fst <$> Vector.fromList bs
 
 expr :: Parser (Expr Name)
 expr

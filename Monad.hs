@@ -4,7 +4,6 @@ import Control.Monad.Except
 import Control.Monad.State(evalStateT, StateT, runStateT, gets, modify)
 import Control.Monad.ST
 import Data.Bifunctor
-import Data.Hashable
 import qualified Data.HashMap.Lazy as HM
 import Data.HashMap.Lazy(HashMap)
 import Data.Monoid
@@ -22,16 +21,16 @@ newtype Level = Level Int
 instance Pretty Level where
   pretty (Level i) = pretty i
 
-data State v = State
-  { tcContext :: Program Annotation v
-  , tcConstrs :: HashMap Constr (Type Annotation v)
+data State = State
+  { tcContext :: Program Annotation Empty
+  , tcConstrs :: HashMap Constr (Type Annotation Empty)
   , tcIndent  :: {-# UNPACK #-} !Int -- This has no place here, but is useful for debugging
   , tcFresh   :: {-# UNPACK #-} !Int
   , tcLevel   :: {-# UNPACK #-} !Level
   , tcLog     :: ![String]
   }
 
-instance (Eq v, Hashable v) => Monoid (State v) where
+instance Monoid State where
   mempty = State
     { tcContext = mempty
     , tcConstrs = mempty
@@ -44,24 +43,24 @@ instance (Eq v, Hashable v) => Monoid (State v) where
   mappend (State cxt1 cs1 x1 y1 (Level z1) l1) (State cxt2 cs2 x2 y2 (Level z2) l2)
     = State (cxt1 <> cxt2) (cs1 <> cs2) (x1 + x2) (y1 + y2) (Level $ z1 + z2) (l1 <> l2)
 
-type TCM s v a = ExceptT String (StateT (State v) (ST s)) a
+type TCM s = ExceptT String (StateT State (ST s))
 
-evalTCM :: (Eq v, Hashable v) => (forall s. TCM s v a) -> Either String a
+evalTCM :: (forall s. TCM s a) -> Either String a
 evalTCM tcm = runST $ evalStateT (runExceptT tcm) mempty
 
-runTCM :: (Eq v, Hashable v) => (forall s. TCM s v a) -> (Either String a, [String])
+runTCM :: (forall s. TCM s a) -> (Either String a, [String])
 runTCM tcm = second (reverse . tcLog) $ runST $ runStateT (runExceptT tcm) mempty
 
-fresh :: TCM s v Int
+fresh :: TCM s Int
 fresh = do
   i <- gets tcFresh
   modify $ \s -> s {tcFresh = i + 1}
   return i
 
-level :: TCM s v Level
+level :: TCM s Level
 level = gets tcLevel
 
-enterLevel :: TCM s v a -> TCM s v a
+enterLevel :: TCM s a -> TCM s a
 enterLevel x = do
   Level l <- level
   modify $ \s -> s {tcLevel = Level $! l + 1}
@@ -69,10 +68,10 @@ enterLevel x = do
   modify $ \s -> s {tcLevel = Level l}
   return r
 
-log :: String -> TCM s v ()
+log :: String -> TCM s ()
 log l = modify $ \s -> s {tcLog = l : tcLog s}
 
-addContext :: (Eq v, Hashable v) => Program Annotation v -> TCM s v ()
+addContext :: Program Annotation Empty -> TCM s ()
 addContext prog = modify $ \s -> s
   { tcContext = prog <> tcContext s
   , tcConstrs = cs   <> tcConstrs s
@@ -82,18 +81,21 @@ addContext prog = modify $ \s -> s
       ConstrDef c t <- quantifiedConstrTypes (\h -> Pi h . Annotation Irrelevant) d
       return (c, t)
 
-context :: (Eq v, Hashable v, Show v)
-        => v -> TCM s v (Input.Definition (Expr Annotation) v, Type Annotation v, Annotation)
+context :: Name -> TCM s (Input.Definition (Expr Annotation) v, Type Annotation v, Annotation)
 context v = do
   mres <- gets $ HM.lookup v . tcContext
-  maybe (throwError $ "Not in scope: " ++ show v) return mres
+  maybe (throwError $ "Not in scope: " ++ show v)
+        (\(d, t, a) -> return (fromEmpty <$> d, fromEmpty <$> t, a))
+        mres
 
-constructor :: Constr -> TCM s v (Type Annotation v)
+constructor :: Constr -> TCM s (Type Annotation v)
 constructor c = do
   mres <- gets $ HM.lookup c . tcConstrs
-  maybe (throwError $ "Not in scope: constructor " ++ show c) return mres
+  maybe (throwError $ "Not in scope: constructor " ++ show c)
+        (return . fmap fromEmpty)
+        mres
 
-modifyIndent :: (Int -> Int) -> TCM s v ()
+modifyIndent :: (Int -> Int) -> TCM s ()
 modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
 
 {-

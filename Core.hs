@@ -27,6 +27,7 @@ import qualified Input
 -- decorated by @d@s.
 data Expr d v
   = Var v
+  | Global Name
   | Con Constr
   | Type
   | Pi  !NameHint !d (Type d v) (Scope1 (Expr d) v)
@@ -38,10 +39,10 @@ data Expr d v
 -- | Synonym for documentation purposes
 type Type = Expr
 
-type Program d v = HashMap v (Input.Definition (Expr d) v, Type d v, d)
+type Program d v = HashMap Name (Input.Definition (Expr d) v, Type d v, d)
 
 -------------------------------------------------------------------------------
--- * Views
+-- * Views and smart constructors
 piView :: Expr d v -> Maybe (NameHint, d, Type d v, Scope1 (Expr d) v)
 piView (Pi n p e s) = Just (n, p, e, s)
 piView _            = Nothing
@@ -64,6 +65,31 @@ appsView = second reverse . go
 apps :: Expr d v -> [(d, Expr d v)] -> Expr d v
 apps = foldl (uncurry . App)
 
+{-
+instantiateConBranch :: HasPlicitness d
+                     => (Constr, Vector (NameHint, Plicitness), Scope Int (Type d) v)
+                     -> (NameHint -> Plicitness -> Type d v -> Type d v)
+                     -> Type d v
+                     -> Type d v
+instantiateConBranch (con, hints, scope) var typ = _ <$> go typ (Vector.toList hints) 0
+  where
+    go t [] _ = t
+    go (Pi h p t s) ((h', p'):hs') n | plicitness p == p' = undefined
+    go (Pi h p t s) ((h', Explicit):hs') n | isImplicit p = undefined
+    go _ _ _ = error "instantiateConBranch"
+    -}
+
+globals :: Expr d v -> Expr d (Var Name v)
+globals expr = case expr of
+  Var v       -> Var $ F v
+  Global g    -> Var $ B g
+  Con c       -> Con c
+  Type        -> Type
+  Pi  x p t s -> Pi x p (globals t) (exposeScope globals s)
+  Lam x p t s -> Lam x p (globals t) (exposeScope globals s)
+  App e1 p e2 -> App (globals e1) p (globals e2)
+  Case e brs  -> Case (globals e) (exposeBranches globals brs)
+
 -------------------------------------------------------------------------------
 -- Instances
 instance Eq d => Eq1 (Expr d)
@@ -78,6 +104,7 @@ instance Monad (Expr d) where
   return = Var
   expr >>= f = case expr of
     Var v       -> f v
+    Global g    -> Global g
     Con c       -> Con c
     Type        -> Type
     Pi  x p t s -> Pi x p (t >>= f) (s >>>= f)
@@ -94,17 +121,19 @@ instance Bifoldable Expr where
 instance Bitraversable Expr where
   bitraverse f g expr = case expr of
     Var v       -> Var <$> g v
+    Global v    -> pure $ Global v
     Con c       -> pure $ Con c
     Type        -> pure Type
     Pi  x d t s -> Pi  x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
     Lam x d t s -> Lam x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
     App e1 d e2 -> App <$> bitraverse f g e1 <*> f d <*> bitraverse f g e2
-    Case _ _    -> undefined -- TODO
+    Case e brs  -> Case <$> bitraverse f g e <*> bitraverseBranches f g brs
 
 instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
       => Pretty (Expr d v) where
   prettyM expr = case expr of
     Var v     -> prettyM v
+    Global g  -> prettyM g
     Con c     -> prettyM c
     Type      -> pure $ text "Type"
     Pi  _ p t (unusedScope -> Just e) -> parens `above` arrPrec $

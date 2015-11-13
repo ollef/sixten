@@ -4,7 +4,6 @@ module Normalise where
 import Bound
 import Control.Monad.Except
 import Data.Bifunctor
-import Data.Hashable
 
 import Annotation
 import Core
@@ -12,16 +11,16 @@ import qualified Input
 import Meta
 import Monad
 
-whnf :: (Eq v, Hashable v, Show v, HasPlicitness a)
-     => (a -> d) -> (Annotation -> a) -> CoreM s d a v -> TCM s v (CoreM s d a v)
+whnf :: HasPlicitness a
+     => (a -> d) -> (Annotation -> a) -> CoreM s d a -> TCM s (CoreM s d a)
 whnf dat anno expr = case expr of
-  Var (F (metaRef -> Nothing)) -> return expr
-  Var (F (metaRef -> Just r)) -> refineIfSolved r expr (whnf dat anno)
-  Var (F _) -> throwError "whnf impossible"
-  Var (B v) -> do
+  Var (metaRef -> Nothing) -> return expr
+  Var (metaRef -> Just r) -> refineIfSolved r expr (whnf dat anno)
+  Var _ -> throwError "whnf impossible"
+  Global v -> do
     (d, _, _) <- context v
     case d of
-      Input.Definition e -> whnf dat anno $ bimap anno B e
+      Input.Definition e -> whnf dat anno $ first anno e
       _ -> return expr
   Con _ -> return expr
   Type -> return expr
@@ -36,16 +35,16 @@ whnf dat anno expr = case expr of
       _ -> return expr
   Case _ _ -> undefined -- TODO
 
-normalise :: (Eq a, Eq v, Hashable v, Show d, Show v, Show a, HasPlicitness a)
-          => d -> (Annotation -> a) -> CoreM s d a v -> TCM s v (CoreM s d a v)
+normalise :: (Eq a, Show d, Show a, HasPlicitness a)
+          => d -> (Annotation -> a) -> CoreM s d a -> TCM s (CoreM s d a)
 normalise dat anno expr = case expr of
-  Var (F (metaRef -> Nothing)) -> return expr
-  Var (F (metaRef -> Just r)) -> refineIfSolved r expr (normalise dat anno)
-  Var (F _) -> throwError "normalise impossible"
-  Var (B v) -> do
+  Var (metaRef -> Nothing) -> return expr
+  Var (metaRef -> Just r) -> refineIfSolved r expr (normalise dat anno)
+  Var _ -> throwError "normalise impossible"
+  Global v -> do
     (d, _, _) <- context v
     case d of
-      Input.Definition e -> normalise dat anno $ bimap anno B e
+      Input.Definition e -> normalise dat anno $ first anno e
       _ -> return expr
   Con _ -> return expr
   Type -> return expr
@@ -61,5 +60,5 @@ normalise dat anno expr = case expr of
   where
     normaliseScope h c a s = do
       x <- forall_ h a dat
-      ns <- normalise dat anno $ instantiate1 (return $ F x) s
+      ns <- normalise dat anno $ instantiate1 (pure x) s
       c a <$> abstract1M x ns

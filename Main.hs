@@ -3,7 +3,6 @@ module Main where
 import Bound
 import Bound.Scope
 import Bound.Var
-import Control.Monad.Except
 import Control.Monad.State
 import Data.Bifoldable
 import Data.Bifunctor
@@ -16,6 +15,7 @@ import qualified Data.Vector as V
 import System.Environment
 
 import Annotation
+import qualified Core
 import Data
 import qualified Desugar
 import Erasure
@@ -29,7 +29,7 @@ import Monad
 import TopoSort
 import Util
 
-inferProgram :: Input.Program Name -> TCM s Name ()
+inferProgram :: Input.Program Name -> TCM s ()
 inferProgram p = mapM_ tcGroup sorted
   where
     deps   = HM.map (bifoldMap defNames toHashSet) p <> HM.fromList constructorMappings
@@ -50,22 +50,23 @@ inferProgram p = mapM_ tcGroup sorted
     tcGroup tls = do
       let abstractedScopes = Input.recursiveAbstractDefs [(n, d) | (n, (d, _)) <- tls]
           abstractedTypes = recursiveAbstract [(n, t) | (n, (_, t)) <- tls]
-          abstractedTls = [(Hint $ Just n, fmap (fmap B) s, fmap B t)
+          abstractedTls = [ ( Hint $ Just n
+                            , s >>>= unvar (pure . B) Input.Global
+                            , t >>>= Input.Global
+                            )
                           | ((s, t), (n, _))
                             <- zip (zip abstractedScopes abstractedTypes) tls]
       checkedTls <- checkRecursiveDefs $ V.fromList abstractedTls
-      let vf = unvar return $ const $ throwError "inferProgram"
-      checkedTls' <- traverse (bitraverse (traverse (traverse vf)) (traverse vf)) checkedTls
-      let checkedTls'' = bimap (fmap (fmap B)) (fmap B) <$> checkedTls'
-      reledTls <- Relevance.checkRecursiveDefs checkedTls''
-      let names = V.fromList [n | (n, (_, _)) <- tls]
-          vf' = unvar return $ const $ throwError "inferProgram'"
-      reledTls' <- traverse (bitraverse (Input.bitraverseDef   Relevance.fromMetaAnnotation (traverse vf'))
-                                        (bitraverseScope Relevance.fromMetaAnnotation vf')) $ V.map (\(d, t, r) -> (r, d, t)) reledTls
+      let vf = error "inferProgram"
+          checkedTls' = bimap (fmap $ fmap vf) (fmap vf) <$> checkedTls
+      reledTls <- Relevance.checkRecursiveDefs checkedTls'
+      reledTls' <- traverse (bitraverse (Input.bitraverseDef   Relevance.fromMetaAnnotation (traverse vf))
+                                        (bitraverseScope Relevance.fromMetaAnnotation vf)) $ V.map (\(d, t, r) -> (r, d, t)) reledTls
       reledTls'' <- traverse (traverse Relevance.fromRelevanceM) $ V.map (\(r, d, t) -> ((d, t), r)) reledTls'
-      let instTls = HM.fromList
-            [(names V.! i, ( Input.instantiateDef (pure . (names V.!)) d
-                           , instantiate (pure . (names V.!)) t
+      let names = V.fromList [n | (n, (_, _)) <- tls]
+          instTls = HM.fromList
+            [(names V.! i, ( Input.instantiateDef (Core.Global . (names V.!)) d
+                           , instantiate (Core.Global . (names V.!)) t
                            , Annotation r Explicit
                            ))
             | (i, ((d, t), r)) <- zip [0..] $ V.toList reledTls''
@@ -81,9 +82,12 @@ test inp = do
     Just (Right p)  -> case runTCM (inferProgram p >> gets tcContext) of
       (Left err, tr) -> do mapM_ putStrLn tr; putStrLn err
       (Right res, _) -> do
-        mapM_ print $ (show . pretty . (\(x, (y, z, a)) -> (x, (y, z, show a)))) <$> HM.toList res
+        mapM_ print $ (show . pretty . (\(x, (y, z, a)) -> (x, (fe y, fe z, show a)))) <$> HM.toList res
         putStrLn "------------- erased ------------------"
-        mapM_ print $ (show . pretty) <$> [(x, eraseDef e) | (x, (e, _, a)) <- HM.toList res, isRelevant a]
+        mapM_ print $ (show . pretty) <$> [(x, fe $ eraseDef e) | (x, (e, _, a)) <- HM.toList res, isRelevant a]
+  where
+    fe :: Functor f => f Empty -> f String
+    fe = fmap fromEmpty
 
 main :: IO ()
 main = do

@@ -2,12 +2,10 @@
 module Relevance where
 
 import Bound
-import Bound.Var
 import Control.Monad.Except
 import Control.Monad.ST.Class
 import Data.Bifunctor
 import Data.Bitraversable
-import Data.Hashable
 import Data.Monoid
 import Data.STRef
 import Data.Function
@@ -15,6 +13,7 @@ import Data.Vector(Vector)
 import qualified Data.Vector as V
 
 import Annotation
+import Branches
 import Core
 import Data
 import Hint
@@ -49,7 +48,7 @@ instance Show (MetaRel s) where
   showsPrec d (MetaRel i _) = showParen (d > 10) $
     showString "MetaRel " . showChar ' ' . showsPrec 11 i
 
-freshMetaRel :: TCM s v (MetaRel s)
+freshMetaRel :: TCM s (MetaRel s)
 freshMetaRel = MetaRel <$> fresh <*> liftST (newSTRef Nothing)
 
 instance Eq (MetaRel s) where (==) = (==) `on` metaRelId
@@ -92,10 +91,10 @@ toRelevanceM d = case relevance d of
 toMetaAnnotation :: (HasRelevance d, HasPlicitness d) => d -> MetaAnnotation s
 toMetaAnnotation d = MetaAnnotation (toRelevanceM d) (plicitness d)
 
-fromMetaAnnotation :: MetaAnnotation s -> TCM s v Annotation
+fromMetaAnnotation :: MetaAnnotation s -> TCM s Annotation
 fromMetaAnnotation (MetaAnnotation r p) = Annotation <$> fromRelevanceM r <*> pure p
 
-fromRelevanceM :: RelevanceM s -> TCM s v Annotation.Relevance
+fromRelevanceM :: RelevanceM s -> TCM s Annotation.Relevance
 fromRelevanceM (Relevance r) = return r
 fromRelevanceM (RVar v) = do
   sol <- liftST $ readSTRef $ metaRelRef v
@@ -103,12 +102,12 @@ fromRelevanceM (RVar v) = do
     Nothing -> return Annotation.Irrelevant
     Just r' -> fromRelevanceM r'
 
-type Input       s v   = Core.Expr Plicitness (Var v (MetaVar s (RelevanceM s) (MetaAnnotation s) v))
-type InputScope  s b v = Scope b (Core.Expr Plicitness) (Var v (MetaVar s (RelevanceM s) (MetaAnnotation s) v))
-type Output      s v   = CoreM s (RelevanceM s) (MetaAnnotation s) v
-type OutputScope s b v = ScopeM b Expr s (RelevanceM s) (MetaAnnotation s) v
+type Input       s = Core.Expr Plicitness (MetaVar s (RelevanceM s) (MetaAnnotation s))
+type InputScope  s b = Scope b (Core.Expr Plicitness) (MetaVar s (RelevanceM s) (MetaAnnotation s))
+type Output      s = CoreM s (RelevanceM s) (MetaAnnotation s)
+type OutputScope s b = ScopeM b Expr s (RelevanceM s) (MetaAnnotation s)
 
-leRel :: RelevanceM s -> RelevanceM s -> TCM s v ()
+leRel :: RelevanceM s -> RelevanceM s -> TCM s ()
 leRel rel1 rel2 = do
   trs "leRel rel1" rel1
   trs "leRel rel2" rel2
@@ -137,7 +136,7 @@ leRel rel1 rel2 = do
         Nothing -> liftST $ writeSTRef (metaRelRef v2) $ Just rel1
     _ -> throwError $ "leRel" ++ show (rel1, rel2)
 
-unifyRel :: RelevanceM s -> RelevanceM s -> TCM s v ()
+unifyRel :: RelevanceM s -> RelevanceM s -> TCM s ()
 unifyRel rel1 rel2 = case (rel1, rel2) of
   (RVar v1, RVar v2)
     | v1 == v2 -> return ()
@@ -161,8 +160,7 @@ unifyRel rel1 rel2 = case (rel1, rel2) of
   (Relevance r1, Relevance r2) | r1 == r2 -> return ()
   _ -> throwError "unifyRel"
 
-returnsType :: (Eq v, Hashable v, Show v)
-            => Input s v -> TCM s v Bool
+returnsType :: Input s -> TCM s Bool
 returnsType = go True
   where
     go reduce expr = case expr of
@@ -171,23 +169,29 @@ returnsType = go True
       Con _  -> return False
       Pi h _ t s  -> do
         x <- forallVar h (first meta t) r
-        returnsType $ instantiate1 x s
-      Case _ _ -> undefined -- TODO
+        returnsType $ instantiate (pure x) s
+      Case _ brs -> branchesReturnType brs
       _ | reduce -> do
         expr' <- whnf metaRelevance toMetaAnnotation $ first meta expr
         go False $ first plicitness expr'
       _ -> return False
     meta = MetaAnnotation r . plicitness
     r = Relevance Relevant -- unimportant
+    branchesReturnType (ConBranches cbrs) = and <$> sequence
+      [do vs <- forM hs $ \(h, _) -> forallVar h Type r
+          returnsType $ instantiate (vs V.!) s
+      | (_, hs, s) <- cbrs]
+    branchesReturnType (LitBranches lbrs def) = and <$> sequence
+      (returnsType def : [returnsType e | (_, e) <- lbrs])
 
-makeRel :: (Eq v, Hashable v, Show v)
-        => RelevanceM s -> Input s v -> TCM s v (Output s v)
+makeRel :: RelevanceM s -> Input s -> TCM s (Output s)
 makeRel rel expr = do
   tr "makeRel expr" expr
   trs "makeRel  rel" rel
   modifyIndent succ
   res <- case expr of
     Var v -> return $ Var v
+    Global g -> return $ Global g
     Con c -> return $ Con c
     Type -> return Type
     Pi h p t s -> do
@@ -206,11 +210,10 @@ makeRel rel expr = do
     meta = MetaAnnotation rel . plicitness
     makeRelScope h t s = do
       x <- forall_ h (first meta t) rel
-      e <- makeRel rel $ instantiate1 (pure $ F x) s
-      return $ abstract1 (F x) e
+      e <- makeRel rel $ instantiate1 (pure x) s
+      return $ abstract1 x e
 
-inferArg :: (Hashable v, Ord v, Show v)
-         => Input s v -> Bool -> TCM s v (Output s v, RelevanceM s)
+inferArg :: Input s -> Bool -> TCM s (Output s, RelevanceM s)
 inferArg argType knownDef = do
   tr  "inferArg argType " argType
   trs "inferArg knownDef" knownDef
@@ -232,8 +235,7 @@ inferArg argType knownDef = do
   trs "inferArg rel" rel
   return (res, rel)
 
-inferTop :: (Hashable v, Ord v, Show v)
-         => Input s v -> TCM s v (Output s v, RelevanceM s)
+inferTop :: Input s -> TCM s (Output s, RelevanceM s)
 inferTop typ = do
   tr "inferTop typ" typ
   modifyIndent succ
@@ -250,43 +252,42 @@ inferTop typ = do
   trs "inferTop rel" rel
   return (typ', rel)
 
-generalise :: Output s v -> Output s v -> TCM s v (Output s v, Output s v)
+generalise :: Output s -> Output s -> TCM s (Output s, Output s)
 generalise e t = bitraverse (bitraverse f pure) (bitraverse f pure) (e, t)
   where
     f = fmap toMetaAnnotation . fromMetaAnnotation
 
-infer :: (Hashable v, Ord v, Show v)
-      => Input s v -> RelevanceM s -> Bool -> TCM s v (Output s v, Output s v)
+infer :: Input s -> RelevanceM s -> Bool -> TCM s (Output s, Output s)
 infer expr surroundingRel knownDef = do
   tr "infer expr" expr
   trs "infer srel" surroundingRel
   trs "infer know" knownDef
   modifyIndent succ
   (expr', typ) <- case expr of
-    Var (F v) -> do
+    Var v -> do
       leRel surroundingRel $ metaData v
-      return (Var $ F v, metaType v)
-    Var (B v) -> do
+      return (Var v, metaType v)
+    Global v -> do
       (_, t, a) <- context v
       leRel surroundingRel $ toRelevanceM a
-      return (Var $ B v, bimap toMetaAnnotation B t)
+      return (Global v, first toMetaAnnotation t)
     Con c -> do
       t <- constructor c
-      return (Con c, bimap toMetaAnnotation B t)
+      return (Con c, first toMetaAnnotation t)
     Type        -> return (Type, Type)
     Pi x p t1 s -> do
       (t1', t1rel) <- inferArg t1 knownDef
       v     <- forall_ x t1' t1rel
-      e'    <- check (instantiate1 (pure $ F v) s) Type surroundingRel knownDef
-      return ( Pi x (MetaAnnotation t1rel p) t1' $ abstract1 (F v) e'
+      e'    <- check (instantiate1 (pure v) s) Type surroundingRel knownDef
+      return ( Pi x (MetaAnnotation t1rel p) t1' $ abstract1 v e'
              , Type
              )
     Lam x p t1 s -> uncurry generalise =<< do
       (t1', t1rel) <- inferArg t1 True
       v         <- forall_ x t1' t1rel
-      (e', t2') <- infer (instantiate1 (pure $ F v) s) surroundingRel knownDef
-      return ( Lam x (MetaAnnotation t1rel p) t1' $ abstract1 (F v) e'
-             , Pi  x (MetaAnnotation t1rel p) t1' $ abstract1 (F v) t2'
+      (e', t2') <- infer (instantiate1 (pure v) s) surroundingRel knownDef
+      return ( Lam x (MetaAnnotation t1rel p) t1' $ abstract1 v e'
+             , Pi  x (MetaAnnotation t1rel p) t1' $ abstract1 v t2'
              )
     App e1 p e2 -> do
       (e1', ft) <- infer e1 surroundingRel knownDef
@@ -306,8 +307,7 @@ infer expr surroundingRel knownDef = do
   tr "infer res t" typ
   return (expr', typ)
 
-check :: (Hashable v, Ord v, Show v)
-      => Input s v -> Output s v -> RelevanceM s -> Bool -> TCM s v (Output s v)
+check :: Input s -> Output s -> RelevanceM s -> Bool -> TCM s (Output s)
 check expr typ rel knownDef = do
   tr "check e" expr
   tr "check t" typ
@@ -320,8 +320,7 @@ check expr typ rel knownDef = do
   tr "check res" res
   return res
 
-subtype :: (Hashable v, Ord v, Show v)
-        => Output s v -> Output s v -> Output s v -> TCM s v (Output s v)
+subtype :: Output s -> Output s -> Output s -> TCM s (Output s)
 subtype expr type1 type2 = do
   tr "subtype e " expr
   tr "subtype t1" type1
@@ -333,33 +332,33 @@ subtype expr type1 type2 = do
   return e'
   where
     go reduce e typ1 typ2 = case (typ1, typ2) of
-      (Var (F v1), Var (F v2)) -> do
+      (Var v1, Var v2) -> do
         leRel (metaData v2) (metaData v1)
         return e
       (Pi h1 (MetaAnnotation r1 p1) t1 s1,  Pi h2 (MetaAnnotation r2 p2) t2 s2) | p1 == p2 -> do
         x2 <- forall_ (h1 <> h2) t2 r1
         leRel r1 r2
-        x1 <- subtype (return $ F x2) t2 t1
+        x1 <- subtype (pure x2) t2 t1
         e2 <- subtype (betaApp e (MetaAnnotation r1 p1) x1)
                       (instantiate1 x1 s1)
-                      (instantiate1 (return $ F x2) s2)
+                      (instantiate1 (pure x2) s2)
         etaLamM sameMetaAnnotation
                 (h1 <> h2)
                 (MetaAnnotation r2 p2)
                 t2
-                (abstract1 (F x2) e2)
+                (abstract1 x2 e2)
       _ | reduce -> do
         typ1' <- whnf metaRelevance toMetaAnnotation typ1
         typ2' <- whnf metaRelevance toMetaAnnotation typ2
         go False e typ1' typ2'
       _ -> do unify typ1 typ2; return e
 
-sameMetaAnnotation :: MetaAnnotation s -> MetaAnnotation s -> TCM s v Bool
+sameMetaAnnotation :: MetaAnnotation s -> MetaAnnotation s -> TCM s Bool
 sameMetaAnnotation (MetaAnnotation r1 p1) (MetaAnnotation r2 p2)
   | p1 /= p2  = return False
   | otherwise = (==) <$> go r1 <*> go r2
   where
-    go :: RelevanceM s -> TCM s v (RelevanceM s)
+    go :: RelevanceM s -> TCM s (RelevanceM s)
     go r@(Relevance _) = return r
     go r@(RVar v) = do
       sol <- liftST $ readSTRef $ metaRelRef v
@@ -367,7 +366,7 @@ sameMetaAnnotation (MetaAnnotation r1 p1) (MetaAnnotation r2 p2)
         Nothing -> return r
         Just r' -> go r'
 
-unify :: (Eq v, Hashable v, Show v) => Output s v -> Output s v -> TCM s v ()
+unify :: Output s -> Output s -> TCM s ()
 unify type1 type2 = do
   tr "unify t1" type1
   tr "unify t2" type2
@@ -378,7 +377,7 @@ unify type1 type2 = do
     go reduce typ1 typ2
       | typ1 == typ2 = return ()
       | otherwise = case (typ1, typ2) of
-        (Var (F v1), Var (F v2)) -> unifyRel (metaData v1) (metaData v2)
+        (Var v1, Var v2) -> unifyRel (metaData v1) (metaData v2)
         (App t1 (MetaAnnotation r1 p1) t1', App t2 (MetaAnnotation r2 p2) t2') | p1 == p2 -> do
           unifyRel r1 r2
           unify t1 t2
@@ -389,7 +388,7 @@ unify type1 type2 = do
           go False typ1' typ2'
         _ -> throwError $ "rel unify: " ++ show (pretty (show <$> typ1, show <$> typ2))
 
-inferConstr :: (Ord v, Show v, Hashable v) => ConstrDef (Input s v) -> TCM s v (ConstrDef (Output s v))
+inferConstr :: ConstrDef (Input s) -> TCM s (ConstrDef (Output s))
 inferConstr (ConstrDef c t) = do
   trs "inferConstr" c
   modifyIndent succ
@@ -397,21 +396,20 @@ inferConstr (ConstrDef c t) = do
   modifyIndent pred
   return res
 
-inferDef :: (Ord v, Show v, Hashable v)
-         => Input.Definition (Expr Plicitness) (Var v (MetaVar s (RelevanceM s) (MetaAnnotation s) v))
+inferDef :: Input.Definition (Expr Plicitness) (MetaVar s (RelevanceM s) (MetaAnnotation s))
          -> RelevanceM s
-         -> TCM s v (Input.Definition (Expr (MetaAnnotation s))
-                                      (Var v (MetaVar s (RelevanceM s) (MetaAnnotation s) v)), Output s v)
+         -> TCM s (Input.Definition (Expr (MetaAnnotation s))
+                                    (MetaVar s (RelevanceM s) (MetaAnnotation s)), Output s)
 inferDef (Input.Definition e) surroundingRel = first Input.Definition <$> infer e surroundingRel False
 inferDef (Input.DataDefinition (DataDef ps cs)) _surroundingRel = mdo
   trs "inferDef" ()
   modifyIndent succ
-  let inst = instantiate (\n -> let (v, _, _, _) = ps' V.! n in pure $ pure v)
+  let inst = instantiate (\n -> let (v, _, _, _) = ps' V.! n in pure v)
   ps' <- forM ps $ \(h, p, s) -> do
     t <- makeRel (Relevance Irrelevant) $ inst s
     v <- forall_ h t $ Relevance Irrelevant
     return (v, h, p, t)
-  let abstr = abstract (unvar (const Nothing) $ flip V.elemIndex ((\(v, _, _, _) -> v) <$> ps'))
+  let abstr = abstract $ flip V.elemIndex $ (\(v, _, _, _) -> v) <$> ps'
       ps'' = (\(_, h, p, t) -> (h, p, abstr t)) <$> ps'
   cs' <- mapM inferConstr $ fmap (fmap inst) cs
   let cs'' = fmap abstr <$> cs'
@@ -420,21 +418,19 @@ inferDef (Input.DataDefinition (DataDef ps cs)) _surroundingRel = mdo
   modifyIndent pred
   return (Input.DataDefinition res, resType)
 
-subtypeDef :: (Ord v, Show v, Hashable v)
-           => Input.Definition (Expr (MetaAnnotation s))
-                               (Var v (MetaVar s (RelevanceM s) (MetaAnnotation s) v))
-           -> Output s v
-           -> Output s v
-           -> TCM s v (Input.Definition (Expr (MetaAnnotation s))
-                                              (Var v (MetaVar s (RelevanceM s) (MetaAnnotation s) v)))
+subtypeDef :: Input.Definition (Expr (MetaAnnotation s))
+                               (MetaVar s (RelevanceM s) (MetaAnnotation s))
+           -> Output s
+           -> Output s
+           -> TCM s (Input.Definition (Expr (MetaAnnotation s))
+                                      (MetaVar s (RelevanceM s) (MetaAnnotation s)))
 subtypeDef (Input.Definition e) t t' = Input.Definition <$> subtype e t t'
 subtypeDef (Input.DataDefinition d) t t' = do
   unify t t'
   return $ Input.DataDefinition d
 
-checkRecursiveDefs :: (Hashable v, Ord v, Show v)
-                   => Vector (Input.Definition (Core.Expr Plicitness) (Var Int (Var v (MetaVar s (RelevanceM s) (MetaAnnotation s) v))), InputScope s Int v)
-                   -> TCM s v (Vector (Input.Definition (Core.Expr (MetaAnnotation s)) (Var Int (Var v (MetaVar s (RelevanceM s) (MetaAnnotation s) v))), OutputScope s Int v, RelevanceM s))
+checkRecursiveDefs :: Vector (Input.Definition (Core.Expr Plicitness) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), InputScope s Int)
+                   -> TCM s (Vector (Input.Definition (Core.Expr (MetaAnnotation s)) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), OutputScope s Int, RelevanceM s))
 checkRecursiveDefs ds = case traverse unusedScope $ snd <$> ds of
   Nothing -> throwError "Mutually recursive types not supported"
   Just ts -> do
@@ -443,13 +439,13 @@ checkRecursiveDefs ds = case traverse unusedScope $ snd <$> ds of
       ev <- forall_ (Hint Nothing) t' rel
       return (ev, t', rel)
     let instantiatedDs = flip V.imap ds $ \i (d, _) ->
-          (evs V.! i, Input.instantiateDef (pure . pure . (\(ev, _, _) -> ev) . (evs V.!)) d)
+          (evs V.! i, Input.instantiateDef (pure . (\(ev, _, _) -> ev) . (evs V.!)) d)
     checkedDs <- V.forM instantiatedDs $ \((m, t, rel), d) -> do
       (d', t') <- inferDef d rel
       d'' <- subtypeDef d' t' t
       return (m, d'', t)
     V.forM checkedDs $ \(m, d, t) -> do
-      let f  = unvar (const Nothing) $ flip V.elemIndex $ (\(ev, _, _) -> ev) <$> evs
+      let f  = flip V.elemIndex $ (\(ev, _, _) -> ev) <$> evs
           s  = Input.abstractDef f d
           st = abstract f t
       return (s, st, metaData m)

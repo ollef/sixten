@@ -7,16 +7,28 @@ import Data.String
 import qualified Data.Vector as Vector
 import Prelude.Extras
 
+import Branches
 import Hint
 import Pretty
 import Util
 
 data Expr v
   = Var v
+  | Global Name
   | Con Constr
   | Lam !NameHint (Scope1 Expr v)
   | App (Expr v) (Expr v)
+  | Case (Expr v) (Branches Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+globals :: Expr v -> Expr (Var Name v)
+globals expr = case expr of
+  Var v    -> Var $ F v
+  Global g -> Var $ B g
+  Con c    -> Con c
+  Lam h s  -> Lam h $ exposeScope globals s
+  App e1 e2 -> App (globals e1) (globals e2)
+  Case e brs -> Case (globals e) (exposeBranches globals brs)
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -31,9 +43,11 @@ instance Applicative Expr where
 instance Monad Expr where
   return = Var
   Var v >>= f = f v
+  Global g >>= _ = Global g
   Con c >>= _ = Con c
   Lam h s >>= f = Lam h $ s >>>= f
   App e1 e2 >>= f = App (e1 >>= f) (e2 >>= f)
+  Case e brs >>= f = Case (e >>= f) (brs >>>= f)
 
 lamView :: Expr v -> Maybe (NameHint, (), Expr v, Scope1 Expr v)
 lamView (Lam h s) = Just (h, (), Con mempty, s)
@@ -43,6 +57,7 @@ instance (Eq v, IsString v, Pretty v)
       => Pretty (Expr v) where
   prettyM expr = case expr of
     Var v -> prettyM v
+    Global g -> prettyM g
     Con c -> prettyM c
     (bindingsViewM lamView -> Just (hs, s)) -> parens `above` absPrec $
       withNameHints (Vector.fromList ((\(h, _, _) -> h) <$> hs)) $ \ns ->
@@ -50,3 +65,5 @@ instance (Eq v, IsString v, Pretty v)
         associate (prettyM $ instantiate (pure . fromText . (ns Vector.!)) s)
     Lam {} -> error "impossible prettyPrec lam"
     App e1 e2 -> prettyApp (prettyM e1) (prettyM e2)
+    Case e brs -> parens `above` casePrec $
+      prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> prettyM brs

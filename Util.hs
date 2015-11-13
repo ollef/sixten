@@ -45,7 +45,15 @@ bifoldMapScope :: (Bifoldable expr, Monoid m)
                -> Scope b (expr x) y -> m
 bifoldMapScope f g (Scope s) = bifoldMap f (unvar mempty $ bifoldMap f g) s
 
+exposeScope :: Applicative expr
+            => (forall x. expr x -> expr (Var e x))
+            -> Scope b expr v
+            -> Scope b expr (Var e v)
+exposeScope f (Scope s) = Scope $ fmap (unvar (F . pure . B) id) $ f $ fmap f <$> s
+
 data Empty
+instance Eq Empty where _ == _ = True
+instance Ord Empty where compare _ _ = EQ
 
 fromEmpty :: Empty -> a
 fromEmpty = error "fromEmpty"

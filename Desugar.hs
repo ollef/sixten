@@ -18,7 +18,7 @@ import Data
 import Input
 import Util
 
-program :: (Hashable v, Eq v, Show v) => [TopLevelParsed v] -> Either Text (Program v)
+program :: [TopLevelParsed Name] -> Either Text (Program Name)
 program xs = snd <$> foldlM resolveName (Nothing, mempty) xs >>= matchTypes
   where
     resolveName :: (Hashable v, Eq v, Show v)
@@ -39,13 +39,12 @@ program xs = snd <$> foldlM resolveName (Nothing, mempty) xs >>= matchTypes
     insertNoDup err k v m = case (HM.lookup k m, HM.insert k v m) of
       (Just _, _)   -> err
       (Nothing, m') -> return m'
-    matchTypes :: (Hashable v, Eq v, Show v)
-               => (HashMap v (Expr v), HashMap v (Type v), HashMap v (DataDef Type v))
-               -> Either Text (Program v)
+    matchTypes :: (HashMap Name (Expr Name), HashMap Name (Type Name), HashMap Name (DataDef Type Name))
+               -> Either Text (Program Name)
     matchTypes (defs, types, datas) = case HM.keys $ HM.difference types defs of
       [] -> do
         let defs' = HM.unionWith (\(e, _) (t, _) -> (e, t)) (flip (,) Wildcard <$> defs)
-                                                           (flip (,) Wildcard <$> types)
+                                                            (flip (,) Wildcard <$> types)
             ldefs = first Definition <$> defs'
             rdatas = (\x -> (DataDefinition x, dataType x Pi (Scope Type))) <$> datas
         case HM.keys $ HM.intersection ldefs rdatas of
