@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, Rank2Types, ViewPatterns #-}
-module Core where
+module Syntax.Abstract where
 
 import Bound
 import Bound.Scope
@@ -15,10 +15,10 @@ import Data.String
 import qualified Data.Vector as Vector
 import Prelude.Extras
 
-import Annotation
-import Branches
-import Hint
-import Pretty
+import Syntax.Annotation
+import Syntax.Branches
+import Syntax.Hint
+import Syntax.Pretty
 import Util
 
 -- | Expressions with variables of type @v@, with abstractions and applications
@@ -146,21 +146,21 @@ instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
 etaLamM :: (Ord v, Monad m)
         => (d -> d -> m Bool)
         -> Hint (Maybe Name) -> d -> Expr d v -> Scope1 (Expr d) v -> m (Expr d v)
-etaLamM isEq n p t s@(Scope (Core.App e p' (Var (B ()))))
+etaLamM isEq n p t s@(Scope (App e p' (Var (B ()))))
   | B () `S.notMember` toSet (second (const ()) <$> e) = do
     eq <- isEq p p'
     return $ if eq then
       join $ unvar (error "etaLam impossible") id <$> e
     else
-      Core.Lam n p t s
-etaLamM _ n p t s = return $ Core.Lam n p t s
+      Lam n p t s
+etaLamM _ n p t s = return $ Lam n p t s
 
 etaLam :: Eq d
        => Hint (Maybe Name) -> d -> Expr d v -> Scope1 (Expr d) v -> Expr d v
-etaLam _ p _ (Scope (Core.App e p' (Var (B ()))))
+etaLam _ p _ (Scope (App e p' (Var (B ()))))
   | B () `S.notMember` toSet (second (const ()) <$> e) && p == p'
     = join $ unvar (error "etaLam impossible") id <$> e
-etaLam n p t s = Core.Lam n p t s
+etaLam n p t s = Lam n p t s
 
 betaApp :: Eq d => Expr d v -> d -> Expr d v -> Expr d v
 betaApp e1@(Lam _ p1 _ s) p2 e2 | p1 == p2 = case bindings s of

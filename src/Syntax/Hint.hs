@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleInstances #-}
-module Hint where
+module Syntax.Hint where
 
 import Control.Applicative
 

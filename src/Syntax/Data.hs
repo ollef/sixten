@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts #-}
-module Data where
+module Syntax.Data where
 
 import Bound
 import Bound.Scope
@@ -9,9 +9,9 @@ import Data.String
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import Annotation
-import Hint
-import Pretty
+import Syntax.Annotation
+import Syntax.Hint
+import Syntax.Pretty
 import Util
 
 data DataDef typ v = DataDef

@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, Rank2Types, ViewPatterns #-}
-module Lambda where
+module Syntax.Lambda where
 import Bound
 import Bound.Var
 import Control.Monad
@@ -10,9 +10,9 @@ import Data.String
 import qualified Data.Vector as Vector
 import Prelude.Extras
 
-import Branches
-import Hint
-import Pretty
+import Syntax.Branches
+import Syntax.Hint
+import Syntax.Pretty
 import Util
 
 data Expr v

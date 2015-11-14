@@ -1,4 +1,4 @@
-module Annotation where
+module Syntax.Annotation where
 
 data Plicitness = Implicit | Explicit
   deriving (Eq, Ord, Show)

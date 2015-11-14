@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 -- | Desugaring of programs
-module Desugar where
+module Syntax.Desugar where
 
 import Bound
 import Control.Applicative
@@ -13,10 +13,10 @@ import Data.Monoid
 import Data.Text(Text)
 import qualified Data.Text as Text
 
-import Data
-import Definition
-import Input
-import Parser
+import Syntax.Data
+import Syntax.Definition
+import Syntax.Concrete
+import Syntax.Parse
 import Util
 
 program :: [TopLevelParsed Name] -> Either Text (Program Expr () Name)

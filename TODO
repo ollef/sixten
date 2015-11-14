@@ -1,9 +1,9 @@
-Switch to lenses
-Javascript code generation
-Let definitions
-Restructure codebase
 Cases
   Type-check
+Javascript code generation
+Size types
+Let definitions
+Switch to lenses
 Specialisation pragma
   data Strategy = Eager | Lazy
 

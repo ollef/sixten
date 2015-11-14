@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts #-}
-module Definition where
+module Syntax.Definition where
 import Data.Foldable
 import Data.Hashable
 import Data.HashMap.Lazy(HashMap)
@@ -8,8 +8,8 @@ import Data.String
 import Data.Bitraversable
 import Bound
 
-import Data
-import Pretty
+import Syntax.Data
+import Syntax.Pretty
 import Util
 
 data Definition expr v

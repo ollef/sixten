@@ -12,16 +12,16 @@ import Data.Function
 import Data.Vector(Vector)
 import qualified Data.Vector as V
 
-import Annotation
-import Branches
-import Core
-import Data
-import Definition
-import Hint
 import Meta
 import Monad
 import Normalise
-import Pretty
+import Syntax.Abstract
+import Syntax.Annotation as Annotation
+import Syntax.Branches
+import Syntax.Data
+import Syntax.Definition
+import Syntax.Hint
+import Syntax.Pretty
 import Util
 
 {-
@@ -102,10 +102,10 @@ fromRelevanceM (RVar v) = do
     Nothing -> return Annotation.Irrelevant
     Just r' -> fromRelevanceM r'
 
-type Input       s = Core.Expr Plicitness (MetaVar s (RelevanceM s) (MetaAnnotation s))
-type InputScope  s b = Scope b (Core.Expr Plicitness) (MetaVar s (RelevanceM s) (MetaAnnotation s))
-type Output      s = CoreM s (RelevanceM s) (MetaAnnotation s)
-type OutputScope s b = ScopeM b Expr s (RelevanceM s) (MetaAnnotation s)
+type Input       s = Expr Plicitness (MetaVar s (RelevanceM s) (MetaAnnotation s))
+type InputScope  s b = Scope b (Expr Plicitness) (MetaVar s (RelevanceM s) (MetaAnnotation s))
+type Output      s = AbstractM s (RelevanceM s) (MetaAnnotation s)
+type OutputScope s b = ScopeM b (Expr (MetaAnnotation s)) s (RelevanceM s) (MetaAnnotation s)
 
 leRel :: RelevanceM s -> RelevanceM s -> TCM s ()
 leRel rel1 rel2 = do
@@ -429,8 +429,8 @@ subtypeDef (DataDefinition d) t t' = do
   unify t t'
   return $ DataDefinition d
 
-checkRecursiveDefs :: Vector (Definition (Core.Expr Plicitness) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), InputScope s Int)
-                   -> TCM s (Vector (Definition (Core.Expr (MetaAnnotation s)) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), OutputScope s Int, RelevanceM s))
+checkRecursiveDefs :: Vector (Definition (Expr Plicitness) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), InputScope s Int)
+                   -> TCM s (Vector (Definition (Expr (MetaAnnotation s)) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), OutputScope s Int, RelevanceM s))
 checkRecursiveDefs ds = case traverse unusedScope $ snd <$> ds of
   Nothing -> throwError "Mutually recursive types not supported"
   Just ts -> do

@@ -8,11 +8,11 @@ import qualified Data.HashMap.Lazy as HM
 import Data.HashMap.Lazy(HashMap)
 import Data.Monoid
 
-import Annotation
-import Core
-import Data
-import Definition
-import Pretty
+import Syntax.Abstract
+import Syntax.Annotation
+import Syntax.Data
+import Syntax.Definition
+import Syntax.Pretty
 import Util
 
 newtype Level = Level Int

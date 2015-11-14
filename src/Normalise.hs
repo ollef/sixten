@@ -5,14 +5,14 @@ import Bound
 import Control.Monad.Except
 import Data.Bifunctor
 
-import Annotation
-import Core
-import Definition
 import Meta
 import Monad
+import Syntax.Abstract
+import Syntax.Annotation
+import Syntax.Definition
 
 whnf :: HasPlicitness a
-     => (a -> d) -> (Annotation -> a) -> CoreM s d a -> TCM s (CoreM s d a)
+     => (a -> d) -> (Annotation -> a) -> AbstractM s d a -> TCM s (AbstractM s d a)
 whnf dat anno expr = case expr of
   Var (metaRef -> Nothing) -> return expr
   Var (metaRef -> Just r) -> refineIfSolved r expr (whnf dat anno)
@@ -36,7 +36,7 @@ whnf dat anno expr = case expr of
   Case _ _ -> undefined -- TODO
 
 normalise :: (Eq a, Show d, Show a, HasPlicitness a)
-          => d -> (Annotation -> a) -> CoreM s d a -> TCM s (CoreM s d a)
+          => d -> (Annotation -> a) -> AbstractM s d a -> TCM s (AbstractM s d a)
 normalise dat anno expr = case expr of
   Var (metaRef -> Nothing) -> return expr
   Var (metaRef -> Just r) -> refineIfSolved r expr (normalise dat anno)

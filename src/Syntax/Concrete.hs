@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts #-}
-module Input where
+module Syntax.Concrete where
 
 import Bound
 import Control.Monad
@@ -7,11 +7,11 @@ import Data.Monoid
 import Data.String
 import Prelude.Extras
 
-import Annotation
-import Branches
-import Hint
+import Syntax.Annotation
+import Syntax.Branches
+import Syntax.Hint
+import Syntax.Pretty
 import Util
-import Pretty
 
 data Expr v
   = Var v

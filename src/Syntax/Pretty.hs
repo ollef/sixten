@@ -1,4 +1,4 @@
-module Pretty
+module Syntax.Pretty
   ( module Text.PrettyPrint.ANSI.Leijen
   , Pretty
   , (<+>), (<$$>)
@@ -37,7 +37,7 @@ import Text.PrettyPrint.ANSI.Leijen
   )
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 
-import Hint
+import Syntax.Hint
 import Util
 
 -------------------------------------------------------------------------------

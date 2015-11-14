@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, Rank2Types #-}
-module Branches where
+module Syntax.Branches where
 import Bound
 import Bound.Scope
 import Data.Bifoldable
@@ -11,10 +11,10 @@ import Data.String
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import Annotation
-import Hint
+import Syntax.Annotation
+import Syntax.Hint
+import Syntax.Pretty
 import Util
-import Pretty
 
 data Branches expr a
   = ConBranches [(Constr, Vector (NameHint, Plicitness), Scope Int expr a)]

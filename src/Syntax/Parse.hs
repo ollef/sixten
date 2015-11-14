@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, GeneralizedNewtypeDeriving #-}
-module Parser where
+module Syntax.Parse where
 
 import Bound
 import Control.Applicative((<**>), (<|>), Alternative)
@@ -18,11 +18,11 @@ import qualified Text.Trifecta as Trifecta
 import Text.Trifecta((<?>))
 import Text.Trifecta.Delta
 
-import Annotation
-import Branches
-import Data
-import Hint
-import Input
+import Syntax.Annotation
+import Syntax.Branches
+import Syntax.Concrete
+import Syntax.Data
+import Syntax.Hint
 import Util
 
 type Input = Text

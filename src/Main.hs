@@ -14,23 +14,23 @@ import qualified Data.Text.IO as Text
 import qualified Data.Vector as V
 import System.Environment
 
-import Annotation
-import qualified Core
-import Data
-import Definition
-import qualified Desugar
 import Erasure
-import Hint
 import Infer
 import qualified Relevance
-import qualified Input
-import qualified Parser
-import Pretty
 import Monad
+import Syntax.Annotation
+import qualified Syntax.Abstract as Abstract
+import qualified Syntax.Concrete as Concrete
+import Syntax.Data
+import Syntax.Definition
+import qualified Syntax.Desugar
+import Syntax.Hint
+import qualified Syntax.Parse
+import Syntax.Pretty
 import TopoSort
 import Util
 
-inferProgram :: Program Input.Expr () Name -> TCM s ()
+inferProgram :: Program Concrete.Expr () Name -> TCM s ()
 inferProgram p' = mapM_ tcGroup sorted
   where
     p = (\(x, y, ()) -> (x, y)) <$> p'
@@ -46,15 +46,15 @@ inferProgram p' = mapM_ tcGroup sorted
                           ]
     constructors = HS.fromList $ map fst constructorMappings
     instCon v
-      | v `HS.member` constructors = Input.Con v
+      | v `HS.member` constructors = Concrete.Con v
       | otherwise = pure v
 
     tcGroup tls = do
       let abstractedScopes = recursiveAbstractDefs [(n, d) | (n, (d, _)) <- tls]
           abstractedTypes = recursiveAbstract [(n, t) | (n, (_, t)) <- tls]
           abstractedTls = [ ( Hint $ Just n
-                            , s >>>= unvar (pure . B) Input.Global
-                            , t >>>= Input.Global
+                            , s >>>= unvar (pure . B) Concrete.Global
+                            , t >>>= Concrete.Global
                             )
                           | ((s, t), (n, _))
                             <- zip (zip abstractedScopes abstractedTypes) tls]
@@ -67,8 +67,8 @@ inferProgram p' = mapM_ tcGroup sorted
       reledTls'' <- traverse (traverse Relevance.fromRelevanceM) $ V.map (\(r, d, t) -> ((d, t), r)) reledTls'
       let names = V.fromList [n | (n, (_, _)) <- tls]
           instTls = HM.fromList
-            [(names V.! i, ( instantiateDef (Core.Global . (names V.!)) d
-                           , instantiate (Core.Global . (names V.!)) t
+            [(names V.! i, ( instantiateDef (Abstract.Global . (names V.!)) d
+                           , instantiate (Abstract.Global . (names V.!)) t
                            , Annotation r Explicit
                            ))
             | (i, ((d, t), r)) <- zip [0..] $ V.toList reledTls''
@@ -77,7 +77,7 @@ inferProgram p' = mapM_ tcGroup sorted
 
 test :: FilePath -> IO ()
 test inp = do
-  mp <- fmap Desugar.program <$> Parser.parseFromFile Parser.program inp
+  mp <- fmap Syntax.Desugar.program <$> Syntax.Parse.parseFromFile Syntax.Parse.program inp
   case mp of
     Nothing         -> return ()
     Just (Left err) -> Text.putStrLn err

@@ -9,7 +9,7 @@ import Data
 import Definition
 import Util
 
-int :: Expr a v
+int :: Type a v
 int = Global "Int"
 
 context :: Program (Expr Annotation) Annotation Empty

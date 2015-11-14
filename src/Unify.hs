@@ -10,18 +10,19 @@ import Data.Monoid
 import qualified Data.Set as S
 import Data.STRef
 
-import Annotation
-import Hint
-import Core
 import Meta
 import Monad
 import Normalise
-import Pretty
+import Syntax.Abstract
+import Syntax.Annotation
+import Syntax.Hint
+import Syntax.Pretty
 import Util
 
-type Core s = CoreM s () Plicitness
+type Abstract s = AbstractM s () Plicitness
+type Concrete s = ConcreteM s () Plicitness
 
-occurs :: Level -> MetaVar s () Plicitness -> Core s -> TCM s ()
+occurs :: Level -> MetaVar s () Plicitness -> Abstract s -> TCM s ()
 occurs l tv = traverse_ go
   where
     go tv'@(MetaVar _ typ _ _ mr)
@@ -36,7 +37,7 @@ occurs l tv = traverse_ go
               Left l'    -> liftST $ writeSTRef r $ Left $ min l l'
               Right typ' -> occurs l tv typ'
 
-unify :: Core s -> Core s -> TCM s ()
+unify :: Abstract s -> Abstract s -> TCM s ()
 unify type1 type2 = do
   tr "unify t1" type1
   tr "      t2" type2
@@ -83,7 +84,7 @@ unify type1 type2 = do
         Right c -> go True (apps c (map (second pure) pvs)) t
     lams pvs t = foldrM (\(p, v) -> fmap (Lam (Hint Nothing) p $ metaType v) . abstract1M v) t pvs
 
-subtype :: Plicitness -> Core s -> Core s -> Core s -> TCM s (Core s, Core s)
+subtype :: Plicitness -> Abstract s -> Abstract s -> Abstract s -> TCM s (Abstract s, Abstract s)
 subtype surrounding expr type1 type2 = do
   tr "subtype e"  expr
   tr "        t1" type1
