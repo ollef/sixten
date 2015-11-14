@@ -8,7 +8,6 @@ import Control.Monad
 import Data.Bifunctor
 import Data.Bifoldable
 import Data.Bitraversable
-import Data.HashMap.Lazy(HashMap)
 import Data.Monoid
 import Data.List as List
 import qualified Data.Set as S
@@ -21,7 +20,6 @@ import Branches
 import Hint
 import Pretty
 import Util
-import qualified Input
 
 -- | Expressions with variables of type @v@, with abstractions and applications
 -- decorated by @d@s.
@@ -38,8 +36,6 @@ data Expr d v
 
 -- | Synonym for documentation purposes
 type Type = Expr
-
-type Program d v = HashMap Name (Input.Definition (Expr d) v, Type d v, d)
 
 -------------------------------------------------------------------------------
 -- * Views and smart constructors
@@ -64,20 +60,6 @@ appsView = second reverse . go
 
 apps :: Expr d v -> [(d, Expr d v)] -> Expr d v
 apps = foldl (uncurry . App)
-
-{-
-instantiateConBranch :: HasPlicitness d
-                     => (Constr, Vector (NameHint, Plicitness), Scope Int (Type d) v)
-                     -> (NameHint -> Plicitness -> Type d v -> Type d v)
-                     -> Type d v
-                     -> Type d v
-instantiateConBranch (con, hints, scope) var typ = _ <$> go typ (Vector.toList hints) 0
-  where
-    go t [] _ = t
-    go (Pi h p t s) ((h', p'):hs') n | plicitness p == p' = undefined
-    go (Pi h p t s) ((h', Explicit):hs') n | isImplicit p = undefined
-    go _ _ _ = error "instantiateConBranch"
-    -}
 
 globals :: Expr d v -> Expr d (Var Name v)
 globals expr = case expr of
@@ -173,7 +155,7 @@ etaLamM isEq n p t s@(Scope (Core.App e p' (Var (B ()))))
       Core.Lam n p t s
 etaLamM _ n p t s = return $ Core.Lam n p t s
 
-etaLam :: (Ord v, Eq d)
+etaLam :: Eq d
        => Hint (Maybe Name) -> d -> Expr d v -> Scope1 (Expr d) v -> Expr d v
 etaLam _ p _ (Scope (Core.App e p' (Var (B ()))))
   | B () `S.notMember` toSet (second (const ()) <$> e) && p == p'

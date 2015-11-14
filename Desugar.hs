@@ -5,7 +5,6 @@ module Desugar where
 import Bound
 import Control.Applicative
 import Control.Monad.Except
-import Data.Bifunctor
 import Data.Foldable
 import Data.Hashable
 import Data.HashMap.Lazy(HashMap)
@@ -15,10 +14,12 @@ import Data.Text(Text)
 import qualified Data.Text as Text
 
 import Data
+import Definition
 import Input
+import Parser
 import Util
 
-program :: [TopLevelParsed Name] -> Either Text (Program Name)
+program :: [TopLevelParsed Name] -> Either Text (Program Expr () Name)
 program xs = snd <$> foldlM resolveName (Nothing, mempty) xs >>= matchTypes
   where
     resolveName :: (Hashable v, Eq v, Show v)
@@ -33,20 +34,20 @@ program xs = snd <$> foldlM resolveName (Nothing, mempty) xs >>= matchTypes
     resolveName (_, (defs, types, datas)) (ParsedTypeDecl n e) = do
       types' <- insertNoDup (throwError $ "duplicate type declaration: " <> shower n) n e types
       return (Just n, (defs, types', datas))
-    resolveName (_, (defs, types, datas)) (ParsedData n dataDef) = do
-      datas' <- insertNoDup (throwError $ "duplicate datatype: " <> shower n) n dataDef datas
+    resolveName (_, (defs, types, datas)) (ParsedData n dataDefi) = do
+      datas' <- insertNoDup (throwError $ "duplicate datatype: " <> shower n) n dataDefi datas
       return (Just n, (defs, types, datas'))
     insertNoDup err k v m = case (HM.lookup k m, HM.insert k v m) of
       (Just _, _)   -> err
       (Nothing, m') -> return m'
     matchTypes :: (HashMap Name (Expr Name), HashMap Name (Type Name), HashMap Name (DataDef Type Name))
-               -> Either Text (Program Name)
+               -> Either Text (Program Expr () Name)
     matchTypes (defs, types, datas) = case HM.keys $ HM.difference types defs of
       [] -> do
-        let defs' = HM.unionWith (\(e, _) (t, _) -> (e, t)) (flip (,) Wildcard <$> defs)
+        let defs' = HM.unionWith (\(d, _) (t, _) -> (d, t)) (flip (,) Wildcard <$> defs)
                                                             (flip (,) Wildcard <$> types)
-            ldefs = first Definition <$> defs'
-            rdatas = (\x -> (DataDefinition x, dataType x Pi (Scope Type))) <$> datas
+            ldefs = (\(e, t) -> (Definition e, t, ())) <$> defs'
+            rdatas = (\x -> (DataDefinition x, dataType x Pi $ Scope Type, ())) <$> datas
         case HM.keys $ HM.intersection ldefs rdatas of
           [] -> return $ ldefs <> rdatas
           vs -> throwError $ "duplicate definition: " <> Text.intercalate ", " (map shower vs)

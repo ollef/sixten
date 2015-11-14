@@ -11,7 +11,7 @@ import Data.Monoid
 import Annotation
 import Core
 import Data
-import qualified Input
+import Definition
 import Pretty
 import Util
 
@@ -22,7 +22,7 @@ instance Pretty Level where
   pretty (Level i) = pretty i
 
 data State = State
-  { tcContext :: Program Annotation Empty
+  { tcContext :: Program (Expr Annotation) Annotation Empty
   , tcConstrs :: HashMap Constr (Type Annotation Empty)
   , tcIndent  :: {-# UNPACK #-} !Int -- This has no place here, but is useful for debugging
   , tcFresh   :: {-# UNPACK #-} !Int
@@ -71,17 +71,17 @@ enterLevel x = do
 log :: String -> TCM s ()
 log l = modify $ \s -> s {tcLog = l : tcLog s}
 
-addContext :: Program Annotation Empty -> TCM s ()
+addContext :: Program (Expr Annotation) Annotation Empty -> TCM s ()
 addContext prog = modify $ \s -> s
   { tcContext = prog <> tcContext s
   , tcConstrs = cs   <> tcConstrs s
   } where
     cs = HM.fromList $ do
-      (_, (Input.DataDefinition d, _, _)) <- HM.toList prog
+      (_, (DataDefinition d, _, _)) <- HM.toList prog
       ConstrDef c t <- quantifiedConstrTypes (\h -> Pi h . Annotation Irrelevant) d
       return (c, t)
 
-context :: Name -> TCM s (Input.Definition (Expr Annotation) v, Type Annotation v, Annotation)
+context :: Name -> TCM s (Definition (Expr Annotation) v, Type Annotation v, Annotation)
 context v = do
   mres <- gets $ HM.lookup v . tcContext
   maybe (throwError $ "Not in scope: " ++ show v)

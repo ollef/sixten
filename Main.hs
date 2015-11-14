@@ -17,6 +17,7 @@ import System.Environment
 import Annotation
 import qualified Core
 import Data
+import Definition
 import qualified Desugar
 import Erasure
 import Hint
@@ -29,17 +30,18 @@ import Monad
 import TopoSort
 import Util
 
-inferProgram :: Input.Program Name -> TCM s ()
-inferProgram p = mapM_ tcGroup sorted
+inferProgram :: Program Input.Expr () Name -> TCM s ()
+inferProgram p' = mapM_ tcGroup sorted
   where
+    p = (\(x, y, ()) -> (x, y)) <$> p'
     deps   = HM.map (bifoldMap defNames toHashSet) p <> HM.fromList constructorMappings
-    defNames (Input.DataDefinition d) = toHashSet (constructorNames d) <> toHashSet d
+    defNames (DataDefinition d) = toHashSet (constructorNames d) <> toHashSet d
     defNames x = toHashSet x
     sorted = fmap (\n -> (n, bimap (>>>= instCon) (>>= instCon) $ p HM.! n))
            . filter (`HM.member` p) <$> topoSort deps
     -- TODO check for duplicate constructors
     constructorMappings = [ (c, HS.singleton n)
-                          | (n, (Input.DataDefinition d, _)) <- HM.toList p
+                          | (n, (DataDefinition d, _)) <- HM.toList p
                           , c <- constructorNames d
                           ]
     constructors = HS.fromList $ map fst constructorMappings
@@ -48,7 +50,7 @@ inferProgram p = mapM_ tcGroup sorted
       | otherwise = pure v
 
     tcGroup tls = do
-      let abstractedScopes = Input.recursiveAbstractDefs [(n, d) | (n, (d, _)) <- tls]
+      let abstractedScopes = recursiveAbstractDefs [(n, d) | (n, (d, _)) <- tls]
           abstractedTypes = recursiveAbstract [(n, t) | (n, (_, t)) <- tls]
           abstractedTls = [ ( Hint $ Just n
                             , s >>>= unvar (pure . B) Input.Global
@@ -60,12 +62,12 @@ inferProgram p = mapM_ tcGroup sorted
       let vf = error "inferProgram"
           checkedTls' = bimap (fmap $ fmap vf) (fmap vf) <$> checkedTls
       reledTls <- Relevance.checkRecursiveDefs checkedTls'
-      reledTls' <- traverse (bitraverse (Input.bitraverseDef   Relevance.fromMetaAnnotation (traverse vf))
+      reledTls' <- traverse (bitraverse (bitraverseDef   Relevance.fromMetaAnnotation (traverse vf))
                                         (bitraverseScope Relevance.fromMetaAnnotation vf)) $ V.map (\(d, t, r) -> (r, d, t)) reledTls
       reledTls'' <- traverse (traverse Relevance.fromRelevanceM) $ V.map (\(r, d, t) -> ((d, t), r)) reledTls'
       let names = V.fromList [n | (n, (_, _)) <- tls]
           instTls = HM.fromList
-            [(names V.! i, ( Input.instantiateDef (Core.Global . (names V.!)) d
+            [(names V.! i, ( instantiateDef (Core.Global . (names V.!)) d
                            , instantiate (Core.Global . (names V.!)) t
                            , Annotation r Explicit
                            ))

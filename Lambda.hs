@@ -1,8 +1,11 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, Rank2Types, ViewPatterns #-}
 module Lambda where
 import Bound
+import Bound.Var
 import Control.Monad
+import Data.Bifunctor
 import Data.Monoid
+import qualified Data.Set as S
 import Data.String
 import qualified Data.Vector as Vector
 import Prelude.Extras
@@ -52,6 +55,12 @@ instance Monad Expr where
 lamView :: Expr v -> Maybe (NameHint, (), Expr v, Scope1 Expr v)
 lamView (Lam h s) = Just (h, (), Con mempty, s)
 lamView _         = Nothing
+
+etaLam :: Hint (Maybe Name) -> Scope1 Expr v -> Expr v
+etaLam _ (Scope (App e (Var (B ()))))
+  | B () `S.notMember` toSet (second (const ()) <$> e)
+    = join $ unvar (error "etaLam impossible") id <$> e
+etaLam n s = Lam n s
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Expr v) where

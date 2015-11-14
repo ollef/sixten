@@ -7,7 +7,7 @@ import Data.Bifunctor
 
 import Annotation
 import Core
-import qualified Input
+import Definition
 import Meta
 import Monad
 
@@ -20,7 +20,7 @@ whnf dat anno expr = case expr of
   Global v -> do
     (d, _, _) <- context v
     case d of
-      Input.Definition e -> whnf dat anno $ first anno e
+      Definition e -> whnf dat anno $ first anno e
       _ -> return expr
   Con _ -> return expr
   Type -> return expr
@@ -44,7 +44,7 @@ normalise dat anno expr = case expr of
   Global v -> do
     (d, _, _) <- context v
     case d of
-      Input.Definition e -> normalise dat anno $ first anno e
+      Definition e -> normalise dat anno $ first anno e
       _ -> return expr
   Con _ -> return expr
   Type -> return expr

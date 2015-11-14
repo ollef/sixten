@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, GeneralizedNewtypeDeriving #-}
 module Parser where
 
 import Bound
@@ -265,6 +265,13 @@ expr
     argument :: Parser (Plicitness, Expr Name)
     argument =  (,) Implicit <$ symbol "{" <*>% expr <*% symbol "}"
             <|> (,) Explicit <$> atomicExpr
+            --
+-- | A definition or type declaration on the top-level
+data TopLevelParsed v
+  = ParsedDefLine  (Maybe v) (Expr v) -- ^ Maybe v means that we can use wildcard names that refer e.g. to the previous top-level thing
+  | ParsedTypeDecl v         (Type v)
+  | ParsedData  v (DataDef Type v)
+  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 topLevel :: Parser (TopLevelParsed Name)
 topLevel = dataDef <|> def

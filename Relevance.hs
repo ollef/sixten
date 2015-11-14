@@ -16,13 +16,13 @@ import Annotation
 import Branches
 import Core
 import Data
+import Definition
 import Hint
 import Meta
 import Monad
 import Normalise
 import Pretty
 import Util
-import qualified Input
 
 {-
 
@@ -396,12 +396,12 @@ inferConstr (ConstrDef c t) = do
   modifyIndent pred
   return res
 
-inferDef :: Input.Definition (Expr Plicitness) (MetaVar s (RelevanceM s) (MetaAnnotation s))
+inferDef :: Definition (Expr Plicitness) (MetaVar s (RelevanceM s) (MetaAnnotation s))
          -> RelevanceM s
-         -> TCM s (Input.Definition (Expr (MetaAnnotation s))
+         -> TCM s (Definition (Expr (MetaAnnotation s))
                                     (MetaVar s (RelevanceM s) (MetaAnnotation s)), Output s)
-inferDef (Input.Definition e) surroundingRel = first Input.Definition <$> infer e surroundingRel False
-inferDef (Input.DataDefinition (DataDef ps cs)) _surroundingRel = mdo
+inferDef (Definition e) surroundingRel = first Definition <$> infer e surroundingRel False
+inferDef (DataDefinition (DataDef ps cs)) _surroundingRel = mdo
   trs "inferDef" ()
   modifyIndent succ
   let inst = instantiate (\n -> let (v, _, _, _) = ps' V.! n in pure v)
@@ -416,21 +416,21 @@ inferDef (Input.DataDefinition (DataDef ps cs)) _surroundingRel = mdo
       res = DataDef ps'' cs''
       resType = dataType res (\h -> Pi h . MetaAnnotation (Relevance Irrelevant)) (Scope Type)
   modifyIndent pred
-  return (Input.DataDefinition res, resType)
+  return (DataDefinition res, resType)
 
-subtypeDef :: Input.Definition (Expr (MetaAnnotation s))
-                               (MetaVar s (RelevanceM s) (MetaAnnotation s))
+subtypeDef :: Definition (Expr (MetaAnnotation s))
+                         (MetaVar s (RelevanceM s) (MetaAnnotation s))
            -> Output s
            -> Output s
-           -> TCM s (Input.Definition (Expr (MetaAnnotation s))
-                                      (MetaVar s (RelevanceM s) (MetaAnnotation s)))
-subtypeDef (Input.Definition e) t t' = Input.Definition <$> subtype e t t'
-subtypeDef (Input.DataDefinition d) t t' = do
+           -> TCM s (Definition (Expr (MetaAnnotation s))
+                                (MetaVar s (RelevanceM s) (MetaAnnotation s)))
+subtypeDef (Definition e) t t' = Definition <$> subtype e t t'
+subtypeDef (DataDefinition d) t t' = do
   unify t t'
-  return $ Input.DataDefinition d
+  return $ DataDefinition d
 
-checkRecursiveDefs :: Vector (Input.Definition (Core.Expr Plicitness) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), InputScope s Int)
-                   -> TCM s (Vector (Input.Definition (Core.Expr (MetaAnnotation s)) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), OutputScope s Int, RelevanceM s))
+checkRecursiveDefs :: Vector (Definition (Core.Expr Plicitness) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), InputScope s Int)
+                   -> TCM s (Vector (Definition (Core.Expr (MetaAnnotation s)) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), OutputScope s Int, RelevanceM s))
 checkRecursiveDefs ds = case traverse unusedScope $ snd <$> ds of
   Nothing -> throwError "Mutually recursive types not supported"
   Just ts -> do
@@ -439,13 +439,13 @@ checkRecursiveDefs ds = case traverse unusedScope $ snd <$> ds of
       ev <- forall_ (Hint Nothing) t' rel
       return (ev, t', rel)
     let instantiatedDs = flip V.imap ds $ \i (d, _) ->
-          (evs V.! i, Input.instantiateDef (pure . (\(ev, _, _) -> ev) . (evs V.!)) d)
+          (evs V.! i, instantiateDef (pure . (\(ev, _, _) -> ev) . (evs V.!)) d)
     checkedDs <- V.forM instantiatedDs $ \((m, t, rel), d) -> do
       (d', t') <- inferDef d rel
       d'' <- subtypeDef d' t' t
       return (m, d'', t)
     V.forM checkedDs $ \(m, d, t) -> do
       let f  = flip V.elemIndex $ (\(ev, _, _) -> ev) <$> evs
-          s  = Input.abstractDef f d
+          s  = abstractDef f d
           st = abstract f t
       return (s, st, metaData m)

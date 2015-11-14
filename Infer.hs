@@ -16,8 +16,9 @@ import qualified Data.Vector as V
 
 import Annotation
 import Branches
-import Data
 import qualified Core
+import Data
+import Definition
 import Hint
 import qualified Input
 import Meta
@@ -183,7 +184,6 @@ extractParams (bindingsView Core.piView -> (ps, fromScope -> Core.Type))
   = V.fromList ps
 extractParams _ = error "extractParams"
 
--- TODO name :: Global?
 checkDataType :: MetaVar s () Plicitness
               -> DataDef Input.Expr (MetaVar s () Plicitness)
               -> Core s
@@ -210,29 +210,29 @@ checkDataType name (DataDef _ps cs) typ = mdo
 
   return (DataDef params cs', typ)
 
-subDefType :: Input.Definition (Core.Expr Plicitness) (MetaVar s () Plicitness)
+subDefType :: Definition (Core.Expr Plicitness) (MetaVar s () Plicitness)
            -> Core s
            -> Core s
-           -> TCM s ( Input.Definition (Core.Expr Plicitness) (MetaVar s () Plicitness)
+           -> TCM s ( Definition (Core.Expr Plicitness) (MetaVar s () Plicitness)
                     , Core s
                     )
-subDefType (Input.Definition e) t t' = first Input.Definition <$> subtype Explicit e t t'
-subDefType (Input.DataDefinition d) t t' = do unify t t'; return (Input.DataDefinition d, t')
+subDefType (Definition e) t t' = first Definition <$> subtype Explicit e t t'
+subDefType (DataDefinition d) t t' = do unify t t'; return (DataDefinition d, t')
 
-generaliseDef :: Input.Definition (Core.Expr Plicitness) (MetaVar s () Plicitness)
+generaliseDef :: Definition (Core.Expr Plicitness) (MetaVar s () Plicitness)
               -> Core s
-              -> TCM s ( Input.Definition (Core.Expr Plicitness) (MetaVar s () Plicitness)
+              -> TCM s ( Definition (Core.Expr Plicitness) (MetaVar s () Plicitness)
                        , Core s
                        )
-generaliseDef (Input.Definition d) t = first Input.Definition <$> generalise d t
-generaliseDef (Input.DataDefinition d) t = return (Input.DataDefinition d, t)
+generaliseDef (Definition d) t = first Definition <$> generalise d t
+generaliseDef (DataDefinition d) t = return (DataDefinition d, t)
 
 abstractDefM :: Show a
              => (MetaVar s () a -> Maybe b)
-             -> Input.Definition (Core.Expr a) (MetaVar s () a)
-             -> TCM s (Input.Definition (Core.Expr a) (Var b (MetaVar s () a)))
-abstractDefM f (Input.Definition e) = Input.Definition . fromScope <$> abstractM f e
-abstractDefM f (Input.DataDefinition e) = Input.DataDefinition <$> abstractDataDefM f e
+             -> Definition (Core.Expr a) (MetaVar s () a)
+             -> TCM s (Definition (Core.Expr a) (Var b (MetaVar s () a)))
+abstractDefM f (Definition e) = Definition . fromScope <$> abstractM f e
+abstractDefM f (DataDefinition e) = DataDefinition <$> abstractDataDefM f e
 
 abstractDataDefM :: Show a
                  => (MetaVar s () a -> Maybe b)
@@ -251,21 +251,21 @@ abstractDataDefM f (DataDef ps cs) = mdo
     assoc = unvar (unvar B (F . B)) (F . F)
 
 checkDefType :: MetaVar s () Plicitness
-             -> Input.Definition Input.Expr (MetaVar s () Plicitness)
+             -> Definition Input.Expr (MetaVar s () Plicitness)
              -> Core s
-             -> TCM s ( Input.Definition (Core.Expr Plicitness) (MetaVar s () Plicitness)
+             -> TCM s ( Definition (Core.Expr Plicitness) (MetaVar s () Plicitness)
                       , Core s
                       )
-checkDefType _ (Input.Definition e) typ = first Input.Definition <$> checkType Explicit e typ
-checkDefType v (Input.DataDefinition d) typ = first Input.DataDefinition <$> checkDataType v d typ
+checkDefType _ (Definition e) typ = first Definition <$> checkType Explicit e typ
+checkDefType v (DataDefinition d) typ = first DataDefinition <$> checkDataType v d typ
 
 checkRecursiveDefs :: Vector
                      ( NameHint
-                     , Input.Definition Input.Expr (Var Int (MetaVar s () Plicitness))
+                     , Definition Input.Expr (Var Int (MetaVar s () Plicitness))
                      , Scope Int Input.Expr (MetaVar s () Plicitness)
                      )
                    -> TCM s
-                     (Vector ( Input.Definition (Core.Expr Plicitness) (Var Int (MetaVar s () Plicitness))
+                     (Vector ( Definition (Core.Expr Plicitness) (Var Int (MetaVar s () Plicitness))
                              , ScopeM Int Core.Expr s () Plicitness
                              )
                      )
@@ -275,7 +275,7 @@ checkRecursiveDefs ds = do
       tv <- existsVar mempty Core.Type ()
       forall_ v tv ()
     let instantiatedDs = flip V.map ds $ \(_, e, t) ->
-          ( Input.instantiateDef (pure . (evs V.!)) e
+          ( instantiateDef (pure . (evs V.!)) e
           , instantiate (pure . (evs V.!)) t
           )
     checkedDs <- sequence $ flip V.imap instantiatedDs $ \i (d, t) -> do
