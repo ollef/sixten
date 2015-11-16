@@ -1,22 +1,19 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts #-}
 module Syntax.Concrete where
 
-import Bound
 import Control.Monad
 import Data.Monoid
 import Data.String
 import Prelude.Extras
 
-import Syntax.Annotation
-import Syntax.Branches
-import Syntax.Hint
-import Syntax.Pretty
+import Syntax
 import Util
 
 data Expr v
   = Var v
   | Global Name -- ^ Really just a variable, but it's often annoying to not have it
-  | Con Constr
+  | Lit Literal
+  | Con (Either Constr QConstr)
   | Type  -- ^ Type : Type
   | Pi  !NameHint !Plicitness (Type v) (Scope1 Expr v)  -- ^ Dependent function space
   | Lam !NameHint !Plicitness (Scope1 Expr v)
@@ -42,6 +39,9 @@ anno :: Expr v -> Expr v -> Expr v
 anno e Wildcard = e
 anno e t        = Anno e t
 
+apps :: Expr v -> [(Plicitness, Expr v)] -> Expr v
+apps = foldl (uncurry . App)
+
 -------------------------------------------------------------------------------
 -- * Views
 piView :: Expr v -> Maybe (NameHint, Plicitness, Type v, Scope1 Expr v)
@@ -52,6 +52,7 @@ globals :: Expr v -> Expr (Var Name v)
 globals expr = case expr of
   Var v -> Var $ F v
   Global n -> Var $ B n
+  Lit l -> Lit l
   Con c -> Con c
   Type -> Type
   Pi  h p t s -> Pi h p (globals t) (exposeScope globals s)
@@ -74,6 +75,7 @@ instance Monad Expr where
   expr >>= f = case expr of
     Var v       -> f v
     Global g    -> Global g
+    Lit l       -> Lit l
     Con c       -> Con c
     Type        -> Type
     Pi  n p t s -> Pi n p (t >>= f) (s >>>= f)
@@ -87,6 +89,7 @@ instance (IsString v, Pretty v) => Pretty (Expr v) where
   prettyM expr = case expr of
     Var v     -> prettyM v
     Global g  -> prettyM g
+    Lit l     -> prettyM l
     Con c     -> prettyM c
     Type      -> pure $ text "Type"
     Pi  h p Wildcard s -> withNameHint h $ \x -> parens `above` absPrec $

@@ -11,6 +11,7 @@ import qualified Data.Vector as Vector
 
 import Syntax.Annotation
 import Syntax.Hint
+import Syntax.Name
 import Syntax.Pretty
 import Util
 

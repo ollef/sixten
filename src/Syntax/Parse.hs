@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, GeneralizedNewtypeDeriving #-}
 module Syntax.Parse where
 
-import Bound
 import Control.Applicative((<**>), (<|>), Alternative)
 import Control.Monad.Except
 import Control.Monad.State
@@ -18,11 +17,8 @@ import qualified Text.Trifecta as Trifecta
 import Text.Trifecta((<?>))
 import Text.Trifecta.Delta
 
-import Syntax.Annotation
-import Syntax.Branches
+import Syntax
 import Syntax.Concrete
-import Syntax.Data
-import Syntax.Hint
 import Util
 
 type Input = Text
@@ -161,7 +157,7 @@ symbol :: String -> Parser Name
 symbol = fmap Text.pack . Trifecta.token . Trifecta.symbol
 
 literal :: Parser Literal
-literal = Trifecta.token Trifecta.integer
+literal = Trifecta.token $ Trifecta.try Trifecta.integer
 
 constructor :: Parser Constr
 constructor = ident
@@ -231,6 +227,7 @@ caseBinding = implicit <$ symbol "{" <*>% someSI identOrWildcard <*% symbol "}"
 atomicExpr :: Parser (Expr Name)
 atomicExpr
   =  Type     <$ reserved "Type"
+ <|> Lit      <$> literal
  <|> Wildcard <$ wildcard
  <|> Var      <$> ident
  <|> abstr (reserved "forall") piType
@@ -288,13 +285,13 @@ dataDef = mkDataDef <$ reserved "data" <*>% constructor <*> manyBindings
     <*% reserved "where" <*> dropAnchor (manySameCol conDef)
   where
     conDef = ConstrDef <$> constructor <*% symbol ":" <*>% expr
-    mkDataDef tc bindings cs = ParsedData tc
-                             $ DataDef (abstractBindingTelescope bindings)
-                                       (map abstrConstrDef cs)
+    mkDataDef tc bs cs = ParsedData tc
+                       $ DataDef (abstractBindingTelescope bs)
+                                 (map abstrConstrDef cs)
       where
         abstrConstrDef (ConstrDef name typ)
           = ConstrDef name
-          $ abstract ((`Vector.elemIndex` bindingNames bindings) . Just) typ
+          $ abstract ((`Vector.elemIndex` bindingNames bs) . Just) typ
 
 program :: Parser [TopLevelParsed Name]
 program = Trifecta.whiteSpace >> dropAnchor (manySameCol $ dropAnchor topLevel)

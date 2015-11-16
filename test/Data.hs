@@ -11,3 +11,7 @@ nil = Nil
 list : boolList
 list = Cons False (Cons True Nil)
 boolList = List Bool
+
+test b = case b of
+  False -> 0
+  True -> 1

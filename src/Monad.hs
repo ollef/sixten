@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 module Monad where
+
 import Control.Monad.Except
 import Control.Monad.State(evalStateT, StateT, runStateT, gets, modify)
 import Control.Monad.ST
@@ -7,12 +8,11 @@ import Data.Bifunctor
 import qualified Data.HashMap.Lazy as HM
 import Data.HashMap.Lazy(HashMap)
 import Data.Monoid
+import Data.Set(Set)
+import qualified Data.Set as Set
 
+import Syntax
 import Syntax.Abstract
-import Syntax.Annotation
-import Syntax.Data
-import Syntax.Definition
-import Syntax.Pretty
 import Util
 
 newtype Level = Level Int
@@ -23,7 +23,7 @@ instance Pretty Level where
 
 data State = State
   { tcContext :: Program (Expr Annotation) Annotation Empty
-  , tcConstrs :: HashMap Constr (Type Annotation Empty)
+  , tcConstrs :: HashMap Constr (Set (Name, Type Annotation Empty))
   , tcIndent  :: {-# UNPACK #-} !Int -- This has no place here, but is useful for debugging
   , tcFresh   :: {-# UNPACK #-} !Int
   , tcLevel   :: {-# UNPACK #-} !Level
@@ -74,12 +74,12 @@ log l = modify $ \s -> s {tcLog = l : tcLog s}
 addContext :: Program (Expr Annotation) Annotation Empty -> TCM s ()
 addContext prog = modify $ \s -> s
   { tcContext = prog <> tcContext s
-  , tcConstrs = cs   <> tcConstrs s
+  , tcConstrs = HM.unionWith (<>) cs $ tcConstrs s
   } where
     cs = HM.fromList $ do
-      (_, (DataDefinition d, _, _)) <- HM.toList prog
+      (n, (DataDefinition d, _, _)) <- HM.toList prog
       ConstrDef c t <- quantifiedConstrTypes (\h -> Pi h . Annotation Irrelevant) d
-      return (c, t)
+      return (c, Set.fromList [(n, t)])
 
 context :: Name -> TCM s (Definition (Expr Annotation) v, Type Annotation v, Annotation)
 context v = do
@@ -88,11 +88,24 @@ context v = do
         (\(d, t, a) -> return (fromEmpty <$> d, fromEmpty <$> t, a))
         mres
 
-constructor :: Constr -> TCM s (Type Annotation v)
+constructor :: Ord v => Constr -> TCM s (Set (Name, Type Annotation v))
 constructor c = do
   mres <- gets $ HM.lookup c . tcConstrs
   maybe (throwError $ "Not in scope: constructor " ++ show c)
-        (return . fmap fromEmpty)
+        (return . Set.map (second $ fmap fromEmpty))
+        mres
+
+qconstructor :: QConstr -> TCM s (Type Annotation v)
+qconstructor qc@(QConstr n c) = do
+  mres <- gets $ HM.lookup c . tcConstrs
+  maybe (throwError $ "Not in scope: constructor " ++ show c)
+        (\results -> do
+          let filtered = Set.filter ((== n) . fst) results
+          if Set.size filtered == 1 then do
+            let [(_, t)] = Set.toList filtered
+            return (fromEmpty <$> t)
+          else
+            throwError $ "Ambiguous constructor: " ++ show qc)
         mres
 
 modifyIndent :: (Int -> Int) -> TCM s ()

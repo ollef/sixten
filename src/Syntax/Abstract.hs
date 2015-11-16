@@ -1,9 +1,6 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, Rank2Types, ViewPatterns #-}
 module Syntax.Abstract where
 
-import Bound
-import Bound.Scope
-import Bound.Var
 import Control.Monad
 import Data.Bifunctor
 import Data.Bifoldable
@@ -15,10 +12,7 @@ import Data.String
 import qualified Data.Vector as Vector
 import Prelude.Extras
 
-import Syntax.Annotation
-import Syntax.Branches
-import Syntax.Hint
-import Syntax.Pretty
+import Syntax
 import Util
 
 -- | Expressions with variables of type @v@, with abstractions and applications
@@ -26,7 +20,8 @@ import Util
 data Expr d v
   = Var v
   | Global Name
-  | Con Constr
+  | Con QConstr
+  | Lit Literal
   | Type
   | Pi  !NameHint !d (Type d v) (Scope1 (Expr d) v)
   | Lam !NameHint !d (Type d v) (Scope1 (Expr d) v)
@@ -66,6 +61,7 @@ globals expr = case expr of
   Var v       -> Var $ F v
   Global g    -> Var $ B g
   Con c       -> Con c
+  Lit l       -> Lit l
   Type        -> Type
   Pi  x p t s -> Pi x p (globals t) (exposeScope globals s)
   Lam x p t s -> Lam x p (globals t) (exposeScope globals s)
@@ -88,6 +84,7 @@ instance Monad (Expr d) where
     Var v       -> f v
     Global g    -> Global g
     Con c       -> Con c
+    Lit l       -> Lit l
     Type        -> Type
     Pi  x p t s -> Pi x p (t >>= f) (s >>>= f)
     Lam x p t s -> Lam x p (t >>= f) (s >>>= f)
@@ -105,6 +102,7 @@ instance Bitraversable Expr where
     Var v       -> Var <$> g v
     Global v    -> pure $ Global v
     Con c       -> pure $ Con c
+    Lit l       -> pure $ Lit l
     Type        -> pure Type
     Pi  x d t s -> Pi  x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
     Lam x d t s -> Lam x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
@@ -117,6 +115,7 @@ instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
     Var v     -> prettyM v
     Global g  -> prettyM g
     Con c     -> prettyM c
+    Lit l     -> prettyM l
     Type      -> pure $ text "Type"
     Pi  _ p t (unusedScope -> Just e) -> parens `above` arrPrec $
       ((pure tilde <>) `iff` isIrrelevant p $ braces `iff` isImplicit p $ prettyM t)

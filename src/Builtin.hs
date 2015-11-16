@@ -3,10 +3,8 @@ module Builtin where
 
 import qualified Data.HashMap.Lazy as HM
 
-import Annotation
-import Core
-import Data
-import Definition
+import Syntax
+import Syntax.Abstract
 import Util
 
 int :: Type a v

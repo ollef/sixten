@@ -1,7 +1,6 @@
 {-# LANGUAGE ViewPatterns #-}
 module Meta where
 
-import Bound
 import Control.Monad.Except
 import Control.Monad.State
 import Control.Monad.ST.Class
@@ -14,12 +13,9 @@ import qualified Data.Set as S
 import Data.STRef
 import qualified Data.Traversable as T
 
+import Syntax
 import qualified Syntax.Abstract as Abstract
-import Syntax.Annotation
-import Syntax.Branches
 import qualified Syntax.Concrete as Concrete
-import Syntax.Hint
-import Syntax.Pretty
 import Monad
 
 type Exists s d a = STRef s (Either Level (AbstractM s d a))

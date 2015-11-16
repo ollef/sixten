@@ -13,8 +13,7 @@ import Data.Monoid
 import Data.Text(Text)
 import qualified Data.Text as Text
 
-import Syntax.Data
-import Syntax.Definition
+import Syntax
 import Syntax.Concrete
 import Syntax.Parse
 import Util

@@ -18,8 +18,6 @@ import Data.Text(Text)
 import qualified Data.Text as Text
 
 type Scope1  = Scope ()
-type Name    = Text
-type Constr  = Text
 type Literal = Integer
 
 unusedVar :: (Monad f, Traversable f) => f (Var b a) -> Maybe (f a)

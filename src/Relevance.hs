@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, RecursiveDo #-}
 module Relevance where
 
-import Bound
 import Control.Monad.Except
 import Control.Monad.ST.Class
 import Data.Bifunctor
@@ -12,16 +11,13 @@ import Data.Function
 import Data.Vector(Vector)
 import qualified Data.Vector as V
 
+import qualified Builtin
 import Meta
 import Monad
 import Normalise
+import Syntax
 import Syntax.Abstract
 import Syntax.Annotation as Annotation
-import Syntax.Branches
-import Syntax.Data
-import Syntax.Definition
-import Syntax.Hint
-import Syntax.Pretty
 import Util
 
 {-
@@ -167,6 +163,7 @@ returnsType = go True
       Type   -> return True
       Lam {} -> return False
       Con _  -> return False
+      Lit _  -> return False
       Pi h _ t s  -> do
         x <- forallVar h (first meta t) r
         returnsType $ instantiate (pure x) s
@@ -193,6 +190,7 @@ makeRel rel expr = do
     Var v -> return $ Var v
     Global g -> return $ Global g
     Con c -> return $ Con c
+    Lit l -> return $ Lit l
     Type -> return Type
     Pi h p t s -> do
       rType <- returnsType t
@@ -272,8 +270,9 @@ infer expr surroundingRel knownDef = do
       leRel surroundingRel $ toRelevanceM a
       return (Global v, first toMetaAnnotation t)
     Con c -> do
-      t <- constructor c
+      t <- qconstructor c
       return (Con c, first toMetaAnnotation t)
+    Lit l -> return (Lit l, Builtin.int)
     Type        -> return (Type, Type)
     Pi x p t1 s -> do
       (t1', t1rel) <- inferArg t1 knownDef

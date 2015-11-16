@@ -38,7 +38,7 @@ import Text.PrettyPrint.ANSI.Leijen
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 
 import Syntax.Hint
-import Util
+import Syntax.Name
 
 -------------------------------------------------------------------------------
 -- * The pretty type and class
@@ -169,6 +169,9 @@ instance Pretty Float   where pretty = text . show
 instance Pretty Double  where pretty = text . show
 instance Pretty Doc     where pretty = id
 instance Pretty Text    where pretty = text . Text.unpack
+
+instance Pretty QConstr where
+  prettyM (QConstr q n) = prettyM q <> prettyM "." <> prettyM n
 
 instance Pretty a => Pretty [a] where prettyM = prettyList
 

@@ -1,15 +1,13 @@
 {-# LANGUAGE ViewPatterns #-}
 module Normalise where
 
-import Bound
 import Control.Monad.Except
 import Data.Bifunctor
 
 import Meta
 import Monad
+import Syntax
 import Syntax.Abstract
-import Syntax.Annotation
-import Syntax.Definition
 
 whnf :: HasPlicitness a
      => (a -> d) -> (Annotation -> a) -> AbstractM s d a -> TCM s (AbstractM s d a)
@@ -23,6 +21,7 @@ whnf dat anno expr = case expr of
       Definition e -> whnf dat anno $ first anno e
       _ -> return expr
   Con _ -> return expr
+  Lit _ -> return expr
   Type -> return expr
   Pi {} -> return expr
   Lam {} -> return expr
@@ -47,6 +46,7 @@ normalise dat anno expr = case expr of
       Definition e -> normalise dat anno $ first anno e
       _ -> return expr
   Con _ -> return expr
+  Lit _ -> return expr
   Type -> return expr
   Pi n p a s -> normaliseScope n (Pi n p)  a s
   Lam n p a s -> normaliseScope n (Lam n p) a s

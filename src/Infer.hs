@@ -1,29 +1,25 @@
 {-# LANGUAGE BangPatterns, ViewPatterns, RecursiveDo #-}
 module Infer where
 
-import Bound
-import Bound.Var
 import Control.Applicative
 import Control.Monad.Except
 import Control.Monad.ST()
 import Data.Bifunctor
 import Data.Foldable as F
 import qualified Data.HashMap.Lazy as HM
-import Data.Monoid
 import qualified Data.HashSet as HS
+import Data.Monoid
+import qualified Data.Set as Set
 import Data.Vector(Vector)
 import qualified Data.Vector as V
 
+import qualified Builtin
 import Meta
 import Monad
 import Normalise
+import Syntax
 import qualified Syntax.Abstract as Abstract
-import Syntax.Annotation
-import Syntax.Branches
 import qualified Syntax.Concrete as Concrete
-import Syntax.Data
-import Syntax.Definition
-import Syntax.Hint
 import TopoSort
 import Unify
 import Util
@@ -34,6 +30,9 @@ checkType surrounding expr typ = do
   tr "          t" =<< freeze typ
   modifyIndent succ
   (rese, rest) <- case expr of
+    Concrete.Con (Left c) -> do
+      n <- resolveConstrType [c] typ
+      checkType surrounding (Concrete.Con $ Right $ QConstr n c) typ
     Concrete.Lam m p s -> do
       typ' <- whnf mempty plicitness typ
       case typ' of
@@ -71,9 +70,15 @@ inferType surrounding expr = do
       (_, typ, _) <- context v
       return (Abstract.Global v, first plicitness typ)
     Concrete.Var v -> return (Abstract.Var v, metaType v)
-    Concrete.Con c -> do
-      typ <- constructor c
-      return (Abstract.Con c, first plicitness typ)
+    Concrete.Con con -> do
+      qc <- case con of
+        Left c -> do
+          n <- resolveConstrType [c] Abstract.Type
+          return $ QConstr n c
+        Right qc -> return qc
+      typ <- qconstructor qc
+      return (Abstract.Con qc, first plicitness typ)
+    Concrete.Lit l -> return (Abstract.Lit l, Builtin.int)
     Concrete.Type -> return (Abstract.Type, Abstract.Type)
     Concrete.Pi n p t s -> do
       (t', _) <- checkType p t Abstract.Type
@@ -101,8 +106,8 @@ inferType surrounding expr = do
         _ -> throwError "inferType: expected pi type"
     Concrete.Case e brs -> do
       (e', etype) <- inferType surrounding e
-      (brs', retType) <- inferBranches surrounding brs etype
-      return (Abstract.Case e' brs', retType)
+      (e'', brs', retType) <- inferBranches surrounding e' etype brs
+      return (Abstract.Case e'' brs', retType)
     Concrete.Anno e t  -> do
       (t', _) <- checkType surrounding t Abstract.Type
       checkType surrounding e t'
@@ -115,24 +120,53 @@ inferType surrounding expr = do
   tr "              t" t
   return (e, t)
 
-inferBranches :: Plicitness
-              -> BranchesM Concrete.Expr s () Plicitness
-              -> Abstract s
-              -> TCM s (BranchesM (Abstract.Expr Plicitness) s () Plicitness, Abstract s)
-inferBranches surrounding (ConBranches cbrs) etype = do
-  forM cbrs $ \(c, hs, s) -> do
-    undefined
+resolveConstrType :: [Constr] -> Abstract s -> TCM s Name
+resolveConstrType cs (Abstract.appsView -> (headType, _)) = do
+  headType' <- whnf mempty plicitness headType
+  n <- case headType' of
+    Abstract.Global v -> do
+      (d, _, _) <- context v
+      case d of
+        DataDefinition _ -> return $ Set.singleton v
+        _                -> return mempty
+    _ -> return mempty
+  ns <- mapM (fmap (Set.map (fst :: (Name, Abstract.Expr Annotation ()) -> Name)) . constructor) cs
+  case Set.toList $ foldl' Set.intersection mempty (n : ns) of
+    [x] -> return x
+    xs -> throwError $ "Ambiguous constructors: " ++ show cs ++ ". Possible types: "
+               ++ show xs
 
-  undefined
-inferBranches surrounding (LitBranches lbrs d) etype = do
-  unify etype undefined
+inferBranches :: Plicitness
+              -> Abstract s -> Abstract s
+              -> BranchesM Concrete.Expr s () Plicitness
+              -> TCM s (Abstract s, BranchesM (Abstract.Expr Plicitness) s () Plicitness, Abstract s)
+inferBranches surrounding expr etype (ConBranches cbrs) = do
+  n <- resolveConstrType ((\(c, _, _) -> c) <$> cbrs) etype
+  let go (c, hs, s) (expr', etype', resBrs, resType) = do
+        xs <- V.forM hs $ \(h, p) -> do
+          t <- existsVar h Abstract.Type ()
+          v <- forall_ h t ()
+          return (p, v)
+        (_, caseType) <- inferType
+          surrounding
+          (Concrete.apps (Concrete.Con $ Right $ QConstr n c) $ V.toList $ second pure <$> xs)
+        let vs = snd <$> xs
+        (expr'', etype'') <- subtype surrounding expr' etype' caseType
+        (br, resType') <- checkType surrounding (instantiate (pure . (vs V.!)) s) resType
+        s' <- abstractM (`V.elemIndex` vs) br
+        return (expr'', etype'', (c, hs, s'):resBrs, resType')
+  resTypeT <- existsVar mempty Abstract.Type ()
+  resType <- existsVar mempty resTypeT ()
+  (expr', _etype', cbrs', resType') <- foldrM go (expr, etype, mempty, resType) cbrs
+  return (expr', ConBranches cbrs', resType')
+inferBranches surrounding expr etype (LitBranches lbrs d) = do
+  (expr', _etype') <- subtype surrounding expr etype Builtin.int
   t <- existsVar mempty Abstract.Type ()
   lbrs' <- forM lbrs $ \(l, e) -> do
     (e', _) <- checkType surrounding e t
     return (l, e')
   (d', t') <- checkType surrounding d t
-
-  return (LitBranches lbrs' d', t')
+  return (expr', LitBranches lbrs' d', t')
 
 generalise :: Abstract s -> Abstract s -> TCM s (Abstract s, Abstract s)
 generalise expr typ = do

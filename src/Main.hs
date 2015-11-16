@@ -1,8 +1,5 @@
 module Main where
 
-import Bound
-import Bound.Scope
-import Bound.Var
 import Control.Monad.State
 import Data.Bifoldable
 import Data.Bifunctor
@@ -18,15 +15,11 @@ import Erasure
 import Infer
 import qualified Relevance
 import Monad
-import Syntax.Annotation
+import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete as Concrete
-import Syntax.Data
-import Syntax.Definition
 import qualified Syntax.Desugar
-import Syntax.Hint
 import qualified Syntax.Parse
-import Syntax.Pretty
 import TopoSort
 import Util
 
@@ -46,7 +39,7 @@ inferProgram p' = mapM_ tcGroup sorted
                           ]
     constructors = HS.fromList $ map fst constructorMappings
     instCon v
-      | v `HS.member` constructors = Concrete.Con v
+      | v `HS.member` constructors = Concrete.Con $ Left v
       | otherwise = pure v
 
     tcGroup tls = do

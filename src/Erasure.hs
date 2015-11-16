@@ -1,11 +1,7 @@
 module Erasure where
-import Bound
 
-import Syntax.Annotation
-import Syntax.Branches
+import Syntax
 import qualified Syntax.Abstract as Abstract
-import Syntax.Data
-import Syntax.Definition
 import qualified Syntax.Lambda as Lambda
 
 type Abstract = Abstract.Expr
@@ -16,6 +12,7 @@ erase expr = case expr of
   Abstract.Var v -> Lambda.Var v
   Abstract.Global g -> Lambda.Global g
   Abstract.Con c -> Lambda.Con c
+  Abstract.Lit l -> Lambda.Lit l
   Abstract.Type -> error "erasure type"
   Abstract.Pi _ _ _ s -> erase $ instantiate1 (error "erasure pi") s
   Abstract.Lam h a _ s -> case relevance a of

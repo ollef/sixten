@@ -3,7 +3,7 @@ module Syntax.Hint where
 
 import Control.Applicative
 
-import Util
+import Syntax.Name
 
 -- | Something that is just a decoration, and not e.g. considered in
 --   comparisons.

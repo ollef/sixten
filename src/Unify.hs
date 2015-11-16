@@ -1,7 +1,6 @@
 {-# LANGUAGE ViewPatterns #-}
 module Unify where
 
-import Bound
 import Control.Monad.Except
 import Control.Monad.ST.Class
 import Data.Bifunctor
@@ -13,10 +12,8 @@ import Data.STRef
 import Meta
 import Monad
 import Normalise
+import Syntax
 import Syntax.Abstract
-import Syntax.Annotation
-import Syntax.Hint
-import Syntax.Pretty
 import Util
 
 type Abstract s = AbstractM s () Plicitness

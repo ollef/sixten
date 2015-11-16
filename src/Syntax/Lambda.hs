@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, Rank2Types, ViewPatterns #-}
 module Syntax.Lambda where
-import Bound
-import Bound.Var
+
 import Control.Monad
 import Data.Bifunctor
 import Data.Monoid
@@ -10,15 +9,14 @@ import Data.String
 import qualified Data.Vector as Vector
 import Prelude.Extras
 
-import Syntax.Branches
-import Syntax.Hint
-import Syntax.Pretty
+import Syntax
 import Util
 
 data Expr v
   = Var v
   | Global Name
-  | Con Constr
+  | Con QConstr
+  | Lit Literal
   | Lam !NameHint (Scope1 Expr v)
   | App (Expr v) (Expr v)
   | Case (Expr v) (Branches Expr v)
@@ -28,6 +26,7 @@ globals :: Expr v -> Expr (Var Name v)
 globals expr = case expr of
   Var v    -> Var $ F v
   Global g -> Var $ B g
+  Lit l    -> Lit l
   Con c    -> Con c
   Lam h s  -> Lam h $ exposeScope globals s
   App e1 e2 -> App (globals e1) (globals e2)
@@ -48,12 +47,13 @@ instance Monad Expr where
   Var v >>= f = f v
   Global g >>= _ = Global g
   Con c >>= _ = Con c
+  Lit l >>= _ = Lit l
   Lam h s >>= f = Lam h $ s >>>= f
   App e1 e2 >>= f = App (e1 >>= f) (e2 >>= f)
   Case e brs >>= f = Case (e >>= f) (brs >>>= f)
 
 lamView :: Expr v -> Maybe (NameHint, (), Expr v, Scope1 Expr v)
-lamView (Lam h s) = Just (h, (), Con mempty, s)
+lamView (Lam h s) = Just (h, (), Lit 0, s)
 lamView _         = Nothing
 
 etaLam :: Hint (Maybe Name) -> Scope1 Expr v -> Expr v
@@ -68,6 +68,7 @@ instance (Eq v, IsString v, Pretty v)
     Var v -> prettyM v
     Global g -> prettyM g
     Con c -> prettyM c
+    Lit l -> prettyM l
     (bindingsViewM lamView -> Just (hs, s)) -> parens `above` absPrec $
       withNameHints (Vector.fromList ((\(h, _, _) -> h) <$> hs)) $ \ns ->
         prettyM "\\" <> hsep (map prettyM $ Vector.toList ns) <> prettyM "." <+>

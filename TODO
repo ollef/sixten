@@ -1,9 +1,9 @@
 Cases
   Type-check
+Arity inference
 Javascript code generation
 Size types
 Let definitions
-Switch to lenses
 Specialisation pragma
   data Strategy = Eager | Lazy
 
