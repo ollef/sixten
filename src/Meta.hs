@@ -31,7 +31,7 @@ data MetaVar s d a = MetaVar
 type AbstractM s d a = Abstract.Expr a (MetaVar s d a)
 type ConcreteM s d a = Concrete.Expr (MetaVar s d a)
 type ScopeM b f s d a = Scope b f (MetaVar s d a)
-type BranchesM f s d a = Branches f (MetaVar s d a)
+type BranchesM f s d a = Branches a f (MetaVar s d a)
 
 instance Eq (MetaVar s d a) where
   (==) = (==) `on` metaId

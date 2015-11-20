@@ -19,7 +19,7 @@ data Expr v
   | Lit Literal
   | Lam !NameHint (Scope1 Expr v)
   | App (Expr v) (Expr v)
-  | Case (Expr v) (Branches Expr v)
+  | Case (Expr v) (Branches () Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 globals :: Expr v -> Expr (Var Name v)
@@ -69,10 +69,10 @@ instance (Eq v, IsString v, Pretty v)
     Global g -> prettyM g
     Con c -> prettyM c
     Lit l -> prettyM l
-    (bindingsViewM lamView -> Just (hs, s)) -> parens `above` absPrec $
-      withNameHints (Vector.fromList ((\(h, _, _) -> h) <$> hs)) $ \ns ->
+    (bindingsViewM lamView -> Just (tele, s)) -> parens `above` absPrec $
+      withTeleHints tele $ \ns ->
         prettyM "\\" <> hsep (map prettyM $ Vector.toList ns) <> prettyM "." <+>
-        associate (prettyM $ instantiate (pure . fromText . (ns Vector.!)) s)
+        associate (prettyM $ instantiateTele (pure . fromText <$> ns) s)
     Lam {} -> error "impossible prettyPrec lam"
     App e1 e2 -> prettyApp (prettyM e1) (prettyM e2)
     Case e brs -> parens `above` casePrec $

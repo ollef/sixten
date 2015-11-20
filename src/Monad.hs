@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE Rank2Types #-}
 module Monad where
 
 import Control.Monad.Except
@@ -22,7 +22,7 @@ instance Pretty Level where
   pretty (Level i) = pretty i
 
 data State = State
-  { tcContext :: Program (Expr Annotation) Annotation Empty
+  { tcContext :: Program Annotation (Expr Annotation) Empty
   , tcConstrs :: HashMap Constr (Set (Name, Type Annotation Empty))
   , tcIndent  :: {-# UNPACK #-} !Int -- This has no place here, but is useful for debugging
   , tcFresh   :: {-# UNPACK #-} !Int
@@ -45,11 +45,11 @@ instance Monoid State where
 
 type TCM s = ExceptT String (StateT State (ST s))
 
-evalTCM :: (forall s. TCM s a) -> Either String a
-evalTCM tcm = runST $ evalStateT (runExceptT tcm) mempty
+evalTCM :: (forall s. TCM s a) -> Program Annotation (Expr Annotation) Empty -> Either String a
+evalTCM tcm cxt = runST $ evalStateT (runExceptT tcm) mempty { tcContext = cxt }
 
-runTCM :: (forall s. TCM s a) -> (Either String a, [String])
-runTCM tcm = second (reverse . tcLog) $ runST $ runStateT (runExceptT tcm) mempty
+runTCM :: (forall s. TCM s a) -> Program Annotation (Expr Annotation) Empty -> (Either String a, [String])
+runTCM tcm cxt = second (reverse . tcLog) $ runST $ runStateT (runExceptT tcm) mempty { tcContext = cxt }
 
 fresh :: TCM s Int
 fresh = do
@@ -71,17 +71,17 @@ enterLevel x = do
 log :: String -> TCM s ()
 log l = modify $ \s -> s {tcLog = l : tcLog s}
 
-addContext :: Program (Expr Annotation) Annotation Empty -> TCM s ()
+addContext :: Program Annotation (Expr Annotation) Empty -> TCM s ()
 addContext prog = modify $ \s -> s
   { tcContext = prog <> tcContext s
   , tcConstrs = HM.unionWith (<>) cs $ tcConstrs s
   } where
     cs = HM.fromList $ do
       (n, (DataDefinition d, _, _)) <- HM.toList prog
-      ConstrDef c t <- quantifiedConstrTypes (\h -> Pi h . Annotation Irrelevant) d
+      ConstrDef c t <- quantifiedConstrTypes Pi d
       return (c, Set.fromList [(n, t)])
 
-context :: Name -> TCM s (Definition (Expr Annotation) v, Type Annotation v, Annotation)
+context :: Name -> TCM s (Definition Annotation (Expr Annotation) v, Type Annotation v, Annotation)
 context v = do
   mres <- gets $ HM.lookup v . tcContext
   maybe (throwError $ "Not in scope: " ++ show v)

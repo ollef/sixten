@@ -1,6 +1,6 @@
 module Syntax.Pretty
   ( module Text.PrettyPrint.ANSI.Leijen
-  , Pretty
+  , Pretty, PrettyM
   , (<+>), (<$$>)
   , indent, hcat, vcat, hsep
   , iff

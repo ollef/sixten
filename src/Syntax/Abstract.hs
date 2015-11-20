@@ -6,10 +6,8 @@ import Data.Bifunctor
 import Data.Bifoldable
 import Data.Bitraversable
 import Data.Monoid
-import Data.List as List
 import qualified Data.Set as S
 import Data.String
-import qualified Data.Vector as Vector
 import Prelude.Extras
 
 import Syntax
@@ -26,7 +24,7 @@ data Expr d v
   | Pi  !NameHint !d (Type d v) (Scope1 (Expr d) v)
   | Lam !NameHint !d (Type d v) (Scope1 (Expr d) v)
   | App  (Expr d v) !d (Expr d v)
-  | Case (Expr d v) (Branches (Expr d) v)
+  | Case (Expr d v) (Branches d (Expr d) v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 -- | Synonym for documentation purposes
@@ -107,7 +105,7 @@ instance Bitraversable Expr where
     Pi  x d t s -> Pi  x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
     Lam x d t s -> Lam x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
     App e1 d e2 -> App <$> bitraverse f g e1 <*> f d <*> bitraverse f g e2
-    Case e brs  -> Case <$> bitraverse f g e <*> bitraverseBranches f g brs
+    Case e brs  -> Case <$> bitraverse f g e <*> tritraverseBranches f f g brs
 
 instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
       => Pretty (Expr d v) where
@@ -121,26 +119,19 @@ instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
       ((pure tilde <>) `iff` isIrrelevant p $ braces `iff` isImplicit p $ prettyM t)
       <+> prettyM "->" <+>
       associate (prettyM e)
-    (bindingsViewM usedPiView -> Just (hpts, s)) -> binding (\x -> prettyM "forall" <+> x <> prettyM ".") hpts s
+    (bindingsViewM usedPiView -> Just (tele, s)) -> withTeleHints tele $ \ns ->
+      parens `above` absPrec $
+      prettyM "forall" <+> prettyTeleVarTypes ns tele <> prettyM "." <+>
+      prettyM (instantiateTele (pure . fromText <$> ns) s)
     Pi {} -> error "impossible prettyPrec pi"
-    (bindingsViewM lamView -> Just (hpts, s)) -> binding (\x -> prettyM "\\" <> x <> prettyM ".") hpts s
+    (bindingsViewM lamView -> Just (tele, s)) -> withTeleHints tele $ \ns ->
+      parens `above` absPrec $
+      prettyM "\\" <> prettyTeleVarTypes ns tele <> prettyM "." <+>
+      prettyM (instantiateTele (pure . fromText <$> ns) s)
     Lam {} -> error "impossible prettyPrec lam"
     App e1 p e2 -> prettyApp (prettyM e1) ((pure tilde <>) `iff` isIrrelevant p $ braces `iff` isImplicit p $ prettyM e2)
     Case e brs -> parens `above` casePrec $
       prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> prettyM brs
-    where
-      binding doc hpts s = parens `above` absPrec $ do
-        let hs = Vector.fromList $ fmap (\(h, _, _) -> h) hpts
-        withNameHints hs $ \ns -> do
-          let grouped = [ (n : [n' | (Hint n', _) <- hpts'], p, t)
-                        | (Hint n, (_, p, t)):hpts' <- List.group $ zip (map Hint [(0 :: Int)..]) hpts]
-              go (xs, p, t) = (pure tilde <>) `iff` isIrrelevant p $
-                (if isImplicit p then braces else parens) $
-                hsep (map (prettyM . (ns Vector.!)) xs) <+> prettyM ":" <+>
-                prettyM (instantiate (pure . fromText . (ns Vector.!)) t)
-          doc (inviolable $ hcat $ map go grouped) <+>
-            associate (prettyM $ instantiate (pure . fromText . (ns Vector.!)) s)
-
 
 etaLamM :: (Ord v, Monad m)
         => (d -> d -> m Bool)

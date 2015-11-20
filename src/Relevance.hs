@@ -175,9 +175,9 @@ returnsType = go True
     meta = MetaAnnotation r . plicitness
     r = Relevance Relevant -- unimportant
     branchesReturnType (ConBranches cbrs) = and <$> sequence
-      [do vs <- forM hs $ \(h, _) -> forallVar h Type r
-          returnsType $ instantiate (vs V.!) s
-      | (_, hs, s) <- cbrs]
+      [do vs <- forTele tele $ \h _ _ -> forallVar h Type r
+          returnsType $ instantiateTele vs s
+      | (_, tele, s) <- cbrs]
     branchesReturnType (LitBranches lbrs def) = and <$> sequence
       (returnsType def : [returnsType e | (_, e) <- lbrs])
 
@@ -199,7 +199,7 @@ makeRel rel expr = do
       else Pi h (meta p) <$> makeRel rel t <*> makeRelScope h t s
     Lam h p t s -> Lam h (meta p) <$> makeRel rel t <*> makeRelScope h t s
     App e1 p e2 -> App <$> makeRel rel e1 <*> pure (meta p) <*> makeRel rel e2
-    Case _ _ -> undefined -- TODO
+    Case e brs -> Case <$> makeRel rel e <*> makeRelBranches brs
   modifyIndent pred
   tr "makeRel res" res
   return res
@@ -210,6 +210,24 @@ makeRel rel expr = do
       x <- forall_ h (first meta t) rel
       e <- makeRel rel $ instantiate1 (pure x) s
       return $ abstract1 x e
+    makeRelBranches (ConBranches cbrs)     = ConBranches
+      <$> sequence [ mdo
+        vs <- forTele tele $ \h p s -> do
+          let t = inst s
+          -- TODO should this be obtained from the type instead?
+          rType <- returnsType t
+          t' <- if rType then makeRel (Relevance Irrelevant) t
+                         else makeRel rel t
+          v <- forall_ h t' rel
+          return (v, (h, (if rType then irrelMeta else meta) p, abstr t'))
+        let inst = instantiateTele (pure . fst <$> vs)
+            abstr = abstract $ teleAbstraction (fst <$> vs)
+            tele' = snd <$> vs
+        bre <- makeRel rel (inst brs)
+        return (c, Telescope tele', abstr bre)
+                   | (c, tele, brs) <- cbrs ]
+    makeRelBranches (LitBranches lbrs def) = LitBranches
+      <$> sequence [(,) l <$> makeRel rel e | (l, e) <- lbrs] <*> makeRel rel def
 
 inferArg :: Input s -> Bool -> TCM s (Output s, RelevanceM s)
 inferArg argType knownDef = do
@@ -300,7 +318,7 @@ infer expr surroundingRel knownDef = do
             ft' <- whnf metaRelevance toMetaAnnotation ft
             go False e1' ft'
           _ -> throwError $ "infer relevance infer1" ++ show (pretty $ fmap show expr)
-    Case {} -> undefined -- TODO
+    Case {} -> error "infer rel" -- TODO
   modifyIndent pred
   tr "infer res e" expr'
   tr "infer res t" typ
@@ -395,41 +413,44 @@ inferConstr (ConstrDef c t) = do
   modifyIndent pred
   return res
 
-inferDef :: Definition (Expr Plicitness) (MetaVar s (RelevanceM s) (MetaAnnotation s))
+inferDef :: Definition Plicitness (Expr Plicitness) (MetaVar s (RelevanceM s) (MetaAnnotation s))
          -> RelevanceM s
-         -> TCM s (Definition (Expr (MetaAnnotation s))
-                                    (MetaVar s (RelevanceM s) (MetaAnnotation s)), Output s)
+         -> TCM s (Definition (MetaAnnotation s) (Expr (MetaAnnotation s))
+                              (MetaVar s (RelevanceM s) (MetaAnnotation s)), Output s)
 inferDef (Definition e) surroundingRel = first Definition <$> infer e surroundingRel False
 inferDef (DataDefinition (DataDef ps cs)) _surroundingRel = mdo
   trs "inferDef" ()
   modifyIndent succ
-  let inst = instantiate (\n -> let (v, _, _, _) = ps' V.! n in pure v)
-  ps' <- forM ps $ \(h, p, s) -> do
-    t <- makeRel (Relevance Irrelevant) $ inst s
-    v <- forall_ h t $ Relevance Irrelevant
-    return (v, h, p, t)
-  let abstr = abstract $ flip V.elemIndex $ (\(v, _, _, _) -> v) <$> ps'
+  let inst = instantiateTele $ (\(v, _, _, _) -> pure v) <$> ps'
+  ps' <- forTele ps $ \h p s -> do
+    let t = inst s
+    rType <- returnsType t
+    let rel = Relevance $ if rType then Irrelevant else Relevant
+    t' <- makeRel rel t
+    v <- forall_ h t' rel
+    return (v, h, MetaAnnotation rel p, t')
+  let abstr = abstract $ teleAbstraction $ (\(v, _, _, _) -> v) <$> ps'
       ps'' = (\(_, h, p, t) -> (h, p, abstr t)) <$> ps'
   cs' <- mapM inferConstr $ fmap (fmap inst) cs
   let cs'' = fmap abstr <$> cs'
-      res = DataDef ps'' cs''
-      resType = dataType res (\h -> Pi h . MetaAnnotation (Relevance Irrelevant)) (Scope Type)
+      res = DataDef (Telescope ps'') cs''
+      resType = dataType res Pi (Scope Type)
   modifyIndent pred
   return (DataDefinition res, resType)
 
-subtypeDef :: Definition (Expr (MetaAnnotation s))
-                         (MetaVar s (RelevanceM s) (MetaAnnotation s))
+subtypeDef :: Definition (MetaAnnotation s) (Expr (MetaAnnotation s))
+                           (MetaVar s (RelevanceM s) (MetaAnnotation s))
            -> Output s
            -> Output s
-           -> TCM s (Definition (Expr (MetaAnnotation s))
-                                (MetaVar s (RelevanceM s) (MetaAnnotation s)))
+           -> TCM s (Definition (MetaAnnotation s) (Expr (MetaAnnotation s))
+                                  (MetaVar s (RelevanceM s) (MetaAnnotation s)))
 subtypeDef (Definition e) t t' = Definition <$> subtype e t t'
 subtypeDef (DataDefinition d) t t' = do
   unify t t'
   return $ DataDefinition d
 
-checkRecursiveDefs :: Vector (Definition (Expr Plicitness) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), InputScope s Int)
-                   -> TCM s (Vector (Definition (Expr (MetaAnnotation s)) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), OutputScope s Int, RelevanceM s))
+checkRecursiveDefs :: Vector (Definition Plicitness (Expr Plicitness) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), InputScope s Int)
+                   -> TCM s (Vector (Definition (MetaAnnotation s) (Expr (MetaAnnotation s)) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), OutputScope s Int, RelevanceM s))
 checkRecursiveDefs ds = case traverse unusedScope $ snd <$> ds of
   Nothing -> throwError "Mutually recursive types not supported"
   Just ts -> do

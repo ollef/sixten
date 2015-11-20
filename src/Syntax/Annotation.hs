@@ -13,6 +13,9 @@ isExplicit = (== Explicit) . plicitness
 instance HasPlicitness Plicitness where
   plicitness = id
 
+instance HasPlicitness () where
+  plicitness _ = Explicit
+
 data Relevance = Irrelevant | Relevant
   deriving (Eq, Ord, Show)
 
@@ -27,6 +30,9 @@ instance HasRelevance Relevance where
   relevance = id
 
 instance HasRelevance Plicitness where
+  relevance _ = Relevant
+
+instance HasRelevance () where
   relevance _ = Relevant
 
 data Annotation = Annotation Relevance Plicitness

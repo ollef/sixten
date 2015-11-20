@@ -1,9 +1,12 @@
 Cases
   Type-check
+  Make Concrete syntax have deep patterns and desugar them
+Make Type a builtin?
 Arity inference
 Javascript code generation
 Size types
 Let definitions
+Laziness
 Specialisation pragma
   data Strategy = Eager | Lazy
 
@@ -46,8 +49,6 @@ Specialisation pragma
 
   mapLazy f Nil = Nil
   mapLazy f (Cons x xs) = Cons (f x) (newRef (Left (mapLazy f xs)))
-
-Laziness
 Row polymorphism
   r : Row : Type
   {l = A} : {l : A} : Type
@@ -62,9 +63,6 @@ Row polymorphism
   Should make lenses?
   Codegen
 Type classes
-  Parse
-  Type-check
-  Codegen
 Test suite
 Mixfix definitions and noncompounds?
 Better error messages

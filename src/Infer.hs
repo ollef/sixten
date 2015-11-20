@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns, ViewPatterns, RecursiveDo #-}
+{-# LANGUAGE RecursiveDo, ViewPatterns #-}
 module Infer where
 
 import Control.Applicative
@@ -6,6 +6,7 @@ import Control.Monad.Except
 import Control.Monad.ST()
 import Data.Bifunctor
 import Data.Foldable as F
+import Data.List as List
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.HashSet as HS
 import Data.Monoid
@@ -127,11 +128,11 @@ resolveConstrType cs (Abstract.appsView -> (headType, _)) = do
     Abstract.Global v -> do
       (d, _, _) <- context v
       case d of
-        DataDefinition _ -> return $ Set.singleton v
+        DataDefinition _ -> return [Set.singleton v]
         _                -> return mempty
     _ -> return mempty
   ns <- mapM (fmap (Set.map (fst :: (Name, Abstract.Expr Annotation ()) -> Name)) . constructor) cs
-  case Set.toList $ foldl' Set.intersection mempty (n : ns) of
+  case Set.toList $ List.foldl1' Set.intersection (n ++ ns) of
     [x] -> return x
     xs -> throwError $ "Ambiguous constructors: " ++ show cs ++ ". Possible types: "
                ++ show xs
@@ -142,19 +143,22 @@ inferBranches :: Plicitness
               -> TCM s (Abstract s, BranchesM (Abstract.Expr Plicitness) s () Plicitness, Abstract s)
 inferBranches surrounding expr etype (ConBranches cbrs) = do
   n <- resolveConstrType ((\(c, _, _) -> c) <$> cbrs) etype
-  let go (c, hs, s) (expr', etype', resBrs, resType) = do
-        xs <- V.forM hs $ \(h, p) -> do
-          t <- existsVar h Abstract.Type ()
-          v <- forall_ h t ()
-          return (p, v)
+  let go (c, tele, sbr) (expr', etype', resBrs, resType) = mdo
+        vs <- forTele tele $ \h _ s -> do
+          (s', _) <- inferType surrounding $ instantiateTele pureVs s
+          forall_ h s' ()
+        let pureVs = pure <$> vs
+            args = V.toList $ V.zip (teleAnnotations tele) pureVs
         (_, caseType) <- inferType
           surrounding
-          (Concrete.apps (Concrete.Con $ Right $ QConstr n c) $ V.toList $ second pure <$> xs)
-        let vs = snd <$> xs
+          (Concrete.apps (Concrete.Con $ Right $ QConstr n c) args)
         (expr'', etype'') <- subtype surrounding expr' etype' caseType
-        (br, resType') <- checkType surrounding (instantiate (pure . (vs V.!)) s) resType
-        s' <- abstractM (`V.elemIndex` vs) br
-        return (expr'', etype'', (c, hs, s'):resBrs, resType')
+        (br, resType') <- checkType surrounding (instantiateTele pureVs sbr) resType
+        sbr' <- abstractM (teleAbstraction vs) br
+        tele' <- iforTele tele $ \i h p _ -> do
+          let t = metaType $ vs V.! i
+          return (h, p, abstract (teleAbstraction vs) t)
+        return (expr'', etype'', (c, Telescope tele', sbr'):resBrs, resType')
   resTypeT <- existsVar mempty Abstract.Type ()
   resType <- existsVar mempty resTypeT ()
   (expr', _etype', cbrs', resType') <- foldrM go (expr, etype, mempty, resType) cbrs
@@ -200,33 +204,33 @@ checkConstrDef :: Abstract s
                -> ConstrDef (Concrete s)
                -> TCM s (ConstrDef (Abstract s))
 checkConstrDef typ (ConstrDef c (bindingsView Concrete.piView -> (args, ret))) = mdo
-  let inst = instantiate (\n -> let (a, _, _, _) = args' V.! n in pure a)
-  args' <- forM (V.fromList args) $ \(h, p, arg) -> do
+  let inst = instantiateTele $ (\(a, _, _, _) -> pure a) <$> args'
+  args' <- forTele args $ \h p arg -> do
     (arg', _) <- checkType p (inst arg) Abstract.Type
     v <- forall_ h arg' ()
     return (v, h, p, arg')
+
   (ret', _) <- checkType Explicit (inst ret) Abstract.Type
   unify ret' typ
   res <- F.foldrM (\(v, h, p, arg') rest ->
          Abstract.Pi h p arg' <$> abstract1M v rest) ret' args'
   return $ ConstrDef c res
 
-extractParams :: Abstract.Expr p v -> Vector (NameHint, p, Scope Int (Abstract.Expr p) v)
-extractParams (bindingsView Abstract.piView -> (ps, fromScope -> Abstract.Type))
-  = V.fromList ps
+extractParams :: Abstract.Expr d v -> Telescope d (Abstract.Expr d) v
+extractParams (bindingsView Abstract.piView -> (ps, fromScope -> Abstract.Type)) = ps
 extractParams _ = error "extractParams"
 
 checkDataType :: MetaVar s () Plicitness
-              -> DataDef Concrete.Expr (MetaVar s () Plicitness)
+              -> DataDef Plicitness Concrete.Expr (MetaVar s () Plicitness)
               -> Abstract s
-              -> TCM s ( DataDef (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+              -> TCM s ( DataDef Plicitness (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
                        , Abstract s
                        )
 checkDataType name (DataDef _ps cs) typ = mdo
-  let inst = instantiate (\n -> let (v, _, _, _) = ps' V.! n in pure v)
-  let inst' = instantiate (\n -> let (v, _, _, _) = ps' V.! n in pure v)
+  let inst  = instantiateTele $ (\(v, _, _, _) -> pure v) <$> ps'
+  let inst' = instantiateTele $ (\(v, _, _, _) -> pure v) <$> ps'
 
-  ps' <- forM (extractParams typ) $ \(h, p, s) -> do
+  ps' <- forTele (extractParams typ) $ \h p s -> do
     let is = inst s
     v <- forall_ h is ()
     return (v, h, p, is)
@@ -234,26 +238,26 @@ checkDataType name (DataDef _ps cs) typ = mdo
   let vs = (\(v, _, _, _) -> v) <$> ps'
       retType = Abstract.apps (pure name) [(p, pure v) | (v, _, p, _) <- V.toList ps']
 
-  params <- forM ps' $ \(_, h, p, t) -> (,,) h p <$> abstractM (`V.elemIndex` vs) t
+  params <- forM ps' $ \(_, h, p, t) -> (,,) h p <$> abstractM (fmap Tele . (`V.elemIndex` vs)) t
 
   cs' <- forM cs $ \(ConstrDef c t) -> do
     res <- checkConstrDef retType (ConstrDef c $ inst' t)
-    traverse (abstractM (`V.elemIndex` vs)) res
+    traverse (abstractM (fmap Tele . (`V.elemIndex` vs))) res
 
-  return (DataDef params cs', typ)
+  return (DataDef (Telescope params) cs', typ)
 
-subDefType :: Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+subDefType :: Definition Plicitness (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
            -> Abstract s
            -> Abstract s
-           -> TCM s ( Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+           -> TCM s ( Definition Plicitness (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
                     , Abstract s
                     )
 subDefType (Definition e) t t' = first Definition <$> subtype Explicit e t t'
 subDefType (DataDefinition d) t t' = do unify t t'; return (DataDefinition d, t')
 
-generaliseDef :: Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+generaliseDef :: Definition Plicitness (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
               -> Abstract s
-              -> TCM s ( Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+              -> TCM s ( Definition Plicitness (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
                        , Abstract s
                        )
 generaliseDef (Definition d) t = first Definition <$> generalise d t
@@ -261,31 +265,31 @@ generaliseDef (DataDefinition d) t = return (DataDefinition d, t)
 
 abstractDefM :: Show a
              => (MetaVar s () a -> Maybe b)
-             -> Definition (Abstract.Expr a) (MetaVar s () a)
-             -> TCM s (Definition (Abstract.Expr a) (Var b (MetaVar s () a)))
+             -> Definition a (Abstract.Expr a) (MetaVar s () a)
+             -> TCM s (Definition a (Abstract.Expr a) (Var b (MetaVar s () a)))
 abstractDefM f (Definition e) = Definition . fromScope <$> abstractM f e
 abstractDefM f (DataDefinition e) = DataDefinition <$> abstractDataDefM f e
 
 abstractDataDefM :: Show a
                  => (MetaVar s () a -> Maybe b)
-                 -> DataDef (Abstract.Expr a) (MetaVar s () a)
-                 -> TCM s (DataDef (Abstract.Expr a) (Var b (MetaVar s () a)))
+                 -> DataDef a (Abstract.Expr a) (MetaVar s () a)
+                 -> TCM s (DataDef a (Abstract.Expr a) (Var b (MetaVar s () a)))
 abstractDataDefM f (DataDef ps cs) = mdo
-  let inst = instantiate (pure . (vs V.!))
+  let inst = instantiateTele $ pure <$> vs
       vs = (\(_, _, _, v) -> v) <$> ps'
-  ps' <- forM ps $ \(h, p, s) -> let is = inst s in (,,,) h p is <$> forall_ h is ()
-  let f' x = F <$> f x <|> B <$> V.elemIndex x vs
-  aps <- forM ps' $ \(h, p, s, _) -> (,,) h p <$> (toScope . fmap assoc . fromScope) <$> abstractM f' s
+  ps' <- forTele ps $ \h p s -> let is = inst s in (,,,) h p is <$> forall_ h is ()
+  let f' x = F <$> f x <|> B . Tele <$> V.elemIndex x vs
+  aps <- forM ps' $ \(h, p, s, _) -> (,,) h p . toScope . fmap assoc . fromScope <$> abstractM f' s
   acs <- forM cs $ \c -> traverse (fmap (toScope . fmap assoc . fromScope) . abstractM f' . inst) c
-  return $ DataDef aps acs
+  return $ DataDef (Telescope aps) acs
   where
     assoc :: Var (Var a b) c -> Var a (Var b c)
     assoc = unvar (unvar B (F . B)) (F . F)
 
 checkDefType :: MetaVar s () Plicitness
-             -> Definition Concrete.Expr (MetaVar s () Plicitness)
+             -> Definition Plicitness Concrete.Expr (MetaVar s () Plicitness)
              -> Abstract s
-             -> TCM s ( Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+             -> TCM s ( Definition Plicitness (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
                       , Abstract s
                       )
 checkDefType _ (Definition e) typ = first Definition <$> checkType Explicit e typ
@@ -293,11 +297,11 @@ checkDefType v (DataDefinition d) typ = first DataDefinition <$> checkDataType v
 
 checkRecursiveDefs :: Vector
                      ( NameHint
-                     , Definition Concrete.Expr (Var Int (MetaVar s () Plicitness))
+                     , Definition Plicitness Concrete.Expr (Var Int (MetaVar s () Plicitness))
                      , ScopeM Int Concrete.Expr s () Plicitness
                      )
                    -> TCM s
-                     (Vector ( Definition (Abstract.Expr Plicitness) (Var Int (MetaVar s () Plicitness))
+                     (Vector ( Definition Plicitness (Abstract.Expr Plicitness) (Var Int (MetaVar s () Plicitness))
                              , ScopeM Int (Abstract.Expr Plicitness) s () Plicitness
                              )
                      )

@@ -1,4 +1,4 @@
-{-# LANGUAGE Rank2Types, ViewPatterns #-}
+{-# LANGUAGE Rank2Types #-}
 module Util where
 
 import Bound
@@ -10,7 +10,6 @@ import Data.Hashable
 import qualified Data.HashMap.Lazy as HM
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HS
-import Data.Monoid
 import Data.Set(Set)
 import qualified Data.Set as S
 import Data.String
@@ -45,8 +44,8 @@ bifoldMapScope f g (Scope s) = bifoldMap f (unvar mempty $ bifoldMap f g) s
 
 exposeScope :: Applicative expr
             => (forall x. expr x -> expr (Var e x))
-            -> Scope b expr v
-            -> Scope b expr (Var e v)
+            -> Scope b expr a
+            -> Scope b expr (Var e a)
 exposeScope f (Scope s) = Scope $ fmap (unvar (F . pure . B) id) $ f $ fmap f <$> s
 
 data Empty
@@ -67,23 +66,3 @@ fromText = fromString . Text.unpack
 
 shower :: (Show a, IsString b) => a -> b
 shower = fromString . show
-
--- | View consecutive bindings at the same time
-bindingsViewM
-  :: Monad expr
-  => (forall v'. expr v' -> Maybe (h, d, expr v', Scope1 expr v'))
-  -> expr v -> Maybe ([(h, d, Scope Int expr v)], Scope Int expr v)
-bindingsViewM f expr@(f -> Just _) = Just $ bindingsView f expr
-bindingsViewM _ _ = Nothing
-
--- | View consecutive bindings at the same time
-bindingsView
-  :: Monad expr
-  => (forall v'. expr v' -> Maybe (h, d, expr v', Scope1 expr v'))
-  -> expr v -> ([(h, d, Scope Int expr v)], Scope Int expr v)
-bindingsView f expr = go 0 $ F <$> expr
-  where
-    go x (f -> Just (n, p, e, s)) = (pure (n, p, toScope e) <> ns, s')
-      where
-        (ns, s') = (go $! (x + 1)) (instantiate1 (return $ B x) s)
-    go _ e = (mempty, toScope e)

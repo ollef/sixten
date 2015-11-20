@@ -11,6 +11,7 @@ import qualified Data.Text.IO as Text
 import qualified Data.Vector as V
 import System.Environment
 
+import Builtin
 import Erasure
 import Infer
 import qualified Relevance
@@ -23,10 +24,10 @@ import qualified Syntax.Parse
 import TopoSort
 import Util
 
-inferProgram :: Program Concrete.Expr () Name -> TCM s ()
+inferProgram :: Program Plicitness Concrete.Expr Name -> TCM s ()
 inferProgram p' = mapM_ tcGroup sorted
   where
-    p = (\(x, y, ()) -> (x, y)) <$> p'
+    p = (\(x, y, _) -> (x, y)) <$> p'
     deps   = HM.map (bifoldMap defNames toHashSet) p <> HM.fromList constructorMappings
     defNames (DataDefinition d) = toHashSet (constructorNames d) <> toHashSet d
     defNames x = toHashSet x
@@ -55,7 +56,7 @@ inferProgram p' = mapM_ tcGroup sorted
       let vf = error "inferProgram"
           checkedTls' = bimap (fmap $ fmap vf) (fmap vf) <$> checkedTls
       reledTls <- Relevance.checkRecursiveDefs checkedTls'
-      reledTls' <- traverse (bitraverse (bitraverseDef   Relevance.fromMetaAnnotation (traverse vf))
+      reledTls' <- traverse (bitraverse (tritraverseDef   Relevance.fromMetaAnnotation Relevance.fromMetaAnnotation (traverse vf))
                                         (bitraverseScope Relevance.fromMetaAnnotation vf)) $ V.map (\(d, t, r) -> (r, d, t)) reledTls
       reledTls'' <- traverse (traverse Relevance.fromRelevanceM) $ V.map (\(r, d, t) -> ((d, t), r)) reledTls'
       let names = V.fromList [n | (n, (_, _)) <- tls]
@@ -74,7 +75,7 @@ test inp = do
   case mp of
     Nothing         -> return ()
     Just (Left err) -> Text.putStrLn err
-    Just (Right p)  -> case runTCM (inferProgram p >> gets tcContext) of
+    Just (Right p)  -> case runTCM (inferProgram p >> gets tcContext) Builtin.context of
       (Left err, tr) -> do mapM_ putStrLn tr; putStrLn err
       (Right res, _) -> do
         mapM_ print $ (show . pretty . (\(x, (y, z, a)) -> (x, (fe y, fe z, show a)))) <$> HM.toList res

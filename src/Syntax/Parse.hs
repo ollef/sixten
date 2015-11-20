@@ -4,7 +4,6 @@ module Syntax.Parse where
 import Control.Applicative((<**>), (<|>), Alternative)
 import Control.Monad.Except
 import Control.Monad.State
-import Data.Bifunctor
 import Data.Text(Text)
 import qualified Data.Text as Text
 import Data.Char
@@ -184,13 +183,13 @@ bindingNames bs = Vector.fromList $ bs >>= flatten
     flatten (Plain _ names) = names
     flatten (Typed _ names _) = names
 
-abstractBindingTelescope :: [Binding] -> Vector (NameHint, Plicitness, Scope Int Expr Name)
-abstractBindingTelescope bs
-  = Vector.imap (\i (n, p, t) -> (Hint n, p, abstract (abstr i) t)) unabstracted
+bindingsTelescope :: [Binding] -> Telescope Plicitness Expr Name
+bindingsTelescope bs = Telescope $
+  Vector.imap (\i (n, p, t) -> (Hint n, p, abstract (abstr i) t)) unabstracted
   where
     unabstracted = Vector.fromList $ bs >>= flatten
     abstr i v = case Vector.elemIndex (Just v) $ bindingNames bs of
-      Just n | n < i -> Just n
+      Just n | n < i -> Just $ Tele n
       _ -> Nothing
     flatten (Plain p names) = [(name, p, Wildcard) | name <- names]
     flatten (Typed p names t) = [(name, p, t) | name <- names]
@@ -238,16 +237,16 @@ atomicExpr
   where
     abstr t c = abstractBindings c <$ t <*>% someBindings <*% symbol "." <*>% expr
 
-branches :: Parser (Branches Expr Name)
+branches :: Parser (Branches Plicitness Expr Name)
 branches = dropAnchor $  ConBranches <$> manySameCol conBranch
                      <|> LitBranches <$> manySameCol litBranch
                                      <*> (sameCol >> (reserved "_" *>% symbol "->" *>% expr))
   where
     litBranch = (,) <$> literal <*% symbol "->" <*>% expr
-    conBranch = con <$> constructor <*> (concat <$> manySI caseBinding) <*% symbol "->" <*>% expr
-    con c bs e = (c, vs, abstract ((`Vector.elemIndex` hs) . Just) e)
-      where vs = Vector.fromList $ first Hint <$> bs
-            hs = fst <$> Vector.fromList bs
+    conBranch = con <$> constructor <*> manyBindings <*% symbol "->" <*>% expr
+    con c bs e = (c, tele, abstract (fmap Tele . (`Vector.elemIndex` hs) . Hint . Just) e)
+      where tele = bindingsTelescope bs
+            hs = teleNames tele
 
 expr :: Parser (Expr Name)
 expr
@@ -267,7 +266,7 @@ expr
 data TopLevelParsed v
   = ParsedDefLine  (Maybe v) (Expr v) -- ^ Maybe v means that we can use wildcard names that refer e.g. to the previous top-level thing
   | ParsedTypeDecl v         (Type v)
-  | ParsedData  v (DataDef Type v)
+  | ParsedData  v (DataDef Plicitness Type v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 topLevel :: Parser (TopLevelParsed Name)
@@ -286,12 +285,12 @@ dataDef = mkDataDef <$ reserved "data" <*>% constructor <*> manyBindings
   where
     conDef = ConstrDef <$> constructor <*% symbol ":" <*>% expr
     mkDataDef tc bs cs = ParsedData tc
-                       $ DataDef (abstractBindingTelescope bs)
+                       $ DataDef (bindingsTelescope bs)
                                  (map abstrConstrDef cs)
       where
         abstrConstrDef (ConstrDef name typ)
           = ConstrDef name
-          $ abstract ((`Vector.elemIndex` bindingNames bs) . Just) typ
+          $ abstract (fmap Tele . (`Vector.elemIndex` bindingNames bs) . Just) typ
 
 program :: Parser [TopLevelParsed Name]
 program = Trifecta.whiteSpace >> dropAnchor (manySameCol $ dropAnchor topLevel)

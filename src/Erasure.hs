@@ -1,5 +1,8 @@
 module Erasure where
 
+import Data.Maybe
+import qualified Data.Vector as Vector
+
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Lambda as Lambda
@@ -23,10 +26,22 @@ erase expr = case expr of
     Relevant -> Lambda.App (erase e1) (erase e2)
   Abstract.Case e brs -> Lambda.Case (erase e) (eraseBranches brs)
   where
-    eraseBranches (ConBranches cbrs) = ConBranches [(c, hs, toScope $ erase $ fromScope s)  | (c, hs, s) <- cbrs]
+    eraseTele tele@(Telescope v) =
+        ( permFun
+        , Telescope $ Vector.map (\(h, _, s) -> (h, (), eraseScope $ mapBound permFun s))
+        $ Vector.filter (\(_, p, _) -> isRelevant p) v
+        )
+      where
+        permFun (Tele n) = Tele $ fromMaybe (error "erasure tele") $ perm Vector.! n
+        perm = Vector.fromList $ fst $
+          Vector.foldl' (\(xs, i) p -> case relevance p of
+            Irrelevant -> (Nothing : xs, i)
+            Relevant -> (Just i : xs, i + 1)) ([], 0) (teleAnnotations tele)
+    eraseScope = toScope . erase . fromScope
+    eraseBranches (ConBranches cbrs) = ConBranches [(c, tele', eraseScope $ mapBound permFun s)  | (c, tele, s) <- cbrs, let (permFun, tele') = eraseTele tele]
     eraseBranches (LitBranches lbrs d) = LitBranches [(l, erase e) | (l, e) <- lbrs] (erase d)
 
-eraseDef :: HasRelevance a => Definition (Abstract a) v -> Definition Lambda v
+eraseDef :: HasRelevance a => Definition a (Abstract a) v -> Definition a Lambda v
 eraseDef (Definition e) = Definition $ erase e
 eraseDef (DataDefinition DataDef {})
   = DataDefinition $ DataDef mempty mempty
