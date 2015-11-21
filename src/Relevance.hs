@@ -318,11 +318,40 @@ infer expr surroundingRel knownDef = do
             ft' <- whnf metaRelevance toMetaAnnotation ft
             go False e1' ft'
           _ -> throwError $ "infer relevance infer1" ++ show (pretty $ fmap show expr)
-    Case {} -> error "infer rel" -- TODO
+    Case e brs -> do
+      (e', _) <- infer e surroundingRel knownDef
+      (brs', retType) <- inferBranches brs surroundingRel knownDef
+      return (Case e' brs', retType)
   modifyIndent pred
   tr "infer res e" expr'
   tr "infer res t" typ
   return (expr', typ)
+
+inferBranches :: Branches Plicitness (Expr Plicitness) (MetaVar s (RelevanceM s) (MetaAnnotation s))
+              -> RelevanceM s
+              -> Bool
+              -> TCM s (Branches (MetaAnnotation s) (Expr (MetaAnnotation s)) (MetaVar s (RelevanceM s) (MetaAnnotation s)), Output s)
+inferBranches (ConBranches cbrs) surroundingRel knownDef = do
+  cbrs' <- forM cbrs $ \(c, tele, sbr) -> mdo
+    ps <- forTele tele $ \h p s -> do
+      let t = inst s
+      (t', t'rel) <- inferArg t True
+      v <- forall_ h t' t'rel
+      return (v, h, MetaAnnotation t'rel p, abstr t')
+    let inst  = instantiateTele $ (\(v, _, _, _) -> pure v) <$> ps
+        abstr = abstract $ teleAbstraction $ (\(v, _, _, _) -> v) <$> ps
+    let tele' = Telescope $ (\(_, h, p, s) -> (h, p, s)) <$> ps
+    (sbr', brType) <- infer (inst sbr) surroundingRel knownDef
+    return (c, tele', sbr', brType, abstr)
+  let retType = case cbrs' of
+        ((_, _, _, t, _):_) -> t
+        _ -> undefined
+  cbrs'' <- forM cbrs' $ \(c, tele, sbr, brType, abstr) -> do
+    sbr' <- subtype sbr brType retType
+    return (c, tele, abstr sbr')
+  return (ConBranches cbrs'', retType)
+
+inferBranches (LitBranches lbrs def) surroundingRel knownDef = undefined
 
 check :: Input s -> Output s -> RelevanceM s -> Bool -> TCM s (Output s)
 check expr typ rel knownDef = do
