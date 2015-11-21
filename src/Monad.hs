@@ -78,7 +78,9 @@ addContext prog = modify $ \s -> s
   } where
     cs = HM.fromList $ do
       (n, (DataDefinition d, _, _)) <- HM.toList prog
-      ConstrDef c t <- quantifiedConstrTypes Pi d
+      ConstrDef c t <- quantifiedConstrTypes
+                         (\h p -> Pi h (Annotation (relevance p) Implicit))
+                         d
       return (c, Set.fromList [(n, t)])
 
 context :: Name -> TCM s (Definition Annotation (Expr Annotation) v, Type Annotation v, Annotation)
