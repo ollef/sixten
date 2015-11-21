@@ -90,7 +90,8 @@ instance (IsString v, Pretty v) => Pretty (Expr v) where
     Var v     -> prettyM v
     Global g  -> prettyM g
     Lit l     -> prettyM l
-    Con c     -> prettyM c
+    Con (Left c) -> prettyM c
+    Con (Right qc) -> prettyM qc
     Type      -> pure $ text "Type"
     Pi  h p Wildcard s -> withNameHint h $ \x -> parens `above` absPrec $
       prettyM "forall" <+> inviolable (braces `iff` (p == Implicit) $ prettyM x)
