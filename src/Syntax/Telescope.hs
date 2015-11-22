@@ -108,6 +108,10 @@ prettyTeleVarTypes ns (Telescope v) = hcat $ map go grouped
       $ (if isImplicit p then braces else parens)
       $ hsep (map (prettyM . (ns Vector.!)) xs) <+> prettyM ":" <+> prettyM (inst t)
 
+instance (Eq1 expr, Eq d, Eq v, Pretty (expr v), Monad expr, IsString v, HasRelevance d, HasPlicitness d)
+  => Pretty (Telescope d expr v) where
+  prettyM tele = withTeleHints tele $ \ns -> prettyTeleVarTypes ns tele
+
 forTele :: Monad m
         => Telescope d expr a
         -> (NameHint -> d -> Scope Tele expr a -> m b)
