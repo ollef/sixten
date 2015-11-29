@@ -66,6 +66,10 @@ globals expr = case expr of
   App e1 p e2 -> App (globals e1) p (globals e2)
   Case e brs  -> Case (globals e) (exposeBranches globals brs)
 
+telescope :: Expr d v -> Telescope d (Expr d) v
+telescope (bindingsView piView -> (tele, Scope Type)) = tele
+telescope _ = error "Abstract.telescope"
+
 -------------------------------------------------------------------------------
 -- Instances
 instance Eq d => Eq1 (Expr d)

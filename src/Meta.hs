@@ -16,7 +16,7 @@ import qualified Data.Traversable as T
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete as Concrete
-import Monad
+import TCM
 
 type Exists s d a = STRef s (Either Level (AbstractM s d a))
 
@@ -68,23 +68,23 @@ tr :: (HasRelevance a, HasPlicitness a, Eq a, Functor f, Foldable f, Pretty (f S
 tr s x = do
   i <- gets tcIndent
   r <- showMeta x
-  Monad.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ showWide r
+  TCM.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ showWide r
 
 trp :: Pretty a => String -> a -> TCM s ()
 trp s x = do
   i <- gets tcIndent
-  Monad.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ showWide (pretty x)
+  TCM.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ showWide (pretty x)
 
 trs :: Show a => String -> a -> TCM s ()
 trs s x = do
   i <- gets tcIndent
-  Monad.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ show x
+  TCM.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ show x
 
 existsAtLevel :: NameHint -> AbstractM s d a -> d -> Level -> TCM s (MetaVar s d a)
 existsAtLevel hint typ dat l = do
   i   <- fresh
   ref <- liftST $ newSTRef $ Left l
-  Monad.log $ "exists: " ++ show i
+  TCM.log $ "exists: " ++ show i
   return $ MetaVar i typ hint dat (Just ref)
 
 exists :: NameHint -> AbstractM s d a -> d -> TCM s (MetaVar s d a)
@@ -99,7 +99,7 @@ existsVarAtLevel hint typ dat l = pure <$> existsAtLevel hint typ dat l
 forall_ :: NameHint -> AbstractM s d a -> d -> TCM s (MetaVar s d a)
 forall_ hint typ dat = do
   i <- fresh
-  Monad.log $ "forall: " ++ show i
+  TCM.log $ "forall: " ++ show i
   return $ MetaVar i typ hint dat Nothing
 
 forallVar :: Applicative g => NameHint -> AbstractM s d a -> d -> TCM s (g (MetaVar s d a))
@@ -183,7 +183,7 @@ abstract1M :: (Show d, Show a)
            -> AbstractM s d a
            -> TCM s (ScopeM () (Abstract.Expr a) s d a)
 abstract1M v e = do
-  Monad.log $ "abstracting " ++ show (metaId v)
+  TCM.log $ "abstracting " ++ show (metaId v)
   abstractM (\v' -> if v == v' then Just () else Nothing) e
 
 freeze :: AbstractM s d a -> TCM s (AbstractM s d a)

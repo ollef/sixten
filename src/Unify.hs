@@ -10,7 +10,7 @@ import qualified Data.Set as S
 import Data.STRef
 
 import Meta
-import Monad
+import TCM
 import Normalise
 import Syntax
 import Syntax.Abstract
@@ -36,9 +36,11 @@ occurs l tv = traverse_ go
 
 unify :: Abstract s -> Abstract s -> TCM s ()
 unify type1 type2 = do
-  tr "unify t1" type1
-  tr "      t2" type2
-  go True type1 type2
+  ftype1 <- freeze type1
+  ftype2 <- freeze type2
+  tr "unify t1" ftype1
+  tr "      t2" ftype2
+  go True ftype1 ftype2
   where
     go reduce t1 t2
       | t1 == t2  = return ()
@@ -56,7 +58,6 @@ unify type1 type2 = do
         (App e1 p1 e1', App e2 p2 e2') | p1 == p2 && not reduce -> do
           go True e1  e2
           go True e1' e2'
-        (Type, Type) -> return ()
         _ | reduce             -> do
           t1' <- whnf mempty plicitness t1
           t2' <- whnf mempty plicitness t2
@@ -78,7 +79,7 @@ unify type1 type2 = do
         Left l  -> do
           occurs l v t
           solve r =<< lams pvs t
-        Right c -> go True (apps c (map (second pure) pvs)) t
+        Right c -> go True (apps c $ map (second pure) pvs) t
     lams pvs t = foldrM (\(p, v) -> fmap (Lam (Hint Nothing) p $ metaType v) . abstract1M v) t pvs
 
 subtype :: Plicitness -> Abstract s -> Abstract s -> Abstract s -> TCM s (Abstract s, Abstract s)

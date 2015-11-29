@@ -41,7 +41,7 @@ erase expr = case expr of
     eraseBranches (ConBranches cbrs) = ConBranches [(c, tele', eraseScope $ mapBound permFun s)  | (c, tele, s) <- cbrs, let (permFun, tele') = eraseTele tele]
     eraseBranches (LitBranches lbrs d) = LitBranches [(l, erase e) | (l, e) <- lbrs] (erase d)
 
-eraseDef :: HasRelevance a => Definition a (Abstract a) v -> Definition a Lambda v
+eraseDef :: HasRelevance a => Definition (Abstract a) v -> Definition Lambda v
 eraseDef (Definition e) = Definition $ erase e
 eraseDef (DataDefinition DataDef {})
-  = DataDefinition $ DataDef mempty mempty
+  = DataDefinition $ DataDef mempty

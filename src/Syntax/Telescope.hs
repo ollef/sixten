@@ -43,17 +43,16 @@ quantify :: (Eq b, Monad expr)
                       -> expr (Var Tele a)
                       -> Scope () expr (Var Tele b)
                       -> expr (Var Tele b))
-         -> Telescope d expr a
          -> Scope Tele expr b
+         -> Telescope d expr a
          -> expr b
-quantify pifun (Telescope ps) =
-   fmap (unvar err id) . abstr . fromScope
-   where
-     abstr x = Vector.ifoldr (\i (h, p, s) -> pifun h p (fromScope s)
-                                            . abstract1 (B $ Tele i))
-                             x
-                             ps
-     err = error "quantify Telescope"
+quantify pifun s (Telescope ps) =
+   unvar err id <$> Vector.ifoldr
+     (\i (h, p, s) -> pifun h p (fromScope s) . abstract1 (B $ Tele i))
+     (fromScope s)
+     ps
+  where
+    err = error "quantify Telescope"
 
 instance Bound (Telescope d) where
   Telescope t >>>= f = Telescope $ second (>>>= f) <$> t

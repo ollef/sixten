@@ -15,5 +15,4 @@ context = HM.fromList
   [ ("Int", opaque)
   ]
   where
-    opaque = (DataDefinition $ DataDef (Telescope mempty) mempty, Type, Annotation Irrelevant Explicit)
-
+    opaque = (DataDefinition $ DataDef mempty, Type, Annotation Irrelevant Explicit)

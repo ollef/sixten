@@ -1,7 +1,16 @@
 Cases
   Type-check
   Make Concrete syntax have deep patterns and desugar them
+  Normalisation
+Generalisation
+  Does the current strategy work with mutual recursion?
+    No. Disallow mutually recursive type deps and only allow recursion with type sigs?
+Propagation
+  https://github.com/tomprimozic/type-systems/tree/master/first_class_polymorphism
 Make Type a builtin?
+Merge Has{Plicitness,Relevance} into Annotation class?
+Clean up relevance inference?
+  Is it cleaner to just do it together with the other inference
 Arity inference
 Javascript code generation
 Size types

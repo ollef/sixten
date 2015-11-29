@@ -1,6 +1,7 @@
 module Syntax.Pretty
   ( module Text.PrettyPrint.ANSI.Leijen
   , Pretty, PrettyM
+  , runPrettyM
   , (<+>), (<$$>)
   , indent, hcat, vcat, hsep
   , iff
@@ -53,18 +54,21 @@ data PrettyEnv = PrettyEnv
 
 class Pretty a where
   pretty  :: a -> Doc
-  pretty x = prettyM x PrettyEnv
-    { precedence = -1
-    , boundNames = mempty
-    , freeNames  = do
-      n <- [(0 :: Int)..]
-      c <- ['a'..'z']
-      return $ fromString $ c : if n == 0 then "" else show n
-    }
+  pretty = runPrettyM . prettyM 
   prettyM :: a -> PrettyM Doc
   prettyM = return . pretty
   prettyList :: [a] -> PrettyM Doc
   prettyList xs = list <$> mapM (inviolable . prettyM) xs
+
+runPrettyM :: PrettyM a -> a
+runPrettyM p = p PrettyEnv
+  { precedence = -1
+  , boundNames = mempty
+  , freeNames  = do
+    n <- [(0 :: Int)..]
+    c <- ['a'..'z']
+    return $ fromString $ c : if n == 0 then "" else show n
+  }
 
 -------------------------------------------------------------------------------
 -- * Doc helpers

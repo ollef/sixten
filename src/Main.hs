@@ -1,5 +1,6 @@
 module Main where
 
+import Control.Monad.Except
 import Control.Monad.State
 import Data.Bifoldable
 import Data.Bifunctor
@@ -15,7 +16,7 @@ import Builtin
 import Erasure
 import Infer
 import qualified Relevance
-import Monad
+import TCM
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete as Concrete
@@ -53,10 +54,12 @@ inferProgram p' = mapM_ tcGroup sorted
                           | ((s, t), (n, _))
                             <- zip (zip abstractedScopes abstractedTypes) tls]
       checkedTls <- checkRecursiveDefs $ V.fromList abstractedTls
-      let vf = error "inferProgram"
-          checkedTls' = bimap (fmap $ fmap vf) (fmap vf) <$> checkedTls
+
+      let vf :: a -> TCM s b
+          vf _ = throwError "inferProgram"
+      checkedTls' <- traverse (bitraverse (traverse $ traverse vf) (traverse vf)) checkedTls
       reledTls <- Relevance.checkRecursiveDefs checkedTls'
-      reledTls' <- traverse (bitraverse (tritraverseDef   Relevance.fromMetaAnnotation Relevance.fromMetaAnnotation (traverse vf))
+      reledTls' <- traverse (bitraverse (bitraverseDef   Relevance.fromMetaAnnotation (traverse vf))
                                         (bitraverseScope Relevance.fromMetaAnnotation vf)) $ V.map (\(d, t, r) -> (r, d, t)) reledTls
       reledTls'' <- traverse (traverse Relevance.fromRelevanceM) $ V.map (\(r, d, t) -> ((d, t), r)) reledTls'
       let names = V.fromList [n | (n, (_, _)) <- tls]
@@ -78,9 +81,9 @@ test inp = do
     Just (Right p)  -> case runTCM (inferProgram p >> gets tcContext) Builtin.context of
       (Left err, tr) -> do mapM_ putStrLn tr; putStrLn err
       (Right res, _) -> do
-        mapM_ print $ (show . pretty . (\(x, (y, z, a)) -> (x, (fe y, fe z, show a)))) <$> HM.toList res
+        mapM_ print $ (show . (\(x, (d, t, a)) -> runPrettyM $ prettyM x <+> prettyM "=" <+> prettyTypedDef (fe d) (fe t) (fst $ bindingsView Abstract.piView $ fe t))) <$> HM.toList res
         putStrLn "------------- erased ------------------"
-        mapM_ print $ (show . pretty) <$> [(x, fe $ eraseDef e) | (x, (e, _, a)) <- HM.toList res, isRelevant a]
+        mapM_ print $ (show . pretty) <$> [(x, fe e') | (x, (e, _, a)) <- HM.toList res, isRelevant a, let Definition e' = eraseDef e]
   where
     fe :: Functor f => f Empty -> f String
     fe = fmap fromEmpty

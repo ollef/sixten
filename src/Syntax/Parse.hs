@@ -266,7 +266,7 @@ expr
 data TopLevelParsed v
   = ParsedDefLine  (Maybe v) (Expr v) -- ^ Maybe v means that we can use wildcard names that refer e.g. to the previous top-level thing
   | ParsedTypeDecl v         (Type v)
-  | ParsedData  v (DataDef Plicitness Type v)
+  | ParsedData  v (Telescope Plicitness Type v) (DataDef Type v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 topLevel :: Parser (TopLevelParsed Name)
@@ -284,9 +284,8 @@ dataDef = mkDataDef <$ reserved "data" <*>% constructor <*> manyBindings
     <*% reserved "where" <*> dropAnchor (manySameCol conDef)
   where
     conDef = ConstrDef <$> constructor <*% symbol ":" <*>% expr
-    mkDataDef tc bs cs = ParsedData tc
-                       $ DataDef (bindingsTelescope bs)
-                                 (map abstrConstrDef cs)
+    mkDataDef tc bs cs
+      = ParsedData tc (bindingsTelescope bs) (DataDef $ map abstrConstrDef cs)
       where
         abstrConstrDef (ConstrDef name typ)
           = ConstrDef name

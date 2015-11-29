@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, ViewPatterns #-}
 module Syntax.Concrete where
 
 import Control.Monad
@@ -61,6 +61,10 @@ globals expr = case expr of
   Case e brs -> Case (globals e) (exposeBranches globals brs)
   Anno e t -> Anno (globals e) (globals t)
   Wildcard -> Wildcard
+
+telescope :: Expr v -> Telescope Plicitness Expr v
+telescope (bindingsView piView -> (tele, Scope Type)) = tele
+telescope _ = error "Abstract.telescope"
 
 -------------------------------------------------------------------------------
 -- Instances

@@ -13,7 +13,7 @@ import qualified Data.Vector as V
 
 import qualified Builtin
 import Meta
-import Monad
+import TCM
 import Normalise
 import Syntax
 import Syntax.Abstract
@@ -442,44 +442,43 @@ inferConstr (ConstrDef c t) = do
   modifyIndent pred
   return res
 
-inferDef :: Definition Plicitness (Expr Plicitness) (MetaVar s (RelevanceM s) (MetaAnnotation s))
+checkDef :: Definition (Expr Plicitness) (MetaVar s (RelevanceM s) (MetaAnnotation s))
+         -> Output s
          -> RelevanceM s
-         -> TCM s (Definition (MetaAnnotation s) (Expr (MetaAnnotation s))
+         -> TCM s (Definition (Expr (MetaAnnotation s))
                               (MetaVar s (RelevanceM s) (MetaAnnotation s)), Output s)
-inferDef (Definition e) surroundingRel = first Definition <$> infer e surroundingRel False
-inferDef (DataDefinition (DataDef ps cs)) _surroundingRel = mdo
-  trs "inferDef" ()
+checkDef (Definition e) typ surroundingRel = flip (,) typ . Definition <$> check e typ surroundingRel False
+checkDef (DataDefinition (DataDef cs)) typ _surroundingRel = mdo
   modifyIndent succ
-  let inst = instantiateTele $ (\(v, _, _, _) -> pure v) <$> ps'
+  let (ps, Scope Type) = bindingsView piView typ
   ps' <- forTele ps $ \h p s -> do
-    let t = inst s
-    rType <- returnsType t
-    let rel = Relevance $ if rType then Irrelevant else Relevant
-    t' <- makeRel rel t
-    v <- forall_ h t' rel
-    return (v, h, MetaAnnotation rel p, t')
-  let abstr = abstract $ teleAbstraction $ (\(v, _, _, _) -> v) <$> ps'
+    let t = inst' s
+    v <- forall_ h t $ metaRelevance p
+    return (v, h, p, t)
+  let vs = (\(v, _, _, _) -> v) <$> ps'
+      abstr = abstract $ teleAbstraction vs
+      inst = instantiateTele $ pure <$> vs
+      inst' = instantiateTele $ pure <$> vs
       ps'' = (\(_, h, p, t) -> (h, p, abstr t)) <$> ps'
   cs' <- mapM inferConstr $ fmap (fmap inst) cs
   let cs'' = fmap abstr <$> cs'
-      res = DataDef (Telescope ps'') cs''
-      resType = dataType res Pi (Scope Type)
+      resType = quantify Pi (Scope Type) $ Telescope ps''
   modifyIndent pred
-  return (DataDefinition res, resType)
+  return (DataDefinition (DataDef cs''), resType)
 
-subtypeDef :: Definition (MetaAnnotation s) (Expr (MetaAnnotation s))
-                           (MetaVar s (RelevanceM s) (MetaAnnotation s))
+subtypeDef :: Definition (Expr (MetaAnnotation s))
+                         (MetaVar s (RelevanceM s) (MetaAnnotation s))
            -> Output s
            -> Output s
-           -> TCM s (Definition (MetaAnnotation s) (Expr (MetaAnnotation s))
-                                  (MetaVar s (RelevanceM s) (MetaAnnotation s)))
+           -> TCM s (Definition (Expr (MetaAnnotation s))
+                                (MetaVar s (RelevanceM s) (MetaAnnotation s)))
 subtypeDef (Definition e) t t' = Definition <$> subtype e t t'
 subtypeDef (DataDefinition d) t t' = do
   unify t t'
   return $ DataDefinition d
 
-checkRecursiveDefs :: Vector (Definition Plicitness (Expr Plicitness) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), InputScope s Int)
-                   -> TCM s (Vector (Definition (MetaAnnotation s) (Expr (MetaAnnotation s)) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), OutputScope s Int, RelevanceM s))
+checkRecursiveDefs :: Vector (Definition (Expr Plicitness) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), InputScope s Int)
+                   -> TCM s (Vector (Definition (Expr (MetaAnnotation s)) (Var Int (MetaVar s (RelevanceM s) (MetaAnnotation s))), OutputScope s Int, RelevanceM s))
 checkRecursiveDefs ds = case traverse unusedScope $ snd <$> ds of
   Nothing -> throwError "Mutually recursive types not supported"
   Just ts -> do
@@ -490,7 +489,7 @@ checkRecursiveDefs ds = case traverse unusedScope $ snd <$> ds of
     let instantiatedDs = flip V.imap ds $ \i (d, _) ->
           (evs V.! i, instantiateDef (pure . (\(ev, _, _) -> ev) . (evs V.!)) d)
     checkedDs <- V.forM instantiatedDs $ \((m, t, rel), d) -> do
-      (d', t') <- inferDef d rel
+      (d', t') <- checkDef d t rel
       d'' <- subtypeDef d' t' t
       return (m, d'', t)
     V.forM checkedDs $ \(m, d, t) -> do

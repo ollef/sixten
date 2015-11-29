@@ -5,7 +5,7 @@ import Control.Monad.Except
 import Data.Bifunctor
 
 import Meta
-import Monad
+import TCM
 import Syntax
 import Syntax.Abstract
 
@@ -32,7 +32,7 @@ whnf dat anno expr = case expr of
         e2' <- letVar h e2 t2 (dat p)
         whnf dat anno $ instantiate1 e2' s
       _ -> return expr
-  Case _ _ -> undefined -- TODO
+  Case _ _ -> return expr -- TODO
 
 normalise :: (Eq a, Show d, Show a, HasPlicitness a)
           => d -> (Annotation -> a) -> AbstractM s d a -> TCM s (AbstractM s d a)
@@ -56,7 +56,7 @@ normalise dat anno expr = case expr of
     case e1' of
       Lam _ p' _ s | plicitness p == plicitness p'   -> normalise dat anno $ instantiate1 e2' s
       _ -> return $ App e1' p e2'
-  Case _ _ -> undefined -- TODO
+  Case _ _ -> return expr -- TODO
   where
     normaliseScope h c a s = do
       x <- forall_ h a dat

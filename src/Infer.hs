@@ -16,7 +16,7 @@ import qualified Data.Vector as V
 
 import qualified Builtin
 import Meta
-import Monad
+import TCM
 import Normalise
 import Syntax
 import qualified Syntax.Abstract as Abstract
@@ -216,22 +216,18 @@ checkConstrDef typ (ConstrDef c (bindingsView Concrete.piView -> (args, ret))) =
          Abstract.Pi h p arg' <$> abstract1M v rest) ret' args'
   return $ ConstrDef c res
 
-extractParams :: Abstract.Expr d v -> Telescope d (Abstract.Expr d) v
-extractParams (bindingsView Abstract.piView -> (ps, fromScope -> Abstract.Type)) = ps
-extractParams _ = error "extractParams"
-
 checkDataType :: MetaVar s () Plicitness
-              -> DataDef Plicitness Concrete.Expr (MetaVar s () Plicitness)
+              -> DataDef Concrete.Expr (MetaVar s () Plicitness)
               -> Abstract s
-              -> TCM s ( DataDef Plicitness (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+              -> TCM s ( DataDef (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
                        , Abstract s
                        )
-checkDataType name (DataDef _ps cs) typ = mdo
-  let inst  = instantiateTele $ (\(v, _, _, _) -> pure v) <$> ps'
-  let inst' = instantiateTele $ (\(v, _, _, _) -> pure v) <$> ps'
+checkDataType name (DataDef cs) typ = mdo
+  typ' <- freeze typ
+  tr "checkDataType t" typ'
 
-  ps' <- forTele (extractParams typ) $ \h p s -> do
-    let is = inst s
+  ps' <- forTele (Abstract.telescope typ') $ \h p s -> do
+    let is = instantiateTele (pure <$> vs) s
     v <- forall_ h is ()
     return (v, h, p, is)
 
@@ -241,55 +237,72 @@ checkDataType name (DataDef _ps cs) typ = mdo
   params <- forM ps' $ \(_, h, p, t) -> (,,) h p <$> abstractM (fmap Tele . (`V.elemIndex` vs)) t
 
   cs' <- forM cs $ \(ConstrDef c t) -> do
-    res <- checkConstrDef retType (ConstrDef c $ inst' t)
+    res <- checkConstrDef retType (ConstrDef c $ instantiateTele (pure <$> vs) t)
     traverse (abstractM (fmap Tele . (`V.elemIndex` vs))) res
 
-  return (DataDef (Telescope params) cs', typ)
+  let typ'' = quantify Abstract.Pi (Scope Abstract.Type) (Telescope params)
 
-subDefType :: Definition Plicitness (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+  tr "checkDataType res typ" typ''
+  return (DataDef cs', typ'')
+
+subDefType :: Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
            -> Abstract s
            -> Abstract s
-           -> TCM s ( Definition Plicitness (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+           -> TCM s ( Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
                     , Abstract s
                     )
 subDefType (Definition e) t t' = first Definition <$> subtype Explicit e t t'
 subDefType (DataDefinition d) t t' = do unify t t'; return (DataDefinition d, t')
 
-generaliseDef :: Definition Plicitness (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+generaliseDef :: Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
               -> Abstract s
-              -> TCM s ( Definition Plicitness (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+              -> TCM s ( Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
                        , Abstract s
                        )
-generaliseDef (Definition d) t = first Definition <$> generalise d t
-generaliseDef (DataDefinition d) t = return (DataDefinition d, t)
+generaliseDef (Definition d) typ = first Definition <$> generalise d typ
+generaliseDef (DataDefinition (DataDef cs)) typ = mdo
+  typ' <- freeze typ
+  tr "generaliseDef t" typ'
+  ps' <- forTele (Abstract.telescope typ') $ \h p s -> do
+    let is = instantiateTele (pure <$> vs) s
+    v <- forall_ h is ()
+    return (v, h, p, is)
+  (_extraTele, typ'') <- generalise Abstract.Type typ
+  let vs = (\(v, _, _, _) -> v) <$> ps'
+  tr "generaliseDef res t" typ''
 
-abstractDefM :: Show a
-             => (MetaVar s () a -> Maybe b)
-             -> Definition a (Abstract.Expr a) (MetaVar s () a)
-             -> TCM s (Definition a (Abstract.Expr a) (Var b (MetaVar s () a)))
-abstractDefM f (Definition e) = Definition . fromScope <$> abstractM f e
-abstractDefM f (DataDefinition e) = DataDefinition <$> abstractDataDefM f e
+  return (DataDefinition $ DataDef cs, typ')
 
-abstractDataDefM :: Show a
-                 => (MetaVar s () a -> Maybe b)
-                 -> DataDef a (Abstract.Expr a) (MetaVar s () a)
-                 -> TCM s (DataDef a (Abstract.Expr a) (Var b (MetaVar s () a)))
-abstractDataDefM f (DataDef ps cs) = mdo
+abstractDefM :: (MetaVar s () Plicitness -> Maybe b)
+             -> Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+             -> Abstract s
+             -> TCM s (Definition (Abstract.Expr Plicitness) (Var b (MetaVar s () Plicitness)))
+abstractDefM f (Definition e) _ = Definition . fromScope <$> abstractM f e
+abstractDefM f (DataDefinition e) t = DataDefinition <$> abstractDataDefM f e t
+
+abstractDataDefM :: (MetaVar s () Plicitness -> Maybe b)
+                 -> DataDef (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+                 -> Abstract s
+                 -> TCM s (DataDef (Abstract.Expr Plicitness) (Var b (MetaVar s () Plicitness)))
+abstractDataDefM f (DataDef cs) typ = mdo
   let inst = instantiateTele $ pure <$> vs
       vs = (\(_, _, _, v) -> v) <$> ps'
-  ps' <- forTele ps $ \h p s -> let is = inst s in (,,,) h p is <$> forall_ h is ()
+  typ' <- freeze typ
+  ps' <- forTele (Abstract.telescope typ') $ \h p s -> do
+    let is = inst s
+    v <- forall_ h is ()
+    return (h, p, is, v)
   let f' x = F <$> f x <|> B . Tele <$> V.elemIndex x vs
-  aps <- forM ps' $ \(h, p, s, _) -> (,,) h p . toScope . fmap assoc . fromScope <$> abstractM f' s
   acs <- forM cs $ \c -> traverse (fmap (toScope . fmap assoc . fromScope) . abstractM f' . inst) c
-  return $ DataDef (Telescope aps) acs
+  return $ DataDef acs
   where
     assoc :: Var (Var a b) c -> Var a (Var b c)
     assoc = unvar (unvar B (F . B)) (F . F)
 
 checkDefType :: MetaVar s () Plicitness
-             -> Definition Plicitness Concrete.Expr (MetaVar s () Plicitness)
+             -> Definition Concrete.Expr (MetaVar s () Plicitness)
              -> Abstract s
-             -> TCM s ( Definition Plicitness (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+             -> TCM s ( Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
                       , Abstract s
                       )
 checkDefType _ (Definition e) typ = first Definition <$> checkType Explicit e typ
@@ -297,11 +310,11 @@ checkDefType v (DataDefinition d) typ = first DataDefinition <$> checkDataType v
 
 checkRecursiveDefs :: Vector
                      ( NameHint
-                     , Definition Plicitness Concrete.Expr (Var Int (MetaVar s () Plicitness))
+                     , Definition Concrete.Expr (Var Int (MetaVar s () Plicitness))
                      , ScopeM Int Concrete.Expr s () Plicitness
                      )
                    -> TCM s
-                     (Vector ( Definition Plicitness (Abstract.Expr Plicitness) (Var Int (MetaVar s () Plicitness))
+                     (Vector ( Definition (Abstract.Expr Plicitness) (Var Int (MetaVar s () Plicitness))
                              , ScopeM Int (Abstract.Expr Plicitness) s () Plicitness
                              )
                      )
@@ -321,8 +334,7 @@ checkRecursiveDefs ds = do
     return (evs, checkedDs)
   V.forM checkedDs $ \(d, t) -> do
     (gd, gt) <- generaliseDef d t
-    -- tr "checkRecursiveDefs gd" gd
-    tr "                   gt" gt
-    s  <- abstractDefM (`V.elemIndex` evs) gd
+    tr " checkRecursiveDefs gt" gt
+    s  <- abstractDefM (`V.elemIndex` evs) gd gt
     ts <- abstractM (`V.elemIndex` evs) gt
     return (s, ts)
