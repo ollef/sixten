@@ -28,6 +28,9 @@ unusedScope = unusedVar . fromScope
 abstractNone :: Monad f => f a -> Scope b f a
 abstractNone = Scope . return . F
 
+boundJoin :: (Monad f, Bound t) => t f (f a) -> t f a
+boundJoin = (>>>= id)
+
 toSet ::  (Ord a, Foldable f) => f a -> Set a
 toSet = foldMap S.singleton
 

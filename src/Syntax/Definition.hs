@@ -12,11 +12,9 @@ import Prelude.Extras
 
 import Syntax.Annotation
 import Syntax.Data
-import Syntax.Hint
 import Syntax.Name
 import Syntax.Pretty
 import Syntax.Telescope
-import Util
 
 data Definition expr v
   = Definition (expr v)

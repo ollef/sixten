@@ -25,7 +25,11 @@ import TopoSort
 import Unify
 import Util
 
-checkType :: Plicitness -> Concrete s -> Abstract s -> TCM s (Abstract s, Abstract s)
+checkType
+  :: Plicitness
+  -> Concrete s
+  -> Abstract s
+  -> TCM s (Abstract s, Abstract s)
 checkType surrounding expr typ = do
   tr "checkType e" expr
   tr "          t" =<< freeze typ
@@ -62,7 +66,10 @@ checkType surrounding expr typ = do
         (expr', typ') <- inferType surrounding expr
         subtype surrounding expr' typ' typ
 
-inferType :: Plicitness -> Concrete s -> TCM s (Abstract s, Abstract s)
+inferType
+  :: Plicitness
+  -> Concrete s
+  -> TCM s (Abstract s, Abstract s)
 inferType surrounding expr = do
   tr "inferType" expr
   modifyIndent succ
@@ -121,7 +128,10 @@ inferType surrounding expr = do
   tr "              t" t
   return (e, t)
 
-resolveConstrType :: [Constr] -> Abstract s -> TCM s Name
+resolveConstrType
+  :: [Constr]
+  -> Abstract s
+  -> TCM s Name
 resolveConstrType cs (Abstract.appsView -> (headType, _)) = do
   headType' <- whnf mempty plicitness headType
   n <- case headType' of
@@ -137,10 +147,15 @@ resolveConstrType cs (Abstract.appsView -> (headType, _)) = do
     xs -> throwError $ "Ambiguous constructors: " ++ show cs ++ ". Possible types: "
                ++ show xs
 
-inferBranches :: Plicitness
-              -> Abstract s -> Abstract s
-              -> BranchesM Concrete.Expr s () Plicitness
-              -> TCM s (Abstract s, BranchesM (Abstract.Expr Plicitness) s () Plicitness, Abstract s)
+inferBranches
+  :: Plicitness
+  -> Abstract s
+  -> Abstract s
+  -> BranchesM Concrete.Expr s () Plicitness
+  -> TCM s ( Abstract s
+           , BranchesM (Abstract.Expr Plicitness) s () Plicitness
+           , Abstract s
+           )
 inferBranches surrounding expr etype (ConBranches cbrs) = do
   n <- resolveConstrType ((\(c, _, _) -> c) <$> cbrs) etype
   let go (c, tele, sbr) (expr', etype', resBrs, resType) = mdo
@@ -200,9 +215,10 @@ generalise expr typ = do
     go [a] f = fmap (f (metaHint a) Implicit $ metaType a) . abstract1M a
     go _   _ = error "Generalise"
 
-checkConstrDef :: Abstract s
-               -> ConstrDef (Concrete s)
-               -> TCM s (ConstrDef (Abstract s))
+checkConstrDef
+  :: Abstract s
+  -> ConstrDef (Concrete s)
+  -> TCM s (ConstrDef (Abstract s))
 checkConstrDef typ (ConstrDef c (bindingsView Concrete.piView -> (args, ret))) = mdo
   let inst = instantiateTele $ (\(a, _, _, _) -> pure a) <$> args'
   args' <- forTele args $ \h p arg -> do
@@ -216,12 +232,13 @@ checkConstrDef typ (ConstrDef c (bindingsView Concrete.piView -> (args, ret))) =
          Abstract.Pi h p arg' <$> abstract1M v rest) ret' args'
   return $ ConstrDef c res
 
-checkDataType :: MetaVar s () Plicitness
-              -> DataDef Concrete.Expr (MetaVar s () Plicitness)
-              -> Abstract s
-              -> TCM s ( DataDef (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
-                       , Abstract s
-                       )
+checkDataType
+  :: MetaVar s () Plicitness
+  -> DataDef Concrete.Expr (MetaVar s () Plicitness)
+  -> Abstract s
+  -> TCM s ( DataDef (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+           , Abstract s
+           )
 checkDataType name (DataDef cs) typ = mdo
   typ' <- freeze typ
   tr "checkDataType t" typ'
@@ -245,45 +262,37 @@ checkDataType name (DataDef cs) typ = mdo
   tr "checkDataType res typ" typ''
   return (DataDef cs', typ'')
 
-subDefType :: Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
-           -> Abstract s
-           -> Abstract s
-           -> TCM s ( Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
-                    , Abstract s
-                    )
+subDefType
+  :: Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+  -> Abstract s
+  -> Abstract s
+  -> TCM s ( Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+           , Abstract s
+           )
 subDefType (Definition e) t t' = first Definition <$> subtype Explicit e t t'
 subDefType (DataDefinition d) t t' = do unify t t'; return (DataDefinition d, t')
 
-generaliseDef :: Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
-              -> Abstract s
-              -> TCM s ( Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
-                       , Abstract s
-                       )
-generaliseDef (Definition d) typ = first Definition <$> generalise d typ
-generaliseDef (DataDefinition (DataDef cs)) typ = mdo
-  typ' <- freeze typ
-  tr "generaliseDef t" typ'
-  ps' <- forTele (Abstract.telescope typ') $ \h p s -> do
-    let is = instantiateTele (pure <$> vs) s
-    v <- forall_ h is ()
-    return (v, h, p, is)
-  (_extraTele, typ'') <- generalise Abstract.Type typ
-  let vs = (\(v, _, _, _) -> v) <$> ps'
-  tr "generaliseDef res t" typ''
+abstractDefM
+  :: (MetaVar s () Plicitness -> Maybe b)
+  -> Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+  -> Abstract s
+  -> TCM s ( Definition (Abstract.Expr Plicitness) (Var b (MetaVar s () Plicitness))
+           , ScopeM b (Abstract.Expr Plicitness) s () Plicitness
+           )
+abstractDefM f (Definition e) t = do
+  e' <- abstractM f e
+  t' <- abstractM f t
+  return (Definition $ fromScope e', t')
+abstractDefM f (DataDefinition e) t = do
+  e' <- abstractDataDefM f e t
+  t' <- abstractM f t
+  return (DataDefinition e', t')
 
-  return (DataDefinition $ DataDef cs, typ')
-
-abstractDefM :: (MetaVar s () Plicitness -> Maybe b)
-             -> Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
-             -> Abstract s
-             -> TCM s (Definition (Abstract.Expr Plicitness) (Var b (MetaVar s () Plicitness)))
-abstractDefM f (Definition e) _ = Definition . fromScope <$> abstractM f e
-abstractDefM f (DataDefinition e) t = DataDefinition <$> abstractDataDefM f e t
-
-abstractDataDefM :: (MetaVar s () Plicitness -> Maybe b)
-                 -> DataDef (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
-                 -> Abstract s
-                 -> TCM s (DataDef (Abstract.Expr Plicitness) (Var b (MetaVar s () Plicitness)))
+abstractDataDefM
+  :: (MetaVar s () Plicitness -> Maybe b)
+  -> DataDef (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+  -> Abstract s
+  -> TCM s (DataDef (Abstract.Expr Plicitness) (Var b (MetaVar s () Plicitness)))
 abstractDataDefM f (DataDef cs) typ = mdo
   let inst = instantiateTele $ pure <$> vs
       vs = (\(_, _, _, v) -> v) <$> ps'
@@ -299,27 +308,105 @@ abstractDataDefM f (DataDef cs) typ = mdo
     assoc :: Var (Var a b) c -> Var a (Var b c)
     assoc = unvar (unvar B (F . B)) (F . F)
 
-checkDefType :: MetaVar s () Plicitness
-             -> Definition Concrete.Expr (MetaVar s () Plicitness)
-             -> Abstract s
-             -> TCM s ( Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
-                      , Abstract s
-                      )
+checkDefType
+  :: MetaVar s () Plicitness
+  -> Definition Concrete.Expr (MetaVar s () Plicitness)
+  -> Abstract s
+  -> TCM s ( Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+           , Abstract s
+           )
 checkDefType _ (Definition e) typ = first Definition <$> checkType Explicit e typ
 checkDefType v (DataDefinition d) typ = first DataDefinition <$> checkDataType v d typ
 
-checkRecursiveDefs :: Vector
-                     ( NameHint
-                     , Definition Concrete.Expr (Var Int (MetaVar s () Plicitness))
-                     , ScopeM Int Concrete.Expr s () Plicitness
-                     )
-                   -> TCM s
-                     (Vector ( Definition (Abstract.Expr Plicitness) (Var Int (MetaVar s () Plicitness))
-                             , ScopeM Int (Abstract.Expr Plicitness) s () Plicitness
-                             )
-                     )
+generaliseDef
+  :: Vector (MetaVar s () Plicitness)
+  -> Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+  -> Abstract s
+  -> TCM s ( Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+           , Abstract s
+           )
+generaliseDef vs (Definition e) t = do
+  ge <- go Abstract.etaLam e
+  gt <- go Abstract.Pi       t
+  return (Definition ge, gt)
+  where
+    go c b = F.foldrM
+      (\a -> fmap (c (metaHint a) Implicit $ metaType a)
+           . abstract1M a)
+      b
+      vs
+generaliseDef vs (DataDefinition (DataDef cs)) typ = do
+  let cs' = map (fmap $ toScope . splat f g) cs
+  -- * Abstract vs on top of typ
+  typ' <- foldrM (\v -> fmap (Abstract.Pi (metaHint v) Implicit (metaType v))
+                      . abstract1M v) typ vs
+  return (DataDefinition (DataDef cs'), typ')
+  where
+    f v = pure $ maybe (F v) (B . Tele) (v `V.elemIndex` vs)
+    g = pure . B . (+ Tele (length vs))
+
+
+generaliseDefs
+  :: Vector ( MetaVar s () Plicitness
+            , Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
+            , Abstract s
+            )
+  -> TCM s (Vector ( Definition (Abstract.Expr Plicitness) (Var Int (MetaVar s () Plicitness))
+                   , ScopeM Int (Abstract.Expr Plicitness) s () Plicitness
+                   )
+           )
+generaliseDefs xs = do
+  modifyIndent succ
+
+  fvs <- asum <$> mapM (foldMapM (:[])) types
+  l   <- level
+  let p (metaRef -> Just r) = either (> l) (const False) <$> solution r
+      p _                   = return False
+  fvs' <- filterM p fvs
+
+  deps <- HM.fromList <$> forM fvs' (\x -> do
+    ds <- foldMapM HS.singleton $ metaType x
+    return (x, ds)
+   )
+  let sortedFvs = map impure $ topoSort deps
+      appl x = Abstract.apps x [(Implicit, pure fv) | fv <- sortedFvs]
+      instVars = appl . pure <$> vars
+
+  instDefs <- forM xs $ \(_, d, t) -> do
+    d' <- boundJoin <$> traverse (sub instVars) d
+    t' <- join      <$> traverse (sub instVars) t
+    return (d', t')
+
+  genDefs <- mapM (uncurry $ generaliseDef $ V.fromList sortedFvs) instDefs
+  abstrDefs <- mapM (uncurry $ abstractDefM (`V.elemIndex` vars)) genDefs
+
+  modifyIndent pred
+
+  return abstrDefs
+  where
+    vars  = (\(v, _, _) -> v) <$> xs
+    types = (\(_, _, t) -> t) <$> xs
+    sub instVars v | Just x <- v `V.elemIndex` vars = return $ instVars V.! x
+    sub instVars v@(metaRef -> Just r) = do
+      sol <- solution r
+      case sol of
+        Left _ -> return $ pure v
+        Right s -> join <$> traverse (sub instVars) s
+    sub _ v = return $ pure v
+    impure [a] = a
+    impure _ = error "generaliseDefs"
+
+checkRecursiveDefs
+  :: Vector ( NameHint
+            , Definition Concrete.Expr (Var Int (MetaVar s () Plicitness))
+            , ScopeM Int Concrete.Expr s () Plicitness
+            )
+  -> TCM s (Vector ( Definition (Abstract.Expr Plicitness) (Var Int (MetaVar s () Plicitness))
+                   , ScopeM Int (Abstract.Expr Plicitness) s () Plicitness
+                   )
+           )
 checkRecursiveDefs ds = do
-  (evs, checkedDs) <- enterLevel $ do
+  generaliseDefs <=< enterLevel $ do
     evs <- V.forM ds $ \(v, _, _) -> do
       tv <- existsVar mempty Abstract.Type ()
       forall_ v tv ()
@@ -327,14 +414,9 @@ checkRecursiveDefs ds = do
           ( instantiateDef (pure . (evs V.!)) e
           , instantiate (pure . (evs V.!)) t
           )
-    checkedDs <- sequence $ flip V.imap instantiatedDs $ \i (d, t) -> do
+    sequence $ flip V.imap instantiatedDs $ \i (d, t) -> do
       (t', _) <- checkType Explicit t Abstract.Type
-      (d', t'') <- checkDefType (evs V.! i) d t'
-      subDefType d' t'' (metaType $ evs V.! i)
-    return (evs, checkedDs)
-  V.forM checkedDs $ \(d, t) -> do
-    (gd, gt) <- generaliseDef d t
-    tr " checkRecursiveDefs gt" gt
-    s  <- abstractDefM (`V.elemIndex` evs) gd gt
-    ts <- abstractM (`V.elemIndex` evs) gt
-    return (s, ts)
+      let v = evs V.! i
+      (d', t'') <- checkDefType v d t'
+      (d'', t''') <- subDefType d' t'' $ metaType v
+      return (v, d'', t''')
