@@ -19,7 +19,7 @@ data Expr v
   | Lit Literal
   | Lam !NameHint (Scope1 Expr v)
   | App (Expr v) (Expr v)
-  | Case (Expr v) (Branches () Expr v)
+  | Case (Expr v) (Branches QConstr () Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 globals :: Expr v -> Expr (Var Name v)

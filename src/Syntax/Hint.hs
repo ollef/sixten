@@ -10,6 +10,9 @@ import Syntax.Name
 newtype Hint a = Hint a
   deriving (Foldable, Functor, Show, Traversable)
 
+unHint :: Hint a -> a
+unHint (Hint x) = x
+
 instance Eq (Hint a) where
   _ == _ = True
 

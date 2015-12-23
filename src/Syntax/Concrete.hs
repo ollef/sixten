@@ -18,7 +18,7 @@ data Expr v
   | Pi  !NameHint !Plicitness (Type v) (Scope1 Expr v)  -- ^ Dependent function space
   | Lam !NameHint !Plicitness (Scope1 Expr v)
   | App (Expr v) !Plicitness (Expr v)
-  | Case (Expr v) (Branches Plicitness Expr v)
+  | Case (Expr v) (Branches (Either Constr QConstr) Plicitness Expr v)
   | Anno (Expr v) (Expr v)
   | Wildcard  -- ^ Attempt to infer it
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)

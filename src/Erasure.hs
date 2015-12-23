@@ -34,7 +34,7 @@ erase expr = case expr of
       where
         permFun (Tele n) = Tele $ fromMaybe (error "erasure tele") $ perm Vector.! n
         perm = Vector.fromList $ fst $
-          Vector.foldl' (\(xs, i) p -> case relevance p of
+          Vector.foldr (\p (xs, i) -> case relevance p of
             Irrelevant -> (Nothing : xs, i)
             Relevant -> (Just i : xs, i + 1)) ([], 0) (teleAnnotations tele)
     eraseScope = toScope . erase . fromScope

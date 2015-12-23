@@ -24,7 +24,7 @@ data Expr d v
   | Pi  !NameHint !d (Type d v) (Scope1 (Expr d) v)
   | Lam !NameHint !d (Type d v) (Scope1 (Expr d) v)
   | App  (Expr d v) !d (Expr d v)
-  | Case (Expr d v) (Branches d (Expr d) v)
+  | Case (Expr d v) (Branches QConstr d (Expr d) v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 -- | Synonym for documentation purposes
@@ -137,17 +137,17 @@ instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
     Case e brs -> parens `above` casePrec $
       prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> prettyM brs
 
-etaLamM :: (Ord v, Monad m)
-        => (d -> d -> m Bool)
-        -> Hint (Maybe Name) -> d -> Expr d v -> Scope1 (Expr d) v -> m (Expr d v)
-etaLamM isEq n p t s@(Scope (App e p' (Var (B ()))))
+etaLamBy :: (Ord v, Monad m)
+         => (d -> d -> m Bool)
+         -> NameHint -> d -> Expr d v -> Scope1 (Expr d) v -> m (Expr d v)
+etaLamBy isEq n p t s@(Scope (App e p' (Var (B ()))))
   | B () `S.notMember` toSet (second (const ()) <$> e) = do
     eq <- isEq p p'
     return $ if eq then
-      join $ unvar (error "etaLam impossible") id <$> e
+      join $ unvar (error "etaLamB y impossible") id <$> e
     else
       Lam n p t s
-etaLamM _ n p t s = return $ Lam n p t s
+etaLamBy _ n p t s = return $ Lam n p t s
 
 etaLam :: Eq d
        => Hint (Maybe Name) -> d -> Expr d v -> Scope1 (Expr d) v -> Expr d v

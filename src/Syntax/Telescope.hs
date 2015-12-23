@@ -48,7 +48,7 @@ quantify :: (Eq b, Monad expr)
          -> expr b
 quantify pifun s (Telescope ps) =
    unvar err id <$> Vector.ifoldr
-     (\i (h, p, s) -> pifun h p (fromScope s) . abstract1 (B $ Tele i))
+     (\i (h, p, s') -> pifun h p (fromScope s') . abstract1 (B $ Tele i))
      (fromScope s)
      ps
   where

@@ -210,29 +210,29 @@ makeRel rel expr = do
       x <- forall_ h (first meta t) rel
       e <- makeRel rel $ instantiate1 (pure x) s
       return $ abstract1 x e
-    makeRelBranches (ConBranches cbrs)     = ConBranches
-      <$> sequence [ mdo
-        vs <- forTele tele $ \h p s -> do
-          let t = inst s
-          -- TODO should this be obtained from the type instead?
-          rType <- returnsType t
-          t' <- if rType then makeRel (Relevance Irrelevant) t
-                         else makeRel rel t
-          v <- forall_ h t' rel
-          return (v, (h, (if rType then irrelMeta else meta) p, abstr t'))
-        let inst = instantiateTele (pure . fst <$> vs)
-            abstr = abstract $ teleAbstraction (fst <$> vs)
-            tele' = snd <$> vs
-        bre <- makeRel rel (inst brs)
-        return (c, Telescope tele', abstr bre)
-                   | (c, tele, brs) <- cbrs ]
+    makeRelBranches (ConBranches cbrs) = ConBranches
+      <$> forM cbrs (\(constr, tele, brScope) -> mdo
+          -- constrType <- qconstructor constr
+          vs <- forTele tele $ \h p s -> do
+            let t = inst s
+            -- TODO should this be obtained from the type instead?
+            rType <- returnsType t
+            t' <- if rType then makeRel (Relevance Irrelevant) t
+                           else makeRel rel t
+            v <- forall_ h t' rel
+            return (v, (h, (if rType then irrelMeta else meta) p, abstr t'))
+          let inst = instantiateTele (pure . fst <$> vs)
+              abstr = abstract $ teleAbstraction (fst <$> vs)
+              tele' = snd <$> vs
+          bre <- makeRel rel (inst brScope)
+          return (constr, Telescope tele', abstr bre))
     makeRelBranches (LitBranches lbrs def) = LitBranches
       <$> sequence [(,) l <$> makeRel rel e | (l, e) <- lbrs] <*> makeRel rel def
 
-inferArg :: Input s -> Bool -> TCM s (Output s, RelevanceM s)
-inferArg argType knownDef = do
-  tr  "inferArg argType " argType
-  trs "inferArg knownDef" knownDef
+checkArg :: Input s -> Output s -> Bool -> TCM s (Output s, RelevanceM s)
+checkArg argType typeType knownDef = do
+  tr  "checkArg argType " argType
+  trs "checkArg knownDef" knownDef
   modifyIndent succ
   rType <- returnsType argType
   (res, rel) <- if rType
@@ -240,15 +240,15 @@ inferArg argType knownDef = do
       argType' <- makeRel (Relevance Irrelevant) argType
       return (argType', Relevance Irrelevant)
     else do
-      argType' <- check argType Type (Relevance Irrelevant) False
+      argType' <- check argType typeType (Relevance Irrelevant) False
       if knownDef then do
         rel <- freshMetaRel
         return (argType', pure rel)
       else
         return (argType', Relevance Relevant)
   modifyIndent pred
-  tr  "inferArg res" res
-  trs "inferArg rel" rel
+  tr  "checkArg res" res
+  trs "checkArg rel" rel
   return (res, rel)
 
 inferTop :: Input s -> TCM s (Output s, RelevanceM s)
@@ -293,14 +293,16 @@ infer expr surroundingRel knownDef = do
     Lit l -> return (Lit l, Builtin.int)
     Type        -> return (Type, Type)
     Pi x p t1 s -> do
-      (t1', t1rel) <- inferArg t1 knownDef
+      (_, t1typ) <- infer t1 (Relevance Irrelevant) False
+      (t1', t1rel) <- checkArg t1 t1typ knownDef
       v     <- forall_ x t1' t1rel
       e'    <- check (instantiate1 (pure v) s) Type surroundingRel knownDef
       return ( Pi x (MetaAnnotation t1rel p) t1' $ abstract1 v e'
              , Type
              )
     Lam x p t1 s -> uncurry generalise =<< do
-      (t1', t1rel) <- inferArg t1 True
+      (_, t1typ) <- infer t1 (Relevance Irrelevant) False
+      (t1', t1rel) <- checkArg t1 t1typ True
       v         <- forall_ x t1' t1rel
       (e', t2') <- infer (instantiate1 (pure v) s) surroundingRel knownDef
       return ( Lam x (MetaAnnotation t1rel p) t1' $ abstract1 v e'
@@ -327,31 +329,39 @@ infer expr surroundingRel knownDef = do
   tr "infer res t" typ
   return (expr', typ)
 
-inferBranches :: Branches Plicitness (Expr Plicitness) (MetaVar s (RelevanceM s) (MetaAnnotation s))
+inferBranches :: Branches QConstr Plicitness (Expr Plicitness) (MetaVar s (RelevanceM s) (MetaAnnotation s))
               -> RelevanceM s
               -> Bool
-              -> TCM s (Branches (MetaAnnotation s) (Expr (MetaAnnotation s)) (MetaVar s (RelevanceM s) (MetaAnnotation s)), Output s)
+              -> TCM s (Branches QConstr (MetaAnnotation s) (Expr (MetaAnnotation s)) (MetaVar s (RelevanceM s) (MetaAnnotation s)), Output s)
 inferBranches (ConBranches cbrs) surroundingRel knownDef = do
-  cbrs' <- forM cbrs $ \(c, tele, sbr) -> mdo
+  -- TODO obtain from type
+  cbrs' <- forM cbrs $ \(c, tele, brScope) -> mdo
+    constrType <- qconstructor c
     ps <- forTele tele $ \h p s -> do
-      let t = inst s
-      (t', t'rel) <- inferArg t True
+      let t = instantiateTele pureVs s
+      (_, ttyp) <- infer t (Relevance Irrelevant) False
+      (t', t'rel) <- checkArg t ttyp True
       v <- forall_ h t' t'rel
       return (v, h, MetaAnnotation t'rel p, abstr t')
-    let inst  = instantiateTele $ (\(v, _, _, _) -> pure v) <$> ps
+    let pureVs = (\(v, _, _, _) -> pure v) <$> ps
         abstr = abstract $ teleAbstraction $ (\(v, _, _, _) -> v) <$> ps
     let tele' = Telescope $ (\(_, h, p, s) -> (h, p, s)) <$> ps
-    (sbr', brType) <- infer (inst sbr) surroundingRel knownDef
-    return (c, tele', sbr', brType, abstr)
+    (brScope', brType) <- infer (instantiateTele pureVs brScope) surroundingRel knownDef
+    return (c, tele', brScope', brType, abstr)
   let retType = case cbrs' of
         ((_, _, _, t, _):_) -> t
-        _ -> undefined
-  cbrs'' <- forM cbrs' $ \(c, tele, sbr, brType, abstr) -> do
-    sbr' <- subtype sbr brType retType
-    return (c, tele, abstr sbr')
+        _ -> error "inferBranches"
+  cbrs'' <- forM cbrs' $ \(c, tele, brScope, brType, abstr) -> do
+    brScope' <- subtype brScope brType retType
+    return (c, tele, abstr brScope')
   return (ConBranches cbrs'', retType)
 
-inferBranches (LitBranches lbrs def) surroundingRel knownDef = undefined
+inferBranches (LitBranches lbrs def) surroundingRel knownDef = do
+  lbrs' <- forM lbrs $ \(l, e) -> do
+    (e', _) <- infer e surroundingRel knownDef
+    return (l, e')
+  (def', retType) <- infer def surroundingRel knownDef
+  return (LitBranches lbrs' def', retType)
 
 check :: Input s -> Output s -> RelevanceM s -> Bool -> TCM s (Output s)
 check expr typ rel knownDef = do
@@ -381,18 +391,18 @@ subtype expr type1 type2 = do
       (Var v1, Var v2) -> do
         leRel (metaData v2) (metaData v1)
         return e
-      (Pi h1 (MetaAnnotation r1 p1) t1 s1,  Pi h2 (MetaAnnotation r2 p2) t2 s2) | p1 == p2 -> do
+      (Pi h1 (MetaAnnotation r1 p1) t1 s1, Pi h2 (MetaAnnotation r2 p2) t2 s2) | p1 == p2 -> do
         x2 <- forall_ (h1 <> h2) t2 r1
         leRel r1 r2
         x1 <- subtype (pure x2) t2 t1
         e2 <- subtype (betaApp e (MetaAnnotation r1 p1) x1)
                       (instantiate1 x1 s1)
                       (instantiate1 (pure x2) s2)
-        etaLamM sameMetaAnnotation
-                (h1 <> h2)
-                (MetaAnnotation r2 p2)
-                t2
-                (abstract1 x2 e2)
+        etaLamBy sameMetaAnnotation
+                 (h1 <> h2)
+                 (MetaAnnotation r2 p2)
+                 t2
+                 (abstract1 x2 e2)
       _ | reduce -> do
         typ1' <- whnf metaRelevance toMetaAnnotation typ1
         typ2' <- whnf metaRelevance toMetaAnnotation typ2
@@ -402,15 +412,7 @@ subtype expr type1 type2 = do
 sameMetaAnnotation :: MetaAnnotation s -> MetaAnnotation s -> TCM s Bool
 sameMetaAnnotation (MetaAnnotation r1 p1) (MetaAnnotation r2 p2)
   | p1 /= p2  = return False
-  | otherwise = (==) <$> go r1 <*> go r2
-  where
-    go :: RelevanceM s -> TCM s (RelevanceM s)
-    go r@(Relevance _) = return r
-    go r@(RVar v) = do
-      sol <- liftST $ readSTRef $ metaRelRef v
-      case sol of
-        Nothing -> return r
-        Just r' -> go r'
+  | otherwise = do leRel r2 r1; return True
 
 unify :: Output s -> Output s -> TCM s ()
 unify type1 type2 = do

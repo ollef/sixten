@@ -237,16 +237,16 @@ atomicExpr
   where
     abstr t c = abstractBindings c <$ t <*>% someBindings <*% symbol "." <*>% expr
 
-branches :: Parser (Branches Plicitness Expr Name)
+branches :: Parser (Branches (Either Constr QConstr) Plicitness Expr Name)
 branches = dropAnchor $  ConBranches <$> manySameCol conBranch
                      <|> LitBranches <$> manySameCol litBranch
                                      <*> (sameCol >> (reserved "_" *>% symbol "->" *>% expr))
   where
     litBranch = (,) <$> literal <*% symbol "->" <*>% expr
     conBranch = con <$> constructor <*> manyBindings <*% symbol "->" <*>% expr
-    con c bs e = (c, tele, abstract (fmap Tele . (`Vector.elemIndex` hs) . Hint . Just) e)
+    con c bs e = (Left c, tele, abstract (fmap Tele . (`Vector.elemIndex` ns) . Just) e)
       where tele = bindingsTelescope bs
-            hs = teleNames tele
+            ns = fmap unHint $ teleNames tele
 
 expr :: Parser (Expr Name)
 expr

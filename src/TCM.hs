@@ -1,9 +1,10 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, Rank2Types #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, Rank2Types, TypeFamilies #-}
 module TCM where
 
 import Control.Monad.Except
-import Control.Monad.State(evalStateT, StateT, runStateT, gets, modify)
+import Control.Monad.State(MonadState, evalStateT, StateT, runStateT, gets, modify)
 import Control.Monad.ST
+import Control.Monad.ST.Class
 import Data.Bifunctor
 import qualified Data.HashMap.Lazy as HM
 import Data.HashMap.Lazy(HashMap)
@@ -44,13 +45,21 @@ instance Monoid State where
   mappend (State cxt1 cs1 x1 y1 z1 l1) (State cxt2 cs2 x2 y2 z2 l2)
     = State (cxt1 <> cxt2) (cs1 <> cs2) (x1 + x2) (y1 + y2) (z1 + z2) (l1 <> l2)
 
-type TCM s = ExceptT String (StateT State (ST s))
+newtype TCM s a = TCM (ExceptT String (StateT State (ST s)) a)
+  deriving (Functor, Applicative, Monad, MonadFix, MonadError String, MonadState State)
+
+instance MonadST (TCM s) where
+  type World (TCM s) = s
+  liftST = TCM . liftST
+
+unTCM :: (forall s. TCM s a) -> forall s. ExceptT String (StateT State (ST s)) a
+unTCM (TCM x) = x
 
 evalTCM :: (forall s. TCM s a) -> Program Annotation (Expr Annotation) Empty -> Either String a
-evalTCM tcm cxt = runST $ evalStateT (runExceptT tcm) mempty { tcContext = cxt }
+evalTCM tcm cxt = runST $ evalStateT (runExceptT $ unTCM tcm) mempty { tcContext = cxt }
 
 runTCM :: (forall s. TCM s a) -> Program Annotation (Expr Annotation) Empty -> (Either String a, [String])
-runTCM tcm cxt = second (reverse . tcLog) $ runST $ runStateT (runExceptT tcm) mempty { tcContext = cxt }
+runTCM tcm cxt = second (reverse . tcLog) $ runST $ runStateT (runExceptT $ unTCM tcm) mempty { tcContext = cxt }
 
 fresh :: TCM s Int
 fresh = do
@@ -92,8 +101,11 @@ context v = do
         (\(d, t, a) -> return (fromEmpty <$> d, fromEmpty <$> t, a))
         mres
 
-constructor :: Ord v => Constr -> TCM s (Set (Name, Type Annotation v))
-constructor c = do
+constructor :: Ord v => Either Constr QConstr -> TCM s (Set (Name, Type Annotation v))
+constructor (Right qc@(QConstr n _)) = do
+  t <- qconstructor qc
+  return $ Set.singleton (n, t)
+constructor (Left c) = do
   mres <- gets $ HM.lookup c . tcConstrs
   maybe (throwError $ "Not in scope: constructor " ++ show c)
         (return . Set.map (second $ fmap fromEmpty))

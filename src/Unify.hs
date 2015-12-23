@@ -111,7 +111,7 @@ subtype surrounding expr type1 type2 = do
                                (betaApp e p1 x1)
                                (instantiate1 x1 s1)
                                (instantiate1 (pure x2) s2)
-          e2    <- etaLam h p1 t2 <$> abstract1M x2 ex
+          e2    <- etaLamM h p1 t2 =<< abstract1M x2 ex
           typ2' <- Pi h p1 t2 <$> abstract1M x2 s2'
           return (e2, typ2')
         (Var v@(metaRef -> Just r), Pi h p t2 s2) -> do
@@ -127,7 +127,7 @@ subtype surrounding expr type1 type2 = do
               (x1, t11') <- subtype p (pure x2) t2 t11
               (ex, s2')  <- subtype surrounding (betaApp e p x1) t12 (instantiate1 (pure x2) s2)
               solve r . Pi h p t11' =<< abstract1M x2 s2'
-              e2    <- etaLam h p t2 <$> abstract1M x2 ex
+              e2    <- etaLamM h p t2 =<< abstract1M x2 ex
               typ2' <- Pi h p t2 <$> abstract1M x2 s2'
               return (e2, typ2')
             Right c -> subtype surrounding e c typ2
@@ -139,7 +139,7 @@ subtype surrounding expr type1 type2 = do
         (_, Pi h p t2 s2) | p == Implicit || surrounding == Implicit -> do
           x2 <- forall_ h t2 ()
           (e2, s2') <- subtype surrounding e typ1 (instantiate1 (pure x2) s2)
-          e2'   <- etaLam h p t2 <$> abstract1M x2 e2
+          e2'   <- etaLamM h p t2 =<< abstract1M x2 e2
           typ2' <- Pi h p t2 <$> abstract1M x2 s2'
           return (e2', typ2')
         (Pi h p t1 s1, _) -> do

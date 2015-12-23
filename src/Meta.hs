@@ -17,6 +17,7 @@ import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete as Concrete
 import TCM
+import Util
 
 type Exists s d a = STRef s (Either Level (AbstractM s d a))
 
@@ -31,7 +32,7 @@ data MetaVar s d a = MetaVar
 type AbstractM s d a = Abstract.Expr a (MetaVar s d a)
 type ConcreteM s d a = Concrete.Expr (MetaVar s d a)
 type ScopeM b f s d a = Scope b f (MetaVar s d a)
-type BranchesM f s d a = Branches a f (MetaVar s d a)
+type BranchesM c f s d a = Branches c a f (MetaVar s d a)
 
 instance Eq (MetaVar s d a) where
   (==) = (==) `on` metaId
@@ -186,8 +187,27 @@ abstract1M v e = do
   TCM.log $ "abstracting " ++ show (metaId v)
   abstractM (\v' -> if v == v' then Just () else Nothing) e
 
+etaLamM :: Eq a
+        => NameHint
+        -> a
+        -> Abstract.Expr a (MetaVar s d a)
+        -> Scope1 (Abstract.Expr a) (MetaVar s d a)
+        -> TCM s (Abstract.Expr a (MetaVar s d a))
+etaLamM n p t s = do
+  s' <- freezeBound s
+  return $ Abstract.etaLam n p t s'
+
 freeze :: AbstractM s d a -> TCM s (AbstractM s d a)
 freeze e = join <$> traverse go e
+  where
+    go v@(metaRef -> Just r) = either (const $ do mt <- freeze (metaType v); return $ pure v {metaType = mt})
+                                          freeze =<< solution r
+    go v                         = return $ pure v
+
+freezeBound :: (Traversable (t (Abstract.Expr a)), Bound t)
+            => t (Abstract.Expr a) (MetaVar s d a)
+            -> TCM s (t (Abstract.Expr a) (MetaVar s d a))
+freezeBound e = (>>>= id) <$> traverse go e
   where
     go v@(metaRef -> Just r) = either (const $ do mt <- freeze (metaType v); return $ pure v {metaType = mt})
                                           freeze =<< solution r
