@@ -29,6 +29,9 @@ newtype Telescope d expr v = Telescope
   { unTelescope :: Vector (NameHint, d, Scope Tele expr v)
   } deriving (Eq, Foldable, Functor, Monoid, Ord, Show, Traversable)
 
+teleLength :: Telescope d expr v -> Int
+teleLength = Vector.length . unTelescope
+
 teleNames :: Telescope d expr v -> Vector NameHint
 teleNames (Telescope t) = (\(h, _, _) -> h) <$> t
 
@@ -87,7 +90,7 @@ withTeleHints = withNameHints . teleNames
 
 prettyTeleVars :: (HasRelevance d, HasPlicitness d)
                => Vector Name -> Telescope d expr v -> PrettyM Doc
-prettyTeleVars ns t = hcat
+prettyTeleVars ns t = hsep
   [ mappend (pure tilde) `iff` isIrrelevant p
   $ braces `iff` isImplicit p
   $ prettyM $ ns Vector.! i

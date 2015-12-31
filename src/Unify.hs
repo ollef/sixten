@@ -84,14 +84,14 @@ unify type1 type2 = do
 
 subtype :: Plicitness -> Abstract s -> Abstract s -> Abstract s -> TCM s (Abstract s, Abstract s)
 subtype surrounding expr type1 type2 = do
-  tr "subtype e"  expr
-  tr "        t1" type1
-  tr "        t2" type2
+  tr "subtype e"  =<< freeze expr
+  tr "        t1" =<< freeze type1
+  tr "        t2" =<< freeze type2
   modifyIndent succ
   (e', type') <- go True True expr type1 type2
   modifyIndent pred
-  tr "subtype res e'" e'
-  tr "            type'" type'
+  tr "subtype res e'" =<< freeze e'
+  tr "            type'" =<< freeze type'
   return (e', type')
   where
     go reduce1 reduce2 e typ1 typ2

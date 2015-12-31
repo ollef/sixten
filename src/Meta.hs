@@ -138,11 +138,11 @@ foldMapM f = foldrM go mempty
   where
     go v m = (<> m) . (<> f v) <$> do
       tvs <- foldMapM f $ metaType v
-      (<> tvs) <$> case metaRef v of
+      case metaRef v of
         Just r -> do
           sol <- solution r
           case sol of
-            Left _  -> return mempty
+            Left _  -> return tvs
             Right c -> foldMapM f c
         Nothing -> return $ f v <> m
 

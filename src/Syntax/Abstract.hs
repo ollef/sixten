@@ -5,6 +5,7 @@ import Control.Monad
 import Data.Bifunctor
 import Data.Bifoldable
 import Data.Bitraversable
+import qualified Data.Foldable as Foldable
 import Data.Monoid
 import qualified Data.Set as S
 import Data.String
@@ -51,8 +52,8 @@ appsView = second reverse . go
       where (e1', es) = go e1
     go e = (e, [])
 
-apps :: Expr d v -> [(d, Expr d v)] -> Expr d v
-apps = foldl (uncurry . App)
+apps :: Foldable t => Expr d v -> t (d, Expr d v) -> Expr d v
+apps = Foldable.foldl (uncurry . App)
 
 globals :: Expr d v -> Expr d (Var Name v)
 globals expr = case expr of
@@ -135,7 +136,7 @@ instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
     Lam {} -> error "impossible prettyPrec lam"
     App e1 p e2 -> prettyApp (prettyM e1) ((pure tilde <>) `iff` isIrrelevant p $ braces `iff` isImplicit p $ prettyM e2)
     Case e brs -> parens `above` casePrec $
-      prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> prettyM brs
+      prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> indent 2 (prettyM brs)
 
 etaLamBy :: (Ord v, Monad m)
          => (d -> d -> m Bool)

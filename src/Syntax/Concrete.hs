@@ -2,6 +2,7 @@
 module Syntax.Concrete where
 
 import Control.Monad
+import qualified Data.Foldable as Foldable
 import Data.Monoid
 import Data.String
 import Prelude.Extras
@@ -39,8 +40,8 @@ anno :: Expr v -> Expr v -> Expr v
 anno e Wildcard = e
 anno e t        = Anno e t
 
-apps :: Expr v -> [(Plicitness, Expr v)] -> Expr v
-apps = foldl (uncurry . App)
+apps :: Foldable t => Expr v -> t (Plicitness, Expr v) -> Expr v
+apps = Foldable.foldl (uncurry . App)
 
 -------------------------------------------------------------------------------
 -- * Views
@@ -109,7 +110,7 @@ instance (IsString v, Pretty v) => Pretty (Expr v) where
         <> prettyM "." <+> associate  (prettyM $ instantiate1 (pure $ fromText x) s)
     App e1 p e2 -> prettyApp (prettyM e1) (braces `iff` (p == Implicit) $ prettyM e2)
     Case e brs -> parens `above` casePrec $
-      prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> prettyM brs
+      prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> indent 2 (prettyM brs)
     Anno e t  -> parens `above` annoPrec $
       prettyM e <+> prettyM ":" <+> associate (prettyM t)
     Wildcard  -> pure $ text "_"

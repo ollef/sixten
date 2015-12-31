@@ -175,9 +175,9 @@ returnsType = go True
     meta = MetaAnnotation r . plicitness
     r = Relevance Relevant -- unimportant
     branchesReturnType (ConBranches cbrs) = and <$> sequence
-      [do vs <- forTele tele $ \h _ _ -> forallVar h Type r
+      [do vs <- V.forM hps $ \(h, _) -> forallVar h Type r
           returnsType $ instantiateTele vs s
-      | (_, tele, s) <- cbrs]
+      | (_, hps, s) <- cbrs]
     branchesReturnType (LitBranches lbrs def) = and <$> sequence
       (returnsType def : [returnsType e | (_, e) <- lbrs])
 
@@ -210,22 +210,26 @@ makeRel rel expr = do
       x <- forall_ h (first meta t) rel
       e <- makeRel rel $ instantiate1 (pure x) s
       return $ abstract1 x e
-    makeRelBranches (ConBranches cbrs) = ConBranches
-      <$> forM cbrs (\(constr, tele, brScope) -> mdo
-          -- constrType <- qconstructor constr
-          vs <- forTele tele $ \h p s -> do
-            let t = inst s
-            -- TODO should this be obtained from the type instead?
-            rType <- returnsType t
-            t' <- if rType then makeRel (Relevance Irrelevant) t
-                           else makeRel rel t
-            v <- forall_ h t' rel
-            return (v, (h, (if rType then irrelMeta else meta) p, abstr t'))
-          let inst = instantiateTele (pure . fst <$> vs)
-              abstr = abstract $ teleAbstraction (fst <$> vs)
-              tele' = snd <$> vs
-          bre <- makeRel rel (inst brScope)
-          return (constr, Telescope tele', abstr bre))
+    makeRelBranches (ConBranches []) = error "makeRel conbranches"
+    makeRelBranches (ConBranches cbrs@((QConstr n _, _, _):_)) = do
+      (_, dataTypeType, _) <- context n
+      let (params, _) = bindingsView piView $ first toMetaAnnotation dataTypeType
+      ConBranches
+        <$> forM cbrs (\(constr, _vs {- TODO -}, brScope) -> mdo
+            constrType <- qconstructor constr
+            let (tps, _retType) = bindingsView piView constrType
+            vs' <- V.drop (teleLength params) <$> forTele tps (\h p s -> do
+              let t = inst $ bimapScope toMetaAnnotation id s
+                  tRel | isRelevant p = rel
+                       | otherwise    = Relevance Irrelevant
+              v <- forall_ h t tRel
+              return (v, (h, p, abstr t)))
+            let inst = instantiateTele (pure . fst <$> vs')
+                inst' = instantiateTele (pure . fst <$> vs')
+                abstr = abstract $ teleAbstraction (fst <$> vs')
+                vs'' = (\(_, (h, m, _)) -> (h, toMetaAnnotation m)) <$> vs'
+            bre <- makeRel rel (inst' brScope)
+            return (constr, vs'', abstr bre))
     makeRelBranches (LitBranches lbrs def) = LitBranches
       <$> sequence [(,) l <$> makeRel rel e | (l, e) <- lbrs] <*> makeRel rel def
 
@@ -333,27 +337,29 @@ inferBranches :: Branches QConstr Plicitness (Expr Plicitness) (MetaVar s (Relev
               -> RelevanceM s
               -> Bool
               -> TCM s (Branches QConstr (MetaAnnotation s) (Expr (MetaAnnotation s)) (MetaVar s (RelevanceM s) (MetaAnnotation s)), Output s)
-inferBranches (ConBranches cbrs) surroundingRel knownDef = do
-  -- TODO obtain from type
-  cbrs' <- forM cbrs $ \(c, tele, brScope) -> mdo
+inferBranches (ConBranches cbrs@((QConstr typeName _, _, _):_)) surroundingRel knownDef = do
+  (_, dataTypeType, _) <- context typeName
+  cbrs' <- forM cbrs $ \(c, _hps, brScope) -> mdo
     constrType <- qconstructor c
-    ps <- forTele tele $ \h p s -> do
-      let t = instantiateTele pureVs s
-      (_, ttyp) <- infer t (Relevance Irrelevant) False
-      (t', t'rel) <- checkArg t ttyp True
-      v <- forall_ h t' t'rel
-      return (v, h, MetaAnnotation t'rel p, abstr t')
+    let (tps, _retType) = bindingsView piView constrType
+    ps <- iforTele tps $ \_i h p s -> do
+      let -- h' = fst (hps V.! i) <> h
+          t = instantiateTele pureVs' $ bimapScope toMetaAnnotation id s
+          trel = toRelevanceM p
+      v <- forall_ h t trel
+      return (v, h, p, abstr t)
     let pureVs = (\(v, _, _, _) -> pure v) <$> ps
+        pureVs' = (\(v, _, _, _) -> pure v) <$> ps
         abstr = abstract $ teleAbstraction $ (\(v, _, _, _) -> v) <$> ps
-    let tele' = Telescope $ (\(_, h, p, s) -> (h, p, s)) <$> ps
+    let hps' = (\(_, h, p, _) -> (h, toMetaAnnotation p)) <$> ps
     (brScope', brType) <- infer (instantiateTele pureVs brScope) surroundingRel knownDef
-    return (c, tele', brScope', brType, abstr)
+    return (c, hps', brScope', brType, abstr)
   let retType = case cbrs' of
         ((_, _, _, t, _):_) -> t
         _ -> error "inferBranches"
-  cbrs'' <- forM cbrs' $ \(c, tele, brScope, brType, abstr) -> do
+  cbrs'' <- forM cbrs' $ \(c, hps, brScope, brType, abstr) -> do
     brScope' <- subtype brScope brType retType
-    return (c, tele, abstr brScope')
+    return (c, hps, abstr brScope')
   return (ConBranches cbrs'', retType)
 
 inferBranches (LitBranches lbrs def) surroundingRel knownDef = do

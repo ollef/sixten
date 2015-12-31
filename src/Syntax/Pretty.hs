@@ -81,7 +81,7 @@ vcat :: [PrettyM Doc] -> PrettyM Doc
 vcat xs = Leijen.vcat <$> sequence xs
 
 hcat :: [PrettyM Doc] -> PrettyM Doc
-hcat xs = Leijen.vcat <$> sequence xs
+hcat xs = Leijen.hcat <$> sequence xs
 
 hsep :: [PrettyM Doc] -> PrettyM Doc
 hsep xs = Leijen.hsep <$> sequence xs
@@ -93,7 +93,7 @@ tilde :: Doc
 tilde = Leijen.text "~"
 
 showWide :: Doc -> String
-showWide d = Leijen.displayS (Leijen.renderPretty 1.0 200 d) ""
+showWide d = Leijen.displayS (Leijen.renderPretty 1.0 10000 d) ""
 
 -------------------------------------------------------------------------------
 -- * Working with names

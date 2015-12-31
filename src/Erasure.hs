@@ -26,19 +26,19 @@ erase expr = case expr of
     Relevant -> Lambda.App (erase e1) (erase e2)
   Abstract.Case e brs -> Lambda.Case (erase e) (eraseBranches brs)
   where
-    eraseTele tele@(Telescope v) =
+    eraseVars hps =
         ( permFun
-        , Telescope $ Vector.map (\(h, _, s) -> (h, (), eraseScope $ mapBound permFun s))
-        $ Vector.filter (\(_, p, _) -> isRelevant p) v
+        , Vector.map (\(h, _) -> (h, ()))
+        $ Vector.filter (isRelevant . snd) hps
         )
       where
         permFun (Tele n) = Tele $ fromMaybe (error "erasure tele") $ perm Vector.! n
         perm = Vector.fromList $ fst $
-          Vector.foldr (\p (xs, i) -> case relevance p of
+          Vector.foldr (\(_, p) (xs, i) -> case relevance p of
             Irrelevant -> (Nothing : xs, i)
-            Relevant -> (Just i : xs, i + 1)) ([], 0) (teleAnnotations tele)
+            Relevant -> (Just i : xs, i + 1)) ([], 0) hps
     eraseScope = toScope . erase . fromScope
-    eraseBranches (ConBranches cbrs) = ConBranches [(c, tele', eraseScope $ mapBound permFun s)  | (c, tele, s) <- cbrs, let (permFun, tele') = eraseTele tele]
+    eraseBranches (ConBranches cbrs) = ConBranches [(c, hps', eraseScope $ mapBound permFun s)  | (c, hps, s) <- cbrs, let (permFun, hps') = eraseVars hps]
     eraseBranches (LitBranches lbrs d) = LitBranches [(l, erase e) | (l, e) <- lbrs] (erase d)
 
 eraseDef :: HasRelevance a => Definition (Abstract a) v -> Definition Lambda v

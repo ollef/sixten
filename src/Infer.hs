@@ -58,8 +58,8 @@ checkType surrounding expr typ = do
         _ -> inferIt
     _ -> inferIt
   modifyIndent pred
-  tr "checkType res e" rese
-  tr "              t" rest
+  tr "checkType res e" =<< freeze rese
+  tr "              t" =<< freeze rest
   return (rese, rest)
     where
       inferIt = do
@@ -111,8 +111,7 @@ inferType surrounding expr = do
           return (Abstract.App e1' p e2', instantiate1 e2' b')
         _ -> throwError "inferType: expected pi type"
     Concrete.Case e brs -> do
-      (e', etype) <- inferType surrounding e
-      (e'', brs', retType) <- inferBranches surrounding e' etype brs
+      (e'', brs', retType) <- inferBranches surrounding e brs
       return (Abstract.Case e'' brs', retType)
     Concrete.Anno e t  -> do
       (t', _) <- checkType surrounding t Abstract.Type
@@ -122,8 +121,8 @@ inferType surrounding expr = do
       x <- existsVar mempty t ()
       return (x, t)
   modifyIndent pred
-  tr "inferType res e" e
-  tr "              t" t
+  tr "inferType res e" =<< freeze e
+  tr "              t" =<< freeze t
   return (e, t)
 
 resolveConstrType
@@ -147,43 +146,81 @@ resolveConstrType cs (Abstract.appsView -> (headType, _)) = do
 
 inferBranches
   :: Plicitness
-  -> Abstract s
-  -> Abstract s
+  -> Concrete s
   -> BranchesM (Either Constr QConstr) Concrete.Expr s () Plicitness
   -> TCM s ( Abstract s
            , BranchesM QConstr (Abstract.Expr Plicitness) s () Plicitness
            , Abstract s
            )
-inferBranches surrounding expr etype (ConBranches cbrs) = do
-  n <- resolveConstrType ((\(c, _, _) -> c) <$> cbrs) etype
-  let go (c, tele, sbr) (expr', etype', resBrs, resType) = mdo
-        vs <- forTele tele $ \h _ s -> do
-          (s', _) <- inferType surrounding $ instantiateTele pureVs s
-          forall_ h s' ()
-        let pureVs = pure <$> vs
-            args = V.toList $ V.zip (teleAnnotations tele) pureVs
-            qc = qualify n c
-        (_, caseType) <- inferType
+inferBranches surrounding expr (ConBranches cbrs) = mdo
+  (expr1, etype1) <- inferType surrounding expr
+
+  tr "inferBranches e" expr1
+  tr "              brs" $ ConBranches cbrs
+  tr "              t" =<< freeze etype1
+  modifyIndent succ
+
+  typeName <- resolveConstrType ((\(c, _, _) -> c) <$> cbrs) etype1
+
+  (_, dataTypeType, _) <- context typeName
+  let (params, _) = bindingsView Abstract.piView $ first plicitness dataTypeType
+      inst = instantiateTele (pure . snd <$> paramVars)
+  paramVars <- forTele params $ \h p s -> do
+    v <- exists h (inst s) ()
+    return (p, v)
+
+  let pureParamVars  = fmap pure <$> paramVars
+      dataType = Abstract.apps (Abstract.Global typeName) pureParamVars
+      implicitParamVars = (\(_p, v) -> (Implicit, pure v)) <$> paramVars
+
+  (expr2, etype2) <- subtype surrounding expr1 etype1 dataType
+
+  let go (c, nps, sbr) (etype, resBrs, resType) = do
+        args <- V.forM nps $ \(h, p) -> do
+          t <- existsVar h Abstract.Type ()
+          v <- forall_ h t ()
+          return (p, pure v)
+        let qc = qualify typeName c
+            pureVs = snd <$> args
+        (paramsArgsExpr, etype') <- checkType
           surrounding
-          (Concrete.apps (Concrete.Con $ Right qc) args)
-        (expr'', etype'') <- subtype surrounding expr' etype' caseType
+          (Concrete.apps (Concrete.Con $ Right qc) $ implicitParamVars <> args)
+          etype
         (br, resType') <- checkType surrounding (instantiateTele pureVs sbr) resType
-        sbr' <- abstractM (teleAbstraction vs) br
-        tele' <- iforTele tele $ \i h p _ -> do
-          let t = metaType $ vs V.! i
-          return (h, p, abstract (teleAbstraction vs) t)
-        return (expr'', etype'', (qc, Telescope tele', sbr'):resBrs, resType')
+
+        let (_, args') = Abstract.appsView paramsArgsExpr
+            vs = V.fromList $ map (\(p, arg) -> (p, case arg of
+                Abstract.Var v -> Just v
+                _ -> Nothing)) $ drop (teleLength params) args'
+        sbr' <- abstractM (teleAbstraction (snd <$> vs) . Just) br
+        let nps' = (\(p, mv) -> (maybe (Hint Nothing) metaHint mv, p)) <$> vs
+        return (etype', (qc, nps', sbr'):resBrs, resType')
+
   resTypeT <- existsVar mempty Abstract.Type ()
-  resType <- existsVar mempty resTypeT ()
-  (expr', _etype', cbrs', resType') <- foldrM go (expr, etype, mempty, resType) cbrs
-  return (expr', ConBranches cbrs', resType')
-inferBranches surrounding expr etype (LitBranches lbrs d) = do
-  (expr', _etype') <- subtype surrounding expr etype Builtin.int
+  resType1 <- existsVar mempty resTypeT ()
+
+  (etype3, cbrs2, resType2) <- foldrM go (etype2, mempty, resType1) cbrs
+
+  (expr3, _etype3) <- subtype surrounding expr2 etype2 etype3
+
+  modifyIndent pred
+  tr "inferBranches res e" expr3
+  tr "              res brs" $ ConBranches cbrs2
+  tr "              res t" resType2
+  return (expr3, ConBranches cbrs2, resType2)
+inferBranches surrounding expr brs@(LitBranches lbrs d) = do
+  tr "inferBranches e" expr
+  tr "              brs" brs
+  (expr', _etype') <- checkType surrounding expr Builtin.int
   t <- existsVar mempty Abstract.Type ()
   lbrs' <- forM lbrs $ \(l, e) -> do
     (e', _) <- checkType surrounding e t
     return (l, e')
   (d', t') <- checkType surrounding d t
+  -- let brs' = LitBranches lbrs' d'
+  tr "inferBranches res e" =<< freeze expr'
+  -- tr "              res brs" brs'
+  tr "              res t" =<< freeze t'
   return (expr', LitBranches lbrs' d', t')
 
 generalise :: Abstract s -> Abstract s -> TCM s (Abstract s, Abstract s)

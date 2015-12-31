@@ -183,6 +183,13 @@ bindingNames bs = Vector.fromList $ bs >>= flatten
     flatten (Plain _ names) = names
     flatten (Typed _ names _) = names
 
+bindingHints :: [Binding] -> Vector (NameHint, Plicitness)
+bindingHints bs = Vector.fromList $ bs >>= flatten
+  where
+    flatten (Plain p names) = [(Hint n, p) | n <- names]
+    -- TODO type?
+    flatten (Typed p names _type) = [(Hint n, p) | n <- names]
+
 bindingsTelescope :: [Binding] -> Telescope Plicitness Expr Name
 bindingsTelescope bs = Telescope $
   Vector.imap (\i (n, p, t) -> (Hint n, p, abstract (abstr i) t)) unabstracted
@@ -244,9 +251,9 @@ branches = dropAnchor $  ConBranches <$> manySameCol conBranch
   where
     litBranch = (,) <$> literal <*% symbol "->" <*>% expr
     conBranch = con <$> constructor <*> manyBindings <*% symbol "->" <*>% expr
-    con c bs e = (Left c, tele, abstract (fmap Tele . (`Vector.elemIndex` ns) . Just) e)
-      where tele = bindingsTelescope bs
-            ns = fmap unHint $ teleNames tele
+    con c bs e = (Left c, bs', abstract (fmap Tele . (`Vector.elemIndex` ns) . Just) e)
+      where bs' = bindingHints bs
+            ns = fmap (unHint . fst) bs'
 
 expr :: Parser (Expr Name)
 expr

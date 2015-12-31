@@ -23,7 +23,7 @@ data List a where
   Nil : List a
   Cons : a -> List a -> List a
 
-tail : forall {a}. List a -> List a
+-- tail : forall {a}. List a -> List a
 tail xs = case xs of
   -- Nil -> Nil
   Cons x xs' -> xs'

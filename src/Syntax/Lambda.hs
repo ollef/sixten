@@ -76,4 +76,4 @@ instance (Eq v, IsString v, Pretty v)
     Lam {} -> error "impossible prettyPrec lam"
     App e1 e2 -> prettyApp (prettyM e1) (prettyM e2)
     Case e brs -> parens `above` casePrec $
-      prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> prettyM brs
+      prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> indent 2 (prettyM brs)
