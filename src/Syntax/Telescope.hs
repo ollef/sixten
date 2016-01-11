@@ -32,6 +32,28 @@ newtype Telescope d expr v = Telescope
 teleLength :: Telescope d expr v -> Int
 teleLength = Vector.length . unTelescope
 
+dropTele :: Functor expr
+         => Int -> Telescope d expr v -> Telescope d expr v
+dropTele n
+  = Telescope
+  . fmap (\(h, p, s) -> (h, p, mapBound (subtract $ Tele n) s))
+  . Vector.drop n
+  . unTelescope
+
+instantiatePrefix
+  :: Monad expr
+  => Vector (expr v)
+  -> Telescope d expr v
+  -> Telescope d expr v
+instantiatePrefix es (Telescope tele)
+  = Telescope
+  $ fmap (\(h, p, s) -> (h, p, toScope $ instantiate f $ F <$> s)) $ Vector.drop len tele
+  where
+    es' = fmap F <$> es
+    len = Vector.length es
+    f (Tele i) | i < len = es' Vector.! i
+               | otherwise = pure $ B $ Tele $! i - len
+
 teleNames :: Telescope d expr v -> Vector NameHint
 teleNames (Telescope t) = (\(h, _, _) -> h) <$> t
 

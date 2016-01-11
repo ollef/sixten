@@ -325,33 +325,38 @@ infer expr surroundingRel knownDef = do
             go False e1' ft'
           _ -> throwError $ "infer relevance infer1" ++ show (pretty $ fmap show expr)
     Case e brs -> do
-      (e', _) <- infer e surroundingRel knownDef
-      (brs', retType) <- inferBranches brs surroundingRel knownDef
+      (e', etype) <- infer e surroundingRel knownDef
+      (brs', retType) <- inferBranches etype brs surroundingRel knownDef
       return (Case e' brs', retType)
   modifyIndent pred
   tr "infer res e" expr'
   tr "infer res t" typ
   return (expr', typ)
 
-inferBranches :: Branches QConstr Plicitness (Expr Plicitness) (MetaVar s (RelevanceM s) (MetaAnnotation s))
-              -> RelevanceM s
-              -> Bool
-              -> TCM s (Branches QConstr (MetaAnnotation s) (Expr (MetaAnnotation s)) (MetaVar s (RelevanceM s) (MetaAnnotation s)), Output s)
-inferBranches (ConBranches cbrs@((QConstr typeName _, _, _):_)) surroundingRel knownDef = do
-  (_, dataTypeType, _) <- context typeName
-  cbrs' <- forM cbrs $ \(c, _hps, brScope) -> mdo
+inferBranches
+  :: Output s
+  -> Branches QConstr Plicitness (Expr Plicitness) (MetaVar s (RelevanceM s) (MetaAnnotation s))
+  -> RelevanceM s
+  -> Bool
+  -> TCM s (Branches QConstr (MetaAnnotation s) (Expr (MetaAnnotation s)) (MetaVar s (RelevanceM s) (MetaAnnotation s)), Output s)
+inferBranches etype (ConBranches cbrs) surroundingRel knownDef = do
+  let (_, params) = appsView etype
+  cbrs' <- forM cbrs $ \(c, hps, brScope) -> mdo
     constrType <- qconstructor c
-    let (tps, _retType) = bindingsView piView constrType
-    ps <- iforTele tps $ \_i h p s -> do
-      let -- h' = fst (hps V.! i) <> h
+    let (tps, _retType) = first (instantiatePrefix $ snd <$> V.fromList params)
+                        $ bindingsView piView 
+                        $ first toMetaAnnotation constrType
+    trs "inferBranches" $ pretty $ fmap show tps
+    ps <- iforTele tps $ \i h p s -> do
+      let h' = fst (hps V.! i) <> h
           t = instantiateTele pureVs' $ bimapScope toMetaAnnotation id s
           trel = toRelevanceM p
-      v <- forall_ h t trel
-      return (v, h, p, abstr t)
-    let pureVs = (\(v, _, _, _) -> pure v) <$> ps
-        pureVs' = (\(v, _, _, _) -> pure v) <$> ps
-        abstr = abstract $ teleAbstraction $ (\(v, _, _, _) -> v) <$> ps
-    let hps' = (\(_, h, p, _) -> (h, toMetaAnnotation p)) <$> ps
+      v <- forall_ h' t trel
+      return (v, h, p)
+    let pureVs = (\(v, _, _) -> pure v) <$> ps
+        pureVs' = (\(v, _, _) -> pure v) <$> ps
+        abstr = abstract $ teleAbstraction $ (\(v, _, _) -> v) <$> ps
+    let hps' = (\(_, h, p) -> (h, toMetaAnnotation p)) <$> ps
     (brScope', brType) <- infer (instantiateTele pureVs brScope) surroundingRel knownDef
     return (c, hps', brScope', brType, abstr)
   let retType = case cbrs' of
@@ -362,7 +367,7 @@ inferBranches (ConBranches cbrs@((QConstr typeName _, _, _):_)) surroundingRel k
     return (c, hps, abstr brScope')
   return (ConBranches cbrs'', retType)
 
-inferBranches (LitBranches lbrs def) surroundingRel knownDef = do
+inferBranches _etype (LitBranches lbrs def) surroundingRel knownDef = do
   lbrs' <- forM lbrs $ \(l, e) -> do
     (e', _) <- infer e surroundingRel knownDef
     return (l, e')
