@@ -52,8 +52,8 @@ checkType surrounding expr typ = do
         Abstract.Pi h p' a ts | p' == Implicit -> do
           v <- forall_ h a ()
           (expr', ts') <- checkType surrounding expr (instantiate1 (pure v) ts)
-          typ''  <- Abstract.Pi  h p' a <$> abstract1M v ts'
           expr'' <- etaLamM h p' a =<< abstract1M v expr'
+          typ''  <- Abstract.Pi  h p' a <$> abstract1M v ts'
           return (expr'', typ'')
         _ -> inferIt
     _ -> inferIt
@@ -364,7 +364,7 @@ generaliseDef
            )
 generaliseDef vs (Definition e) t = do
   ge <- go etaLamM e
-  gt <- go (\h p typ s -> pure $ Abstract.Pi h p typ s)      t
+  gt <- go (\h p typ s -> pure $ Abstract.Pi h p typ s) t
   return (Definition ge, gt)
   where
     go c b = F.foldrM
@@ -394,12 +394,15 @@ generaliseDefs
            )
 generaliseDefs xs = do
   modifyIndent succ
+  -- trs "generaliseDefs xs" xs
 
   fvs <- asum <$> mapM (foldMapM (:[])) types
   l   <- level
   let p (metaRef -> Just r) = either (> l) (const False) <$> solution r
       p _                   = return False
   fvs' <- filterM p fvs
+  -- trs "generaliseDefs l" l
+  -- trs "generaliseDefs vs" fvs'
 
   deps <- HM.fromList <$> forM fvs' (\x -> do
     ds <- foldMapM HS.singleton $ metaType x
@@ -454,6 +457,6 @@ checkRecursiveDefs ds =
     sequence $ flip V.imap instantiatedDs $ \i (d, t) -> do
       (t', _) <- checkType Explicit t Abstract.Type
       let v = evs V.! i
+      unify (metaType v) t'
       (d', t'') <- checkDefType v d t'
-      (d'', t''') <- subDefType d' t'' $ metaType v
-      return (v, d'', t''')
+      return (v, d', t'')
