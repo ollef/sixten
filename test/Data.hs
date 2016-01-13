@@ -28,7 +28,17 @@ tail xs = case xs of
   Nil -> Nil
   Cons x xs' -> xs'
 
+tail' xs = case xs of
+  Nil -> Nil
+  Cons x xs' -> xs'
+
 map : forall {a b : Type}. (a -> b) -> List a -> List b
 map f xs = case xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (map f xs')
+
+{-
+map' f xs = case xs of
+  Nil -> Nil
+  Cons x xs' -> Cons (f x) (map' f xs')
+  -}
