@@ -27,9 +27,9 @@ instance Pretty Level where
 data State = State
   { tcContext :: Program Annotation (Expr Annotation) Empty
   , tcConstrs :: HashMap Constr (Set (Name, Type Annotation Empty))
-  , tcIndent  :: {-# UNPACK #-} !Int -- This has no place here, but is useful for debugging
-  , tcFresh   :: {-# UNPACK #-} !Int
-  , tcLevel   :: {-# UNPACK #-} !Level
+  , tcIndent  :: !Int -- This has no place here, but is useful for debugging
+  , tcFresh   :: !Int
+  , tcLevel   :: !Level
   , tcLog     :: ![String]
   }
 

@@ -22,11 +22,11 @@ import Util
 type Exists s d a = STRef s (Either Level (AbstractM s d a))
 
 data MetaVar s d a = MetaVar
-  { metaId    :: {-# UNPACK #-} !Int
+  { metaId    :: !Int
   , metaType  :: AbstractM s d a
-  , metaHint  :: {-# UNPACK #-} !NameHint
+  , metaHint  :: !NameHint
   , metaData  :: !d
-  , metaRef   :: {-# UNPACK #-} !(Maybe (Exists s d a))
+  , metaRef   :: !(Maybe (Exists s d a))
   }
 
 type AbstractM s d a = Abstract.Expr a (MetaVar s d a)
