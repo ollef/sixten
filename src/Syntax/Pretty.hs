@@ -41,6 +41,8 @@ import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import Syntax.Hint
 import Syntax.Name
 
+infixr 6 <+>
+
 -------------------------------------------------------------------------------
 -- * The pretty type and class
 -------------------------------------------------------------------------------
