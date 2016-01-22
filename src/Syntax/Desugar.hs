@@ -13,6 +13,7 @@ import Data.Monoid
 import Data.Text(Text)
 import qualified Data.Text as Text
 
+import Builtin
 import Syntax
 import Syntax.Concrete
 import Syntax.Parse
@@ -46,7 +47,7 @@ program xs = snd <$> foldlM resolveName (Nothing, mempty) xs >>= matchTypes
         let defs' = HM.unionWith (\(d, _) (t, _) -> (d, t)) (flip (,) Wildcard <$> defs)
                                                             (flip (,) Wildcard <$> types)
             ldefs = (\(e, t) -> (Definition e, t, Explicit)) <$> defs'
-            rdatas = (\(tele, d) -> (DataDefinition d, quantify Pi (Scope Type) tele, Explicit)) <$> datas
+            rdatas = (\(tele, d) -> (DataDefinition d, quantify Pi (Scope $ App (Global Builtin.type_) Explicit Wildcard) tele, Explicit)) <$> datas
         case HM.keys $ HM.intersection ldefs rdatas of
           [] -> return $ ldefs <> rdatas
           vs -> throwError $ "duplicate definition: " <> Text.intercalate ", " (map shower vs)

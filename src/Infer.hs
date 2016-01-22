@@ -66,6 +66,16 @@ checkType surrounding expr typ = do
         (expr', typ') <- inferType surrounding expr
         subtype surrounding expr' typ' typ
 
+existsTypeType :: NameHint -> TCM s (Abstract s)
+existsTypeType n = do
+  sz <- existsVar n Builtin.intE ()
+  existsVar n (Builtin.typeE Explicit sz) ()
+
+existsType :: NameHint -> TCM s (Abstract s)
+existsType n = do
+  t <- existsTypeType n
+  existsVar n t ()
+
 inferType
   :: Plicitness
   -> Concrete s
@@ -79,45 +89,46 @@ inferType surrounding expr = do
       return (Abstract.Global v, first plicitness typ)
     Concrete.Var v -> return (Abstract.Var v, metaType v)
     Concrete.Con con -> do
-      n <- resolveConstrType [con] Abstract.Type
+      n <- resolveConstrType [con] (Abstract.Global Builtin.type_)
       let qc = qualify n con
       typ <- qconstructor qc
       return (Abstract.Con qc, first plicitness typ)
-    Concrete.Lit l -> return (Abstract.Lit l, Builtin.int)
-    Concrete.Type -> return (Abstract.Type, Abstract.Type)
+    Concrete.Lit l -> return (Abstract.Lit l, Abstract.Global Builtin.int)
     Concrete.Pi n p t s -> do
-      (t', _) <- checkType p t Abstract.Type
+      argTypeType <- existsTypeType n
+      (t', _) <- checkType p t argTypeType
       v  <- forall_ n t' ()
-      (e', _) <- checkType surrounding (instantiate1 (pure v) s) Abstract.Type
+      resTypeType <- existsTypeType mempty
+      (e', _) <- checkType surrounding (instantiate1 (pure v) s) resTypeType
       s' <- abstract1M v e'
-      return (Abstract.Pi n p t' s', Abstract.Type)
+      return (Abstract.Pi n p t' s', Builtin.typeN Explicit 1)
     Concrete.Lam n p s -> uncurry generalise <=< enterLevel $ do
-      atype <- existsVar n Abstract.Type ()
-      a <- existsVar n atype ()
-      b <- existsVar mempty Abstract.Type ()
-      x <- forall_ n a ()
-      (e', b')  <- checkType surrounding (instantiate1 (pure x) s) b
+      argType <- existsType n
+      resType <- existsType mempty
+      x <- forall_ n argType ()
+      (e', resType')  <- checkType surrounding (instantiate1 (pure x) s) resType
       s' <- abstract1M x e'
-      ab <- abstract1M x b'
-      return (Abstract.Lam n p a s', Abstract.Pi n p a ab)
+      abstractedResType <- abstract1M x resType'
+      return (Abstract.Lam n p argType s', Abstract.Pi n p argType abstractedResType)
     Concrete.App e1 p e2 -> do
-      a <- existsVar mempty Abstract.Type ()
-      b <- existsVar mempty Abstract.Type ()
-      (e1', e1type) <- checkType surrounding e1 $ Abstract.Pi mempty p a
-                                                $ abstractNone b
+      argType <- existsType mempty
+      resType <- existsType mempty
+      (e1', e1type) <- checkType surrounding e1 $ Abstract.Pi mempty p argType
+                                                $ abstractNone resType
       case e1type of
-        Abstract.Pi _ p' a' b' | p == p' -> do
-          (e2', _) <- checkType p e2 a'
-          return (Abstract.App e1' p e2', instantiate1 e2' b')
+        Abstract.Pi _ p' argType' resType' | p == p' -> do
+          (e2', _) <- checkType p e2 argType'
+          return (Abstract.App e1' p e2', instantiate1 e2' resType')
         _ -> throwError "inferType: expected pi type"
     Concrete.Case e brs -> do
       (e'', brs', retType) <- inferBranches surrounding e brs
       return (Abstract.Case e'' brs', retType)
     Concrete.Anno e t  -> do
-      (t', _) <- checkType surrounding t Abstract.Type
+      tType <- existsTypeType mempty
+      (t', _) <- checkType surrounding t tType
       checkType surrounding e t'
     Concrete.Wildcard  -> do
-      t <- existsVar mempty Abstract.Type ()
+      t <- existsType mempty
       x <- existsVar mempty t ()
       return (x, t)
   modifyIndent pred
@@ -132,7 +143,7 @@ resolveConstrType
 resolveConstrType cs (Abstract.appsView -> (headType, _)) = do
   headType' <- whnf mempty plicitness headType
   n <- case headType' of
-    Abstract.Global v -> do
+    Abstract.Global v | v /= Builtin.type_ -> do
       (d, _, _) <- context v
       case d of
         DataDefinition _ -> return [Set.singleton v]
@@ -142,7 +153,7 @@ resolveConstrType cs (Abstract.appsView -> (headType, _)) = do
   case Set.toList $ List.foldl1' Set.intersection (n ++ ns) of
     [x] -> return x
     xs -> throwError $ "Ambiguous constructors: " ++ show cs ++ ". Possible types: "
-               ++ show xs
+               ++ show xs ++ show (n ++ ns)
 
 inferBranches
   :: Plicitness
@@ -152,11 +163,11 @@ inferBranches
            , BranchesM QConstr (Abstract.Expr Plicitness) s () Plicitness
            , Abstract s
            )
-inferBranches surrounding expr (ConBranches cbrs) = mdo
+inferBranches surrounding expr (ConBranches cbrs _) = mdo
   (expr1, etype1) <- inferType surrounding expr
 
   tr "inferBranches e" expr1
-  tr "              brs" $ ConBranches cbrs
+  tr "              brs" $ ConBranches cbrs Concrete.Wildcard
   tr "              t" =<< freeze etype1
   modifyIndent succ
 
@@ -177,7 +188,7 @@ inferBranches surrounding expr (ConBranches cbrs) = mdo
 
   let go (c, nps, sbr) (etype, resBrs, resType) = do
         args <- V.forM nps $ \(h, p) -> do
-          t <- existsVar h Abstract.Type ()
+          t <- existsType h
           v <- forall_ h t ()
           return (p, pure v)
         let qc = qualify typeName c
@@ -196,8 +207,7 @@ inferBranches surrounding expr (ConBranches cbrs) = mdo
         let nps' = (\(p, mv) -> (maybe (Hint Nothing) metaHint mv, p)) <$> vs
         return (etype', (qc, nps', sbr'):resBrs, resType')
 
-  resTypeT <- existsVar mempty Abstract.Type ()
-  resType1 <- existsVar mempty resTypeT ()
+  resType1    <- existsType mempty
 
   (etype3, cbrs2, resType2) <- foldrM go (etype2, mempty, resType1) cbrs
 
@@ -205,14 +215,14 @@ inferBranches surrounding expr (ConBranches cbrs) = mdo
 
   modifyIndent pred
   tr "inferBranches res e" expr3
-  tr "              res brs" $ ConBranches cbrs2
+  tr "              res brs" $ ConBranches cbrs2 resType2
   tr "              res t" resType2
-  return (expr3, ConBranches cbrs2, resType2)
+  return (expr3, ConBranches cbrs2 resType2, resType2)
 inferBranches surrounding expr brs@(LitBranches lbrs d) = do
   tr "inferBranches e" expr
   tr "              brs" brs
-  (expr', _etype') <- checkType surrounding expr Builtin.int
-  t <- existsVar mempty Abstract.Type ()
+  (expr', _etype') <- checkType surrounding expr Builtin.intE
+  t <- existsType mempty
   lbrs' <- forM lbrs $ \(l, e) -> do
     (e', _) <- checkType surrounding e t
     return (l, e')
@@ -256,16 +266,20 @@ checkConstrDef
   -> ConstrDef (Concrete s)
   -> TCM s (ConstrDef (Abstract s))
 checkConstrDef typ (ConstrDef c (bindingsView Concrete.piView -> (args, ret))) = mdo
-  let inst = instantiateTele $ (\(a, _, _, _) -> pure a) <$> args'
+  let inst = instantiateTele $ (\(a, _, _, _, _) -> pure a) <$> args'
   args' <- forTele args $ \h p arg -> do
-    argType <- existsVar h Abstract.Type ()
+    argSize <- existsVar h Builtin.intE ()
+    argType <- existsVar h (Builtin.typeE Explicit argSize) ()
     (arg', _) <- checkType p (inst arg) argType
     v <- forall_ h arg' ()
-    return (v, h, p, arg')
+    return (v, h, p, arg', argSize)
 
-  (ret', _) <- checkType Explicit (inst ret) Abstract.Type
+  let sizes = (\(_, _, _, _, sz) -> sz) <$> args'
+      size = foldr (Builtin.addE Explicit) (Abstract.Lit 0) sizes
+
+  (ret', _) <- checkType Explicit (inst ret) $ Builtin.typeE Explicit size
   unify ret' typ
-  res <- F.foldrM (\(v, h, p, arg') rest ->
+  res <- F.foldrM (\(v, h, p, arg', _) rest ->
          Abstract.Pi h p arg' <$> abstract1M v rest) ret' args'
   return $ ConstrDef c res
 
@@ -294,7 +308,7 @@ checkDataType name (DataDef cs) typ = mdo
     res <- checkConstrDef retType (ConstrDef c $ instantiateTele (pure <$> vs) t)
     traverse (abstractM (fmap Tele . (`V.elemIndex` vs))) res
 
-  let typ'' = quantify Abstract.Pi (Scope Abstract.Type) (Telescope params)
+  let typ'' = quantify Abstract.Pi (Scope $ Builtin.typeN Explicit 0) $ Telescope params
 
   tr "checkDataType res typ" typ''
   return (DataDef cs', typ'')
@@ -448,14 +462,14 @@ checkRecursiveDefs
 checkRecursiveDefs ds =
   generaliseDefs <=< enterLevel $ do
     evs <- V.forM ds $ \(v, _, _) -> do
-      tv <- existsVar mempty Abstract.Type ()
-      forall_ v tv ()
+      t <- existsType v
+      forall_ v t ()
     let instantiatedDs = flip V.map ds $ \(_, e, t) ->
           ( instantiateDef (pure . (evs V.!)) e
           , instantiate (pure . (evs V.!)) t
           )
     sequence $ flip V.imap instantiatedDs $ \i (d, t) -> do
-      (t', _) <- checkType Explicit t Abstract.Type
+      (t', _) <- checkType Explicit t $ Builtin.typeN Explicit 1
       let v = evs V.! i
       unify (metaType v) t'
       (d', t'') <- checkDefType v d t'

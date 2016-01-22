@@ -21,7 +21,6 @@ data Expr d v
   | Global Name
   | Con QConstr
   | Lit Literal
-  | Type
   | Pi  !NameHint !d (Type d v) (Scope1 (Expr d) v)
   | Lam !NameHint !d (Type d v) (Scope1 (Expr d) v)
   | App  (Expr d v) !d (Expr d v)
@@ -52,6 +51,9 @@ appsView = second reverse . go
       where (e1', es) = go e1
     go e = (e, [])
 
+arrow :: d -> Expr d v -> Expr d v -> Expr d v
+arrow d a b = Pi (Hint Nothing) d a $ Scope $ pure $ F b
+
 apps :: Foldable t => Expr d v -> t (d, Expr d v) -> Expr d v
 apps = Foldable.foldl (uncurry . App)
 
@@ -61,15 +63,13 @@ globals expr = case expr of
   Global g    -> Var $ B g
   Con c       -> Con c
   Lit l       -> Lit l
-  Type        -> Type
   Pi  x p t s -> Pi x p (globals t) (exposeScope globals s)
   Lam x p t s -> Lam x p (globals t) (exposeScope globals s)
   App e1 p e2 -> App (globals e1) p (globals e2)
   Case e brs  -> Case (globals e) (exposeBranches globals brs)
 
 telescope :: Expr d v -> Telescope d (Expr d) v
-telescope (bindingsView piView -> (tele, Scope Type)) = tele
-telescope _ = error "Abstract.telescope"
+telescope (bindingsView piView -> (tele, _)) = tele
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -88,7 +88,6 @@ instance Monad (Expr d) where
     Global g    -> Global g
     Con c       -> Con c
     Lit l       -> Lit l
-    Type        -> Type
     Pi  x p t s -> Pi x p (t >>= f) (s >>>= f)
     Lam x p t s -> Lam x p (t >>= f) (s >>>= f)
     App e1 p e2 -> App (e1 >>= f) p (e2 >>= f)
@@ -106,7 +105,6 @@ instance Bitraversable Expr where
     Global v    -> pure $ Global v
     Con c       -> pure $ Con c
     Lit l       -> pure $ Lit l
-    Type        -> pure Type
     Pi  x d t s -> Pi  x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
     Lam x d t s -> Lam x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
     App e1 d e2 -> App <$> bitraverse f g e1 <*> f d <*> bitraverse f g e2
@@ -119,7 +117,6 @@ instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
     Global g  -> prettyM g
     Con c     -> prettyM c
     Lit l     -> prettyM l
-    Type      -> pure $ text "Type"
     Pi  _ p t (unusedScope -> Just e) -> parens `above` arrPrec $
       ((pure tilde <>) `iff` isIrrelevant p $ braces `iff` isImplicit p $ prettyM t)
       <+> prettyM "->" <+>

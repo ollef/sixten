@@ -9,6 +9,7 @@ import Data.Monoid
 import qualified Data.Set as S
 import Data.STRef
 
+import qualified Builtin
 import Meta
 import TCM
 import Normalise
@@ -23,7 +24,7 @@ occurs :: Level -> MetaVar s () Plicitness -> Abstract s -> TCM s ()
 occurs l tv = traverse_ go
   where
     go tv'@(MetaVar _ typ _ _ mr)
-      | tv == tv'                    = throwError "occurs check"
+      | tv == tv' = throwError "occurs check"
       | otherwise = do
         occurs l tv typ
         case mr of
@@ -43,7 +44,7 @@ unify type1 type2 = do
   go True ftype1 ftype2
   where
     go reduce t1 t2
-      | t1 == t2  = return ()
+      | t1 == t2 = return ()
       | otherwise = case (t1, t2) of
         -- If we have 'unify (f xs) t', where 'f' is an existential, and 'xs'
         -- are distinct universally quantified variables, then 'f = \xs. t' is
@@ -56,14 +57,20 @@ unify type1 type2 = do
         -- If we've already tried reducing the application,
         -- we can only hope to unify it pointwise.
         (App e1 p1 e1', App e2 p2 e2') | p1 == p2 && not reduce -> do
-          go True e1  e2
-          go True e1' e2'
-        _ | reduce             -> do
+          unify e1  e2
+          unify e1' e2'
+        (Lit 0, appsView -> (Global ((== Builtin.add) -> True) , [(_, x), (_, y)])) -> do
+          unify (Lit 0) x
+          unify (Lit 0) y
+        (appsView -> (Global ((== Builtin.add) -> True) , [(_, x), (_, y)]), Lit 0) -> do
+          unify x (Lit 0)
+          unify y (Lit 0)
+        _ | reduce -> do
           t1' <- whnf mempty plicitness t1
           t2' <- whnf mempty plicitness t2
           go False t1' t2'
-        _                      -> throwError $ "Can't unify types: "
-                                            ++ show (pretty (show <$> type1, show <$> type2))
+        _ -> throwError $ "Can't unify types: "
+                           ++ show (pretty (show <$> type1, show <$> type2))
     absCase h a b s1 s2 = do
       go True a b
       v <- forallVar h a ()
@@ -74,9 +81,10 @@ unify type1 type2 = do
     isForall _                               = Nothing
     distinct pes = S.size (S.fromList es) == length es where es = map snd pes
     solveVar r v pvs t = do
+      unify (metaType v) =<< typeOf t
       sol <- solution r
       case sol of
-        Left l  -> do
+        Left l -> do
           occurs l v t
           solve r =<< lams pvs t
         Right c -> go True (apps c $ map (second pure) pvs) t
@@ -119,9 +127,11 @@ subtype surrounding expr type1 type2 = do
           case sol of
             Left l -> do
               occurs l v typ2
-              unify (metaType v) Type
-              t11 <- existsVarAtLevel (metaHint v) Type () l
-              t12 <- existsVarAtLevel (metaHint v) Type () l
+              unify (metaType v) (Builtin.typeN Explicit 1)
+              t11TypeSize <- existsVarAtLevel (metaHint v) Builtin.intE () l
+              t12TypeSize <- existsVarAtLevel (metaHint v) Builtin.intE () l
+              t11 <- existsVarAtLevel (metaHint v) (Builtin.typeE Explicit t11TypeSize) () l
+              t12 <- existsVarAtLevel (metaHint v) (Builtin.typeE Explicit t12TypeSize) () l
               solve r $ Pi h p t11 $ abstractNone t12
               x2  <- forall_ h t2 ()
               (x1, t11') <- subtype p (pure x2) t2 t11
@@ -150,3 +160,35 @@ subtype surrounding expr type1 type2 = do
           typ2' <- whnf mempty plicitness typ2
           go False False e typ1' typ2'
         _ -> do unify typ1 typ2; return (e, typ2)
+
+typeOf
+  :: Abstract s
+  -> TCM s (Abstract s)
+typeOf expr = do
+  tr "typeOf" expr
+  modifyIndent succ
+  t <- case expr of
+    Global v -> do
+      (_, typ, _) <- context v
+      return $ first plicitness typ
+    Var v -> return $ metaType v
+    Con qc -> do
+      typ <- qconstructor qc
+      return $ first plicitness typ
+    Lit _ -> return $ Global Builtin.int
+    Pi {} -> return $ Builtin.typeN Explicit 1
+    Lam n p t s -> do
+      x <- forall_ n t ()
+      resType  <- typeOf (instantiate1 (pure x) s)
+      abstractedResType <- abstract1M x resType
+      return $ Pi n p t abstractedResType
+    App e1 p e2 -> do
+      e1type <- typeOf e1
+      case e1type of
+        Pi _ p' _ resType | p == p' -> return $ instantiate1 e2 resType
+        _ -> throwError "typeOf: expected pi type"
+    Case _ (ConBranches _ t) -> return t
+    Case _ (LitBranches _ def) -> typeOf def
+  modifyIndent pred
+  tr "typeOf res" =<< freeze t
+  return t

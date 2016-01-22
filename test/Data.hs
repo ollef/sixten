@@ -23,6 +23,8 @@ data List a where
   Nil : List a
   Cons : a -> List a -> List a
 
+-- List : {a : Type 0}(A : a) -> Type (1 + max 0 (sizeof A + sizeof (Ptr (List a))))
+
 tail : forall {a}. List a -> List a
 tail xs = case xs of
   Nil -> Nil
@@ -32,13 +34,11 @@ tail' xs = case xs of
   Nil -> Nil
   Cons x xs' -> xs'
 
-map : forall {a b : Type}. (a -> b) -> List a -> List b
+map : forall {a b : Type _}. (a -> b) -> List a -> List b
 map f xs = case xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (map f xs')
 
-{-
 map' f xs = case xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (map' f xs')
-  -}

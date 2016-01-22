@@ -15,7 +15,6 @@ import System.Environment
 import Builtin
 import Erasure
 import Infer
-import qualified Relevance
 import TCM
 import Syntax
 import qualified Syntax.Abstract as Abstract
@@ -58,10 +57,10 @@ inferProgram p' = mapM_ tcGroup sorted
       let vf :: a -> TCM s b
           vf _ = throwError "inferProgram"
       checkedTls' <- traverse (bitraverse (traverse $ traverse vf) (traverse vf)) checkedTls
-      reledTls <- Relevance.checkRecursiveDefs checkedTls'
-      reledTls' <- traverse (bitraverse (bitraverseDef   Relevance.fromMetaAnnotation (traverse vf))
-                                        (bitraverseScope Relevance.fromMetaAnnotation vf)) $ V.map (\(d, t, r) -> (r, d, t)) reledTls
-      reledTls'' <- traverse (traverse Relevance.fromRelevanceM) $ V.map (\(r, d, t) -> ((d, t), r)) reledTls'
+      let reledTls'' = (\(d, s) ->
+            ((bimapDef (Annotation Relevant) id d,
+             bimapScope (Annotation Relevant) id s),
+             Relevant)) <$> checkedTls'
       let names = V.fromList [n | (n, (_, _)) <- tls]
           instTls = HM.fromList
             [(names V.! i, ( instantiateDef (Abstract.Global . (names V.!)) d

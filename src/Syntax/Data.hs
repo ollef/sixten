@@ -4,6 +4,7 @@ module Syntax.Data where
 import Bound
 import Bound.Scope
 import Bound.Var
+import Data.Bifunctor
 import Data.Bitraversable
 import Data.String
 import qualified Data.Vector as Vector
@@ -39,6 +40,15 @@ bitraverseDataDef :: (Applicative f, Bitraversable typ)
                   -> f (DataDef (typ a') b')
 bitraverseDataDef f g (DataDef cs) =
   DataDef <$> traverse (\(ConstrDef c t) -> ConstrDef c <$> bitraverseScope f g t) cs
+
+bimapDataDef
+  :: Bifunctor typ
+  => (a -> a')
+  -> (b -> b')
+  -> DataDef (typ a) b
+  -> DataDef (typ a') b'
+bimapDataDef f g (DataDef cs) =
+  DataDef $ (\(ConstrDef c t) -> ConstrDef c $ bimapScope f g t) <$> cs
 
 instance Bound DataDef where
   DataDef cs >>>= f = DataDef (fmap (>>>= f) <$> cs)

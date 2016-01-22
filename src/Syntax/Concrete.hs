@@ -15,7 +15,6 @@ data Expr v
   | Global Name -- ^ Really just a variable, but it's often annoying to not have it
   | Lit Literal
   | Con (Either Constr QConstr)
-  | Type  -- ^ Type : Type
   | Pi  !NameHint !Plicitness (Type v) (Scope1 Expr v)  -- ^ Dependent function space
   | Lam !NameHint !Plicitness (Scope1 Expr v)
   | App (Expr v) !Plicitness (Expr v)
@@ -55,7 +54,6 @@ globals expr = case expr of
   Global n -> Var $ B n
   Lit l -> Lit l
   Con c -> Con c
-  Type -> Type
   Pi  h p t s -> Pi h p (globals t) (exposeScope globals s)
   Lam h p s -> Lam h p (exposeScope globals s)
   App e1 p e2 -> App (globals e1) p (globals e2)
@@ -64,8 +62,7 @@ globals expr = case expr of
   Wildcard -> Wildcard
 
 telescope :: Expr v -> Telescope Plicitness Expr v
-telescope (bindingsView piView -> (tele, Scope Type)) = tele
-telescope _ = error "Abstract.telescope"
+telescope (bindingsView piView -> (tele, _)) = tele
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -82,7 +79,6 @@ instance Monad Expr where
     Global g    -> Global g
     Lit l       -> Lit l
     Con c       -> Con c
-    Type        -> Type
     Pi  n p t s -> Pi n p (t >>= f) (s >>>= f)
     Lam n p s   -> Lam n p (s >>>= f)
     App e1 p e2 -> App (e1 >>= f) p (e2 >>= f)
@@ -92,12 +88,11 @@ instance Monad Expr where
 
 instance (IsString v, Pretty v) => Pretty (Expr v) where
   prettyM expr = case expr of
-    Var v     -> prettyM v
-    Global g  -> prettyM g
-    Lit l     -> prettyM l
+    Var v -> prettyM v
+    Global g -> prettyM g
+    Lit l -> prettyM l
     Con (Left c) -> prettyM c
     Con (Right qc) -> prettyM qc
-    Type      -> pure $ text "Type"
     Pi  h p Wildcard s -> withNameHint h $ \x -> parens `above` absPrec $
       prettyM "forall" <+> inviolable (braces `iff` (p == Implicit) $ prettyM x)
       <> prettyM "." <+> associate  (prettyM $ instantiate1 (pure $ fromText x) s)
@@ -113,4 +108,4 @@ instance (IsString v, Pretty v) => Pretty (Expr v) where
       prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> indent 2 (prettyM brs)
     Anno e t  -> parens `above` annoPrec $
       prettyM e <+> prettyM ":" <+> associate (prettyM t)
-    Wildcard  -> pure $ text "_"
+    Wildcard -> pure $ text "_"

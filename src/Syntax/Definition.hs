@@ -1,12 +1,13 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, Rank2Types #-}
 module Syntax.Definition where
 
+import Data.Bifunctor
+import Data.Bitraversable
 import Data.Foldable
 import Data.Hashable
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HM
 import Data.String
-import Data.Bitraversable
 import Bound
 import Prelude.Extras
 
@@ -50,6 +51,15 @@ bitraverseDef :: (Applicative f, Bitraversable expr)
               -> f (Definition (expr a') b')
 bitraverseDef f g (Definition d) = Definition <$> bitraverse f g d
 bitraverseDef f g (DataDefinition d) = DataDefinition <$> bitraverseDataDef f g d
+
+bimapDef
+  :: Bifunctor expr
+  => (a -> a')
+  -> (b -> b')
+  -> Definition (expr a) b
+  -> Definition (expr a') b'
+bimapDef f g (Definition d) = Definition $ bimap f g d
+bimapDef f g (DataDefinition d) = DataDefinition $ bimapDataDef f g d
 
 recursiveAbstractDefs :: (Eq v, Monad f, Functor t, Foldable t, Hashable v)
                       => t (v, Definition f v) -> t (Definition f (Var Int v))

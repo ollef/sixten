@@ -16,7 +16,6 @@ erase expr = case expr of
   Abstract.Global g -> Lambda.Global g
   Abstract.Con c -> Lambda.Con c
   Abstract.Lit l -> Lambda.Lit l
-  Abstract.Type -> error "erasure type"
   Abstract.Pi _ _ _ s -> erase $ instantiate1 (error "erasure pi") s
   Abstract.Lam h a _ s -> case relevance a of
     Irrelevant -> erase $ instantiate1 (error "erasure lambda") s
@@ -38,7 +37,7 @@ erase expr = case expr of
             Irrelevant -> (Nothing : xs, i)
             Relevant -> (Just i : xs, i + 1)) ([], 0) hps
     eraseScope = toScope . erase . fromScope
-    eraseBranches (ConBranches cbrs) = ConBranches [(c, hps', eraseScope $ mapBound permFun s)  | (c, hps, s) <- cbrs, let (permFun, hps') = eraseVars hps]
+    eraseBranches (ConBranches cbrs _) = ConBranches [(c, hps', eraseScope $ mapBound permFun s)  | (c, hps, s) <- cbrs, let (permFun, hps') = eraseVars hps] (Lambda.Lit 0)
     eraseBranches (LitBranches lbrs d) = LitBranches [(l, erase e) | (l, e) <- lbrs] (erase d)
 
 eraseDef :: HasRelevance a => Definition (Abstract a) v -> Definition Lambda v

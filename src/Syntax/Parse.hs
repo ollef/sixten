@@ -137,7 +137,7 @@ idStyle = Trifecta.IdentifierStyle "Dependent" start letter res Highlight.Identi
   where
     start  = Trifecta.satisfy isAlpha    <|> Trifecta.oneOf "_"
     letter = Trifecta.satisfy isAlphaNum <|> Trifecta.oneOf "_'"
-    res    = HS.fromList ["forall", "_", "Type", "case", "of", "where"]
+    res    = HS.fromList ["forall", "_", "case", "of", "where"]
 
 ident :: Parser Name
 ident = Trifecta.token $ Trifecta.ident idStyle
@@ -232,8 +232,7 @@ caseBinding = implicit <$ symbol "{" <*>% someSI identOrWildcard <*% symbol "}"
 
 atomicExpr :: Parser (Expr Name)
 atomicExpr
-  =  Type     <$ reserved "Type"
- <|> Lit      <$> literal
+  =  Lit      <$> literal
  <|> Wildcard <$ wildcard
  <|> Var      <$> ident
  <|> abstr (reserved "forall") piType
@@ -245,7 +244,7 @@ atomicExpr
     abstr t c = abstractBindings c <$ t <*>% someBindings <*% symbol "." <*>% expr
 
 branches :: Parser (Branches (Either Constr QConstr) Plicitness Expr Name)
-branches = dropAnchor $  ConBranches <$> manySameCol conBranch
+branches = dropAnchor $  ConBranches <$> manySameCol conBranch <*> pure Wildcard
                      <|> LitBranches <$> manySameCol litBranch
                                      <*> (sameCol >> (reserved "_" *>% symbol "->" *>% expr))
   where

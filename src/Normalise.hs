@@ -22,7 +22,6 @@ whnf dat anno expr = case expr of
       _ -> return expr
   Con _ -> return expr
   Lit _ -> return expr
-  Type -> return expr
   Pi {} -> return expr
   Lam {} -> return expr
   App e1 p e2 -> do
@@ -47,7 +46,6 @@ normalise dat anno expr = case expr of
       _ -> return expr
   Con _ -> return expr
   Lit _ -> return expr
-  Type -> return expr
   Pi n p a s -> normaliseScope n (Pi n p)  a s
   Lam n p a s -> normaliseScope n (Lam n p) a s
   App e1 p e2 -> do

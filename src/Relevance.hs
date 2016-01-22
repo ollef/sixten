@@ -35,6 +35,7 @@ forall ~{b : Type}~{X : b}{F : ~b -> Type}. F ~X -> F ~X
 
 -}
 
+{-
 data MetaRel s = MetaRel
   { metaRelId  :: Int
   , metaRelRef :: STRef s (Maybe (RelevanceM s))
@@ -294,7 +295,7 @@ infer expr surroundingRel knownDef = do
     Con c -> do
       t <- qconstructor c
       return (Con c, first toMetaAnnotation t)
-    Lit l -> return (Lit l, Builtin.int)
+    Lit l -> return (Lit l, Global Builtin.int)
     Type        -> return (Type, Type)
     Pi x p t1 s -> do
       (_, t1typ) <- infer t1 (Relevance Irrelevant) False
@@ -510,3 +511,4 @@ checkRecursiveDefs ds = case traverse unusedScope $ snd <$> ds of
           s  = abstractDef f d
           st = abstract f t
       return (s, st, metaData m)
+    -}

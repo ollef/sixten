@@ -50,7 +50,7 @@ instance (Show d, Show a) => Show (MetaVar s d a) where
     showChar ' ' . showsPrec 11 dat .
     showChar ' ' . showString "<Ref>"
 
-showMeta :: (HasRelevance a, HasPlicitness a, Eq a, Functor f, Foldable f, Pretty (f String))
+showMeta :: (Show d, HasRelevance a, HasPlicitness a, Eq a, Functor f, Foldable f, Pretty (f String))
          => f (MetaVar s d a) -> TCM s Doc
 showMeta x = do
   vs <- foldMapM S.singleton x
@@ -58,13 +58,13 @@ showMeta x = do
       p _                   = return $ Left $ Level (-1)
   let vsl = S.toList vs
   pvs <- T.mapM p vsl
-  let sv v = "<" ++ (if isJust $ metaRef v then "∃" else "")
-          ++ show (metaId v) ++ ":"
-          ++ show (pretty $ sv <$> metaType v) ++ ">"
-  let solutions = [(sv v, pretty $ fmap sv <$> msol) | (v, msol) <- zip vsl pvs]
+  let sv v = "$" ++ fromMaybe "" (fromText <$> unHint (metaHint v)) ++ (if isJust $ metaRef v then "∃" else "")
+          ++ show (metaId v) -- ++ ":"
+          -- ++ show (pretty $ sv <$> metaType v) ++ ">"
+  let solutions = [(sv v, pretty $ sv <$> metaType v, (show $ metaData v, pretty $ fmap sv <$> msol)) | (v, msol) <- zip vsl pvs]
   return $ pretty (sv <$> x) <> text ", vars: " <> pretty solutions
 
-tr :: (HasRelevance a, HasPlicitness a, Eq a, Functor f, Foldable f, Pretty (f String))
+tr :: (Show d, HasRelevance a, HasPlicitness a, Eq a, Functor f, Foldable f, Pretty (f String))
    => String -> f (MetaVar s d a) -> TCM s ()
 tr s x = do
   i <- gets tcIndent
