@@ -27,24 +27,23 @@ data Maybe a where
   Nothing : Maybe a
   Just : a -> Maybe a
 
--- List : {a : Type 0}(A : a) -> Type (1 + max 0 (sizeof A + sizeof (Ptr (List a))))
-
-{-
 tail : forall {a}. List a -> List a
 tail xs = case xs of
   Nil -> Nil
-  Cons x xs' -> xs'
+  Cons x xs' -> deref xs'
 
 tail' xs = case xs of
   Nil -> Nil
-  Cons x xs' -> xs'
+  Cons x xs' -> deref xs'
+
+deref : forall {t}. Ptr t -> t
+deref p = case p of Ref x -> x
 
 map : forall {a b : Type _}. (a -> b) -> List a -> List b
 map f xs = case xs of
   Nil -> Nil
-  Cons x xs' -> Cons (f x) (map f xs')
+  Cons x xs' -> Cons (f x) (Ref (map f (deref xs')))
 
 map' f xs = case xs of
   Nil -> Nil
-  Cons x xs' -> Cons (f x) (map' f xs')
-  -}
+  Cons x xs' -> Cons (f x) (Ref (map' f (deref xs')))

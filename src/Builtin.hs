@@ -38,25 +38,38 @@ typeN d = typeE d . Lit
 pointer :: Name
 pointer = "Ptr"
 
+ref :: Constr
+ref = "Ref"
+
 context :: Program Annotation (Expr Annotation) Empty
 context = HM.fromList
   [ (int, opaque $ typeN ie 1)
   , (add, opaque $ arrow ie intE $ arrow ie intE intE)
   , (max_, opaque $ arrow ie intE $ arrow ie intE intE)
   , (type_, opaque $ arrow ie intE $ typeN ie 0)
-  , (pointer, opaque $ pi_ "size" ii intE
-                     $ arrow ie (typeE ie (pure "size")) $ typeN ie 1)
+  , (pointer, dataType (pi_ "size" ii intE $ arrow ie (typeE ie $ pure "size") $ typeN ie 1)
+                       [ ConstrDef ref $ toScope $ fmap B $ arrow re (pure 1)
+                                       $ apps (Global pointer) [(ii, pure 0), (ie, pure 1)]
+                       ])
   ]
   where
     ie = Annotation Irrelevant Explicit
+    re = Annotation Relevant Explicit
     ii = Annotation Irrelevant Implicit
+    ri = Annotation Relevant Implicit
     opaque
       :: Expr Annotation Name
       -> ( Definition (Expr Annotation) Empty
          , Expr Annotation Empty
          , Annotation)
+    cl = fromMaybe (error "Builtin not closed") . closed
     opaque t =
       ( DataDefinition $ DataDef mempty
-      , fromMaybe (error "Builtin not closed") $ closed t
+      , cl t
+      , ie
+      )
+    dataType t xs =
+      ( DataDefinition $ DataDef xs
+      , cl t
       , ie
       )

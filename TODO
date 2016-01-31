@@ -1,10 +1,10 @@
 Size types
-  Give data types the correct size
   How to cleanly make `(a -> b) : Type 0` when `b : Type 0`?
   Rename Int to Size and add new Int type
   Should the type's size be implicit? (`Type {n}`)
   Reorder data to pass fewer sizes
     (Depends on relevance analysis and/or removal of unused args)
+    Reorder data to enable tagged pointers?
 Propagation
   https://github.com/tomprimozic/type-systems/tree/master/first_class_polymorphism
 Arity inference

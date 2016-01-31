@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
--- | Desugaring of programs
-module Syntax.Desugar where
+-- | Resolving of names
+module Syntax.Resolve where
 
 import Bound
 import Control.Applicative

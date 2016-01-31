@@ -6,6 +6,7 @@ import Data.Bifoldable
 import Data.Bifunctor
 import Data.Bitraversable
 import qualified Data.HashMap.Lazy as HM
+import Data.HashSet(HashSet)
 import qualified Data.HashSet as HS
 import Data.Monoid
 import qualified Data.Text.IO as Text
@@ -19,13 +20,13 @@ import TCM
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete as Concrete
-import qualified Syntax.Desugar
+import qualified Syntax.Resolve
 import qualified Syntax.Parse
 import TopoSort
 import Util
 
-inferProgram :: Program Plicitness Concrete.Expr Name -> TCM s ()
-inferProgram p' = mapM_ tcGroup sorted
+inferProgram :: HashSet Constr -> Program Plicitness Concrete.Expr Name -> TCM s ()
+inferProgram constrs p' = mapM_ tcGroup sorted
   where
     p = (\(x, y, _) -> (x, y)) <$> p'
     deps   = HM.map (bifoldMap defNames toHashSet) p <> HM.fromList constructorMappings
@@ -38,7 +39,7 @@ inferProgram p' = mapM_ tcGroup sorted
                           | (n, (DataDefinition d, _)) <- HM.toList p
                           , c <- constructorNames d
                           ]
-    constructors = HS.fromList $ map fst constructorMappings
+    constructors = constrs <> HS.fromList (map fst constructorMappings)
     instCon v
       | v `HS.member` constructors = Concrete.Con $ Left v
       | otherwise = pure v
@@ -73,11 +74,15 @@ inferProgram p' = mapM_ tcGroup sorted
 
 test :: FilePath -> IO ()
 test inp = do
-  mp <- fmap Syntax.Desugar.program <$> Syntax.Parse.parseFromFile Syntax.Parse.program inp
+  mp <- fmap Syntax.Resolve.program <$> Syntax.Parse.parseFromFile Syntax.Parse.program inp
   case mp of
     Nothing         -> return ()
     Just (Left err) -> Text.putStrLn err
-    Just (Right p)  -> case runTCM (inferProgram p >> gets tcContext) Builtin.context of
+    Just (Right p)  -> case runTCM (do
+      addContext Builtin.context
+      constrs <- HS.fromList . HM.keys <$> gets tcConstrs
+      inferProgram constrs p
+      gets tcContext) mempty of
       (Left err, tr) -> do mapM_ putStrLn tr; putStrLn err
       (Right res, _) -> do
         mapM_ print $ (show . (\(x, (d, t, a)) -> runPrettyM $ prettyM x <+> prettyM "=" <+> prettyTypedDef (fe d) (fe t) (fst $ bindingsView Abstract.piView $ fe t))) <$> HM.toList res
