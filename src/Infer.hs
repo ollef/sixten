@@ -69,7 +69,7 @@ checkType surrounding expr typ = do
 
 existsTypeType :: NameHint -> TCM s (Abstract s)
 existsTypeType n = do
-  sz <- existsVar n Builtin.intE ()
+  sz <- existsVar n Builtin.sizeE ()
   existsVar n (Builtin.typeE Explicit sz) ()
 
 existsType :: NameHint -> TCM s (Abstract s)
@@ -94,7 +94,7 @@ inferType surrounding expr = do
       let qc = qualify n con
       typ <- qconstructor qc
       return (Abstract.Con qc, first plicitness typ)
-    Concrete.Lit l -> return (Abstract.Lit l, Abstract.Global Builtin.int)
+    Concrete.Lit l -> return (Abstract.Lit l, Builtin.sizeE)
     Concrete.Pi n p t s -> do
       argTypeType <- existsTypeType n
       (t', _) <- checkType p t argTypeType
@@ -222,7 +222,7 @@ inferBranches surrounding expr (ConBranches cbrs _) = mdo
 inferBranches surrounding expr brs@(LitBranches lbrs d) = do
   tr "inferBranches e" expr
   tr "              brs" brs
-  (expr', _etype') <- checkType surrounding expr Builtin.intE
+  (expr', _etype') <- checkType surrounding expr Builtin.sizeE
   t <- existsType mempty
   lbrs' <- forM lbrs $ \(l, e) -> do
     (e', _) <- checkType surrounding e t
@@ -268,15 +268,15 @@ checkConstrDef
 checkConstrDef (ConstrDef c (bindingsView Concrete.piView -> (args, ret))) = mdo
   let inst = instantiateTele $ (\(a, _, _, _, _) -> pure a) <$> args'
   args' <- forTele args $ \h p arg -> do
-    argSize <- existsVar h Builtin.intE ()
+    argSize <- existsVar h Builtin.sizeE ()
     (arg', _) <- checkType p (inst arg) $ Builtin.typeE Explicit argSize
     v <- forall_ h arg' ()
     return (v, h, p, arg', argSize)
 
   let sizes = (\(_, _, _, _, sz) -> sz) <$> args'
-      size = foldr (Builtin.addE Explicit) (Abstract.Lit 0) sizes
+      size = foldr (Builtin.addSizeE Explicit) (Abstract.Lit 0) sizes
 
-  sizeVar <- existsVar mempty Builtin.intE ()
+  sizeVar <- existsVar mempty Builtin.sizeE ()
 
   (ret', _) <- checkType Explicit (inst ret) $ Builtin.typeE Explicit sizeVar
 
@@ -312,8 +312,8 @@ checkDataType name (DataDef cs) typ = mdo
 
   mapM_ (unify constrRetType) rets
 
-  let typSize = Builtin.addE Explicit (Abstract.Lit 1)
-              $ foldr (Builtin.maxE Explicit) (Abstract.Lit 0) sizes
+  let typSize = Builtin.addSizeE Explicit (Abstract.Lit 1)
+              $ foldr (Builtin.maxSizeE Explicit) (Abstract.Lit 0) sizes
 
       typeReturnType = Builtin.typeE Explicit typSize
       typ'' = quantify Abstract.Pi (abstractNone typeReturnType) $ Telescope params

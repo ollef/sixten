@@ -8,23 +8,23 @@ import Syntax
 import Syntax.Abstract
 import Util
 
-int :: Name
-int = "Int"
+size :: Name
+size = "Size"
 
-intE :: Expr d a
-intE = Global int
+sizeE :: Expr d a
+sizeE = Global size
 
-add :: Name
-add = "+"
+addSize :: Name
+addSize = "+"
 
-addE :: d -> Expr d a -> Expr d a -> Expr d a
-addE d e1 e2 = apps (Global add) [(d, e1), (d, e2)]
+addSizeE :: d -> Expr d a -> Expr d a -> Expr d a
+addSizeE d e1 e2 = apps (Global addSize) [(d, e1), (d, e2)]
 
-max_ :: Name
-max_ = "max"
+maxSize :: Name
+maxSize = "max"
 
-maxE :: d -> Expr d a -> Expr d a -> Expr d a
-maxE d e1 e2 = apps (Global max_) [(d, e1), (d, e2)]
+maxSizeE :: d -> Expr d a -> Expr d a -> Expr d a
+maxSizeE d e1 e2 = apps (Global maxSize) [(d, e1), (d, e2)]
 
 type_ :: Name
 type_ = "Type"
@@ -43,11 +43,11 @@ ref = "Ref"
 
 context :: Program Annotation (Expr Annotation) Empty
 context = HM.fromList
-  [ (int, opaque $ typeN ie 1)
-  , (add, opaque $ arrow ie intE $ arrow ie intE intE)
-  , (max_, opaque $ arrow ie intE $ arrow ie intE intE)
-  , (type_, opaque $ arrow ie intE $ typeN ie 0)
-  , (pointer, dataType (pi_ "size" ii intE $ arrow ie (typeE ie $ pure "size") $ typeN ie 1)
+  [ (size, opaque $ typeN ie 1)
+  , (addSize, opaque $ arrow ie sizeE $ arrow ie sizeE sizeE)
+  , (maxSize, opaque $ arrow ie sizeE $ arrow ie sizeE sizeE)
+  , (type_, opaque $ arrow ie sizeE $ typeN ie 0)
+  , (pointer, dataType (pi_ "size" ii sizeE $ arrow ie (typeE ie $ pure "size") $ typeN ie 1)
                        [ ConstrDef ref $ toScope $ fmap B $ arrow re (pure 1)
                                        $ apps (Global pointer) [(ii, pure 0), (ie, pure 1)]
                        ])

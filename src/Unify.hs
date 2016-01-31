@@ -59,10 +59,10 @@ unify type1 type2 = do
         (App e1 p1 e1', App e2 p2 e2') | p1 == p2 && not reduce -> do
           unify e1  e2
           unify e1' e2'
-        (Lit 0, appsView -> (Global ((== Builtin.add) -> True) , [(_, x), (_, y)])) -> do
+        (Lit 0, appsView -> (Global ((== Builtin.addSize) -> True) , [(_, x), (_, y)])) -> do
           unify (Lit 0) x
           unify (Lit 0) y
-        (appsView -> (Global ((== Builtin.add) -> True) , [(_, x), (_, y)]), Lit 0) -> do
+        (appsView -> (Global ((== Builtin.addSize) -> True) , [(_, x), (_, y)]), Lit 0) -> do
           unify x (Lit 0)
           unify y (Lit 0)
         _ | reduce -> do
@@ -128,8 +128,8 @@ subtype surrounding expr type1 type2 = do
             Left l -> do
               occurs l v typ2
               unify (metaType v) (Builtin.typeN Explicit 1)
-              t11TypeSize <- existsVarAtLevel (metaHint v) Builtin.intE () l
-              t12TypeSize <- existsVarAtLevel (metaHint v) Builtin.intE () l
+              t11TypeSize <- existsVarAtLevel (metaHint v) Builtin.sizeE () l
+              t12TypeSize <- existsVarAtLevel (metaHint v) Builtin.sizeE () l
               t11 <- existsVarAtLevel (metaHint v) (Builtin.typeE Explicit t11TypeSize) () l
               t12 <- existsVarAtLevel (metaHint v) (Builtin.typeE Explicit t12TypeSize) () l
               solve r $ Pi h p t11 $ abstractNone t12
@@ -175,7 +175,7 @@ typeOf expr = do
     Con qc -> do
       typ <- qconstructor qc
       return $ first plicitness typ
-    Lit _ -> return $ Global Builtin.int
+    Lit _ -> return $ Global Builtin.size
     Pi {} -> return $ Builtin.typeN Explicit 1
     Lam n p t s -> do
       x <- forall_ n t ()
