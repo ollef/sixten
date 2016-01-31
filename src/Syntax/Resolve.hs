@@ -47,7 +47,7 @@ program xs = snd <$> foldlM resolveName (Nothing, mempty) xs >>= matchTypes
         let defs' = HM.unionWith (\(d, _) (t, _) -> (d, t)) (flip (,) Wildcard <$> defs)
                                                             (flip (,) Wildcard <$> types)
             ldefs = (\(e, t) -> (Definition e, t)) <$> defs'
-            rdatas = (\(tele, d) -> (DataDefinition d, quantify Pi (Scope $ App (Global Builtin.type_) Explicit Wildcard) tele)) <$> datas
+            rdatas = (\(tele, d) -> (DataDefinition d, quantify Pi (Scope $ App (Global Builtin.type_) Implicit Wildcard) tele)) <$> datas
         case HM.keys $ HM.intersection ldefs rdatas of
           [] -> return $ ldefs <> rdatas
           vs -> throwError $ "duplicate definition: " <> Text.intercalate ", " (map shower vs)

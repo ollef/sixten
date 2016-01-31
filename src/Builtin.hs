@@ -30,7 +30,7 @@ type_ :: Name
 type_ = "Type"
 
 typeE :: Expr a -> Expr a
-typeE = App (Global type_) Explicit
+typeE = App (Global type_) Implicit
 
 typeN :: Integer -> Expr a
 typeN = typeE . Lit
@@ -46,7 +46,7 @@ context = HM.fromList
   [ (size, opaque $ typeN 1)
   , (addSize, opaque $ arrow Explicit sizeE $ arrow Explicit sizeE sizeE)
   , (maxSize, opaque $ arrow Explicit sizeE $ arrow Explicit sizeE sizeE)
-  , (type_, opaque $ arrow Explicit sizeE $ typeN 0)
+  , (type_, opaque $ arrow Implicit sizeE $ typeN 0)
   , (pointer, dataType (pi_ "size" Implicit sizeE $ arrow Explicit (typeE $ pure "size") $ typeN 1)
                        [ ConstrDef ref $ toScope $ fmap B $ arrow Explicit (pure 1)
                                        $ apps (Global pointer) [(Implicit, pure 0), (Explicit, pure 1)]

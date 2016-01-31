@@ -1,7 +1,7 @@
 Pretty-printing bug
+instantiate implicits at variable use sites?
 Size types
   How to cleanly make `(a -> b) : Type 0` when `b : Type 0`?
-  Should the type's size be implicit? (`Type {n}`)
   Reorder data to pass fewer sizes
     (Depends on relevance analysis and/or removal of unused args)
     Reorder data to enable tagged pointers?

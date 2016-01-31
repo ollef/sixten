@@ -37,7 +37,7 @@ tail' xs = case xs of
 deref : forall {t}. Ptr t -> t
 deref p = case p of Ref t -> t
 
-map : forall {a b : Type _}. (a -> b) -> List a -> List b
+map : forall {a b : Type {_}}. (a -> b) -> List a -> List b
 map f xs = case xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (Ref (map f (deref xs')))
