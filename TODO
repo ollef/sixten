@@ -1,15 +1,17 @@
+Size types
+  Give data types the correct size
+  How to cleanly make `(a -> b) : Type 0` when `b : Type 0`?
+  Rename Int to Size and add new Int type
+  Should the type's size be implicit? (`Type {n}`)
+  Reorder data to pass fewer sizes
+    (Depends on relevance analysis and/or removal of unused args)
+Propagation
+  https://github.com/tomprimozic/type-systems/tree/master/first_class_polymorphism
+Arity inference
+Javascript code generation
 Cases
   Make Concrete syntax have deep patterns and desugar them
   Normalisation
-Propagation
-  https://github.com/tomprimozic/type-systems/tree/master/first_class_polymorphism
-Make Type a builtin?
-Merge Has{Plicitness,Relevance} into Annotation class?
-Clean up relevance inference?
-  Is it cleaner to just do it together with the other inference
-Arity inference
-Javascript code generation
-Size types
 Let definitions
 Laziness
 Specialisation pragma

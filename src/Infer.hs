@@ -6,9 +6,10 @@ import Control.Monad.Except
 import Control.Monad.ST()
 import Data.Bifunctor
 import Data.Foldable as F
-import Data.List as List
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.HashSet as HS
+import Data.List as List
+import Data.Maybe
 import Data.Monoid
 import qualified Data.Set as Set
 import Data.Vector(Vector)
@@ -207,7 +208,7 @@ inferBranches surrounding expr (ConBranches cbrs _) = mdo
         let nps' = (\(p, mv) -> (maybe (Hint Nothing) metaHint mv, p)) <$> vs
         return (etype', (qc, nps', sbr'):resBrs, resType')
 
-  resType1    <- existsType mempty
+  resType1 <- existsType mempty
 
   (etype3, cbrs2, resType2) <- foldrM go (etype2, mempty, resType1) cbrs
 
@@ -262,26 +263,26 @@ generalise expr typ = do
     go _   _ _ = error "Generalise"
 
 checkConstrDef
-  :: Abstract s
-  -> ConstrDef (Concrete s)
-  -> TCM s (ConstrDef (Abstract s))
-checkConstrDef typ (ConstrDef c (bindingsView Concrete.piView -> (args, ret))) = mdo
+  :: ConstrDef (Concrete s)
+  -> TCM s (ConstrDef (Abstract s), Abstract s, Abstract s)
+checkConstrDef (ConstrDef c (bindingsView Concrete.piView -> (args, ret))) = mdo
   let inst = instantiateTele $ (\(a, _, _, _, _) -> pure a) <$> args'
   args' <- forTele args $ \h p arg -> do
     argSize <- existsVar h Builtin.intE ()
-    argType <- existsVar h (Builtin.typeE Explicit argSize) ()
-    (arg', _) <- checkType p (inst arg) argType
+    (arg', _) <- checkType p (inst arg) $ Builtin.typeE Explicit argSize
     v <- forall_ h arg' ()
     return (v, h, p, arg', argSize)
 
   let sizes = (\(_, _, _, _, sz) -> sz) <$> args'
       size = foldr (Builtin.addE Explicit) (Abstract.Lit 0) sizes
 
-  (ret', _) <- checkType Explicit (inst ret) $ Builtin.typeE Explicit size
-  unify ret' typ
+  sizeVar <- existsVar mempty Builtin.intE ()
+
+  (ret', _) <- checkType Explicit (inst ret) $ Builtin.typeE Explicit sizeVar
+
   res <- F.foldrM (\(v, h, p, arg', _) rest ->
          Abstract.Pi h p arg' <$> abstract1M v rest) ret' args'
-  return $ ConstrDef c res
+  return (ConstrDef c res, ret', size)
 
 checkDataType
   :: MetaVar s () Plicitness
@@ -300,64 +301,27 @@ checkDataType name (DataDef cs) typ = mdo
     return (v, h, p, is)
 
   let vs = (\(v, _, _, _) -> v) <$> ps'
-      retType = Abstract.apps (pure name) [(p, pure v) | (v, _, p, _) <- V.toList ps']
+      constrRetType = Abstract.apps (pure name) [(p, pure v) | (v, _, p, _) <- V.toList ps']
 
   params <- forM ps' $ \(_, h, p, t) -> (,,) h p <$> abstractM (fmap Tele . (`V.elemIndex` vs)) t
 
-  cs' <- forM cs $ \(ConstrDef c t) -> do
-    res <- checkConstrDef retType (ConstrDef c $ instantiateTele (pure <$> vs) t)
-    traverse (abstractM (fmap Tele . (`V.elemIndex` vs))) res
+  (cs', rets, sizes) <- fmap unzip3 $ forM cs $ \(ConstrDef c t) -> do
+    (res, ret, size) <- checkConstrDef (ConstrDef c $ instantiateTele (pure <$> vs) t)
+    ares <- traverse (abstractM (fmap Tele . (`V.elemIndex` vs))) res
+    return (ares, ret, size)
 
-  let typ'' = quantify Abstract.Pi (Scope $ Builtin.typeN Explicit 0) $ Telescope params
+  mapM_ (unify constrRetType) rets
+
+  let typSize = Builtin.addE Explicit (Abstract.Lit 1)
+              $ foldr (Builtin.maxE Explicit) (Abstract.Lit 0) sizes
+
+      typeReturnType = Builtin.typeE Explicit typSize
+      typ'' = quantify Abstract.Pi (abstractNone typeReturnType) $ Telescope params
+
+  unify typeReturnType =<< typeOf constrRetType
 
   tr "checkDataType res typ" typ''
   return (DataDef cs', typ'')
-
-subDefType
-  :: Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
-  -> Abstract s
-  -> Abstract s
-  -> TCM s ( Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
-           , Abstract s
-           )
-subDefType (Definition e) t t' = first Definition <$> subtype Explicit e t t'
-subDefType (DataDefinition d) t t' = do unify t t'; return (DataDefinition d, t')
-
-abstractDefM
-  :: (MetaVar s () Plicitness -> Maybe b)
-  -> Definition (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
-  -> Abstract s
-  -> TCM s ( Definition (Abstract.Expr Plicitness) (Var b (MetaVar s () Plicitness))
-           , ScopeM b (Abstract.Expr Plicitness) s () Plicitness
-           )
-abstractDefM f (Definition e) t = do
-  e' <- abstractM f e
-  t' <- abstractM f t
-  return (Definition $ fromScope e', t')
-abstractDefM f (DataDefinition e) t = do
-  e' <- abstractDataDefM f e t
-  t' <- abstractM f t
-  return (DataDefinition e', t')
-
-abstractDataDefM
-  :: (MetaVar s () Plicitness -> Maybe b)
-  -> DataDef (Abstract.Expr Plicitness) (MetaVar s () Plicitness)
-  -> Abstract s
-  -> TCM s (DataDef (Abstract.Expr Plicitness) (Var b (MetaVar s () Plicitness)))
-abstractDataDefM f (DataDef cs) typ = mdo
-  let inst = instantiateTele $ pure <$> vs
-      vs = (\(_, _, _, v) -> v) <$> ps'
-  typ' <- freeze typ
-  ps' <- forTele (Abstract.telescope typ') $ \h p s -> do
-    let is = inst s
-    v <- forall_ h is ()
-    return (h, p, is, v)
-  let f' x = F <$> f x <|> B . Tele <$> V.elemIndex x vs
-  acs <- forM cs $ \c -> traverse (fmap (toScope . fmap assoc . fromScope) . abstractM f' . inst) c
-  return $ DataDef acs
-  where
-    assoc :: Var (Var a b) c -> Var a (Var b c)
-    assoc = unvar (unvar B (F . B)) (F . F)
 
 checkDefType
   :: MetaVar s () Plicitness
@@ -388,14 +352,13 @@ generaliseDef vs (Definition e) t = do
       vs
 generaliseDef vs (DataDefinition (DataDef cs)) typ = do
   let cs' = map (fmap $ toScope . splat f g) cs
-  -- * Abstract vs on top of typ
+  -- Abstract vs on top of typ
   typ' <- foldrM (\v -> fmap (Abstract.Pi (metaHint v) Implicit (metaType v))
                       . abstract1M v) typ vs
   return (DataDefinition (DataDef cs'), typ')
   where
     f v = pure $ maybe (F v) (B . Tele) (v `V.elemIndex` vs)
     g = pure . B . (+ Tele (length vs))
-
 
 generaliseDefs
   :: Vector ( MetaVar s () Plicitness
@@ -469,8 +432,8 @@ checkRecursiveDefs ds =
           , instantiate (pure . (evs V.!)) t
           )
     sequence $ flip V.imap instantiatedDs $ \i (d, t) -> do
-      (t', _) <- checkType Explicit t $ Builtin.typeN Explicit 1
       let v = evs V.! i
+      (t', _) <- inferType Explicit t
       unify (metaType v) t'
       (d', t'') <- checkDefType v d t'
       return (v, d', t'')

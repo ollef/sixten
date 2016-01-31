@@ -28,7 +28,7 @@ prettyTypedDef :: (Eq1 expr, Eq v, Eq d, HasRelevance d, HasPlicitness d, IsStri
                -> Telescope d expr v
                -> PrettyM Doc
 prettyTypedDef (Definition d) t _ = prettyM d <+> prettyM ":" <+> prettyM t
-prettyTypedDef (DataDefinition d) _ tele = prettyDataDef tele d
+prettyTypedDef (DataDefinition d) t tele = prettyDataDef tele d <+> prettyM ":" <+> prettyM t
 
 abstractDef :: Monad expr
             => (a -> Maybe b) -> Definition expr a -> Definition expr (Var b a)

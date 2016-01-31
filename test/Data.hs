@@ -21,10 +21,15 @@ test (b : Bool) = case b of
 
 data List a where
   Nil : List a
-  Cons : a -> List a -> List a
+  Cons : a -> Ptr (List a) -> List a
+
+data Maybe a where
+  Nothing : Maybe a
+  Just : a -> Maybe a
 
 -- List : {a : Type 0}(A : a) -> Type (1 + max 0 (sizeof A + sizeof (Ptr (List a))))
 
+{-
 tail : forall {a}. List a -> List a
 tail xs = case xs of
   Nil -> Nil
@@ -42,3 +47,4 @@ map f xs = case xs of
 map' f xs = case xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (map' f xs')
+  -}

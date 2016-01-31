@@ -32,6 +32,12 @@ type Type = Expr
 
 -------------------------------------------------------------------------------
 -- * Views and smart constructors
+pi_ :: Name -> d -> Type d Name -> Expr d Name -> Expr d Name
+pi_ n d t e = Pi (Hint $ Just n) d t $ abstract1 n e
+
+lam :: Name -> d -> Type d Name -> Expr d Name -> Expr d Name
+lam n d t e = Lam (Hint $ Just n) d t $ abstract1 n e
+
 piView :: Expr d v -> Maybe (NameHint, d, Type d v, Scope1 (Expr d) v)
 piView (Pi n p e s) = Just (n, p, e, s)
 piView _            = Nothing

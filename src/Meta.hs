@@ -1,6 +1,7 @@
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE RecursiveDo, ViewPatterns #-}
 module Meta where
 
+import Control.Applicative
 import Control.Monad.Except
 import Control.Monad.State
 import Control.Monad.ST.Class
@@ -12,6 +13,7 @@ import Data.Monoid
 import qualified Data.Set as S
 import Data.STRef
 import qualified Data.Traversable as T
+import qualified Data.Vector as V
 
 import Syntax
 import qualified Syntax.Abstract as Abstract
@@ -187,6 +189,44 @@ abstract1M v e = do
   TCM.log $ "abstracting " ++ show (metaId v)
   abstractM (\v' -> if v == v' then Just () else Nothing) e
 
+abstractDefM
+  :: Show a
+  => (MetaVar s () a -> Maybe b)
+  -> Definition (Abstract.Expr a) (MetaVar s () a)
+  -> AbstractM s () a
+  -> TCM s ( Definition (Abstract.Expr a) (Var b (MetaVar s () a))
+           , ScopeM b (Abstract.Expr a) s () a
+           )
+abstractDefM f (Definition e) t = do
+  e' <- abstractM f e
+  t' <- abstractM f t
+  return (Definition $ fromScope e', t')
+abstractDefM f (DataDefinition e) t = do
+  e' <- abstractDataDefM f e t
+  t' <- abstractM f t
+  return (DataDefinition e', t')
+
+abstractDataDefM
+  :: Show a
+  => (MetaVar s () a -> Maybe b)
+  -> DataDef (Abstract.Expr a) (MetaVar s () a)
+  -> AbstractM s () a
+  -> TCM s (DataDef (Abstract.Expr a) (Var b (MetaVar s () a)))
+abstractDataDefM f (DataDef cs) typ = mdo
+  let inst = instantiateTele $ pure <$> vs
+      vs = (\(_, _, _, v) -> v) <$> ps'
+  typ' <- freeze typ
+  ps' <- forTele (Abstract.telescope typ') $ \h p s -> do
+    let is = inst s
+    v <- forall_ h is ()
+    return (h, p, is, v)
+  let f' x = F <$> f x <|> B . Tele <$> V.elemIndex x vs
+  acs <- forM cs $ \c -> traverse (fmap (toScope . fmap assoc . fromScope) . abstractM f' . inst) c
+  return $ DataDef acs
+  where
+    assoc :: Var (Var a b) c -> Var a (Var b c)
+    assoc = unvar (unvar B (F . B)) (F . F)
+
 etaLamM :: Eq a
         => NameHint
         -> a
@@ -211,4 +251,4 @@ freezeBound e = (>>>= id) <$> traverse go e
   where
     go v@(metaRef -> Just r) = either (const $ do mt <- freeze (metaType v); return $ pure v {metaType = mt})
                                           freeze =<< solution r
-    go v                         = return $ pure v
+    go v = return $ pure v

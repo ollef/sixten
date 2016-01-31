@@ -2,6 +2,7 @@
 module Builtin where
 
 import qualified Data.HashMap.Lazy as HM
+import Data.Maybe
 
 import Syntax
 import Syntax.Abstract
@@ -25,28 +26,37 @@ max_ = "max"
 maxE :: d -> Expr d a -> Expr d a -> Expr d a
 maxE d e1 e2 = apps (Global max_) [(d, e1), (d, e2)]
 
-sizeOf :: Name
-sizeOf = "sizeOf" -- : forall {n}. Type n -> Int
-
-sizeOfE :: d -> Expr d a -> Expr d a
-sizeOfE d = App (Global sizeOf) d
-
 type_ :: Name
 type_ = "Type"
 
 typeE :: d -> Expr d a -> Expr d a
-typeE d = App (Global type_) d
+typeE = App (Global type_)
 
 typeN :: d -> Integer -> Expr d a
 typeN d = typeE d . Lit
 
+pointer :: Name
+pointer = "Ptr"
+
 context :: Program Annotation (Expr Annotation) Empty
 context = HM.fromList
-  [ (int, opaque $ typeN irr 1)
-  , (add, opaque $ arrow irr intE $ arrow irr intE intE)
-  , (max_, opaque $ arrow irr intE $ arrow irr intE intE)
-  , (type_, opaque $ arrow irr intE $ typeN irr 0)
+  [ (int, opaque $ typeN ie 1)
+  , (add, opaque $ arrow ie intE $ arrow ie intE intE)
+  , (max_, opaque $ arrow ie intE $ arrow ie intE intE)
+  , (type_, opaque $ arrow ie intE $ typeN ie 0)
+  , (pointer, opaque $ pi_ "size" ii intE
+                     $ arrow ie (typeE ie (pure "size")) $ typeN ie 1)
   ]
   where
-    irr = Annotation Irrelevant Explicit
-    opaque t = (DataDefinition $ DataDef mempty, t, irr)
+    ie = Annotation Irrelevant Explicit
+    ii = Annotation Irrelevant Implicit
+    opaque
+      :: Expr Annotation Name
+      -> ( Definition (Expr Annotation) Empty
+         , Expr Annotation Empty
+         , Annotation)
+    opaque t =
+      ( DataDefinition $ DataDef mempty
+      , fromMaybe (error "Builtin not closed") $ closed t
+      , ie
+      )

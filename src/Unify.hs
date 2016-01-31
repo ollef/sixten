@@ -184,9 +184,10 @@ typeOf expr = do
       return $ Pi n p t abstractedResType
     App e1 p e2 -> do
       e1type <- typeOf e1
-      case e1type of
+      e1type' <- whnf mempty plicitness e1type
+      case e1type' of
         Pi _ p' _ resType | p == p' -> return $ instantiate1 e2 resType
-        _ -> throwError "typeOf: expected pi type"
+        _ -> throwError $ "typeOf: expected pi type" ++ show e1type'
     Case _ (ConBranches _ t) -> return t
     Case _ (LitBranches _ def) -> typeOf def
   modifyIndent pred
