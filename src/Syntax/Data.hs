@@ -2,15 +2,12 @@
 module Syntax.Data where
 
 import Bound
-import Bound.Scope
 import Bound.Var
-import Data.Bifunctor
-import Data.Bitraversable
 import Data.String
 import qualified Data.Vector as Vector
 import Prelude.Extras
 
-import Syntax.Annotation
+import Syntax.Plicitness
 import Syntax.Hint
 import Syntax.Name
 import Syntax.Pretty
@@ -20,41 +17,27 @@ import Util
 newtype DataDef typ v = DataDef { dataConstructors :: [ConstrDef (Scope Tele typ v)] }
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-quantifiedConstrTypes :: (Eq v, Monad typ)
-                      => (NameHint -> d
-                                   -> typ (Var Tele v)
-                                   -> Scope1 typ (Var Tele v)
-                                   -> typ (Var Tele v))
-                      -> DataDef typ v
-                      -> Telescope d typ v
-                      -> [ConstrDef (typ v)]
+quantifiedConstrTypes
+  :: (Eq v, Monad typ)
+  => (NameHint -> Plicitness -> typ (Var Tele v)
+               -> Scope1 typ (Var Tele v)
+               -> typ (Var Tele v))
+  -> DataDef typ v
+  -> Telescope typ v
+  -> [ConstrDef (typ v)]
 quantifiedConstrTypes pifun (DataDef cs) ps = map (fmap $ \s -> quantify pifun s ps) cs
 
 constructorNames :: DataDef typ v -> [Constr]
 constructorNames = map constrName . dataConstructors
 
-bitraverseDataDef :: (Applicative f, Bitraversable typ)
-                  => (a -> f a')
-                  -> (b -> f b')
-                  -> DataDef (typ a) b
-                  -> f (DataDef (typ a') b')
-bitraverseDataDef f g (DataDef cs) =
-  DataDef <$> traverse (\(ConstrDef c t) -> ConstrDef c <$> bitraverseScope f g t) cs
-
-bimapDataDef
-  :: Bifunctor typ
-  => (a -> a')
-  -> (b -> b')
-  -> DataDef (typ a) b
-  -> DataDef (typ a') b'
-bimapDataDef f g (DataDef cs) =
-  DataDef $ (\(ConstrDef c t) -> ConstrDef c $ bimapScope f g t) <$> cs
-
 instance Bound DataDef where
   DataDef cs >>>= f = DataDef (fmap (>>>= f) <$> cs)
 
-prettyDataDef :: (Eq1 typ, Eq v, Eq d, HasRelevance d, HasPlicitness d, IsString v, Monad typ, Pretty (typ v))
-              => Telescope d typ v -> DataDef typ v -> PrettyM Doc
+prettyDataDef
+  :: (Eq1 typ, Eq v, IsString v, Monad typ, Pretty (typ v))
+  => Telescope typ v
+  -> DataDef typ v
+  -> PrettyM Doc
 prettyDataDef ps (DataDef cs) = prettyM "data" <+> prettyM "_" <+> withTeleHints ps (\ns ->
     let inst = instantiate $ pure . fromText . (ns Vector.!) . unTele in
         prettyTeleVarTypes ns ps <+> prettyM "where" <$$>

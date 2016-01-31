@@ -190,7 +190,7 @@ bindingHints bs = Vector.fromList $ bs >>= flatten
     -- TODO type?
     flatten (Typed p names _type) = [(Hint n, p) | n <- names]
 
-bindingsTelescope :: [Binding] -> Telescope Plicitness Expr Name
+bindingsTelescope :: [Binding] -> Telescope Expr Name
 bindingsTelescope bs = Telescope $
   Vector.imap (\i (n, p, t) -> (Hint n, p, abstract (abstr i) t)) unabstracted
   where
@@ -243,7 +243,7 @@ atomicExpr
   where
     abstr t c = abstractBindings c <$ t <*>% someBindings <*% symbol "." <*>% expr
 
-branches :: Parser (Branches (Either Constr QConstr) Plicitness Expr Name)
+branches :: Parser (Branches (Either Constr QConstr) Expr Name)
 branches = dropAnchor $  ConBranches <$> manySameCol conBranch <*> pure Wildcard
                      <|> LitBranches <$> manySameCol litBranch
                                      <*> (sameCol >> (reserved "_" *>% symbol "->" *>% expr))
@@ -272,7 +272,7 @@ expr
 data TopLevelParsed v
   = ParsedDefLine  (Maybe v) (Expr v) -- ^ Maybe v means that we can use wildcard names that refer e.g. to the previous top-level thing
   | ParsedTypeDecl v         (Type v)
-  | ParsedData  v (Telescope Plicitness Type v) (DataDef Type v)
+  | ParsedData  v (Telescope Type v) (DataDef Type v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 topLevel :: Parser (TopLevelParsed Name)

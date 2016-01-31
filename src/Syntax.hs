@@ -4,7 +4,7 @@ import Bound as X
 import Bound.Scope as X
 import Bound.Var as X
 
-import Syntax.Annotation as X
+import Syntax.Plicitness as X
 import Syntax.Branches as X
 import Syntax.Data as X
 import Syntax.Definition as X

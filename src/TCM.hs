@@ -25,8 +25,8 @@ instance Pretty Level where
   pretty (Level i) = pretty i
 
 data State = State
-  { tcContext :: Program Annotation (Expr Annotation) Empty
-  , tcConstrs :: HashMap Constr (Set (Name, Type Annotation Empty))
+  { tcContext :: Program Expr Empty
+  , tcConstrs :: HashMap Constr (Set (Name, Type Empty))
   , tcIndent  :: !Int -- This has no place here, but is useful for debugging
   , tcFresh   :: !Int
   , tcLevel   :: !Level
@@ -55,10 +55,10 @@ instance MonadST (TCM s) where
 unTCM :: (forall s. TCM s a) -> forall s. ExceptT String (StateT State (ST s)) a
 unTCM (TCM x) = x
 
-evalTCM :: (forall s. TCM s a) -> Program Annotation (Expr Annotation) Empty -> Either String a
+evalTCM :: (forall s. TCM s a) -> Program Expr Empty -> Either String a
 evalTCM tcm cxt = runST $ evalStateT (runExceptT $ unTCM tcm) mempty { tcContext = cxt }
 
-runTCM :: (forall s. TCM s a) -> Program Annotation (Expr Annotation) Empty -> (Either String a, [String])
+runTCM :: (forall s. TCM s a) -> Program Expr Empty -> (Either String a, [String])
 runTCM tcm cxt = second (reverse . tcLog) $ runST $ runStateT (runExceptT $ unTCM tcm) mempty { tcContext = cxt }
 
 fresh :: TCM s Int
@@ -81,27 +81,27 @@ enterLevel x = do
 log :: String -> TCM s ()
 log l = trace l $ modify $ \s -> s {tcLog = l : tcLog s}
 
-addContext :: Program Annotation (Expr Annotation) Empty -> TCM s ()
+addContext :: Program Expr Empty -> TCM s ()
 addContext prog = modify $ \s -> s
   { tcContext = prog <> tcContext s
   , tcConstrs = HM.unionWith (<>) cs $ tcConstrs s
   } where
     cs = HM.fromList $ do
-      (n, (DataDefinition d, defType, _)) <- HM.toList prog
+      (n, (DataDefinition d, defType)) <- HM.toList prog
       ConstrDef c t <- quantifiedConstrTypes
-                         (\h p -> Pi h (Annotation (relevance p) Implicit))
+                         (\h _p -> Pi h Implicit)
                          d
                          (telescope defType)
       return (c, Set.fromList [(n, t)])
 
-context :: Name -> TCM s (Definition (Expr Annotation) v, Type Annotation v, Annotation)
+context :: Name -> TCM s (Definition Expr v, Type v)
 context v = do
   mres <- gets $ HM.lookup v . tcContext
   maybe (throwError $ "Not in scope: " ++ show v)
-        (\(d, t, a) -> return (fromEmpty <$> d, fromEmpty <$> t, a))
+        (return . bimap (fmap fromEmpty) (fmap fromEmpty))
         mres
 
-constructor :: Ord v => Either Constr QConstr -> TCM s (Set (Name, Type Annotation v))
+constructor :: Ord v => Either Constr QConstr -> TCM s (Set (Name, Type v))
 constructor (Right qc@(QConstr n _)) = do
   t <- qconstructor qc
   return $ Set.singleton (n, t)
@@ -111,7 +111,7 @@ constructor (Left c) = do
         (return . Set.map (second $ fmap fromEmpty))
         mres
 
-qconstructor :: QConstr -> TCM s (Type Annotation v)
+qconstructor :: QConstr -> TCM s (Type v)
 qconstructor qc@(QConstr n c) = do
   mres <- gets $ HM.lookup c . tcConstrs
   maybe (throwError $ "Not in scope: constructor " ++ show c)

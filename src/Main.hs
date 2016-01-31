@@ -14,7 +14,6 @@ import qualified Data.Vector as V
 import System.Environment
 
 import Builtin
-import Erasure
 import Infer
 import TCM
 import Syntax
@@ -25,10 +24,9 @@ import qualified Syntax.Parse
 import TopoSort
 import Util
 
-inferProgram :: HashSet Constr -> Program Plicitness Concrete.Expr Name -> TCM s ()
-inferProgram constrs p' = mapM_ tcGroup sorted
+inferProgram :: HashSet Constr -> Program Concrete.Expr Name -> TCM s ()
+inferProgram constrs p = mapM_ tcGroup sorted
   where
-    p = (\(x, y, _) -> (x, y)) <$> p'
     deps   = HM.map (bifoldMap defNames toHashSet) p <> HM.fromList constructorMappings
     defNames (DataDefinition d) = toHashSet (constructorNames d) <> toHashSet d
     defNames x = toHashSet x
@@ -58,17 +56,12 @@ inferProgram constrs p' = mapM_ tcGroup sorted
       let vf :: a -> TCM s b
           vf _ = throwError "inferProgram"
       checkedTls' <- traverse (bitraverse (traverse $ traverse vf) (traverse vf)) checkedTls
-      let reledTls'' = (\(d, s) ->
-            ((bimapDef (Annotation Relevant) id d,
-             bimapScope (Annotation Relevant) id s),
-             Relevant)) <$> checkedTls'
       let names = V.fromList [n | (n, (_, _)) <- tls]
           instTls = HM.fromList
             [(names V.! i, ( instantiateDef (Abstract.Global . (names V.!)) d
                            , instantiate (Abstract.Global . (names V.!)) t
-                           , Annotation r Explicit
                            ))
-            | (i, ((d, t), r)) <- zip [0..] $ V.toList reledTls''
+            | (i, (d, t)) <- zip [0..] $ V.toList checkedTls'
             ]
       addContext instTls
 
@@ -85,9 +78,7 @@ test inp = do
       gets tcContext) mempty of
       (Left err, tr) -> do mapM_ putStrLn tr; putStrLn err
       (Right res, _) -> do
-        mapM_ print $ (show . (\(x, (d, t, a)) -> runPrettyM $ prettyM x <+> prettyM "=" <+> prettyTypedDef (fe d) (fe t) (fst $ bindingsView Abstract.piView $ fe t))) <$> HM.toList res
-        putStrLn "------------- erased ------------------"
-        mapM_ print $ (show . pretty) <$> [(x, fe e') | (x, (e, _, a)) <- HM.toList res, isRelevant a, let Definition e' = eraseDef e]
+        mapM_ print $ (show . (\(x, (d, t)) -> runPrettyM $ prettyM x <+> prettyM "=" <+> prettyTypedDef (fe d) (fe t) (fst $ bindingsView Abstract.piView $ fe t))) <$> HM.toList res
   where
     fe :: Functor f => f Empty -> f String
     fe = fmap fromEmpty

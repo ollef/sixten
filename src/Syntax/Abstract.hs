@@ -3,8 +3,6 @@ module Syntax.Abstract where
 
 import Control.Monad
 import Data.Bifunctor
-import Data.Bifoldable
-import Data.Bitraversable
 import qualified Data.Foldable as Foldable
 import Data.Monoid
 import qualified Data.Set as S
@@ -14,17 +12,16 @@ import Prelude.Extras
 import Syntax
 import Util
 
--- | Expressions with variables of type @v@, with abstractions and applications
--- decorated by @d@s.
-data Expr d v
+-- | Expressions with variables of type @v@.
+data Expr v
   = Var v
   | Global Name
   | Con QConstr
   | Lit Literal
-  | Pi  !NameHint !d (Type d v) (Scope1 (Expr d) v)
-  | Lam !NameHint !d (Type d v) (Scope1 (Expr d) v)
-  | App  (Expr d v) !d (Expr d v)
-  | Case (Expr d v) (Branches QConstr d (Expr d) v)
+  | Pi  !NameHint Plicitness (Type v) (Scope1 Expr v)
+  | Lam !NameHint Plicitness (Type v) (Scope1 Expr v)
+  | App  (Expr v) Plicitness (Expr v)
+  | Case (Expr v) (Branches QConstr Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 -- | Synonym for documentation purposes
@@ -32,38 +29,51 @@ type Type = Expr
 
 -------------------------------------------------------------------------------
 -- * Views and smart constructors
-pi_ :: Name -> d -> Type d Name -> Expr d Name -> Expr d Name
-pi_ n d t e = Pi (Hint $ Just n) d t $ abstract1 n e
+pi_ :: Name -> Plicitness -> Type Name -> Expr Name -> Expr Name
+pi_ n p t e = Pi (Hint $ Just n) p t $ abstract1 n e
 
-lam :: Name -> d -> Type d Name -> Expr d Name -> Expr d Name
-lam n d t e = Lam (Hint $ Just n) d t $ abstract1 n e
+lam :: Name -> Plicitness -> Type Name -> Expr Name -> Expr Name
+lam n p t e = Lam (Hint $ Just n) p t $ abstract1 n e
 
-piView :: Expr d v -> Maybe (NameHint, d, Type d v, Scope1 (Expr d) v)
+etaLam :: Hint (Maybe Name) -> Plicitness -> Expr v -> Scope1 Expr v -> Expr v
+etaLam _ p _ (Scope (App e p' (Var (B ()))))
+  | B () `S.notMember` toSet (second (const ()) <$> e) && p == p'
+    = join $ unvar (error "etaLam impossible") id <$> e
+etaLam n p t s = Lam n p t s
+
+piView :: Expr v -> Maybe (NameHint, Plicitness, Type v, Scope1 Expr v)
 piView (Pi n p e s) = Just (n, p, e, s)
 piView _            = Nothing
 
-usedPiView :: Expr d v -> Maybe (NameHint, d, Type d v, Scope1 (Expr d) v)
+usedPiView :: Expr v -> Maybe (NameHint, Plicitness, Type v, Scope1 Expr v)
 usedPiView (Pi n p e s@(unusedScope -> Nothing)) = Just (n, p, e, s)
 usedPiView _                                     = Nothing
 
-lamView :: Expr d v -> Maybe (NameHint, d, Type d v, Scope1 (Expr d) v)
+lamView :: Expr v -> Maybe (NameHint, Plicitness, Type v, Scope1 Expr v)
 lamView (Lam n p e s) = Just (n, p, e, s)
 lamView _             = Nothing
 
-appsView :: Expr d v -> (Expr d v, [(d, Expr d v)])
+appsView :: Expr v -> (Expr v, [(Plicitness, Expr v)])
 appsView = second reverse . go
   where
     go (App e1 p e2) = (e1', (p, e2) : es)
       where (e1', es) = go e1
     go e = (e, [])
 
-arrow :: d -> Expr d v -> Expr d v -> Expr d v
-arrow d a b = Pi (Hint Nothing) d a $ Scope $ pure $ F b
+arrow :: Plicitness -> Expr v -> Expr v -> Expr v
+arrow p a b = Pi (Hint Nothing) p a $ Scope $ pure $ F b
 
-apps :: Foldable t => Expr d v -> t (d, Expr d v) -> Expr d v
+betaApp :: Expr v -> Plicitness -> Expr v -> Expr v
+betaApp e1@(Lam _ p1 _ s) p2 e2 | p1 == p2 = case bindings s of
+  []  -> instantiate1 e2 s
+  [_] -> instantiate1 e2 s
+  _   -> App e1 p1 e2
+betaApp e1 p e2 = App e1 p e2
+
+apps :: Foldable t => Expr v -> t (Plicitness, Expr v) -> Expr v
 apps = Foldable.foldl (uncurry . App)
 
-globals :: Expr d v -> Expr d (Var Name v)
+globals :: Expr v -> Expr (Var Name v)
 globals expr = case expr of
   Var v       -> Var $ F v
   Global g    -> Var $ B g
@@ -74,20 +84,20 @@ globals expr = case expr of
   App e1 p e2 -> App (globals e1) p (globals e2)
   Case e brs  -> Case (globals e) (exposeBranches globals brs)
 
-telescope :: Expr d v -> Telescope d (Expr d) v
+telescope :: Expr v -> Telescope Expr v
 telescope (bindingsView piView -> (tele, _)) = tele
 
 -------------------------------------------------------------------------------
 -- Instances
-instance Eq d => Eq1 (Expr d)
-instance Ord d => Ord1 (Expr d)
-instance Show d => Show1 (Expr d)
+instance Eq1 Expr
+instance Ord1 Expr
+instance Show1 Expr
 
-instance Applicative (Expr d) where
+instance Applicative Expr where
   pure = return
   (<*>) = ap
 
-instance Monad (Expr d) where
+instance Monad Expr where
   return = Var
   expr >>= f = case expr of
     Var v       -> f v
@@ -99,32 +109,14 @@ instance Monad (Expr d) where
     App e1 p e2 -> App (e1 >>= f) p (e2 >>= f)
     Case e brs  -> Case (e >>= f) (brs >>>= f)
 
-instance Bifunctor Expr where
-  bimap = bimapDefault
-
-instance Bifoldable Expr where
-  bifoldMap = bifoldMapDefault
-
-instance Bitraversable Expr where
-  bitraverse f g expr = case expr of
-    Var v       -> Var <$> g v
-    Global v    -> pure $ Global v
-    Con c       -> pure $ Con c
-    Lit l       -> pure $ Lit l
-    Pi  x d t s -> Pi  x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
-    Lam x d t s -> Lam x <$> f d <*> bitraverse f g t <*> bitraverseScope f g s
-    App e1 d e2 -> App <$> bitraverse f g e1 <*> f d <*> bitraverse f g e2
-    Case e brs  -> Case <$> bitraverse f g e <*> tritraverseBranches f f g brs
-
-instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
-      => Pretty (Expr d v) where
+instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
   prettyM expr = case expr of
     Var v     -> prettyM v
     Global g  -> prettyM g
     Con c     -> prettyM c
     Lit l     -> prettyM l
     Pi  _ p t (unusedScope -> Just e) -> parens `above` arrPrec $
-      ((pure tilde <>) `iff` isIrrelevant p $ braces `iff` isImplicit p $ prettyM t)
+      (braces `iff` (p == Implicit) $ prettyM t)
       <+> prettyM "->" <+>
       associate (prettyM e)
     (bindingsViewM usedPiView -> Just (tele, s)) -> withTeleHints tele $ \ns ->
@@ -137,32 +129,6 @@ instance (Eq v, Eq d, HasPlicitness d, HasRelevance d, IsString v, Pretty v)
       prettyM "\\" <> prettyTeleVarTypes ns tele <> prettyM "." <+>
       prettyM (instantiateTele (pure . fromText <$> ns) s)
     Lam {} -> error "impossible prettyPrec lam"
-    App e1 p e2 -> prettyApp (prettyM e1) ((pure tilde <>) `iff` isIrrelevant p $ braces `iff` isImplicit p $ prettyM e2)
+    App e1 p e2 -> prettyApp (prettyM e1) (braces `iff` (p == Implicit) $ prettyM e2)
     Case e brs -> parens `above` casePrec $
       prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> indent 2 (prettyM brs)
-
-etaLamBy :: (Ord v, Monad m)
-         => (d -> d -> m Bool)
-         -> NameHint -> d -> Expr d v -> Scope1 (Expr d) v -> m (Expr d v)
-etaLamBy isEq n p t s@(Scope (App e p' (Var (B ()))))
-  | B () `S.notMember` toSet (second (const ()) <$> e) = do
-    eq <- isEq p p'
-    return $ if eq then
-      join $ unvar (error "etaLamB y impossible") id <$> e
-    else
-      Lam n p t s
-etaLamBy _ n p t s = return $ Lam n p t s
-
-etaLam :: Eq d
-       => Hint (Maybe Name) -> d -> Expr d v -> Scope1 (Expr d) v -> Expr d v
-etaLam _ p _ (Scope (App e p' (Var (B ()))))
-  | B () `S.notMember` toSet (second (const ()) <$> e) && p == p'
-    = join $ unvar (error "etaLam impossible") id <$> e
-etaLam n p t s = Lam n p t s
-
-betaApp :: Eq d => Expr d v -> d -> Expr d v -> Expr d v
-betaApp e1@(Lam _ p1 _ s) p2 e2 | p1 == p2 = case bindings s of
-  []  -> instantiate1 e2 s
-  [_] -> instantiate1 e2 s
-  _   -> App e1 p1 e2
-betaApp e1 p e2 = App e1 p e2

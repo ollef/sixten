@@ -21,39 +21,39 @@ import qualified Syntax.Concrete as Concrete
 import TCM
 import Util
 
-type Exists s d a = STRef s (Either Level (AbstractM s d a))
+type Exists s = STRef s (Either Level (AbstractM s))
 
-data MetaVar s d a = MetaVar
+data MetaVar s = MetaVar
   { metaId    :: !Int
-  , metaType  :: AbstractM s d a
+  , metaType  :: AbstractM s
   , metaHint  :: !NameHint
-  , metaData  :: !d
-  , metaRef   :: !(Maybe (Exists s d a))
+  , metaRef   :: !(Maybe (Exists s))
   }
 
-type AbstractM s d a = Abstract.Expr a (MetaVar s d a)
-type ConcreteM s d a = Concrete.Expr (MetaVar s d a)
-type ScopeM b f s d a = Scope b f (MetaVar s d a)
-type BranchesM c f s d a = Branches c a f (MetaVar s d a)
+type AbstractM s = Abstract.Expr (MetaVar s)
+type ConcreteM s = Concrete.Expr (MetaVar s)
+type ScopeM b f s = Scope b f (MetaVar s)
+type BranchesM c f s = Branches c f (MetaVar s)
 
-instance Eq (MetaVar s d a) where
+instance Eq (MetaVar s) where
   (==) = (==) `on` metaId
 
-instance Ord (MetaVar s d a) where
+instance Ord (MetaVar s) where
   compare = compare `on` metaId
 
-instance Hashable (MetaVar s d a) where
+instance Hashable (MetaVar s) where
   hashWithSalt s = hashWithSalt s . metaId
 
-instance (Show d, Show a) => Show (MetaVar s d a) where
-  showsPrec d (MetaVar i a h dat _) = showParen (d > 10) $
+instance Show (MetaVar s) where
+  showsPrec d (MetaVar i t h _) = showParen (d > 10) $
     showString "Meta" . showChar ' ' . showsPrec 11 i .
-    showChar ' ' . showsPrec 11 a . showChar ' ' . showsPrec 11 h .
-    showChar ' ' . showsPrec 11 dat .
+    showChar ' ' . showsPrec 11 t . showChar ' ' . showsPrec 11 h .
     showChar ' ' . showString "<Ref>"
 
-showMeta :: (Show d, HasRelevance a, HasPlicitness a, Eq a, Functor f, Foldable f, Pretty (f String))
-         => f (MetaVar s d a) -> TCM s Doc
+showMeta
+  :: (Functor f, Foldable f, Pretty (f String))
+  => f (MetaVar s)
+  -> TCM s Doc
 showMeta x = do
   vs <- foldMapM S.singleton x
   let p (metaRef -> Just r) = solution r
@@ -63,11 +63,13 @@ showMeta x = do
   let sv v = "$" ++ fromMaybe "" (fromText <$> unHint (metaHint v)) ++ (if isJust $ metaRef v then "∃" else "")
           ++ show (metaId v) -- ++ ":"
           -- ++ show (pretty $ sv <$> metaType v) ++ ">"
-  let solutions = [(sv v, pretty $ sv <$> metaType v, (show $ metaData v, pretty $ fmap sv <$> msol)) | (v, msol) <- zip vsl pvs]
+  let solutions = [(sv v, pretty $ sv <$> metaType v, (pretty $ fmap sv <$> msol)) | (v, msol) <- zip vsl pvs]
   return $ pretty (sv <$> x) <> text ", vars: " <> pretty solutions
 
-tr :: (Show d, HasRelevance a, HasPlicitness a, Eq a, Functor f, Foldable f, Pretty (f String))
-   => String -> f (MetaVar s d a) -> TCM s ()
+tr :: (Functor f, Foldable f, Pretty (f String))
+   => String
+   -> f (MetaVar s)
+   -> TCM s ()
 tr s x = do
   i <- gets tcIndent
   r <- showMeta x
@@ -83,38 +85,38 @@ trs s x = do
   i <- gets tcIndent
   TCM.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ show x
 
-existsAtLevel :: NameHint -> AbstractM s d a -> d -> Level -> TCM s (MetaVar s d a)
-existsAtLevel hint typ dat l = do
+existsAtLevel :: NameHint -> AbstractM s -> Level -> TCM s (MetaVar s)
+existsAtLevel hint typ l = do
   i   <- fresh
   ref <- liftST $ newSTRef $ Left l
   TCM.log $ "exists: " ++ show i
-  return $ MetaVar i typ hint dat (Just ref)
+  return $ MetaVar i typ hint (Just ref)
 
-exists :: NameHint -> AbstractM s d a -> d -> TCM s (MetaVar s d a)
-exists hint typ dat = existsAtLevel hint typ dat =<< level
+exists :: NameHint -> AbstractM s -> TCM s (MetaVar s)
+exists hint typ = existsAtLevel hint typ =<< level
 
-existsVar :: Applicative g => NameHint -> AbstractM s d a -> d -> TCM s (g (MetaVar s d a))
-existsVar hint typ dat = pure <$> exists hint typ dat
+existsVar :: Applicative g => NameHint -> AbstractM s -> TCM s (g (MetaVar s))
+existsVar hint typ = pure <$> exists hint typ
 
-existsVarAtLevel :: Applicative g => NameHint -> AbstractM s d a -> d -> Level -> TCM s (g (MetaVar s d a))
-existsVarAtLevel hint typ dat l = pure <$> existsAtLevel hint typ dat l
+existsVarAtLevel :: Applicative g => NameHint -> AbstractM s -> Level -> TCM s (g (MetaVar s))
+existsVarAtLevel hint typ l = pure <$> existsAtLevel hint typ l
 
-forall_ :: NameHint -> AbstractM s d a -> d -> TCM s (MetaVar s d a)
-forall_ hint typ dat = do
+forall_ :: NameHint -> AbstractM s -> TCM s (MetaVar s)
+forall_ hint typ = do
   i <- fresh
   TCM.log $ "forall: " ++ show i
-  return $ MetaVar i typ hint dat Nothing
+  return $ MetaVar i typ hint Nothing
 
-forallVar :: Applicative g => NameHint -> AbstractM s d a -> d -> TCM s (g (MetaVar s d a))
-forallVar hint typ dat = pure <$> forall_ hint typ dat
+forallVar :: Applicative g => NameHint -> AbstractM s -> TCM s (g (MetaVar s))
+forallVar hint typ = pure <$> forall_ hint typ
 
-solution :: Exists s d a -> TCM s (Either Level (AbstractM s d a))
+solution :: Exists s -> TCM s (Either Level (AbstractM s))
 solution = liftST . readSTRef
 
-solve :: Exists s d a -> AbstractM s d a -> TCM s ()
+solve :: Exists s -> AbstractM s -> TCM s ()
 solve r x = liftST $ writeSTRef r $ Right x
 
-refineIfSolved :: Exists s d a -> AbstractM s d a -> (AbstractM s d a -> TCM s (AbstractM s d a)) -> TCM s (AbstractM s d a)
+refineIfSolved :: Exists s -> AbstractM s -> (AbstractM s -> TCM s (AbstractM s)) -> TCM s (AbstractM s)
 refineIfSolved r d f = do
   sol <- solution r
   case sol of
@@ -124,18 +126,18 @@ refineIfSolved r d f = do
       solve r e'
       return e'
 
-letMeta :: NameHint -> AbstractM s d a -> AbstractM s d a -> d -> TCM s (MetaVar s d a)
-letMeta hint expr typ dat = do
+letMeta :: NameHint -> AbstractM s -> AbstractM s -> TCM s (MetaVar s)
+letMeta hint expr typ = do
   i   <- fresh
   ref <- liftST $ newSTRef $ Right expr
-  return $ MetaVar i typ hint dat (Just ref)
+  return $ MetaVar i typ hint (Just ref)
 
 letVar :: Applicative g
-       => NameHint -> AbstractM s d a -> AbstractM s d a -> d -> TCM s (g (MetaVar s d a))
-letVar hint expr typ dat = pure <$> letMeta hint expr typ dat
+       => NameHint -> AbstractM s -> AbstractM s -> TCM s (g (MetaVar s))
+letVar hint expr typ = pure <$> letMeta hint expr typ
 
 foldMapM :: (Foldable f, Monoid m)
-         => (MetaVar s d a -> m) -> f (MetaVar s d a) -> TCM s m
+         => (MetaVar s -> m) -> f (MetaVar s) -> TCM s m
 foldMapM f = foldrM go mempty
   where
     go v m = (<> m) . (<> f v) <$> do
@@ -148,10 +150,9 @@ foldMapM f = foldrM go mempty
             Right c -> foldMapM f c
         Nothing -> return $ f v <> m
 
-abstractM :: (Show d, Show a)
-          => (MetaVar s d a -> Maybe b)
-          -> AbstractM s d a
-          -> TCM s (ScopeM b (Abstract.Expr a) s d a)
+abstractM :: (MetaVar s -> Maybe b)
+          -> AbstractM s
+          -> TCM s (ScopeM b Abstract.Expr s)
 abstractM f e = do
   e' <- freeze e
   changed <- liftST $ newSTRef False
@@ -181,21 +182,19 @@ abstractM f e = do
     go _ v' = free v'
     free = pure . pure . pure . pure
 
-abstract1M :: (Show d, Show a)
-           => MetaVar s d a
-           -> AbstractM s d a
-           -> TCM s (ScopeM () (Abstract.Expr a) s d a)
+abstract1M :: MetaVar s
+           -> AbstractM s
+           -> TCM s (ScopeM () Abstract.Expr s)
 abstract1M v e = do
   TCM.log $ "abstracting " ++ show (metaId v)
   abstractM (\v' -> if v == v' then Just () else Nothing) e
 
 abstractDefM
-  :: Show a
-  => (MetaVar s () a -> Maybe b)
-  -> Definition (Abstract.Expr a) (MetaVar s () a)
-  -> AbstractM s () a
-  -> TCM s ( Definition (Abstract.Expr a) (Var b (MetaVar s () a))
-           , ScopeM b (Abstract.Expr a) s () a
+  :: (MetaVar s -> Maybe b)
+  -> Definition Abstract.Expr (MetaVar s)
+  -> AbstractM s
+  -> TCM s ( Definition Abstract.Expr (Var b (MetaVar s))
+           , ScopeM b Abstract.Expr s
            )
 abstractDefM f (Definition e) t = do
   e' <- abstractM f e
@@ -207,18 +206,17 @@ abstractDefM f (DataDefinition e) t = do
   return (DataDefinition e', t')
 
 abstractDataDefM
-  :: Show a
-  => (MetaVar s () a -> Maybe b)
-  -> DataDef (Abstract.Expr a) (MetaVar s () a)
-  -> AbstractM s () a
-  -> TCM s (DataDef (Abstract.Expr a) (Var b (MetaVar s () a)))
+  :: (MetaVar s -> Maybe b)
+  -> DataDef Abstract.Expr (MetaVar s)
+  -> AbstractM s
+  -> TCM s (DataDef Abstract.Expr (Var b (MetaVar s)))
 abstractDataDefM f (DataDef cs) typ = mdo
   let inst = instantiateTele $ pure <$> vs
       vs = (\(_, _, _, v) -> v) <$> ps'
   typ' <- freeze typ
   ps' <- forTele (Abstract.telescope typ') $ \h p s -> do
     let is = inst s
-    v <- forall_ h is ()
+    v <- forall_ h is
     return (h, p, is, v)
   let f' x = F <$> f x <|> B . Tele <$> V.elemIndex x vs
   acs <- forM cs $ \c -> traverse (fmap (toScope . fmap assoc . fromScope) . abstractM f' . inst) c
@@ -227,26 +225,26 @@ abstractDataDefM f (DataDef cs) typ = mdo
     assoc :: Var (Var a b) c -> Var a (Var b c)
     assoc = unvar (unvar B (F . B)) (F . F)
 
-etaLamM :: Eq a
-        => NameHint
-        -> a
-        -> Abstract.Expr a (MetaVar s d a)
-        -> Scope1 (Abstract.Expr a) (MetaVar s d a)
-        -> TCM s (Abstract.Expr a (MetaVar s d a))
+etaLamM
+  :: NameHint
+  -> Plicitness
+  -> Abstract.Expr (MetaVar s)
+  -> Scope1 Abstract.Expr (MetaVar s)
+  -> TCM s (Abstract.Expr (MetaVar s))
 etaLamM n p t s = do
   s' <- freezeBound s
   return $ Abstract.etaLam n p t s'
 
-freeze :: AbstractM s d a -> TCM s (AbstractM s d a)
+freeze :: AbstractM s -> TCM s (AbstractM s)
 freeze e = join <$> traverse go e
   where
     go v@(metaRef -> Just r) = either (const $ do mt <- freeze (metaType v); return $ pure v {metaType = mt})
                                           freeze =<< solution r
     go v                         = return $ pure v
 
-freezeBound :: (Traversable (t (Abstract.Expr a)), Bound t)
-            => t (Abstract.Expr a) (MetaVar s d a)
-            -> TCM s (t (Abstract.Expr a) (MetaVar s d a))
+freezeBound :: (Traversable (t Abstract.Expr), Bound t)
+            => t Abstract.Expr (MetaVar s)
+            -> TCM s (t Abstract.Expr (MetaVar s))
 freezeBound e = (>>>= id) <$> traverse go e
   where
     go v@(metaRef -> Just r) = either (const $ do mt <- freeze (metaType v); return $ pure v {metaType = mt})

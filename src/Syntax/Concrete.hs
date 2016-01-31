@@ -18,7 +18,7 @@ data Expr v
   | Pi  !NameHint !Plicitness (Type v) (Scope1 Expr v)  -- ^ Dependent function space
   | Lam !NameHint !Plicitness (Scope1 Expr v)
   | App (Expr v) !Plicitness (Expr v)
-  | Case (Expr v) (Branches (Either Constr QConstr) Plicitness Expr v)
+  | Case (Expr v) (Branches (Either Constr QConstr) Expr v)
   | Anno (Expr v) (Expr v)
   | Wildcard  -- ^ Attempt to infer it
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
@@ -61,7 +61,7 @@ globals expr = case expr of
   Anno e t -> Anno (globals e) (globals t)
   Wildcard -> Wildcard
 
-telescope :: Expr v -> Telescope Plicitness Expr v
+telescope :: Expr v -> Telescope Expr v
 telescope (bindingsView piView -> (tele, _)) = tele
 
 -------------------------------------------------------------------------------

@@ -19,7 +19,7 @@ data Expr v
   | Lit Literal
   | Lam !NameHint (Scope1 Expr v)
   | App (Expr v) (Expr v)
-  | Case (Expr v) (Branches QConstr () Expr v)
+  | Case (Expr v) (Branches QConstr Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 globals :: Expr v -> Expr (Var Name v)
@@ -52,8 +52,8 @@ instance Monad Expr where
   App e1 e2 >>= f = App (e1 >>= f) (e2 >>= f)
   Case e brs >>= f = Case (e >>= f) (brs >>>= f)
 
-lamView :: Expr v -> Maybe (NameHint, (), Expr v, Scope1 Expr v)
-lamView (Lam h s) = Just (h, (), Lit 0, s)
+lamView :: Expr v -> Maybe (NameHint, Plicitness, Expr v, Scope1 Expr v)
+lamView (Lam h s) = Just (h, Explicit, Lit 0, s)
 lamView _         = Nothing
 
 etaLam :: Hint (Maybe Name) -> Scope1 Expr v -> Expr v
