@@ -95,17 +95,17 @@ instance (IsString v, Pretty v) => Pretty (Expr v) where
     Con (Right qc) -> prettyM qc
     Pi  h p Wildcard s -> withNameHint h $ \x -> parens `above` absPrec $
       prettyM "forall" <+> inviolable (braces `iff` (p == Implicit) $ prettyM x)
-      <> prettyM "." <+> associate  (prettyM $ instantiate1 (pure $ fromText x) s)
+      <> prettyM "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
     Pi  h p t s -> withNameHint h $ \x -> parens `above` absPrec $
       prettyM "forall" <+> inviolable (braces `iff` (p == Implicit) $ prettyM x)
       <+> prettyM ":" <+> inviolable (prettyM t)
-      <> prettyM "." <+> associate  (prettyM $ instantiate1 (pure $ fromText x) s)
+      <> prettyM "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
     Lam h p s -> withNameHint h $ \x -> parens `above` absPrec $
       prettyM "\\" <+> inviolable (braces `iff` (p == Implicit) $ prettyM x)
-        <> prettyM "." <+> associate  (prettyM $ instantiate1 (pure $ fromText x) s)
+        <> prettyM "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
     App e1 p e2 -> prettyApp (prettyM e1) (braces `iff` (p == Implicit) $ prettyM e2)
     Case e brs -> parens `above` casePrec $
       prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> indent 2 (prettyM brs)
     Anno e t  -> parens `above` annoPrec $
-      prettyM e <+> prettyM ":" <+> associate (prettyM t)
+      prettyM e <+> prettyM ":" <+> associate casePrec (prettyM t)
     Wildcard -> pure $ text "_"

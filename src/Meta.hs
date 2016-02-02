@@ -63,7 +63,7 @@ showMeta x = do
   let sv v = "$" ++ fromMaybe "" (fromText <$> unHint (metaHint v)) ++ (if isJust $ metaRef v then "∃" else "")
           ++ show (metaId v) -- ++ ":"
           -- ++ show (pretty $ sv <$> metaType v) ++ ">"
-  let solutions = [(sv v, pretty $ sv <$> metaType v, (pretty $ fmap sv <$> msol)) | (v, msol) <- zip vsl pvs]
+  let solutions = [(sv v, pretty $ sv <$> metaType v, pretty $ fmap sv <$> msol) | (v, msol) <- zip vsl pvs]
   return $ pretty (sv <$> x) <> text ", vars: " <> pretty solutions
 
 tr :: (Functor f, Foldable f, Pretty (f String))

@@ -144,13 +144,13 @@ iff _ False m = m
 above :: (PrettyM a -> PrettyM a) -> Int -> PrettyM a -> PrettyM a
 above f p' m = do
   p <- asks precedence
-  local (\env -> env {precedence = p' + 1}) $ f `iff` (p > p') $ m
+  f `iff` (p > p') $ associate (p' + 1) m
 
 prettyApp :: PrettyM Doc -> PrettyM Doc -> PrettyM Doc
-prettyApp p q = parens `above` appPrec $ associate p <+> q
+prettyApp p q = parens `above` appPrec $ associate appPrec p <+> q
 
-associate :: PrettyM a -> PrettyM a
-associate = local $ \s -> s {precedence = precedence s - 1}
+associate :: Int -> PrettyM a -> PrettyM a
+associate p = local $ \s -> s {precedence = p}
 
 inviolable :: PrettyM a -> PrettyM a
 inviolable = local $ \s -> s {precedence = -1}

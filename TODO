@@ -1,4 +1,3 @@
-Pretty-printing bug
 instantiate implicits at variable use sites?
 Size types
   How to cleanly make `(a -> b) : Type 0` when `b : Type 0`?

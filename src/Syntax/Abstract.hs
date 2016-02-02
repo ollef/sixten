@@ -118,7 +118,7 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
     Pi  _ p t (unusedScope -> Just e) -> parens `above` arrPrec $
       (braces `iff` (p == Implicit) $ prettyM t)
       <+> prettyM "->" <+>
-      associate (prettyM e)
+      associate arrPrec (prettyM e)
     (bindingsViewM usedPiView -> Just (tele, s)) -> withTeleHints tele $ \ns ->
       parens `above` absPrec $
       prettyM "forall" <+> prettyTeleVarTypes ns tele <> prettyM "." <+>
