@@ -56,10 +56,10 @@ unify type1 type2 = do
         (App e1 p1 e1', App e2 p2 e2') | p1 == p2 && not reduce -> do
           unify e1  e2
           unify e1' e2'
-        (Lit 0, appsView -> (Global ((== Builtin.addSize) -> True) , [(_, x), (_, y)])) -> do
+        (Lit 0, Builtin.AddSize x y) -> do
           unify (Lit 0) x
           unify (Lit 0) y
-        (appsView -> (Global ((== Builtin.addSize) -> True) , [(_, x), (_, y)]), Lit 0) -> do
+        (Builtin.AddSize x y, Lit 0) -> do
           unify x (Lit 0)
           unify y (Lit 0)
         _ | reduce -> do
@@ -129,11 +129,11 @@ subtype surrounding expr type1 type2 = do
           case sol of
             Left l -> do
               occurs l v typ2
-              unify (metaType v) (Builtin.typeN 1)
-              t11TypeSize <- existsVarAtLevel (metaHint v) Builtin.sizeE l
-              t12TypeSize <- existsVarAtLevel (metaHint v) Builtin.sizeE l
-              t11 <- existsVarAtLevel (metaHint v) (Builtin.typeE t11TypeSize) l
-              t12 <- existsVarAtLevel (metaHint v) (Builtin.typeE t12TypeSize) l
+              unify (metaType v) (Builtin.Type $ Lit 1)
+              t11TypeSize <- existsVarAtLevel (metaHint v) Builtin.Size l
+              t12TypeSize <- existsVarAtLevel (metaHint v) Builtin.Size l
+              t11 <- existsVarAtLevel (metaHint v) (Builtin.Type t11TypeSize) l
+              t12 <- existsVarAtLevel (metaHint v) (Builtin.Type t12TypeSize) l
               solve r $ Pi h p t11 $ abstractNone t12
               x2  <- forall_ h t2
               (x1, t11') <- subtype p (pure x2) t2 t11
@@ -175,8 +175,8 @@ typeOf expr = do
       return typ
     Var v -> return $ metaType v
     Con qc -> qconstructor qc
-    Lit _ -> return $ Global Builtin.size
-    Pi {} -> return $ Builtin.typeN 1
+    Lit _ -> return Builtin.Size
+    Pi {} -> return $ Builtin.Type $ Lit 1
     Lam n p t s -> do
       x <- forall_ n t
       resType  <- typeOf (instantiate1 (pure x) s)

@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, ViewPatterns, PatternSynonyms #-}
 module Builtin where
 
 import qualified Data.HashMap.Lazy as HM
@@ -8,32 +8,17 @@ import Syntax
 import Syntax.Abstract
 import Util
 
-size :: Name
-size = "Size"
+pattern SizeName <- ((==) "Size" -> True) where SizeName = "Size"
+pattern Size = Global SizeName
 
-sizeE :: Expr a
-sizeE = Global size
+pattern AddSizeName <- ((==) "add" -> True) where AddSizeName = "+"
+pattern AddSize e1 e2 = App (App (Global AddSizeName) Explicit e1) Explicit e2
 
-addSize :: Name
-addSize = "+"
+pattern MaxSizeName <- ((==) "max" -> True) where MaxSizeName = "max"
+pattern MaxSize e1 e2 = App (App (Global MaxSizeName) Explicit e1) Explicit e2
 
-addSizeE :: Expr a -> Expr a -> Expr a
-addSizeE e1 e2 = apps (Global addSize) [(Explicit, e1), (Explicit, e2)]
-
-maxSize :: Name
-maxSize = "max"
-
-maxSizeE :: Expr a -> Expr a -> Expr a
-maxSizeE e1 e2 = apps (Global maxSize) [(Explicit, e1), (Explicit, e2)]
-
-type_ :: Name
-type_ = "Type"
-
-typeE :: Expr a -> Expr a
-typeE = App (Global type_) Implicit
-
-typeN :: Integer -> Expr a
-typeN = typeE . Lit
+pattern TypeName <- ((==) "Type" -> True) where TypeName = "Type"
+pattern Type sz = App (Global TypeName) Implicit sz
 
 pointer :: Name
 pointer = "Ptr"
@@ -43,11 +28,11 @@ ref = "Ref"
 
 context :: Program Expr Empty
 context = HM.fromList
-  [ (size, opaque $ typeN 1)
-  , (addSize, opaque $ arrow Explicit sizeE $ arrow Explicit sizeE sizeE)
-  , (maxSize, opaque $ arrow Explicit sizeE $ arrow Explicit sizeE sizeE)
-  , (type_, opaque $ arrow Implicit sizeE $ typeN 0)
-  , (pointer, dataType (pi_ "size" Implicit sizeE $ arrow Explicit (typeE $ pure "size") $ typeN 1)
+  [ (SizeName, opaque $ Type $ Lit 1)
+  , (AddSizeName, opaque $ arrow Explicit Size $ arrow Explicit Size Size)
+  , (MaxSizeName, opaque $ arrow Explicit Size $ arrow Explicit Size Size)
+  , (TypeName, opaque $ arrow Implicit Size $ Type $ Lit 0)
+  , (pointer, dataType (pi_ "size" Implicit Size $ arrow Explicit (Type $ pure "size") $ Type $ Lit 1)
                        [ ConstrDef ref $ toScope $ fmap B $ arrow Explicit (pure 1)
                                        $ apps (Global pointer) [(Implicit, pure 0), (Explicit, pure 1)]
                        ])

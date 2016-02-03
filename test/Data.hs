@@ -10,7 +10,7 @@ tt : Bool2
 tt = True
 nil = Nil
 list : boolList
-list = Cons (False : Bool) (Ref (Cons (True : Bool) (Ref (Nil : boolList))))
+list = Cons (False : Bool) (Ref (Cons (True : Bool) (Ref Nil)))
 boolList = List Bool
 
 test (b : Bool) = case b of
