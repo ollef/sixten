@@ -45,3 +45,8 @@ map f xs = case xs of
 map' f xs = case xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (Ref (map' f (deref xs')))
+
+id x = x
+
+propagationTest : Bool
+propagationTest = id True

@@ -48,13 +48,27 @@ checkType surrounding expr typ = do
           expr' <- Abstract.Lam (m <> h) p a <$> abstract1M v body
           typ'' <- Abstract.Pi  (h <> m) p a <$> abstract1M v ts'
           return (expr', typ'')
-        Abstract.Pi h p' a ts | p' == Implicit -> do
+        Abstract.Pi h p' a ts | p' == Implicit || surrounding == Implicit -> do
           v <- forall_ h a
           (expr', ts') <- checkType surrounding expr (instantiate1 (pure v) ts)
           expr'' <- etaLamM h p' a =<< abstract1M v expr'
           typ''  <- Abstract.Pi  h p' a <$> abstract1M v ts'
           return (expr'', typ'')
         _ -> inferIt
+    Concrete.App e1 p e2 -> do
+      argType <- existsType mempty
+      resType <- existsType mempty
+      (e1', funType) <- checkType surrounding e1 $ Abstract.Pi mempty p argType
+                                                 $ abstractNone resType
+      case funType of
+        Abstract.Pi h p' argType' returnScope | p == p' -> do
+          arg <- existsVar h argType'
+          let returnType = instantiate1 arg returnScope
+          (appResult, typ') <- subtype surrounding (Abstract.App e1' p arg) returnType typ
+          (e2', _argType'') <- checkType surrounding e2 argType'
+          unify e2' arg
+          return (appResult, typ')
+        _ -> throwError "checkType: expected pi type"
     _ -> inferIt
   modifyIndent pred
   tr "checkType res e" =<< freeze rese
@@ -197,8 +211,9 @@ inferBranches surrounding expr (ConBranches cbrs _) = mdo
           (Concrete.apps (Concrete.Con $ Right qc) $ implicitParamVars <> args)
           etype
         (br, resType') <- checkType surrounding (instantiateTele pureVs sbr) resType
+        paramsArgsExpr' <- freeze paramsArgsExpr
 
-        let (_, args') = Abstract.appsView paramsArgsExpr
+        let (_, args') = Abstract.appsView paramsArgsExpr'
             vs = V.fromList $ map (\(p, arg) -> (p, case arg of
                 Abstract.Var v -> Just v
                 _ -> Nothing)) $ drop (teleLength params) args'

@@ -129,13 +129,13 @@ withNameHints v k = go (Vector.toList v) $ k . Vector.fromList
 -- * Working with precedence
 -------------------------------------------------------------------------------
 absPrec, annoPrec, appPrec, arrPrec, casePrec, dotPrec, letPrec :: Int
-absPrec    =  1
-annoPrec   =  0
-appPrec    = 11
-arrPrec    =  1
-casePrec   =  1
-dotPrec    = 12
-letPrec    =  1
+absPrec  = 1
+annoPrec = 0
+appPrec  = 11
+arrPrec  = 1
+casePrec = 1
+dotPrec  = 12
+letPrec  = 1
 
 iff :: (PrettyM a -> PrettyM a) -> Bool -> PrettyM a -> PrettyM a
 iff f True  m = f m

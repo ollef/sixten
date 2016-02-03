@@ -4,8 +4,9 @@ Size types
   Reorder data to pass fewer sizes
     (Depends on relevance analysis and/or removal of unused args)
     Reorder data to enable tagged pointers?
-Propagation
   https://github.com/tomprimozic/type-systems/tree/master/first_class_polymorphism
+  f x : t(t')
+  f : (x : a) -> t(x)
 Arity inference
 LLVM code generation
 Javascript code generation
