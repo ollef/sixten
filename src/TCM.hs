@@ -89,7 +89,7 @@ addContext prog = modify $ \s -> s
     cs = HM.fromList $ do
       (n, (DataDefinition d, defType)) <- HM.toList prog
       ConstrDef c t <- quantifiedConstrTypes
-                         (\h _p -> Pi h Implicit)
+                         (\h _p -> Pi h IrIm)
                          d
                          (telescope defType)
       return (c, Set.fromList [(n, t)])

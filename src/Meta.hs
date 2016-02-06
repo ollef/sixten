@@ -18,6 +18,7 @@ import qualified Data.Vector as V
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete as Concrete
+import qualified Syntax.Lambda as Lambda
 import TCM
 import Util
 
@@ -30,8 +31,9 @@ data MetaVar s = MetaVar
   , metaRef   :: !(Maybe (Exists s))
   }
 
-type AbstractM s = Abstract.Expr (MetaVar s)
 type ConcreteM s = Concrete.Expr (MetaVar s)
+type AbstractM s = Abstract.Expr (MetaVar s)
+type LambdaM s = Lambda.Expr (MetaVar s)
 type ScopeM b f s = Scope b f (MetaVar s)
 type BranchesM c f s = Branches c f (MetaVar s)
 
@@ -141,14 +143,13 @@ foldMapM :: (Foldable f, Monoid m)
 foldMapM f = foldrM go mempty
   where
     go v m = (<> m) . (<> f v) <$> do
-      tvs <- foldMapM f $ metaType v
       case metaRef v of
         Just r -> do
           sol <- solution r
           case sol of
-            Left _  -> return tvs
+            Left _  -> foldMapM f $ metaType v
             Right c -> foldMapM f c
-        Nothing -> return $ f v <> m
+        Nothing -> return mempty
 
 abstractM :: (MetaVar s -> Maybe b)
           -> AbstractM s
@@ -227,7 +228,7 @@ abstractDataDefM f (DataDef cs) typ = mdo
 
 etaLamM
   :: NameHint
-  -> Plicitness
+  -> Annotation
   -> Abstract.Expr (MetaVar s)
   -> Scope1 Abstract.Expr (MetaVar s)
   -> TCM s (Abstract.Expr (MetaVar s))

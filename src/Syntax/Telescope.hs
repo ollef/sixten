@@ -13,7 +13,7 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Prelude.Extras
 
-import Syntax.Plicitness
+import Syntax.Annotation
 import Syntax.Hint
 import Syntax.Name
 import Syntax.Pretty
@@ -24,7 +24,7 @@ newtype Tele = Tele
   } deriving (Eq, Ord, Show, Num)
 
 newtype Telescope expr v = Telescope
-  { unTelescope :: Vector (NameHint, Plicitness, Scope Tele expr v)
+  { unTelescope :: Vector (NameHint, Annotation, Scope Tele expr v)
   } deriving (Eq, Foldable, Functor, Monoid, Ord, Show, Traversable)
 
 teleLength :: Telescope expr v -> Int
@@ -56,14 +56,14 @@ instantiatePrefix es (Telescope tele)
 teleNames :: Telescope expr v -> Vector NameHint
 teleNames (Telescope t) = (\(h, _, _) -> h) <$> t
 
-telePlicitness :: Telescope expr v -> Vector Plicitness
-telePlicitness (Telescope t) = (\(_, a, _) -> a) <$> t
+teleAnnotations :: Telescope expr v -> Vector Annotation
+teleAnnotations (Telescope t) = (\(_, a, _) -> a) <$> t
 
 teleTypes :: Telescope expr v -> Vector (Scope Tele expr v)
 teleTypes (Telescope t) = (\(_, _, x) -> x) <$> t
 
 quantify :: (Eq b, Monad expr)
-         => (NameHint -> Plicitness
+         => (NameHint -> Annotation
                       -> expr (Var Tele a)
                       -> Scope () expr (Var Tele b)
                       -> expr (Var Tele b))
@@ -92,9 +92,8 @@ withTeleHints = withNameHints . teleNames
 
 prettyTeleVars :: Vector Name -> Telescope expr v -> PrettyM Doc
 prettyTeleVars ns t = hsep
-  [ braces `iff` (p == Implicit)
-  $ prettyM $ ns Vector.! i
-  | (i, p) <- zip [0..] $ Vector.toList $ telePlicitness t
+  [ prettyAnnotation a $ prettyM $ ns Vector.! i
+  | (i, a) <- zip [0..] $ Vector.toList $ teleAnnotations t
   ]
 
 prettyTeleVarTypes :: (Eq1 expr, Eq v, Pretty (expr v), Monad expr, IsString v)
@@ -103,10 +102,10 @@ prettyTeleVarTypes ns (Telescope v) = hcat $ map go grouped
   where
     inst = instantiate $ pure . fromText . (ns Vector.!) . unTele
     vlist = Vector.toList v
-    grouped = [ (n : [n' | (Hint n', _) <- vlist'], p, t)
-              | (Hint n, (_, p, t)):vlist' <- List.group $ zip (map Hint [(0 :: Int)..]) vlist]
-    go (xs, p, t)
-      = (if p == Implicit then braces else parens)
+    grouped = [ (n : [n' | (Hint n', _) <- vlist'], a, t)
+              | (Hint n, (_, a, t)):vlist' <- List.group $ zip (map Hint [(0 :: Int)..]) vlist]
+    go (xs, a, t)
+      = prettyAnnotationParens a
       $ hsep (map (prettyM . (ns Vector.!)) xs) <+> prettyM ":" <+> prettyM (inst t)
 
 instance (Eq1 expr, Eq v, Pretty (expr v), Monad expr, IsString v)
@@ -115,13 +114,13 @@ instance (Eq1 expr, Eq v, Pretty (expr v), Monad expr, IsString v)
 
 forTele :: Monad m
         => Telescope expr a
-        -> (NameHint -> Plicitness -> Scope Tele expr a -> m b)
+        -> (NameHint -> Annotation -> Scope Tele expr a -> m b)
         -> m (Vector b)
 forTele (Telescope t) f = forM t $ \(h, d, s) -> f h d s
 
 iforTele :: Monad m
          => Telescope expr a
-         -> (Int -> NameHint -> Plicitness -> Scope Tele expr a -> m b)
+         -> (Int -> NameHint -> Annotation -> Scope Tele expr a -> m b)
          -> m (Vector b)
 iforTele (Telescope t) f = flip Vector.imapM t $ \i (h, d, s) -> f i h d s
 
@@ -134,7 +133,7 @@ teleAbstraction vs = fmap Tele . (`Vector.elemIndex` vs)
 -- | View consecutive bindings at the same time
 bindingsViewM
   :: Monad expr
-  => (forall v'. expr v' -> Maybe (NameHint, Plicitness, expr v', Scope1 expr v'))
+  => (forall v'. expr v' -> Maybe (NameHint, Annotation, expr v', Scope1 expr v'))
   -> expr v -> Maybe (Telescope expr v, Scope Tele expr v)
 bindingsViewM f expr@(f -> Just _) = Just $ bindingsView f expr
 bindingsViewM _ _ = Nothing
@@ -142,7 +141,7 @@ bindingsViewM _ _ = Nothing
 -- | View consecutive bindings at the same time
 bindingsView
   :: Monad expr
-  => (forall v'. expr v' -> Maybe (NameHint, Plicitness, expr v', Scope1 expr v'))
+  => (forall v'. expr v' -> Maybe (NameHint, Annotation, expr v', Scope1 expr v'))
   -> expr v -> (Telescope expr v, Scope Tele expr v)
 bindingsView f expr = go 0 $ F <$> expr
   where

@@ -6,12 +6,12 @@ module Syntax.Pretty
   , indent, hcat, vcat, hsep
   , iff
   , above
-  , absPrec, annoPrec, appPrec, arrPrec, casePrec, dotPrec, letPrec
+  , absPrec, annoPrec, appPrec, arrPrec, casePrec, letPrec
   , associate
   , inviolable
   , angles, brackets, braces, parens
   , pretty
-  , prettyApp
+  , prettyApp, prettyTightApp
   , prettyList
   , prettyM
   , tilde
@@ -128,13 +128,13 @@ withNameHints v k = go (Vector.toList v) $ k . Vector.fromList
 -------------------------------------------------------------------------------
 -- * Working with precedence
 -------------------------------------------------------------------------------
-absPrec, annoPrec, appPrec, arrPrec, casePrec, dotPrec, letPrec :: Int
+absPrec, annoPrec, appPrec, tightAppPrec, arrPrec, casePrec, letPrec :: Int
 absPrec  = 1
 annoPrec = 0
 appPrec  = 11
+tightAppPrec = 12
 arrPrec  = 1
 casePrec = 1
-dotPrec  = 12
 letPrec  = 1
 
 iff :: (PrettyM a -> PrettyM a) -> Bool -> PrettyM a -> PrettyM a
@@ -148,6 +148,9 @@ above f p' m = do
 
 prettyApp :: PrettyM Doc -> PrettyM Doc -> PrettyM Doc
 prettyApp p q = parens `above` appPrec $ associate appPrec p <+> q
+
+prettyTightApp :: PrettyM Doc -> PrettyM Doc -> PrettyM Doc
+prettyTightApp p q = parens `above` tightAppPrec $ associate tightAppPrec p <> q
 
 associate :: Int -> PrettyM a -> PrettyM a
 associate p = local $ \s -> s {precedence = p}

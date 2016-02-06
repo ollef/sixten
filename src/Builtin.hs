@@ -11,14 +11,14 @@ import Util
 pattern SizeName <- ((==) "Size" -> True) where SizeName = "Size"
 pattern Size = Global SizeName
 
-pattern AddSizeName <- ((==) "add" -> True) where AddSizeName = "+"
-pattern AddSize e1 e2 = App (App (Global AddSizeName) Explicit e1) Explicit e2
+pattern AddSizeName <- ((==) "+" -> True) where AddSizeName = "+"
+pattern AddSize e1 e2 = App (App (Global AddSizeName) ReEx e1) ReEx e2
 
 pattern MaxSizeName <- ((==) "max" -> True) where MaxSizeName = "max"
-pattern MaxSize e1 e2 = App (App (Global MaxSizeName) Explicit e1) Explicit e2
+pattern MaxSize e1 e2 = App (App (Global MaxSizeName) ReEx e1) ReEx e2
 
 pattern TypeName <- ((==) "Type" -> True) where TypeName = "Type"
-pattern Type sz = App (Global TypeName) Implicit sz
+pattern Type sz = App (Global TypeName) IrIm sz
 
 pointer :: Name
 pointer = "Ptr"
@@ -29,12 +29,12 @@ ref = "Ref"
 context :: Program Expr Empty
 context = HM.fromList
   [ (SizeName, opaque $ Type $ Lit 1)
-  , (AddSizeName, opaque $ arrow Explicit Size $ arrow Explicit Size Size)
-  , (MaxSizeName, opaque $ arrow Explicit Size $ arrow Explicit Size Size)
-  , (TypeName, opaque $ arrow Implicit Size $ Type $ Lit 0)
-  , (pointer, dataType (pi_ "size" Implicit Size $ arrow Explicit (Type $ pure "size") $ Type $ Lit 1)
-                       [ ConstrDef ref $ toScope $ fmap B $ arrow Explicit (pure 1)
-                                       $ apps (Global pointer) [(Implicit, pure 0), (Explicit, pure 1)]
+  , (AddSizeName, opaque $ arrow ReEx Size $ arrow ReEx Size Size)
+  , (MaxSizeName, opaque $ arrow ReEx Size $ arrow ReEx Size Size)
+  , (TypeName, opaque $ arrow IrIm Size $ Type $ Lit 0)
+  , (pointer, dataType (pi_ "size" IrIm Size $ arrow IrEx (Type $ pure "size") $ Type $ Lit 1)
+                       [ ConstrDef ref $ toScope $ fmap B $ arrow ReEx (pure 1)
+                                       $ apps (Global pointer) [(IrIm, pure 0), (IrEx, pure 1)]
                        ])
   ]
   where

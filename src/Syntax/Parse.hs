@@ -4,12 +4,13 @@ module Syntax.Parse where
 import Control.Applicative((<**>), (<|>), Alternative)
 import Control.Monad.Except
 import Control.Monad.State
-import Data.Text(Text)
-import qualified Data.Text as Text
+import Data.Bifunctor
 import Data.Char
 import qualified Data.HashSet as HS
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
+import Data.Text(Text)
+import qualified Data.Text as Text
 import Data.Ord
 import qualified Text.Parser.Token.Highlight as Highlight
 import qualified Text.Trifecta as Trifecta
@@ -162,11 +163,11 @@ constructor :: Parser Constr
 constructor = ident
 
 data Binding
-  = Plain Plicitness [Maybe Name]
-  | Typed Plicitness [Maybe Name] (Expr Name)
+  = Plain Annotation [Maybe Name]
+  | Typed Annotation [Maybe Name] (Expr Name)
   deriving (Eq, Ord, Show)
 
-abstractBindings :: (NameHint -> Plicitness -> Maybe (Expr Name)
+abstractBindings :: (NameHint -> Annotation -> Maybe (Expr Name)
                               -> Scope1 Expr Name -> Expr Name)
                  -> [Binding]
                  -> Expr Name -> Expr Name
@@ -183,7 +184,7 @@ bindingNames bs = Vector.fromList $ bs >>= flatten
     flatten (Plain _ names) = names
     flatten (Typed _ names _) = names
 
-bindingHints :: [Binding] -> Vector (NameHint, Plicitness)
+bindingHints :: [Binding] -> Vector (NameHint, Annotation)
 bindingHints bs = Vector.fromList $ bs >>= flatten
   where
     flatten (Plain p names) = [(Hint n, p) | n <- names]
@@ -203,15 +204,19 @@ bindingsTelescope bs = Telescope $
 
 atomicBinding :: Parser Binding
 atomicBinding
-  =  Plain Explicit . (:[]) <$> identOrWildcard
- <|> Typed Explicit <$ symbol "(" <*>% someSI identOrWildcard <*% symbol ":" <*>% expr <*% symbol ")"
- <|> implicit <$ symbol "{" <*>% someSI identOrWildcard
-              <*> Trifecta.optional (id <$% symbol ":" *> expr)
-              <*% symbol "}"
+  =  rel <**>
+  (explicit <$> identOrWildcard
+  <|> typedExplicit <$ symbol "(" <*>% someSI identOrWildcard
+                   <*% symbol ":" <*>% expr <*% symbol ")"
+  <|> implicit <$ symbol "{" <*>% someSI identOrWildcard
+               <*> Trifecta.optional (id <$% symbol ":" *> expr)
+               <*% symbol "}")
  <?> "atomic variable binding"
  where
-  implicit xs Nothing  = Plain Implicit xs
-  implicit xs (Just t) = Typed Implicit xs t
+  explicit x r = Plain (Annotation r Explicit) [x]
+  typedExplicit xs t r = Typed (Annotation r Explicit) xs t
+  implicit xs Nothing  r = Plain (Annotation r Implicit) xs
+  implicit xs (Just t) r = Typed (Annotation r Implicit) xs t
 
 someBindings :: Parser [Binding]
 someBindings
@@ -223,12 +228,12 @@ manyBindings
   = manySI atomicBinding
  <?> "variable bindings"
 
-caseBinding :: Parser [(Maybe Name, Plicitness)]
-caseBinding = implicit <$ symbol "{" <*>% someSI identOrWildcard <*% symbol "}"
-           <|> explicit <$> identOrWildcard
+caseBinding :: Parser [(Maybe Name, Annotation)]
+caseBinding =  implicit <$> rel <* symbol "{" <*>% someSI identOrWildcard <*% symbol "}"
+           <|> explicit <$> rel <*> identOrWildcard
   where
-    implicit xs = [(x, Implicit) | x <- xs]
-    explicit x = [(x, Explicit)]
+    implicit r xs = [(x, Annotation r Implicit) | x <- xs]
+    explicit r x = [(x, Annotation r Explicit)]
 
 atomicExpr :: Parser (Expr Name)
 atomicExpr
@@ -254,19 +259,23 @@ branches = dropAnchor $  ConBranches <$> manySameCol conBranch <*> pure Wildcard
       where bs' = bindingHints bs
             ns = fmap (unHint . fst) bs'
 
+rel :: Parser Relevance
+rel = Irrelevant <$ symbol "~"  <|> pure Relevant
+
 expr :: Parser (Expr Name)
 expr
   = (foldl (uncurry . App) <$> atomicExpr <*> manySI argument)
-    <**> (typeAnno <|> arr Explicit <|> pure id)
- <|> ((symbol "{" *>% expr <*% symbol "}") <**> arr Implicit)
+    <**> (typeAnno <|> (\f t -> f (ReEx, t)) <$> arr <|> pure id)
+ <|> argument <**> arr
  <?> "expression"
   where
     typeAnno = flip Anno <$% symbol ":" <*>% expr
-    arr p    = (\e' e -> Pi (Hint Nothing) p e $ Scope $ Var $ F e')
+    arr      = (\e' (a, e) -> Pi (Hint Nothing) a e $ Scope $ Var $ F e')
            <$% symbol "->" <*>% expr
-    argument :: Parser (Plicitness, Expr Name)
-    argument =  (,) Implicit <$ symbol "{" <*>% expr <*% symbol "}"
-            <|> (,) Explicit <$> atomicExpr
+    argument :: Parser (Annotation, Expr Name)
+    argument = (first . Annotation <$> rel) <*>
+               ((,) Implicit <$ symbol "{" <*>% expr <*% symbol "}"
+            <|> (,) Explicit <$> atomicExpr)
             --
 -- | A definition or type declaration on the top-level
 data TopLevelParsed v

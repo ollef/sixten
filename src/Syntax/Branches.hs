@@ -5,14 +5,14 @@ import Data.String
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import Syntax.Plicitness
+import Syntax.Annotation
 import Syntax.Hint
 import Syntax.Pretty
 import Syntax.Telescope
 import Util
 
 data Branches c expr a
-  = ConBranches [(c, Vector (NameHint, Plicitness), Scope Tele expr a)] (expr a) -- ^ Return type
+  = ConBranches [(c, Vector (NameHint, Annotation), Scope Tele expr a)] (expr a) -- ^ Return type
   | LitBranches [(Literal, expr a)] (expr a)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
@@ -26,7 +26,7 @@ instance (Monad f, Pretty c, Pretty (f v), IsString v)
     [ withTeleHints tele $ \ns ->
         prettyM c <+> prettyTeleVars ns tele <+>
         prettyM "->" <+> prettyM (instantiate (pure . fromText . (ns Vector.!) . unTele) s)
-    | (c, xs, s) <- cbrs, let tele = Telescope $ (\(x, d) -> (x, d, undefined)) <$> xs ]
+    | (c, xs, s) <- cbrs, let tele = Telescope $ (\(x, a) -> (x, a, undefined)) <$> xs ]
   prettyM (LitBranches lbrs def) = vcat $
     [ prettyM l <+> prettyM "->" <+> prettyM e
     | (l, e) <- lbrs] ++

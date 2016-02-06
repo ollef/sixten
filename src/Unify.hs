@@ -53,7 +53,7 @@ unify type1 type2 = do
         (Lam h1 p1 a s1, Lam h2 p2 b s2) | p1 == p2 -> absCase (h1 <> h2) a b s1 s2
         -- If we've already tried reducing the application,
         -- we can only hope to unify it pointwise.
-        (App e1 p1 e1', App e2 p2 e2') | p1 == p2 && not reduce -> do
+        (App e1 a1 e1', App e2 a2 e2') | a1 == a2 && not reduce -> do
           unify e1  e2
           unify e1' e2'
         (Lit 0, Builtin.AddSize x y) -> do
@@ -88,12 +88,13 @@ unify type1 type2 = do
     lams pvs t = foldrM (\(p, v) -> fmap (Lam (Hint Nothing) p $ metaType v) . abstract1M v) t pvs
 
 subtype
-  :: Plicitness
+  :: Relevance
+  -> Plicitness
   -> AbstractM s
   -> AbstractM s
   -> AbstractM s
   -> TCM s (AbstractM s, AbstractM s)
-subtype surrounding expr type1 type2 = do
+subtype surrR surrP expr type1 type2 = do
   tr "subtype e"  =<< freeze expr
   tr "        t1" =<< freeze type1
   tr "        t2" =<< freeze type2
@@ -113,18 +114,19 @@ subtype surrounding expr type1 type2 = do
         (_, Global _) | reduce2 -> do
           typ2' <- whnf typ2
           go reduce1 False e typ1 typ2'
-        (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> do
+        (Pi h1 a1 t1 s1, Pi h2 a2 t2 s2) | plicitness a1 == plicitness a2
+                                        && relevance a1 >= min (relevance a2) surrR -> do
           let h = h1 <> h2
           x2  <- forall_ h t2
-          (x1, _)   <- subtype p1 (pure x2) t2 t1
-          (ex, s2') <- subtype surrounding
-                               (betaApp e p1 x1)
+          (x1, _)   <- subtype (min (relevance a2) surrR) (plicitness a2) (pure x2) t2 t1
+          (ex, s2') <- subtype surrR surrP
+                               (betaApp e a1 x1)
                                (instantiate1 x1 s1)
                                (instantiate1 (pure x2) s2)
-          e2    <- etaLamM h p1 t2 =<< abstract1M x2 ex
-          typ2' <- Pi h p1 t2 <$> abstract1M x2 s2'
+          e2    <- etaLamM h a2 t2 =<< abstract1M x2 ex
+          typ2' <- Pi h a2 t2 <$> abstract1M x2 s2'
           return (e2, typ2')
-        (Var v@(metaRef -> Just r), Pi h p t2 s2) -> do
+        (Var v@(metaRef -> Just r), Pi h a t2 s2) -> do
           sol <- solution r
           case sol of
             Left l -> do
@@ -134,30 +136,31 @@ subtype surrounding expr type1 type2 = do
               t12TypeSize <- existsVarAtLevel (metaHint v) Builtin.Size l
               t11 <- existsVarAtLevel (metaHint v) (Builtin.Type t11TypeSize) l
               t12 <- existsVarAtLevel (metaHint v) (Builtin.Type t12TypeSize) l
-              solve r $ Pi h p t11 $ abstractNone t12
+              solve r $ Pi h a t11 $ abstractNone t12
               x2  <- forall_ h t2
-              (x1, t11') <- subtype p (pure x2) t2 t11
-              (ex, s2')  <- subtype surrounding (betaApp e p x1) t12 (instantiate1 (pure x2) s2)
-              solve r . Pi h p t11' =<< abstract1M x2 s2'
-              e2    <- etaLamM h p t2 =<< abstract1M x2 ex
-              typ2' <- Pi h p t2 <$> abstract1M x2 s2'
+              (x1, t11') <- subtype (min (relevance a) surrR) (plicitness a) (pure x2) t2 t11
+              (ex, s2')  <- subtype surrR surrP (betaApp e a x1) t12 (instantiate1 (pure x2) s2)
+              solve r . Pi h a t11' =<< abstract1M x2 s2'
+              e2    <- etaLamM h a t2 =<< abstract1M x2 ex
+              typ2' <- Pi h a t2 <$> abstract1M x2 s2'
               return (e2, typ2')
-            Right c -> subtype surrounding e c typ2
+            Right c -> subtype surrR surrP e c typ2
         (_, Var (metaRef -> Just r)) -> do
           sol <- solution r
           case sol of
             Left _ -> do unify typ1 typ2; return (e, typ2)
-            Right c -> subtype surrounding e typ1 c
-        (_, Pi h p t2 s2) | p == Implicit || surrounding == Implicit -> do
+            Right c -> subtype surrR surrP e typ1 c
+        (_, Pi h a t2 s2) | plicitness a == Implicit
+                         || surrP == Implicit -> do
           x2 <- forall_ h t2
-          (e2, s2') <- subtype surrounding e typ1 (instantiate1 (pure x2) s2)
-          e2'   <- etaLamM h p t2 =<< abstract1M x2 e2
-          typ2' <- Pi h p t2 <$> abstract1M x2 s2'
+          (e2, s2') <- subtype surrR Implicit e typ1 (instantiate1 (pure x2) s2)
+          e2'   <- etaLamM h a t2 =<< abstract1M x2 e2
+          typ2' <- Pi h a t2 <$> abstract1M x2 s2'
           return (e2', typ2')
-        (Pi h p t1 s1, _) -> do
+        (Pi h a t1 s1, _) -> do
           v1 <- existsVar h t1
-          subtype surrounding (betaApp e p v1) (instantiate1 v1 s1) typ2
-        _ | reduce1 || reduce2-> do
+          subtype surrR surrP (betaApp e a v1) (instantiate1 v1 s1) typ2
+        _ | reduce1 || reduce2 -> do
           typ1' <- whnf typ1
           typ2' <- whnf typ2
           go False False e typ1' typ2'
@@ -177,17 +180,17 @@ typeOf expr = do
     Con qc -> qconstructor qc
     Lit _ -> return Builtin.Size
     Pi {} -> return $ Builtin.Type $ Lit 1
-    Lam n p t s -> do
+    Lam n a t s -> do
       x <- forall_ n t
       resType  <- typeOf (instantiate1 (pure x) s)
       abstractedResType <- abstract1M x resType
-      return $ Pi n p t abstractedResType
-    App e1 p e2 -> do
+      return $ Pi n a t abstractedResType
+    App e1 a e2 -> do
       e1type <- typeOf e1
       e1type' <- whnf e1type
       case e1type' of
-        Pi _ p' _ resType | p == p' -> return $ instantiate1 e2 resType
-        _ -> throwError $ "typeOf: expected pi type" ++ show e1type'
+        Pi _ a' _ resType | a == a' -> return $ instantiate1 e2 resType
+        _ -> throwError $ "typeOf: expected pi type " ++ show e1type'
     Case _ (ConBranches _ t) -> return t
     Case _ (LitBranches _ def) -> typeOf def
   modifyIndent pred

@@ -15,9 +15,9 @@ data Expr v
   | Global Name -- ^ Really just a variable, but it's often annoying to not have it
   | Lit Literal
   | Con (Either Constr QConstr)
-  | Pi  !NameHint !Plicitness (Type v) (Scope1 Expr v)  -- ^ Dependent function space
-  | Lam !NameHint !Plicitness (Scope1 Expr v)
-  | App (Expr v) !Plicitness (Expr v)
+  | Pi  !NameHint !Annotation (Type v) (Scope1 Expr v)  -- ^ Dependent function space
+  | Lam !NameHint !Annotation (Scope1 Expr v)
+  | App (Expr v) !Annotation (Expr v)
   | Case (Expr v) (Branches (Either Constr QConstr) Expr v)
   | Anno (Expr v) (Expr v)
   | Wildcard  -- ^ Attempt to infer it
@@ -27,11 +27,11 @@ data Expr v
 type Type = Expr
 
 -- * Smart constructors
-lam :: NameHint -> Plicitness -> Maybe (Type v) -> Scope1 Expr v -> Expr v
+lam :: NameHint -> Annotation -> Maybe (Type v) -> Scope1 Expr v -> Expr v
 lam x p Nothing  = Lam x p
 lam x p (Just t) = (`Anno` Pi x p t (Scope Wildcard)) . Lam x p
 
-piType :: NameHint -> Plicitness -> Maybe (Type v) -> Scope1 Expr v -> Expr v
+piType :: NameHint -> Annotation -> Maybe (Type v) -> Scope1 Expr v -> Expr v
 piType x p Nothing  = Pi x p Wildcard
 piType x p (Just t) = Pi x p t
 
@@ -39,12 +39,12 @@ anno :: Expr v -> Expr v -> Expr v
 anno e Wildcard = e
 anno e t        = Anno e t
 
-apps :: Foldable t => Expr v -> t (Plicitness, Expr v) -> Expr v
+apps :: Foldable t => Expr v -> t (Annotation, Expr v) -> Expr v
 apps = Foldable.foldl (uncurry . App)
 
 -------------------------------------------------------------------------------
 -- * Views
-piView :: Expr v -> Maybe (NameHint, Plicitness, Type v, Scope1 Expr v)
+piView :: Expr v -> Maybe (NameHint, Annotation, Type v, Scope1 Expr v)
 piView (Pi n p e s) = Just (n, p, e, s)
 piView _            = Nothing
 
@@ -93,17 +93,17 @@ instance (IsString v, Pretty v) => Pretty (Expr v) where
     Lit l -> prettyM l
     Con (Left c) -> prettyM c
     Con (Right qc) -> prettyM qc
-    Pi  h p Wildcard s -> withNameHint h $ \x -> parens `above` absPrec $
-      prettyM "forall" <+> inviolable (braces `iff` (p == Implicit) $ prettyM x)
+    Pi  h a Wildcard s -> withNameHint h $ \x -> parens `above` absPrec $
+      prettyM "forall" <+> inviolable (prettyAnnotation a $ prettyM x)
       <> prettyM "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
-    Pi  h p t s -> withNameHint h $ \x -> parens `above` absPrec $
-      prettyM "forall" <+> inviolable (braces `iff` (p == Implicit) $ prettyM x)
+    Pi  h a t s -> withNameHint h $ \x -> parens `above` absPrec $
+      prettyM "forall" <+> inviolable (prettyAnnotation a $ prettyM x)
       <+> prettyM ":" <+> inviolable (prettyM t)
       <> prettyM "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
-    Lam h p s -> withNameHint h $ \x -> parens `above` absPrec $
-      prettyM "\\" <+> inviolable (braces `iff` (p == Implicit) $ prettyM x)
+    Lam h a s -> withNameHint h $ \x -> parens `above` absPrec $
+      prettyM "\\" <+> inviolable (prettyAnnotation a $ prettyM x)
         <> prettyM "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
-    App e1 p e2 -> prettyApp (prettyM e1) (braces `iff` (p == Implicit) $ prettyM e2)
+    App e1 a e2 -> prettyApp (prettyM e1) (prettyAnnotation a $ prettyM e2)
     Case e brs -> parens `above` casePrec $
       prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> indent 2 (prettyM brs)
     Anno e t  -> parens `above` annoPrec $

@@ -17,18 +17,18 @@ data Expr v
   | Global Name
   | Con QConstr
   | Lit Literal
-  | Lam !NameHint (Scope1 Expr v)
+  | Lam !NameHint (Expr v) (Scope1 Expr v)
   | App (Expr v) (Expr v)
   | Case (Expr v) (Branches QConstr Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 globals :: Expr v -> Expr (Var Name v)
 globals expr = case expr of
-  Var v    -> Var $ F v
+  Var v -> Var $ F v
   Global g -> Var $ B g
-  Lit l    -> Lit l
-  Con c    -> Con c
-  Lam h s  -> Lam h $ exposeScope globals s
+  Lit l -> Lit l
+  Con c -> Con c
+  Lam h e s -> Lam h (globals e) $ exposeScope globals s
   App e1 e2 -> App (globals e1) (globals e2)
   Case e brs -> Case (globals e) (exposeBranches globals brs)
 
@@ -48,19 +48,19 @@ instance Monad Expr where
   Global g >>= _ = Global g
   Con c >>= _ = Con c
   Lit l >>= _ = Lit l
-  Lam h s >>= f = Lam h $ s >>>= f
+  Lam h e s >>= f = Lam h (e >>= f) $ s >>>= f
   App e1 e2 >>= f = App (e1 >>= f) (e2 >>= f)
   Case e brs >>= f = Case (e >>= f) (brs >>>= f)
 
-lamView :: Expr v -> Maybe (NameHint, Plicitness, Expr v, Scope1 Expr v)
-lamView (Lam h s) = Just (h, Explicit, Lit 0, s)
-lamView _         = Nothing
+lamView :: Expr v -> Maybe (NameHint, Annotation, Expr v, Scope1 Expr v)
+lamView (Lam h e s) = Just (h, ReEx, e, s)
+lamView _           = Nothing
 
-etaLam :: Hint (Maybe Name) -> Scope1 Expr v -> Expr v
-etaLam _ (Scope (App e (Var (B ()))))
+etaLam :: Hint (Maybe Name) -> Expr v -> Scope1 Expr v -> Expr v
+etaLam _ _ (Scope (App e (Var (B ()))))
   | B () `S.notMember` toSet (second (const ()) <$> e)
     = join $ unvar (error "etaLam impossible") id <$> e
-etaLam n s = Lam n s
+etaLam n e s = Lam n e s
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Expr v) where
@@ -72,7 +72,7 @@ instance (Eq v, IsString v, Pretty v)
     (bindingsViewM lamView -> Just (tele, s)) -> parens `above` absPrec $
       withTeleHints tele $ \ns ->
         prettyM "\\" <> hsep (map prettyM $ Vector.toList ns) <> prettyM "." <+>
-        associate (prettyM $ instantiateTele (pure . fromText <$> ns) s)
+        associate absPrec (prettyM $ instantiateTele (pure . fromText <$> ns) s)
     Lam {} -> error "impossible prettyPrec lam"
     App e1 e2 -> prettyApp (prettyM e1) (prettyM e2)
     Case e brs -> parens `above` casePrec $

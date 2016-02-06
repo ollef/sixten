@@ -7,7 +7,7 @@ import Data.String
 import qualified Data.Vector as Vector
 import Prelude.Extras
 
-import Syntax.Plicitness
+import Syntax.Annotation
 import Syntax.Hint
 import Syntax.Name
 import Syntax.Pretty
@@ -19,7 +19,7 @@ newtype DataDef typ v = DataDef { dataConstructors :: [ConstrDef (Scope Tele typ
 
 quantifiedConstrTypes
   :: (Eq v, Monad typ)
-  => (NameHint -> Plicitness -> typ (Var Tele v)
+  => (NameHint -> Annotation -> typ (Var Tele v)
                -> Scope1 typ (Var Tele v)
                -> typ (Var Tele v))
   -> DataDef typ v

@@ -18,9 +18,9 @@ data Expr v
   | Global Name
   | Con QConstr
   | Lit Literal
-  | Pi  !NameHint Plicitness (Type v) (Scope1 Expr v)
-  | Lam !NameHint Plicitness (Type v) (Scope1 Expr v)
-  | App  (Expr v) Plicitness (Expr v)
+  | Pi  !NameHint Annotation (Type v) (Scope1 Expr v)
+  | Lam !NameHint Annotation (Type v) (Scope1 Expr v)
+  | App  (Expr v) Annotation (Expr v)
   | Case (Expr v) (Branches QConstr Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
@@ -29,48 +29,48 @@ type Type = Expr
 
 -------------------------------------------------------------------------------
 -- * Views and smart constructors
-pi_ :: Name -> Plicitness -> Type Name -> Expr Name -> Expr Name
+pi_ :: Name -> Annotation -> Type Name -> Expr Name -> Expr Name
 pi_ n p t e = Pi (Hint $ Just n) p t $ abstract1 n e
 
-lam :: Name -> Plicitness -> Type Name -> Expr Name -> Expr Name
+lam :: Name -> Annotation -> Type Name -> Expr Name -> Expr Name
 lam n p t e = Lam (Hint $ Just n) p t $ abstract1 n e
 
-etaLam :: Hint (Maybe Name) -> Plicitness -> Expr v -> Scope1 Expr v -> Expr v
+etaLam :: Hint (Maybe Name) -> Annotation -> Expr v -> Scope1 Expr v -> Expr v
 etaLam _ p _ (Scope (App e p' (Var (B ()))))
   | B () `S.notMember` toSet (second (const ()) <$> e) && p == p'
     = join $ unvar (error "etaLam impossible") id <$> e
 etaLam n p t s = Lam n p t s
 
-piView :: Expr v -> Maybe (NameHint, Plicitness, Type v, Scope1 Expr v)
+piView :: Expr v -> Maybe (NameHint, Annotation, Type v, Scope1 Expr v)
 piView (Pi n p e s) = Just (n, p, e, s)
 piView _            = Nothing
 
-usedPiView :: Expr v -> Maybe (NameHint, Plicitness, Type v, Scope1 Expr v)
+usedPiView :: Expr v -> Maybe (NameHint, Annotation, Type v, Scope1 Expr v)
 usedPiView (Pi n p e s@(unusedScope -> Nothing)) = Just (n, p, e, s)
 usedPiView _                                     = Nothing
 
-lamView :: Expr v -> Maybe (NameHint, Plicitness, Type v, Scope1 Expr v)
+lamView :: Expr v -> Maybe (NameHint, Annotation, Type v, Scope1 Expr v)
 lamView (Lam n p e s) = Just (n, p, e, s)
 lamView _             = Nothing
 
-appsView :: Expr v -> (Expr v, [(Plicitness, Expr v)])
+appsView :: Expr v -> (Expr v, [(Annotation, Expr v)])
 appsView = second reverse . go
   where
     go (App e1 p e2) = (e1', (p, e2) : es)
       where (e1', es) = go e1
     go e = (e, [])
 
-arrow :: Plicitness -> Expr v -> Expr v -> Expr v
+arrow :: Annotation -> Expr v -> Expr v -> Expr v
 arrow p a b = Pi (Hint Nothing) p a $ Scope $ pure $ F b
 
-betaApp :: Expr v -> Plicitness -> Expr v -> Expr v
+betaApp :: Expr v -> Annotation -> Expr v -> Expr v
 betaApp e1@(Lam _ p1 _ s) p2 e2 | p1 == p2 = case bindings s of
   []  -> instantiate1 e2 s
   [_] -> instantiate1 e2 s
   _   -> App e1 p1 e2
 betaApp e1 p e2 = App e1 p e2
 
-apps :: Foldable t => Expr v -> t (Plicitness, Expr v) -> Expr v
+apps :: Foldable t => Expr v -> t (Annotation, Expr v) -> Expr v
 apps = Foldable.foldl (uncurry . App)
 
 globals :: Expr v -> Expr (Var Name v)
@@ -115,8 +115,8 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
     Global g  -> prettyM g
     Con c     -> prettyM c
     Lit l     -> prettyM l
-    Pi  _ p t (unusedScope -> Just e) -> parens `above` arrPrec $
-      (braces `iff` (p == Implicit) $ prettyM t)
+    Pi  _ a t (unusedScope -> Just e) -> parens `above` arrPrec $
+      (prettyAnnotation a $ prettyM t)
       <+> prettyM "->" <+>
       associate arrPrec (prettyM e)
     (bindingsViewM usedPiView -> Just (tele, s)) -> withTeleHints tele $ \ns ->
@@ -129,6 +129,6 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
       prettyM "\\" <> prettyTeleVarTypes ns tele <> prettyM "." <+>
       prettyM (instantiateTele (pure . fromText <$> ns) s)
     Lam {} -> error "impossible prettyPrec lam"
-    App e1 p e2 -> prettyApp (prettyM e1) (braces `iff` (p == Implicit) $ prettyM e2)
+    App e1 a e2 -> prettyApp (prettyM e1) (prettyAnnotation a $ prettyM e2)
     Case e brs -> parens `above` casePrec $
       prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> indent 2 (prettyM brs)

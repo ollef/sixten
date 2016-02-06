@@ -8,6 +8,7 @@ import Meta
 import TCM
 import Syntax
 import Syntax.Abstract
+import Util
 
 whnf :: AbstractM s -> TCM s (AbstractM s)
 whnf expr = case expr of
@@ -23,22 +24,8 @@ whnf expr = case expr of
   Lit _ -> return expr
   Pi {} -> return expr
   Lam {} -> return expr
-  Builtin.AddSize x y -> do
-    x' <- whnf x
-    y' <- whnf y
-    case (x', y') of
-      (Lit 0, _) -> return y'
-      (_, Lit 0) -> return x'
-      (Lit m, Lit n) -> return $ Lit $ m + n
-      _ -> return $ Builtin.AddSize x y
-  Builtin.MaxSize x y -> do
-    x' <- whnf x
-    y' <- whnf y
-    case (x', y') of
-      (Lit 0, _) -> return $ Lit 0
-      (_, Lit 0) -> return $ Lit 0
-      (Lit m, Lit n) -> return $ Lit $ max m n
-      _ -> return $ Builtin.MaxSize x' y'
+  Builtin.AddSize x y -> binOp 0 (+) Builtin.AddSize x y
+  Builtin.MaxSize x y -> binOp 0 max Builtin.MaxSize x y
   App e1 p e2 -> do
     e1' <- whnf e1
     case e1' of
@@ -62,22 +49,8 @@ normalise expr = case expr of
   Lit _ -> return expr
   Pi n p a s -> normaliseScope n (Pi n p)  a s
   Lam n p a s -> normaliseScope n (Lam n p) a s
-  Builtin.AddSize x y -> do
-    x' <- whnf x
-    y' <- whnf y
-    case (x', y') of
-      (Lit 0, _) -> return y'
-      (_, Lit 0) -> return x'
-      (Lit m, Lit n) -> return $ Lit $ m + n
-      _ -> return $ Builtin.AddSize x y
-  Builtin.MaxSize x y -> do
-    x' <- whnf x
-    y' <- whnf y
-    case (x', y') of
-      (Lit 0, _) -> return $ Lit 0
-      (_, Lit 0) -> return $ Lit 0
-      (Lit m, Lit n) -> return $ Lit $ max m n
-      _ -> return $ Builtin.MaxSize x' y'
+  Builtin.AddSize x y -> binOp 0 (+) Builtin.AddSize x y
+  Builtin.MaxSize x y -> binOp 0 max Builtin.MaxSize x y
   App e1 p e2 -> do
     e1' <- normalise e1
     e2' <- normalise e2
@@ -90,3 +63,19 @@ normalise expr = case expr of
       x <- forall_ h a
       ns <- normalise $ instantiate1 (pure x) s
       c a <$> abstract1M x ns
+
+binOp
+  :: Literal
+  -> (Literal -> Literal -> Literal)
+  -> (AbstractM s -> AbstractM s -> AbstractM s)
+  -> AbstractM s
+  -> AbstractM s
+  -> TCM s (AbstractM s)
+binOp zero op cop x y = do
+    x' <- normalise x
+    y' <- normalise y
+    case (x', y') of
+      (Lit m, _) | m == zero -> return y'
+      (_, Lit n) | n == zero -> return x'
+      (Lit m, Lit n) -> return $ Lit $ op m n
+      _ -> return $ cop x' y'

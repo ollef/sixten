@@ -25,48 +25,52 @@ import Unify
 import Util
 
 checkType
-  :: Plicitness
+  :: Relevance
+  -> Plicitness
   -> ConcreteM s
   -> AbstractM s
   -> TCM s (AbstractM s, AbstractM s)
-checkType surrounding expr typ = do
-  tr "checkType e" expr
+checkType surrR surrP expr typ = do
+  tr ("checkType " ++ show (Annotation surrR surrP) ++ " e") expr
   tr "          t" =<< freeze typ
   modifyIndent succ
   (rese, rest) <- case expr of
     Concrete.Con c@(Left _) -> do
       n <- resolveConstrType [c] $ Just typ
-      checkType surrounding (Concrete.Con $ Right $ qualify n c) typ
-    Concrete.Lam m p s -> do
+      checkType surrR surrP (Concrete.Con $ Right $ qualify n c) typ
+    Concrete.Lam h1 a1 s1 -> do
       typ' <- whnf typ
       case typ' of
-        Abstract.Pi h p' a ts | p == p' -> do
-          v <- forall_ (h <> m) a
-          (body, ts') <- checkType surrounding
-                                   (instantiate1 (pure v) s)
-                                   (instantiate1 (pure v) ts)
-          expr' <- Abstract.Lam (m <> h) p a <$> abstract1M v body
-          typ'' <- Abstract.Pi  (h <> m) p a <$> abstract1M v ts'
+        Abstract.Pi h2 a2 t2 ts2 | plicitness a1 == plicitness a2
+                                && relevance a1 >= min (relevance a2) surrR -> do
+          v <- forall_ (h2 <> h1) t2
+          (body, ts2') <- checkType surrR surrP
+                                    (instantiate1 (pure v) s1)
+                                    (instantiate1 (pure v) ts2)
+          expr' <- Abstract.Lam (h1 <> h2) a2 t2 <$> abstract1M v body
+          typ'' <- Abstract.Pi  (h2 <> h1) a2 t2 <$> abstract1M v ts2'
           return (expr', typ'')
-        Abstract.Pi h p' a ts | p' == Implicit || surrounding == Implicit -> do
-          v <- forall_ h a
-          (expr', ts') <- checkType surrounding expr (instantiate1 (pure v) ts)
-          expr'' <- etaLamM h p' a =<< abstract1M v expr'
-          typ''  <- Abstract.Pi  h p' a <$> abstract1M v ts'
+        Abstract.Pi h2 a2 t2 ts2 | plicitness a2 == Implicit
+                                || surrP == Implicit -> do
+          v <- forall_ h2 t2
+          (expr', ts2') <- checkType surrR surrP expr (instantiate1 (pure v) ts2)
+          expr'' <- etaLamM h2 a2 t2 =<< abstract1M v expr'
+          typ''  <- Abstract.Pi  h2 a2 t2 <$> abstract1M v ts2'
           return (expr'', typ'')
         _ -> inferIt
     -- TODO: Gather applications for better propagation
-    Concrete.App e1 p e2 -> do
+    Concrete.App e1 a1 e2 -> do
       argType <- existsType mempty
       resType <- existsType mempty
-      (e1', funType) <- checkType surrounding e1 $ Abstract.Pi mempty p argType
+      (e1', funType) <- checkType surrR surrP e1 $ Abstract.Pi mempty a1 argType
                                                  $ abstractNone resType
       case funType of
-        Abstract.Pi h p' argType' returnScope | p == p' -> do
+        Abstract.Pi h a2 argType' returnScope | plicitness a1 == plicitness a2
+                                             && relevance a1 >= min (relevance a2) surrR -> do
           arg <- existsVar h argType'
           let returnType = instantiate1 arg returnScope
-          (appResult, typ') <- subtype surrounding (Abstract.App e1' p arg) returnType typ
-          (e2', _argType'') <- checkType surrounding e2 argType'
+          (appResult, typ') <- subtype surrR surrP (Abstract.App e1' a2 arg) returnType typ
+          (e2', _argType'') <- checkType (min (relevance a2) surrR) surrP e2 argType'
           unify e2' arg
           return (appResult, typ')
         _ -> throwError "checkType: expected pi type"
@@ -77,13 +81,11 @@ checkType surrounding expr typ = do
   return (rese, rest)
     where
       inferIt = do
-        (expr', typ') <- inferType surrounding expr
-        subtype surrounding expr' typ' typ
+        (expr', typ') <- inferType surrR surrP expr
+        subtype surrR surrP expr' typ' typ
 
 existsTypeType :: NameHint -> TCM s (AbstractM s)
-existsTypeType n = do
-  sz <- existsVar n Builtin.Size
-  existsVar n $ Builtin.Type sz
+existsTypeType n = existsVar n $ Builtin.Type (Abstract.Lit 0)
 
 existsType :: NameHint -> TCM s (AbstractM s)
 existsType n = do
@@ -91,10 +93,11 @@ existsType n = do
   existsVar n t
 
 inferType
-  :: Plicitness
+  :: Relevance
+  -> Plicitness
   -> ConcreteM s
   -> TCM s (AbstractM s, AbstractM s)
-inferType surrounding expr = do
+inferType surrR surrP expr = do
   tr "inferType" expr
   modifyIndent succ
   (e, t) <- case expr of
@@ -110,37 +113,38 @@ inferType surrounding expr = do
     Concrete.Lit l -> return (Abstract.Lit l, Builtin.Size)
     Concrete.Pi n p t s -> do
       argTypeType <- existsTypeType n
-      (t', _) <- checkType p t argTypeType
+      (t', _) <- checkType Irrelevant surrP t argTypeType
       v  <- forall_ n t'
       resTypeType <- existsTypeType mempty
-      (e', _) <- checkType surrounding (instantiate1 (pure v) s) resTypeType
+      (e', _) <- checkType Irrelevant surrP (instantiate1 (pure v) s) resTypeType
       s' <- abstract1M v e'
       return (Abstract.Pi n p t' s', Builtin.Type $ Abstract.Lit 1)
     Concrete.Lam n p s -> uncurry generalise <=< enterLevel $ do
       argType <- existsType n
       resType <- existsType mempty
       x <- forall_ n argType
-      (e', resType')  <- checkType surrounding (instantiate1 (pure x) s) resType
+      (e', resType')  <- checkType surrR surrP (instantiate1 (pure x) s) resType
       s' <- abstract1M x e'
       abstractedResType <- abstract1M x resType'
       return (Abstract.Lam n p argType s', Abstract.Pi n p argType abstractedResType)
-    Concrete.App e1 p e2 -> do
+    Concrete.App e1 a1 e2 -> do
       argType <- existsType mempty
       resType <- existsType mempty
-      (e1', e1type) <- checkType surrounding e1 $ Abstract.Pi mempty p argType
+      (e1', e1type) <- checkType surrR surrP e1 $ Abstract.Pi mempty a1 argType
                                                 $ abstractNone resType
       case e1type of
-        Abstract.Pi _ p' argType' resType' | p == p' -> do
-          (e2', _) <- checkType p e2 argType'
-          return (Abstract.App e1' p e2', instantiate1 e2' resType')
+        Abstract.Pi _ a2 argType' resType' | plicitness a1 == plicitness a2
+                                          && relevance a1 >= min (relevance a2) surrR -> do
+          (e2', _) <- checkType (min (relevance a2) surrR) surrP e2 argType'
+          return (Abstract.App e1' a2 e2', instantiate1 e2' resType')
         _ -> throwError "inferType: expected pi type"
     Concrete.Case e brs -> do
-      (e'', brs', retType) <- inferBranches surrounding e brs
+      (e'', brs', retType) <- inferBranches surrR surrP e brs
       return (Abstract.Case e'' brs', retType)
     Concrete.Anno e t  -> do
       tType <- existsTypeType mempty
-      (t', _) <- checkType surrounding t tType
-      checkType surrounding e t'
+      (t', _) <- checkType Irrelevant surrP t tType
+      checkType surrR surrP e t'
     Concrete.Wildcard  -> do
       t <- existsType mempty
       x <- existsVar mempty t
@@ -173,15 +177,16 @@ resolveConstrType cs mtype = do
                ++ show xs ++ show (n ++ ns)
 
 inferBranches
-  :: Plicitness
+  :: Relevance
+  -> Plicitness
   -> ConcreteM s
   -> BranchesM (Either Constr QConstr) Concrete.Expr s
   -> TCM s ( AbstractM s
            , BranchesM QConstr Abstract.Expr s
            , AbstractM s
            )
-inferBranches surrounding expr (ConBranches cbrs _) = mdo
-  (expr1, etype1) <- inferType surrounding expr
+inferBranches surrR surrP expr (ConBranches cbrs _) = mdo
+  (expr1, etype1) <- inferType surrR surrP expr
 
   tr "inferBranches e" expr1
   tr "              brs" $ ConBranches cbrs Concrete.Wildcard
@@ -199,9 +204,9 @@ inferBranches surrounding expr (ConBranches cbrs _) = mdo
 
   let pureParamVars  = fmap pure <$> paramVars
       dataType = Abstract.apps (Abstract.Global typeName) pureParamVars
-      implicitParamVars = (\(_p, v) -> (Implicit, pure v)) <$> paramVars
+      implicitParamVars = (\(_p, v) -> (IrIm, pure v)) <$> paramVars
 
-  (expr2, etype2) <- subtype surrounding expr1 etype1 dataType
+  (expr2, etype2) <- subtype surrR surrP expr1 etype1 dataType
 
   let go (c, nps, sbr) (etype, resBrs, resType) = do
         args <- V.forM nps $ \(h, p) -> do
@@ -211,10 +216,10 @@ inferBranches surrounding expr (ConBranches cbrs _) = mdo
         let qc = qualify typeName c
             pureVs = snd <$> args
         (paramsArgsExpr, etype') <- checkType
-          surrounding
+          surrR surrP
           (Concrete.apps (Concrete.Con $ Right qc) $ implicitParamVars <> args)
           etype
-        (br, resType') <- checkType surrounding (instantiateTele pureVs sbr) resType
+        (br, resType') <- checkType surrR surrP (instantiateTele pureVs sbr) resType
         paramsArgsExpr' <- freeze paramsArgsExpr
 
         let (_, args') = Abstract.appsView paramsArgsExpr'
@@ -229,22 +234,22 @@ inferBranches surrounding expr (ConBranches cbrs _) = mdo
 
   (etype3, cbrs2, resType2) <- foldrM go (etype2, mempty, resType1) cbrs
 
-  (expr3, _etype3) <- subtype surrounding expr2 etype2 etype3
+  (expr3, _etype3) <- subtype surrR surrP expr2 etype2 etype3
 
   modifyIndent pred
   tr "inferBranches res e" expr3
   tr "              res brs" $ ConBranches cbrs2 resType2
   tr "              res t" resType2
   return (expr3, ConBranches cbrs2 resType2, resType2)
-inferBranches surrounding expr brs@(LitBranches lbrs d) = do
+inferBranches surrR surrP expr brs@(LitBranches lbrs d) = do
   tr "inferBranches e" expr
   tr "              brs" brs
-  (expr', _etype') <- checkType surrounding expr Builtin.Size
+  (expr', _etype') <- checkType surrR surrP expr Builtin.Size
   t <- existsType mempty
   lbrs' <- forM lbrs $ \(l, e) -> do
-    (e', _) <- checkType surrounding e t
+    (e', _) <- checkType surrR surrP e t
     return (l, e')
-  (d', t') <- checkType surrounding d t
+  (d', t') <- checkType surrR surrP d t
   -- let brs' = LitBranches lbrs' d'
   tr "inferBranches res e" =<< freeze expr'
   -- tr "              res brs" brs'
@@ -260,7 +265,8 @@ generalise expr typ = do
   tr "           t" typ
   modifyIndent succ
 
-  fvs <- foldMapM (:[]) typ
+  -- fvs <- (<>) <$> foldMapM (:[]) typ <*> foldMapM (:[]) expr
+  fvs <- foldMapM (:[]) typ -- <*> foldMapM (:[]) expr
   l   <- level
   let p (metaRef -> Just r) = either (> l) (const False) <$> solution r
       p _                   = return False
@@ -272,14 +278,14 @@ generalise expr typ = do
    )
   let sorted = map go $ topoSort deps
   genexpr <- F.foldrM ($ etaLamM) expr sorted
-  gentype <- F.foldrM ($ (\h d t s -> pure $ Abstract.Pi h d t s)) typ sorted
+  gentype <- F.foldrM ($ (\h a t s -> pure $ Abstract.Pi h a t s)) typ sorted
 
   modifyIndent pred
   tr "generalise res ge" genexpr
   tr "               gt" gentype
   return (genexpr, gentype)
   where
-    go [a] f s = f (metaHint a) Implicit (metaType a) =<< abstract1M a s
+    go [a] f s = f (metaHint a) ReIm (metaType a) =<< abstract1M a s
     go _   _ _ = error "Generalise"
 
 checkConstrDef
@@ -287,18 +293,18 @@ checkConstrDef
   -> TCM s (ConstrDef (AbstractM s), AbstractM s, AbstractM s)
 checkConstrDef (ConstrDef c (bindingsView Concrete.piView -> (args, ret))) = mdo
   let inst = instantiateTele $ (\(a, _, _, _, _) -> pure a) <$> args'
-  args' <- forTele args $ \h p arg -> do
+  args' <- forTele args $ \h a arg -> do
     argSize <- existsVar h Builtin.Size
-    (arg', _) <- checkType p (inst arg) $ Builtin.Type argSize
+    (arg', _) <- checkType Irrelevant (plicitness a) (inst arg) $ Builtin.Type argSize
     v <- forall_ h arg'
-    return (v, h, p, arg', argSize)
+    return (v, h, a, arg', argSize)
 
   let sizes = (\(_, _, _, _, sz) -> sz) <$> args'
       size = foldr Builtin.AddSize (Abstract.Lit 0) sizes
 
   sizeVar <- existsVar mempty Builtin.Size
 
-  (ret', _) <- checkType Explicit (inst ret) $ Builtin.Type sizeVar
+  (ret', _) <- checkType Irrelevant Explicit (inst ret) $ Builtin.Type sizeVar
 
   res <- F.foldrM (\(v, h, p, arg', _) rest ->
          Abstract.Pi h p arg' <$> abstract1M v rest) ret' args'
@@ -332,14 +338,16 @@ checkDataType name (DataDef cs) typ = mdo
 
   mapM_ (unify constrRetType) rets
 
-  let typSize = Builtin.AddSize (Abstract.Lit 1)
+  let typeSize = Builtin.AddSize (Abstract.Lit 1)
               $ foldr Builtin.MaxSize (Abstract.Lit 0) sizes
+  typeSize' <- normalise typeSize
 
-      typeReturnType = Builtin.Type typSize
-      typ'' = quantify Abstract.Pi (abstractNone typeReturnType) $ Telescope params
+  let typeReturnType = Builtin.Type typeSize'
+  let typ'' = quantify Abstract.Pi (abstractNone typeReturnType) $ Telescope params
 
   unify typeReturnType =<< typeOf constrRetType
 
+  tr "typeSize" typeSize'
   tr "checkDataType res typ" typ''
   return (DataDef cs', typ'')
 
@@ -350,7 +358,7 @@ checkDefType
   -> TCM s ( Definition Abstract.Expr (MetaVar s)
            , AbstractM s
            )
-checkDefType _ (Definition e) typ = first Definition <$> checkType Explicit e typ
+checkDefType _ (Definition e) typ = first Definition <$> checkType Relevant Explicit e typ
 checkDefType v (DataDefinition d) typ = first DataDefinition <$> checkDataType v d typ
 
 generaliseDef
@@ -366,14 +374,14 @@ generaliseDef vs (Definition e) t = do
   return (Definition ge, gt)
   where
     go c b = F.foldrM
-      (\a s -> c (metaHint a) Implicit (metaType a)
+      (\a s -> c (metaHint a) ReIm (metaType a)
             =<< abstract1M a s)
       b
       vs
 generaliseDef vs (DataDefinition (DataDef cs)) typ = do
   let cs' = map (fmap $ toScope . splat f g) cs
   -- Abstract vs on top of typ
-  typ' <- foldrM (\v -> fmap (Abstract.Pi (metaHint v) Implicit (metaType v))
+  typ' <- foldrM (\v -> fmap (Abstract.Pi (metaHint v) ReIm (metaType v))
                       . abstract1M v) typ vs
   return (DataDefinition (DataDef cs'), typ')
   where
@@ -391,22 +399,24 @@ generaliseDefs
            )
 generaliseDefs xs = do
   modifyIndent succ
-  -- trs "generaliseDefs xs" xs
 
   fvs <- asum <$> mapM (foldMapM (:[])) types
+  -- dfvs <- asum <$> mapM (foldMapM (:[])) defs
+
   l   <- level
   let p (metaRef -> Just r) = either (> l) (const False) <$> solution r
       p _                   = return False
-  fvs' <- filterM p fvs
-  -- trs "generaliseDefs l" l
-  -- trs "generaliseDefs vs" fvs'
+  fvs' <- filterM p fvs -- (fvs <> dfvs)
+  trs "generaliseDefs l" l
+  trs "generaliseDefs fvs" fvs
+  trs "generaliseDefs fvs'" fvs'
 
   deps <- HM.fromList <$> forM fvs' (\x -> do
     ds <- foldMapM HS.singleton $ metaType x
     return (x, ds)
    )
   let sortedFvs = map impure $ topoSort deps
-      appl x = Abstract.apps x [(Implicit, pure fv) | fv <- sortedFvs]
+      appl x = Abstract.apps x [(ReIm, pure fv) | fv <- sortedFvs]
       instVars = appl . pure <$> vars
 
   instDefs <- forM xs $ \(_, d, t) -> do
@@ -422,6 +432,7 @@ generaliseDefs xs = do
   return abstrDefs
   where
     vars  = (\(v, _, _) -> v) <$> xs
+    -- defs = (\(_, d, _) -> d) <$> xs
     types = (\(_, _, t) -> t) <$> xs
     sub instVars v | Just x <- v `V.elemIndex` vars = return $ instVars V.! x
     sub instVars v@(metaRef -> Just r) = do
@@ -453,7 +464,7 @@ checkRecursiveDefs ds =
           )
     sequence $ flip V.imap instantiatedDs $ \i (d, t) -> do
       let v = evs V.! i
-      (t', _) <- inferType Explicit t
+      (t', _) <- inferType Irrelevant Explicit t
       unify (metaType v) t'
       (d', t'') <- checkDefType v d t'
       return (v, d', t'')
