@@ -28,6 +28,9 @@ unusedScope = unusedVar . fromScope
 abstractNone :: Monad f => f a -> Scope b f a
 abstractNone = Scope . return . F
 
+-- instantiateSome :: Functor f => (b -> Var b' (f a)) -> Scope b f a -> Scope b' f a
+-- instantiateSome f (Scope s) = Scope $ fmap g s
+
 boundJoin :: (Monad f, Bound t) => t f (f a) -> t f a
 boundJoin = (>>>= id)
 

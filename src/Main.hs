@@ -23,7 +23,7 @@ import qualified Syntax.Resolve
 import qualified Syntax.Parse
 import TopoSort
 import Util
--- import Erasure
+import Erasure
 
 inferProgram :: HashSet Constr -> Program Concrete.Expr Name -> TCM s ()
 inferProgram constrs p = mapM_ tcGroup sorted
@@ -80,10 +80,8 @@ test inp = do
       (Left err, tr) -> do mapM_ putStrLn tr; putStrLn err
       (Right res, _) -> do
         mapM_ print $ (show . (\(x, (d, t)) -> runPrettyM $ prettyM x <+> prettyM "=" <+> prettyTypedDef (fe d) (fe t) (fst $ bindingsView Abstract.piView $ fe t))) <$> HM.toList res
-        {-
         putStrLn "------------- erased ------------------"
         mapM_ print $ (show . pretty) <$> [(x, fe e') | (x, (e, _)) <- HM.toList res, Definition e' <- [eraseDef e]]
-        -}
   where
     fe :: Functor f => f Empty -> f String
     fe = fmap fromEmpty

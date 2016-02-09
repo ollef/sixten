@@ -1,6 +1,6 @@
-Erasure
 Arity inference
 LLVM code generation
+Usage analysisis for better erasure
 Add new Int type
 instantiate implicits at variable use sites?
 Size types
