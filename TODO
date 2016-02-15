@@ -1,4 +1,4 @@
-Arity inference
+Restriction and closure conversion
 LLVM code generation
 Usage analysisis for better erasure
 Add new Int type
@@ -69,6 +69,7 @@ Row polymorphism
   Type-check
   Should make lenses?
   Codegen
+Arity inference
 Type classes
 Test suite
 Mixfix definitions and noncompounds?

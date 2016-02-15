@@ -14,6 +14,7 @@ import qualified Data.Vector as V
 import System.Environment
 
 import Builtin
+import Erasure
 import Infer
 import TCM
 import Syntax
@@ -21,9 +22,9 @@ import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete as Concrete
 import qualified Syntax.Resolve
 import qualified Syntax.Parse
+import Restrict
 import TopoSort
 import Util
-import Erasure
 
 inferProgram :: HashSet Constr -> Program Concrete.Expr Name -> TCM s ()
 inferProgram constrs p = mapM_ tcGroup sorted
@@ -82,6 +83,7 @@ test inp = do
         mapM_ print $ (show . (\(x, (d, t)) -> runPrettyM $ prettyM x <+> prettyM "=" <+> prettyTypedDef (fe d) (fe t) (fst $ bindingsView Abstract.piView $ fe t))) <$> HM.toList res
         putStrLn "------------- erased ------------------"
         mapM_ print $ (show . pretty) <$> [(x, fe e') | (x, (e, _)) <- HM.toList res, Definition e' <- [eraseDef e]]
+        putStrLn "------------- restricted ------------------"
   where
     fe :: Functor f => f Empty -> f String
     fe = fmap fromEmpty

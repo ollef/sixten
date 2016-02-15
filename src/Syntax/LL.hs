@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable #-}
 module Syntax.LL where
 
+import qualified Bound.Scope.Simple as Simple
 import Control.Monad
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
@@ -9,10 +10,33 @@ import Prelude.Extras
 import Syntax
 import Util
 
-data Def v
-  = FunDef (Vector NameHint) (Scope Tele Expr v)
-  | ConstDef (Expr v)
+data Lifted e v = Lifted (Vector (NameHint, Body Expr Tele)) (Scope Tele e v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
+
+instance Bound Lifted where
+  Lifted ds d >>>= f = Lifted ds (d >>>= f)
+
+data Body e v
+  = Constant (e v)
+  | Function (Vector NameHint) (Scope Tele e v)
+  deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
+
+liftBody :: Hashable f => Body Expr (Var Tele f) -> (Body Expr Tele, f -> Expr b)
+liftBody body = case body of
+  Constant e
+    | Vector.null fvs -> (Constant $ unvar err id e, pure)
+    | otherwise -> (Function (mempty <$> fvs) $ 
+  Function vs s -> undefined
+  where
+    fvs = Vector.fromList $ HashSet.toList $ toHashSet $ Simple.Scope b
+    fvsLen = Vector.size fvs
+    f = (`Vector.elemIndex` fvs)
+
+instance Bound Body where
+  Function vs s >>>= f = Function vs $ s >>>= f
+  Constant e >>>= f = Constant $ e >>= f
+
+type LBody = Lifted (Body Expr)
 
 data Expr v
   = Var v
@@ -25,6 +49,30 @@ data Expr v
   | Case v (Branches Literal Expr v)
   | Error
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
+
+let_' :: NameHint -> LBody v -> Simple.Scope () LBody v -> LBody v
+let_' h (Lifted ds1 b1) (Scope (Lifted ds2 b2)) = case (fromScope b1, fromScope b2') of
+  (Function vs f, _) -> 
+  where
+    (f, fScope) | Vector.null ds1 = (id, id)
+                | otherwise = let fun = (+ Tele (Vector.length ds1)) in (fmap fun, mapBound f)
+    ds2' = f ds2
+    b2' = fScope b2
+
+lets' :: Vector (NameHint, LBody v) -> Simple.Scope Int LBody v -> LBody v
+lets' es s = unvar (error "LL.lets'") id <$> foldr go (Simple.fromScope s) (Vector.indexed es)
+  where
+    go :: (Int, (NameHint, LBody v)) -> LBody (Var Int v) -> LBody (Var Int v)
+    go (n, (h, e)) e' = let_' h (F <$> e) $ Simple.abstract f e'
+      where
+        f (B n') | n == n' = Just ()
+        f _ = Nothing
+
+bind :: Expr v -> (v -> LBody v') -> LBody v'
+bind expr f = case expr of
+  Var v -> f v
+  Global n -> undefined -- constDef $ Global n
+  Con l vs -> undefined
 
 instance Applicative Expr where
   pure = return
