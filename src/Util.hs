@@ -3,6 +3,7 @@ module Util where
 
 import Bound
 import Bound.Var
+import qualified Bound.Scope.Simple as Simple
 import Data.Bifoldable
 import Data.Bifunctor
 import Data.Foldable
@@ -18,6 +19,9 @@ import qualified Data.Text as Text
 
 type Scope1  = Scope ()
 type Literal = Integer
+
+tuck :: Functor f => (a -> Var b a') -> Simple.Scope b f a -> Simple.Scope b f a'
+tuck f (Simple.Scope s) = Simple.Scope $ unvar B f <$> s
 
 unusedVar :: (Monad f, Traversable f) => f (Var b a) -> Maybe (f a)
 unusedVar = traverse $ unvar (const Nothing) pure

@@ -2,7 +2,12 @@
 module Syntax.LL where
 
 import qualified Bound.Scope.Simple as Simple
+import Data.Bifunctor
+import Data.Maybe
 import Control.Monad
+import Data.Hashable
+import qualified Data.HashSet as HashSet
+import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Prelude.Extras
@@ -10,31 +15,13 @@ import Prelude.Extras
 import Syntax
 import Util
 
-data Lifted e v = Lifted (Vector (NameHint, Body Expr Tele)) (Scope Tele e v)
+data Lifted e v = Lifted (Vector (NameHint, Body Expr Tele)) (Simple.Scope Tele e v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
-
-instance Bound Lifted where
-  Lifted ds d >>>= f = Lifted ds (d >>>= f)
 
 data Body e v
   = Constant (e v)
   | Function (Vector NameHint) (Scope Tele e v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
-
-liftBody :: Hashable f => Body Expr (Var Tele f) -> (Body Expr Tele, f -> Expr b)
-liftBody body = case body of
-  Constant e
-    | Vector.null fvs -> (Constant $ unvar err id e, pure)
-    | otherwise -> (Function (mempty <$> fvs) $ 
-  Function vs s -> undefined
-  where
-    fvs = Vector.fromList $ HashSet.toList $ toHashSet $ Simple.Scope b
-    fvsLen = Vector.size fvs
-    f = (`Vector.elemIndex` fvs)
-
-instance Bound Body where
-  Function vs s >>>= f = Function vs $ s >>>= f
-  Constant e >>>= f = Constant $ e >>= f
 
 type LBody = Lifted (Body Expr)
 
@@ -50,20 +37,55 @@ data Expr v
   | Error
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
-let_' :: NameHint -> LBody v -> Simple.Scope () LBody v -> LBody v
-let_' h (Lifted ds1 b1) (Scope (Lifted ds2 b2)) = case (fromScope b1, fromScope b2') of
-  (Function vs f, _) -> 
+-------------------------------------------------------------------------------
+-- Smart constructors and related functionality
+liftFunction
+  :: (Eq f, Hashable f)
+  => Vector NameHint
+  -> Scope Tele Expr (Var b f)
+  -> (Body Expr b, Vector f)
+liftFunction vs s =
+  ( Function (fmap mempty fvs <> vs)
+    $ toScope
+    $ unvar (B . (+ Tele fvsLen)) (unvar F $ fromJust err . ix)
+   <$> fromScope s
+  , fvs
+  )
   where
-    (f, fScope) | Vector.null ds1 = (id, id)
-                | otherwise = let fun = (+ Tele (Vector.length ds1)) in (fmap fun, mapBound f)
-    ds2' = f ds2
-    b2' = fScope b2
+    ix = Tele . fromJust err . (`Vector.elemIndex` fvs)
+    err = error "liftFunction"
+    fvs = Vector.fromList $ HashSet.toList $ toHashSet $ Simple.Scope s
+    fvsLen = Vector.length fvs
+    f = (`Vector.elemIndex` fvs)
 
-lets' :: Vector (NameHint, LBody v) -> Simple.Scope Int LBody v -> LBody v
-lets' es s = unvar (error "LL.lets'") id <$> foldr go (Simple.fromScope s) (Vector.indexed es)
+permuteVars :: Var a (Var b c) -> Var b (Var a c)
+permuteVars = unvar (F . B) (unvar B (F . F))
+
+letBody :: NameHint -> Expr v -> Body Expr (Var () v) -> Body Expr v
+letBody h e (Constant e') = Constant $ letExpr h e (toScope e')
+letBody h e (Function vs s) = Function vs $ toScope $ letExpr h (F <$> e) $ toScope $ permuteVars <$> fromScope s
+
+letLifted :: (Eq v, Hashable v) => NameHint -> LBody v -> Simple.Scope () LBody v -> LBody v
+letLifted h (Lifted ds1 (Simple.Scope b1)) (Simple.Scope (Lifted ds2 b2)) = do
+  let newContext = ds1 <> ds2'
+      len = Tele $ Vector.length newContext
+      (f, fScope) | Vector.null ds1 = (id, id)
+                  | otherwise = let fun = (+ Tele (Vector.length ds1)) in (fmap fun, Simple.mapBound fun)
+      ds2' = second f <$> ds2
+      b2' = Simple.fromScope $ fScope b2
+  case b1 of
+    Function vs s -> do
+      let (function', vs') = liftFunction vs s
+      Lifted (newContext <> pure (h, function'))
+             $ Simple.toScope $ b2' >>>= unvar (pure . B)
+                                               (unvar (const $ Call (B len) $ F <$> vs')  (pure . F))
+    Constant e1 -> Lifted newContext $ Simple.Scope $ letBody h e1 $ permuteVars <$> b2'
+
+letLifteds :: (Eq v, Hashable v) => Vector (NameHint, LBody v) -> Simple.Scope Int LBody v -> LBody v
+letLifteds es s = unvar (error "LL.lets'") id <$> foldr go (Simple.fromScope s) (Vector.indexed es)
   where
-    go :: (Int, (NameHint, LBody v)) -> LBody (Var Int v) -> LBody (Var Int v)
-    go (n, (h, e)) e' = let_' h (F <$> e) $ Simple.abstract f e'
+    go :: (Eq v, Hashable v) => (Int, (NameHint, LBody v)) -> LBody (Var Int v) -> LBody (Var Int v)
+    go (n, (h, e)) e' = letLifted h (F <$> e) $ Simple.abstract f e'
       where
         f (B n') | n == n' = Just ()
         f _ = Nothing
@@ -73,6 +95,56 @@ bind expr f = case expr of
   Var v -> f v
   Global n -> undefined -- constDef $ Global n
   Con l vs -> undefined
+
+letExpr :: NameHint -> Expr v -> Scope1 Expr v -> Expr v
+letExpr _ e (Scope (Var (B ()))) = e
+letExpr _ (Var v) s = instantiate1 (pure v) s
+letExpr _ (Global g) s = instantiate1 (Global g) s
+letExpr h e s = Let h e s
+
+letExprs :: Vector (NameHint, Expr v) -> Scope Int Expr v -> Expr v
+letExprs es s = unvar (error "LL.letExprs") id <$> foldr go (fromScope s) (Vector.indexed es)
+  where
+    go :: (Int, (NameHint, Expr v)) -> Expr (Var Int v) -> Expr (Var Int v)
+    go (n, (h, e)) e' = letExpr h (F <$> e) $ abstract f e'
+      where
+        f (B n') | n == n' = Just ()
+        f _ = Nothing
+
+call :: Expr v -> Vector (Expr v) -> Expr v
+call (KnownCall g vs) es
+  = letExprs ((,) mempty <$> es)
+  $ Scope $ KnownCall g $ ((pure . pure) <$> vs) <> (B <$> Vector.enumFromN 0 (Vector.length es))
+call (Call v vs) es
+  = letExprs ((,) mempty <$> es)
+  $ Scope $ Call ((pure . pure) v) $ ((pure . pure) <$> vs) <> (B <$> Vector.enumFromN 0 (Vector.length es))
+call (Global g) es
+  = letExprs ((,) mempty <$> es)
+  $ Scope $ KnownCall g $ B <$> Vector.enumFromN 0 (Vector.length es)
+call e es
+  = letExprs ((,) mempty <$> Vector.cons e es)
+  $ Scope $ Call (B 0) $ B <$> Vector.enumFromN 1 (Vector.length es)
+
+con :: Literal -> Vector (Expr v) -> Expr v
+con l es
+  = letExprs ((,) mempty <$> es)
+  $ Scope $ Con l $ B <$> Vector.enumFromN 0 (Vector.length es)
+
+case_ :: Expr v -> Branches Literal Expr v -> Expr v
+case_ e brs = letExpr mempty e $ Scope $ Case (B ()) $ F . pure <$> brs
+
+-------------------------------------------------------------------------------
+-- Instances
+instance Bound Lifted where
+  Lifted ds d >>>= f = Lifted ds (d >>>= f)
+
+instance Bound Body where
+  Function vs s >>>= f = Function vs $ s >>>= f
+  Constant e >>>= f = Constant $ e >>= f
+
+instance Eq1 Expr
+instance Ord1 Expr
+instance Show1 Expr
 
 instance Applicative Expr where
   pure = return
@@ -84,47 +156,8 @@ instance Monad Expr where
   Global g >>= _ = Global g
   Con l vs >>= f = con l $ f <$> vs
   Ref e >>= f = Ref (e >>= f)
-  Let h e s >>= f = let_ h (e >>= f) (s >>>= f)
+  Let h e s >>= f = letExpr h (e >>= f) (s >>>= f)
   Call v vs >>= f = call (f v) (f <$> vs)
   KnownCall g vs >>= f = call (Global g) (f <$> vs)
   Case v brs >>= f = case_ (f v) (brs >>>= f)
   Error >>= _ = Error
-
--------------------------------------------------------------------------------
--- Smart constructors
-let_ :: NameHint -> Expr v -> Scope1 Expr v -> Expr v
-let_ _ e (Scope (Var (B ()))) = e
-let_ _ (Var v) s = instantiate1 (pure v) s
-let_ _ (Global g) s = instantiate1 (Global g) s
-let_ h e s = Let h e s
-
-lets :: Vector (NameHint, Expr v) -> Scope Int Expr v -> Expr v
-lets es s = unvar (error "LL.lets") id <$> foldr go (fromScope s) (Vector.indexed es)
-  where
-    go :: (Int, (NameHint, Expr v)) -> Expr (Var Int v) -> Expr (Var Int v)
-    go (n, (h, e)) e' = let_ h (F <$> e) $ abstract f e'
-      where
-        f (B n') | n == n' = Just ()
-        f _ = Nothing
-
-call :: Expr v -> Vector (Expr v) -> Expr v
-call (Global g) es
-  = lets ((,) mempty <$> es)
-  $ Scope $ KnownCall g $ B <$> Vector.enumFromN 0 (Vector.length es)
-call e es
-  = lets ((,) mempty <$> Vector.cons e es)
-  $ Scope $ Call (B 0) $ B <$> Vector.enumFromN 1 (Vector.length es)
-
-con :: Literal -> Vector (Expr v) -> Expr v
-con l es
-  = lets ((,) mempty <$> es)
-  $ Scope $ Con l $ B <$> Vector.enumFromN 0 (Vector.length es)
-
-case_ :: Expr v -> Branches Literal Expr v -> Expr v
-case_ e brs = let_ mempty e $ Scope $ Case (B ()) $ F . pure <$> brs
-
--------------------------------------------------------------------------------
--- Instances
-instance Eq1 Expr
-instance Ord1 Expr
-instance Show1 Expr
