@@ -57,7 +57,6 @@ liftFunction vs s =
     err = error "liftFunction"
     fvs = Vector.fromList $ HashSet.toList $ toHashSet $ Simple.Scope s
     fvsLen = Vector.length fvs
-    f = (`Vector.elemIndex` fvs)
 
 permuteVars :: Var a (Var b c) -> Var b (Var a c)
 permuteVars = unvar (F . B) (unvar B (F . F))
@@ -90,12 +89,6 @@ letLifteds es s = unvar (error "LL.lets'") id <$> foldr go (Simple.fromScope s) 
       where
         f (B n') | n == n' = Just ()
         f _ = Nothing
-
-bind :: Expr v -> (v -> LBody v') -> LBody v'
-bind expr f = case expr of
-  Var v -> f v
-  Global n -> undefined -- constDef $ Global n
-  Con l vs -> undefined
 
 letExpr :: NameHint -> Expr v -> Scope1 Expr v -> Expr v
 letExpr _ e (Scope (Var (B ()))) = e
