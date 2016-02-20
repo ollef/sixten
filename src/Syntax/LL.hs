@@ -1,10 +1,11 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts #-}
 module Syntax.LL where
 
 import qualified Bound.Scope.Simple as Simple
+import Control.Monad
 import Data.Bifunctor
 import Data.Maybe
-import Control.Monad
+import Data.String
 import Data.Hashable
 import qualified Data.HashSet as HashSet
 import Data.Monoid
@@ -161,3 +162,35 @@ instance Monad Expr where
   KnownCall g vs >>= f = call (Global g) (f <$> vs)
   Case v brs >>= f = case_ (f v) (brs >>>= f)
   Error >>= _ = Error
+
+instance (Eq v, IsString v, Pretty v, Pretty (e v), Monad e)
+      => Pretty (Lifted e v) where
+  prettyM (Lifted ds s) = withNameHints (fst <$> ds) $ \ns ->
+    prettyM (Simple.instantiate (pure . fromText . (ns Vector.!) . unTele) s) <$$>
+      prettyM "where" <$$>
+        indent 2 (vcat (Vector.toList $ (prettyM . fmap ((ns Vector.!) . unTele) . snd) <$> ds))
+
+instance (Eq v, IsString v, Pretty v, Pretty (e v), Monad e)
+      => Pretty (Body e v) where
+  prettyM body = case body of
+    Constant e -> prettyM e
+    Function hs s -> withNameHints hs $ \ns ->
+      prettyM "\\" <> hsep (map prettyM $ Vector.toList ns) <> prettyM "." <+>
+        associate absPrec (prettyM $ instantiate (pure . fromText . (ns Vector.!) . unTele) s)
+
+instance (Eq v, IsString v, Pretty v)
+      => Pretty (Expr v) where
+  prettyM expr = case expr of
+    Var v -> prettyM v
+    Global g -> prettyM g
+    Con c vs -> prettyApps (prettyM c) (prettyM <$> vs)
+    Ref e -> prettyApp (prettyM "Ref") $ prettyM e
+    Let h e s -> parens `above` letPrec $
+      withNameHint h $ \n ->
+        prettyM "let" <+> prettyM n <+> prettyM ":" <+> inviolable (prettyM e) <+> prettyM "in" <$$>
+        prettyM (instantiate1 (pure $ fromText n) s)
+    Call v vs -> prettyApps (prettyM v) (prettyM <$> vs)
+    KnownCall v vs -> prettyApps (prettyM v) (prettyM <$> vs)
+    Case v brs -> parens `above` casePrec $
+      prettyM "case" <+> inviolable (prettyM v) <+> prettyM "of" <$$> indent 2 (prettyM brs)
+    Error  -> prettyM "ERROR"
