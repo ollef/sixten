@@ -11,7 +11,7 @@ module Syntax.Pretty
   , inviolable
   , angles, brackets, braces, parens
   , pretty
-  , prettyApp, prettyTightApp
+  , prettyApp, prettyApps, prettyTightApp
   , prettyList
   , prettyM
   , tilde
@@ -148,6 +148,9 @@ above f p' m = do
 
 prettyApp :: PrettyM Doc -> PrettyM Doc -> PrettyM Doc
 prettyApp p q = parens `above` appPrec $ associate appPrec p <+> q
+
+prettyApps :: Foldable t => PrettyM Doc -> t (PrettyM Doc) -> PrettyM Doc
+prettyApps p ps = foldl prettyApp p ps
 
 prettyTightApp :: PrettyM Doc -> PrettyM Doc -> PrettyM Doc
 prettyTightApp p q = parens `above` tightAppPrec $ associate tightAppPrec p <> q
