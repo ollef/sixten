@@ -5,6 +5,7 @@ import Control.Monad.Except
 import Data.Bifunctor
 import Data.Set(Set)
 import qualified Data.Set as Set
+import qualified Data.Vector as Vector
 
 import Syntax
 import Syntax.Abstract
@@ -30,6 +31,24 @@ constructor
   -> cxt (Set (Name, Type v))
 constructor (Right qc@(QConstr n _)) = Set.singleton . (,) n <$> qconstructor qc
 constructor (Left c) = Set.map (second $ fmap fromEmpty) <$> lookupConstructor c
+
+arity
+  :: (MonadError String cxt, Context cxt)
+  => QConstr
+  -> cxt Int
+arity = fmap (teleLength . fst . bindingsView piView) . qconstructor
+
+relevantArity
+  :: (MonadError String cxt, Context cxt)
+  => QConstr
+  -> cxt Int
+relevantArity
+  = fmap ( Vector.length
+         . Vector.filter (\(_, a, _) -> relevance a == Relevant)
+         . unTelescope
+         . fst
+         . bindingsView piView)
+  . qconstructor
 
 qconstructor
   :: (MonadError String cxt, Context cxt)

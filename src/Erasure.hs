@@ -19,7 +19,7 @@ erase expr = case expr of
   Abstract.Con c -> Lambda.Con c
   Abstract.Lit l -> Lambda.Lit l
   Abstract.Pi {} -> Lambda.Global "_unit_"
-  Abstract.Lam h a t s
+  Abstract.Lam h a _ s
     | relevance a == Relevant -> Lambda.Lam h (Lambda.Global "TODO") $ toScope $ erase $ fromScope s
     | otherwise -> erase $ instantiate1 (error "erase") s
   Abstract.App e1 a e2

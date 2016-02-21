@@ -77,13 +77,18 @@ test inp = do
       addContext Builtin.context
       constrs <- HS.fromList . HM.keys <$> gets tcConstrs
       inferProgram constrs p
-      gets tcContext) mempty of
+      cxt <- gets tcContext
+      restricted <- sequence [(,) x <$> Restrict.restrictExpr (fe e') | (x, (e, _)) <- HM.toList cxt, Definition e' <- [eraseDef e]]
+      return (cxt, restricted)
+      ) mempty of
       (Left err, tr) -> do mapM_ putStrLn tr; putStrLn err
-      (Right res, _) -> do
+      (Right (res, restricted), _) -> do
         mapM_ print $ (show . (\(x, (d, t)) -> runPrettyM $ prettyM x <+> prettyM "=" <+> prettyTypedDef (fe d) (fe t) (fst $ bindingsView Abstract.piView $ fe t))) <$> HM.toList res
         putStrLn "------------- erased ------------------"
-        mapM_ print $ (show . pretty) <$> [(x, fe e') | (x, (e, _)) <- HM.toList res, Definition e' <- [eraseDef e]]
-        putStrLn "------------- restricted ------------------"
+        let erased = [(x, fe e') | (x, (e, _)) <- HM.toList res, Definition e' <- [eraseDef e]]
+        mapM_ print $ pretty <$> erased
+        putStrLn "------------- restricted --------------"
+        mapM_ print $ pretty <$> restricted
   where
     fe :: Functor f => f Empty -> f String
     fe = fmap fromEmpty

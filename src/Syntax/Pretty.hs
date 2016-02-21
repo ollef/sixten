@@ -186,6 +186,7 @@ instance Pretty QConstr where
   prettyM (QConstr q n) = prettyM q <> prettyM "." <> prettyM n
 
 instance Pretty a => Pretty [a] where prettyM = prettyList
+instance Pretty a => Pretty (Vector a) where prettyM = prettyM . Vector.toList
 
 instance Pretty a => Pretty (Maybe a) where
   prettyM Nothing  = pure $ text "Nothing"

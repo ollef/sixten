@@ -1,8 +1,9 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, Rank2Types, ViewPatterns #-}
 module Syntax.LL where
 
 import qualified Bound.Scope.Simple as Simple
 import Control.Monad
+import Control.Monad.Except
 import Data.Bifunctor
 import Data.Maybe
 import Data.String
@@ -13,6 +14,7 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Prelude.Extras
 
+import Context
 import Syntax
 import Util
 
@@ -25,21 +27,42 @@ data Body e v
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 type LBody = Lifted (Body Expr)
+type LBranches = Lifted (Branches QConstr Expr)
+
+data Operand v
+  = Local v
+  | Global Name
+  | Lit Literal
+  deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 data Expr v
-  = Var v
-  | Global Name
-  | Con Literal (Vector v) -- ^ fully applied
+  = Operand (Operand v)
+  | Con QConstr (Vector (Operand v)) -- ^ fully applied
   | Ref (Expr v)
   | Let NameHint (Expr v) (Scope () Expr v)
-  | Call v (Vector v)
-  | KnownCall Name (Vector v)
-  | Case v (Branches Literal Expr v)
+  | Call (Operand v) (Vector (Operand v))
+  | Case (Operand v) (Branches QConstr Expr v)
   | Error
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 -------------------------------------------------------------------------------
 -- Smart constructors and related functionality
+mapLifted
+  :: (e (Var Tele v) -> e' (Var Tele v'))
+  -> Lifted e v
+  -> Lifted e' v'
+mapLifted f (Lifted vs (Simple.Scope s)) = Lifted vs $ Simple.Scope $ f s
+
+operandView :: Expr v -> Maybe (Operand v)
+operandView (Operand v) = Just v
+operandView _ = Nothing
+
+pureLifted :: Functor e => e v -> Lifted e v
+pureLifted = Lifted mempty . Simple.Scope . fmap F
+
+constantLifted :: Functor e => e v -> Lifted (Body e) v
+constantLifted = pureLifted . Constant
+
 liftFunction
   :: (Eq f, Hashable f)
   => Vector NameHint
@@ -61,12 +84,14 @@ liftFunction vs s =
 permuteVars :: Var a (Var b c) -> Var b (Var a c)
 permuteVars = unvar (F . B) (unvar B (F . F))
 
-letBody :: NameHint -> Expr v -> Body Expr (Var () v) -> Body Expr v
-letBody h e (Constant e') = Constant $ letExpr h e (toScope e')
-letBody h e (Function vs s) = Function vs $ toScope $ letExpr h (F <$> e) $ toScope $ permuteVars <$> fromScope s
-
-letLifted :: (Eq v, Hashable v) => NameHint -> LBody v -> Simple.Scope () LBody v -> LBody v
-letLifted h (Lifted ds1 (Simple.Scope b1)) (Simple.Scope (Lifted ds2 b2)) = do
+letLifted
+  :: (Eq v, Functor (t Expr), Bound t, Hashable v)
+  => (forall a. NameHint -> Expr a -> t Expr (Var () a) -> t Expr a)
+  -> NameHint
+  -> LBody v
+  -> Simple.Scope () (Lifted (t Expr)) v
+  -> Lifted (t Expr) v
+letLifted k h (Lifted ds1 (Simple.Scope b1)) (Simple.Scope (Lifted ds2 b2)) = do
   let newContext = ds1 <> ds2'
       len = Tele $ Vector.length newContext
       (f, fScope) | Vector.null ds1 = (id, id)
@@ -78,23 +103,132 @@ letLifted h (Lifted ds1 (Simple.Scope b1)) (Simple.Scope (Lifted ds2 b2)) = do
       let (function', vs') = liftFunction vs s
       Lifted (newContext <> pure (h, function'))
              $ Simple.toScope $ b2' >>>= unvar (pure . B)
-                                               (unvar (const $ Call (B len) $ F <$> vs')  (pure . F))
-    Constant e1 -> Lifted newContext $ Simple.Scope $ letBody h e1 $ permuteVars <$> b2'
+                                               (unvar (const $ Call (Local $ B len) $ Local . F <$> vs')  (pure . F))
+    Constant e1 -> Lifted newContext $ Simple.Scope $ (k h) e1 $ permuteVars <$> b2'
 
-letLifteds :: (Eq v, Hashable v) => Vector (NameHint, LBody v) -> Simple.Scope Int LBody v -> LBody v
-letLifteds es s = unvar (error "LL.lets'") id <$> foldr go (Simple.fromScope s) (Vector.indexed es)
+letLifteds
+  :: (Eq v, Functor (t Expr), Bound t, Hashable v)
+  => (forall a. NameHint -> Expr a -> t Expr (Var () a) -> t Expr a)
+  -> Vector (NameHint, LBody v)
+  -> Simple.Scope Int (Lifted (t Expr)) v
+  -> Lifted (t Expr) v
+letLifteds k es s = unvar (error "LL.lets'") id <$> foldr go (Simple.fromScope s) (Vector.indexed es)
   where
-    go :: (Eq v, Hashable v) => (Int, (NameHint, LBody v)) -> LBody (Var Int v) -> LBody (Var Int v)
-    go (n, (h, e)) e' = letLifted h (F <$> e) $ Simple.abstract f e'
+    go (n, (h, e)) e' = letLifted k h (F <$> e) $ Simple.abstract f e'
       where
         f (B n') | n == n' = Just ()
         f _ = Nothing
 
+caseLifted
+  :: (Eq v, Hashable v)
+  => LBody v
+  -> LBranches v
+  -> LBody v
+caseLifted b brs
+  = letLifted letBody mempty b
+  $ Simple.Scope
+  $ mapLifted (Constant . Case (Local $ F $ B ()) . fmap (fmap F))
+  $ brs
+
+newtype ExposedConBranches b v
+  = ExposedConBranches [(QConstr, Vector (NameHint, Annotation), b v)]
+  deriving (Functor)
+
+instance Bound ExposedConBranches where
+  ExposedConBranches brs >>>= f
+    = ExposedConBranches [(qc, hs, br >>= f) | (qc, hs, br) <- brs]
+
+bindExposedConBranches
+  :: ExposedConBranches Expr (Var Tele v)
+  -> Expr v
+  -> Branches QConstr Expr v
+bindExposedConBranches (ExposedConBranches brs) typ
+  = ConBranches [(qc, hs, toScope b) | (qc, hs, b) <- brs] typ
+
+conBranchesLifted
+  :: (Eq v, Hashable v)
+  => [(QConstr, Vector (NameHint, Annotation), LBody (Var Tele v))]
+  -> Expr v
+  -> LBranches v
+conBranchesLifted brs typ
+  = mapLifted (flip bindExposedConBranches (F <$> typ) . fmap commute)
+  $ letLifteds (\_ e b -> b >>>= unvar (\() -> e) pure)
+               (Vector.fromList [(mempty, br) | (_, _, br) <- brs])
+               (Simple.Scope $ pureLifted $ ExposedConBranches [(c, hs, pure $ B n) | ((c, hs, _), n) <- zip brs [0..]])
+
+litBranchesLifted
+  :: (Eq v, Hashable v)
+  => [(Literal, LBody v)]
+  -> LBody v
+  -> LBranches v
+litBranchesLifted brs def
+  = letLifteds (\_ e b -> b >>>= unvar (\() -> e) pure)
+  (Vector.fromList $ pure (mempty, def) <> (first (const mempty) <$> brs))
+  (Simple.Scope $ pureLifted $ LitBranches [(l, pure $ B n) | ((l, _), n) <- zip brs [1..]] (pure $ B 0))
+
+lamLifted :: Vector NameHint -> LBody (Var Tele v) -> LBody v
+lamLifted hs (Lifted bs (Simple.Scope (Constant expr)))
+  = Lifted bs
+  $ Simple.Scope
+  $ Function hs
+  $ toScope
+  $ commute <$> expr
+lamLifted hs (Lifted bs (Simple.Scope (Function hs' expr)))
+  = Lifted bs
+  $ Simple.Scope
+  $ Function (hs <> hs')
+  $ toScope
+  $ fmap (unvar (B . (+ Tele (Vector.length hs))) (unvar B F))
+  $ fromScope
+  $ commute <$> expr
+
+commute :: Var a (Var b c) -> Var b (Var a c)
+commute = unvar (F . B) (unvar B (F . F))
+
+callLifted
+  :: (Eq v, Hashable v)
+  => LBody v
+  -> Vector (LBody v)
+  -> LBody v
+callLifted fun args
+  = letLifteds letBody ((,) mempty <$> pure fun <> args)
+  $ Simple.Scope $ constantLifted
+  $ Call (Local $ B 0) $ Local . B <$> Vector.enumFromN 1 (Vector.length args)
+
+conLifted
+  :: (MonadError String cxt, Context cxt, Eq v, Hashable v)
+  => QConstr
+  -> Vector (LBody v)
+  -> cxt (LBody v)
+conLifted qc args = do
+  n <- Context.relevantArity qc
+  let argsLen = Vector.length args
+  case compare argsLen n of
+    LT -> return $ letLifteds letBody ((,) mempty <$> args)
+        $ Simple.Scope $ pureLifted
+        $ Function (Vector.replicate (n - argsLen) mempty)
+        $ toScope $ Con qc
+        $ (Local . F . B <$> Vector.enumFromN 0 argsLen)
+           <> (Local . B <$> Vector.enumFromN 0 ((n - argsLen) `max` 0))
+    EQ -> return $ letLifteds letBody ((,) mempty <$> args) $ Simple.Scope
+        $ constantLifted $ Con qc $ Local . B <$> Vector.enumFromN 0 n
+    GT -> throwError $ "conLifted: too many args to constructor: " ++ show qc
+
+letBody :: NameHint -> Expr v -> Body Expr (Var () v) -> Body Expr v
+letBody h e (Constant e') = Constant $ letExpr h e (toScope e')
+letBody h e (Function vs s) = Function vs $ toScope $ letExpr h (F <$> e) $ toScope $ permuteVars <$> fromScope s
+
 letExpr :: NameHint -> Expr v -> Scope1 Expr v -> Expr v
-letExpr _ e (Scope (Var (B ()))) = e
-letExpr _ (Var v) s = instantiate1 (pure v) s
-letExpr _ (Global g) s = instantiate1 (Global g) s
+letExpr _ e (Scope (Operand (Local (B ())))) = e
+letExpr _ (Operand v) s = instantiate1 (Operand v) s
 letExpr h e s = Let h e s
+
+instantiateBody :: (b -> Expr v) -> Body Expr (Var b v) -> Body Expr v
+instantiateBody f (Constant e') = Constant $ instantiate f (toScope e')
+instantiateBody f (Function vs s) = Function vs $ toScope $ instantiate (fmap F <$> f) $ toScope $ permuteVars <$> fromScope s
+
+instantiate1Body :: Expr v -> Body Expr (Var () v) -> Body Expr v
+instantiate1Body e = instantiateBody (\() -> e)
 
 letExprs :: Vector (NameHint, Expr v) -> Scope Int Expr v -> Expr v
 letExprs es s = unvar (error "LL.letExprs") id <$> foldr go (fromScope s) (Vector.indexed es)
@@ -105,27 +239,22 @@ letExprs es s = unvar (error "LL.letExprs") id <$> foldr go (fromScope s) (Vecto
         f (B n') | n == n' = Just ()
         f _ = Nothing
 
-call :: Expr v -> Vector (Expr v) -> Expr v
-call (KnownCall g vs) es
-  = letExprs ((,) mempty <$> es)
-  $ Scope $ KnownCall g $ ((pure . pure) <$> vs) <> (B <$> Vector.enumFromN 0 (Vector.length es))
-call (Call v vs) es
-  = letExprs ((,) mempty <$> es)
-  $ Scope $ Call ((pure . pure) v) $ ((pure . pure) <$> vs) <> (B <$> Vector.enumFromN 0 (Vector.length es))
-call (Global g) es
-  = letExprs ((,) mempty <$> es)
-  $ Scope $ KnownCall g $ B <$> Vector.enumFromN 0 (Vector.length es)
-call e es
+callExpr :: Expr v -> Vector (Expr v) -> Expr v
+callExpr (Operand v) (mapM operandView -> Just vs) = Call v vs
+callExpr (Call v vs) (mapM operandView -> Just vs') = Call v $ vs <> vs'
+callExpr e es
   = letExprs ((,) mempty <$> Vector.cons e es)
-  $ Scope $ Call (B 0) $ B <$> Vector.enumFromN 1 (Vector.length es)
+  $ Scope $ Call (Local $ B 0) $ Local . B <$> Vector.enumFromN 1 (Vector.length es)
 
-con :: Literal -> Vector (Expr v) -> Expr v
-con l es
+conExpr :: QConstr -> Vector (Expr v) -> Expr v
+conExpr qc (mapM operandView -> Just vs) = Con qc vs
+conExpr qc es
   = letExprs ((,) mempty <$> es)
-  $ Scope $ Con l $ B <$> Vector.enumFromN 0 (Vector.length es)
+  $ Scope $ Con qc $ Local . B <$> Vector.enumFromN 0 (Vector.length es)
 
-case_ :: Expr v -> Branches Literal Expr v -> Expr v
-case_ e brs = letExpr mempty e $ Scope $ Case (B ()) $ F . pure <$> brs
+caseExpr :: Expr v -> Branches QConstr Expr v -> Expr v
+caseExpr (Operand v) brs = Case v brs
+caseExpr e brs = letExpr mempty e $ Scope $ Case (Local $ B ()) $ F . pure <$> brs
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -144,24 +273,29 @@ instance Applicative Expr where
   pure = return
   (<*>) = ap
 
+bindOperand :: (v -> Expr v') -> Operand v -> Expr v'
+bindOperand f (Local v) = f v
+bindOperand _ (Global g) = Operand $ Global g
+bindOperand _ (Lit l) = Operand $ Lit l
+
 instance Monad Expr where
-  return = Var
-  Var v >>= f = f v
-  Global g >>= _ = Global g
-  Con l vs >>= f = con l $ f <$> vs
+  return = Operand . Local
+  Operand v >>= f = bindOperand f v
+  Con c vs >>= f = conExpr c $ bindOperand f <$> vs
   Ref e >>= f = Ref (e >>= f)
   Let h e s >>= f = letExpr h (e >>= f) (s >>>= f)
-  Call v vs >>= f = call (f v) (f <$> vs)
-  KnownCall g vs >>= f = call (Global g) (f <$> vs)
-  Case v brs >>= f = case_ (f v) (brs >>>= f)
+  Call v vs >>= f = callExpr (bindOperand f v) (bindOperand f <$> vs)
+  Case v brs >>= f = caseExpr (bindOperand f v) (brs >>>= f)
   Error >>= _ = Error
 
-instance (Eq v, IsString v, Pretty v, Pretty (e v), Monad e)
+instance (Eq v, IsString v, Pretty v, Pretty (e v), Functor e)
       => Pretty (Lifted e v) where
-  prettyM (Lifted ds s) = withNameHints (fst <$> ds) $ \ns ->
-    prettyM (Simple.instantiate (pure . fromText . (ns Vector.!) . unTele) s) <$$>
-      prettyM "where" <$$>
-        indent 2 (vcat (Vector.toList $ (prettyM . fmap ((ns Vector.!) . unTele) . snd) <$> ds))
+  prettyM (Lifted ds (Simple.Scope s)) = withNameHints (fst <$> ds) $ \ns ->
+    let toName = fromText . (ns Vector.!) . unTele
+        addWheres x | Vector.null ds = x
+        addWheres x = x <$$> indent 2 (prettyM "where" <$$>
+          indent 2 (vcat $ Vector.toList $ (\(n, (_, e)) -> prettyM n <+> prettyM "=" <+> prettyM (toName <$> e)) <$> Vector.zip ns ds))
+     in addWheres $ prettyM (unvar toName id <$> s)
 
 instance (Eq v, IsString v, Pretty v, Pretty (e v), Monad e)
       => Pretty (Body e v) where
@@ -172,18 +306,22 @@ instance (Eq v, IsString v, Pretty v, Pretty (e v), Monad e)
         associate absPrec (prettyM $ instantiate (pure . fromText . (ns Vector.!) . unTele) s)
 
 instance (Eq v, IsString v, Pretty v)
+      => Pretty (Operand v) where
+  prettyM (Local v) = prettyM v
+  prettyM (Global g) = prettyM g
+  prettyM (Lit l) = prettyM l
+
+instance (Eq v, IsString v, Pretty v)
       => Pretty (Expr v) where
   prettyM expr = case expr of
-    Var v -> prettyM v
-    Global g -> prettyM g
+    Operand v -> prettyM v
     Con c vs -> prettyApps (prettyM c) (prettyM <$> vs)
     Ref e -> prettyApp (prettyM "Ref") $ prettyM e
     Let h e s -> parens `above` letPrec $
       withNameHint h $ \n ->
-        prettyM "let" <+> prettyM n <+> prettyM ":" <+> inviolable (prettyM e) <+> prettyM "in" <$$>
-        prettyM (instantiate1 (pure $ fromText n) s)
+        prettyM "let" <+> prettyM n <+> prettyM "=" <+> inviolable (prettyM e) <+> prettyM "in" <$$>
+          indent 2 (inviolable $ prettyM $ instantiate1 (pure $ fromText n) s)
     Call v vs -> prettyApps (prettyM v) (prettyM <$> vs)
-    KnownCall v vs -> prettyApps (prettyM v) (prettyM <$> vs)
     Case v brs -> parens `above` casePrec $
       prettyM "case" <+> inviolable (prettyM v) <+> prettyM "of" <$$> indent 2 (prettyM brs)
     Error  -> prettyM "ERROR"

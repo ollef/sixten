@@ -17,7 +17,7 @@ import Syntax
 import Syntax.Abstract
 import Util
 
-import Debug.Trace
+-- import Debug.Trace
 
 newtype Level = Level Int
   deriving (Eq, Num, Ord, Show)
@@ -82,6 +82,8 @@ enterLevel x = do
   r <- x
   modify $ \s -> s {tcLevel = l}
   return r
+
+trace _ y = y
 
 log :: String -> TCM s ()
 log l = trace l $ modify $ \s -> s {tcLog = l : tcLog s}

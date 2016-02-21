@@ -5,6 +5,7 @@ import Bound
 import Bound.Scope
 import Bound.Var
 import Data.Bifunctor
+import Data.Hashable
 import Data.List as List
 import Data.Monoid
 import Data.String
@@ -21,7 +22,7 @@ import Util
 
 newtype Tele = Tele
   { unTele :: Int
-  } deriving (Eq, Ord, Show, Num)
+  } deriving (Eq, Enum, Hashable, Ord, Show, Num)
 
 newtype Telescope expr v = Telescope
   { unTelescope :: Vector (NameHint, Annotation, Scope Tele expr v)
