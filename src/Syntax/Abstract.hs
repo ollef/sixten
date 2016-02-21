@@ -56,8 +56,7 @@ lamView _             = Nothing
 appsView :: Expr v -> (Expr v, [(Annotation, Expr v)])
 appsView = second reverse . go
   where
-    go (App e1 p e2) = (e1', (p, e2) : es)
-      where (e1', es) = go e1
+    go (App e1 p e2) = second ((p, e2) :) $ go e1
     go e = (e, [])
 
 arrow :: Annotation -> Expr v -> Expr v -> Expr v
