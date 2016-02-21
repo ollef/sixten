@@ -12,6 +12,7 @@ import Data.Monoid
 import Data.Set(Set)
 import qualified Data.Set as Set
 
+import Context
 import Syntax
 import Syntax.Abstract
 import Util
@@ -51,6 +52,10 @@ newtype TCM s a = TCM (ExceptT String (StateT State (ST s)) a)
 instance MonadST (TCM s) where
   type World (TCM s) = s
   liftST = TCM . liftST
+
+instance Context (TCM s) where
+  lookupDefinition name = gets $ fmap (bimap (fmap fromEmpty) (fmap fromEmpty)) . HM.lookup name . tcContext
+  lookupConstructor name = gets $ maybe mempty (Set.map $ second $ fmap fromEmpty) . HM.lookup name . tcConstrs
 
 unTCM :: (forall s. TCM s a) -> forall s. ExceptT String (StateT State (ST s)) a
 unTCM (TCM x) = x
@@ -94,58 +99,5 @@ addContext prog = modify $ \s -> s
                          (telescope defType)
       return (c, Set.fromList [(n, t)])
 
-context :: Name -> TCM s (Definition Expr v, Type v)
-context v = do
-  mres <- gets $ HM.lookup v . tcContext
-  maybe (throwError $ "Not in scope: " ++ show v)
-        (return . bimap (fmap fromEmpty) (fmap fromEmpty))
-        mres
-
-constructor :: Ord v => Either Constr QConstr -> TCM s (Set (Name, Type v))
-constructor (Right qc@(QConstr n _)) = do
-  t <- qconstructor qc
-  return $ Set.singleton (n, t)
-constructor (Left c) = do
-  mres <- gets $ HM.lookup c . tcConstrs
-  maybe (throwError $ "Not in scope: constructor " ++ show c)
-        (return . Set.map (second $ fmap fromEmpty))
-        mres
-
-qconstructor :: QConstr -> TCM s (Type v)
-qconstructor qc@(QConstr n c) = do
-  mres <- gets $ HM.lookup c . tcConstrs
-  maybe (throwError $ "Not in scope: constructor " ++ show c)
-        (\results -> do
-          let filtered = Set.filter ((== n) . fst) results
-          if Set.size filtered == 1 then do
-            let [(_, t)] = Set.toList filtered
-            return (fromEmpty <$> t)
-          else
-            throwError $ "Ambiguous constructor: " ++ show qc)
-        mres
-
 modifyIndent :: (Int -> Int) -> TCM s ()
 modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
-
-{-
-
-conType :: ECon -> TCM s (Type k t)
-conType c = do
-  res <- M.lookup c <$> gets tcTypes
-  maybe err (return . fromJust . biClosed) res
-  where err = throwError $ "Not in scope: " ++ show c
-
-tconKind :: TCon -> TCM s (Kind k)
-tconKind a = do
-  res <- M.lookup a <$> gets tcKinds
-  maybe err (return . fromJust . closed) res
-  where err = throwError $ "Not in scope: " ++ show a
-
-synonym :: TCon -> TCM s (Type k t)
-synonym a = do
-  res <- M.lookup a <$> gets tcSynonyms
-  return $ maybe (Type.Con a) (fromJust . biClosed) res
--}
-
-whenM :: Monad m => m Bool -> m () -> m ()
-whenM mb x = do b <- mb; when b x

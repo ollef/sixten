@@ -14,6 +14,7 @@ import Data.Vector(Vector)
 import qualified Data.Vector as V
 
 import qualified Builtin
+import qualified Context
 import Meta
 import TCM
 import Normalise
@@ -102,13 +103,13 @@ inferType surrR surrP expr = do
   modifyIndent succ
   (e, t) <- case expr of
     Concrete.Global v -> do
-      (_, typ) <- context v
+      (_, typ) <- Context.definition v
       return (Abstract.Global v, typ)
     Concrete.Var v -> return (Abstract.Var v, metaType v)
     Concrete.Con con -> do
       n <- resolveConstrType [con] Nothing
       let qc = qualify n con
-      typ <- qconstructor qc
+      typ <- Context.qconstructor qc
       return (Abstract.Con qc, typ)
     Concrete.Lit l -> return (Abstract.Lit l, Builtin.Size)
     Concrete.Pi n p t s -> do
@@ -164,13 +165,13 @@ resolveConstrType cs mtype = do
       headType' <- whnf headType
       case headType' of
         Abstract.Global v -> do
-          (d, _) <- context v
+          (d, _) <- Context.definition v
           return $ case d of
             DataDefinition _ -> [Set.singleton v]
             _                -> mempty
         _ -> return mempty
     _ -> return mempty
-  ns <- mapM (fmap (Set.map (fst :: (Name, Abstract.Expr ()) -> Name)) . constructor) cs
+  ns <- mapM (fmap (Set.map (fst :: (Name, Abstract.Expr ()) -> Name)) . Context.constructor) cs
   case Set.toList $ List.foldl1' Set.intersection (n ++ ns) of
     [x] -> return x
     xs -> throwError $ "Ambiguous constructors: " ++ show cs ++ ". Possible types: "
@@ -195,7 +196,7 @@ inferBranches surrR surrP expr (ConBranches cbrs _) = mdo
 
   typeName <- resolveConstrType ((\(c, _, _) -> c) <$> cbrs) $ Just etype1
 
-  (_, dataTypeType) <- context typeName
+  (_, dataTypeType) <- Context.definition typeName
   let (params, _) = bindingsView Abstract.piView dataTypeType
       inst = instantiateTele (pure . snd <$> paramVars)
   paramVars <- forTele params $ \h p s -> do

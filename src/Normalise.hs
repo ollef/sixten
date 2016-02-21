@@ -4,6 +4,7 @@ module Normalise where
 import Control.Monad.Except
 
 import qualified Builtin
+import qualified Context
 import Meta
 import TCM
 import Syntax
@@ -16,7 +17,7 @@ whnf expr = case expr of
   Var (metaRef -> Just r) -> refineIfSolved r expr whnf
   Var _ -> throwError "whnf impossible"
   Global v -> do
-    (d, _) <- context v
+    (d, _) <- Context.definition v
     case d of
       Definition e -> whnf e
       _ -> return expr
@@ -41,7 +42,7 @@ normalise expr = case expr of
   Var (metaRef -> Just r) -> refineIfSolved r expr normalise
   Var _ -> throwError "normalise impossible"
   Global v -> do
-    (d, _) <- context v
+    (d, _) <- Context.definition v
     case d of
       Definition e -> normalise e
       _ -> return expr
