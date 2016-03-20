@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, Rank2Types, ViewPatterns #-}
-module Syntax.Abstract where
+module Syntax.ConstantSize where
 
 import Control.Monad
 import Data.Bifunctor
@@ -12,14 +12,16 @@ import Prelude.Extras
 import Syntax
 import Util
 
+type Size = Int
+
 -- | Expressions with variables of type @v@.
 data Expr v
   = Var v
   | Global Name
   | Con QConstr
   | Lit Literal
-  | Pi  !NameHint !Annotation (Type v) (Scope1 Expr v)
-  | Lam !NameHint !Annotation (Type v) (Scope1 Expr v)
+  | Pi  !NameHint !Annotation Size (Scope1 Expr v)
+  | Lam !NameHint !Annotation Size (Scope1 Expr v)
   | App  (Expr v) !Annotation (Expr v)
   | Case (Expr v) (Branches QConstr Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)

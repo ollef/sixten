@@ -61,6 +61,7 @@ exposeScope f (Scope s) = Scope $ fmap (unvar (F . pure . B) id) $ f $ fmap f <$
 data Empty
 instance Eq Empty where _ == _ = True
 instance Ord Empty where compare _ _ = EQ
+instance Show Empty where show = error "show Empty"
 
 fromEmpty :: Empty -> a
 fromEmpty = error "fromEmpty"

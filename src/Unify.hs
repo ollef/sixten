@@ -18,7 +18,13 @@ import Syntax
 import Syntax.Abstract
 import Util
 
-occurs :: Level -> MetaVar s -> AbstractM s -> TCM s ()
+-- occurs :: Level -> MetaVar Abstract.Expr s -> AbstractM s -> TCM s ()
+occurs
+  :: Foldable e
+  => Level
+  -> MetaVar e s
+  -> e (MetaVar e s)
+  -> TCM s ()
 occurs l tv = traverse_ go
   where
     go tv'@(MetaVar _ typ _ mr)

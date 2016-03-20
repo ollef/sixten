@@ -1,4 +1,46 @@
-Restriction and closure conversion
+Propagate sizes to all variables
+  Make a transform that makes all arguments constant size indirecting
+  non-constant sized types
+
+  map : (a -> b) -> List a -> List b
+  map f xs = case xs of
+    Nil -> Nil
+    Cons x xs' -> Cons (f x) (Ref (map f (deref xs')))
+
+  BuiltinPtr a = Ptr a
+  IndirectReturn a = Address -> Unit
+  write : StackPtr a -> Address -> Unit
+  alloc : Size -> Address
+
+  map : (BuiltinPtr a -> IndirectReturn b) -> BuiltinPtr (List a) -> IndirectReturn (List b)
+  map f xsp retAdr = case deref xsp of
+    Nil -> write Nil retAdr
+    Cons x xs' ->
+      write Cons retAdr;
+      f (Ref x) (retAdr + 1);
+      let nextAdr = alloc (sizeof (List b))
+      map f xs' nextAdr;
+      write nextAdr (retAdr + 1 + sizeof (List b))
+
+  map : (a -> b) -> Ptr (List a) -> Ptr (List b)
+  map f xs = case deref xs of
+    Nil -> Ref Nil
+    Cons x xs' -> Ref (Cons (f x) (map f xs'))
+
+  map : (BuiltinPtr a -> IndirectReturn b) -> Ptr (List a) -> Ptr (List b)
+  map f xsp = case deref xsp of
+    Nil ->
+      let res = alloc 1 in
+      write Nil res;
+      res
+    Cons x xs' -> 
+      let res = alloc (1 + sizeof a + 1) in
+      write Cons res;
+      f (xsp + 1) (res + 1);
+      write (map f xs') (res + sizeof a + 1);
+      res
+
+Closure conversion
 LLVM code generation
 Usage analysisis for better erasure
 Add new Int type

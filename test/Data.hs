@@ -50,3 +50,5 @@ id x = x
 
 propagationTest : Bool
 propagationTest = id True
+
+lift f x = f x (\y. y)

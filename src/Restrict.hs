@@ -14,7 +14,7 @@ restrictExpr
   :: (MonadError String cxt, Context cxt, Eq v, Hashable v, Show v)
   => Lambda.Expr v
   -> cxt (LL.LBody v)
-restrictExpr expr = {- trace "restrict" $ -} case expr of
+restrictExpr expr = case expr of
   Lambda.Var v -> return $ LL.constantLifted $ pure v
   Lambda.Global n -> return $ LL.constantLifted $ LL.Operand $ LL.Global n
   Lambda.Lit l -> return $ LL.constantLifted $ LL.Operand $ LL.Lit l

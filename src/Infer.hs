@@ -42,8 +42,7 @@ checkType surrR surrP expr typ = do
     Concrete.Lam h1 a1 s1 -> do
       typ' <- whnf typ
       case typ' of
-        Abstract.Pi h2 a2 t2 ts2 | plicitness a1 == plicitness a2
-                                && relevance a1 >= min (relevance a2) surrR -> do
+        Abstract.Pi h2 a2 t2 ts2 | a1 == a2 -> do
           v <- forall_ (h2 <> h1) t2
           (body, ts2') <- checkType surrR surrP
                                     (instantiate1 (pure v) s1)
@@ -312,10 +311,10 @@ checkConstrDef (ConstrDef c (bindingsView Concrete.piView -> (args, ret))) = mdo
   return (ConstrDef c res, ret', size)
 
 checkDataType
-  :: MetaVar s
-  -> DataDef Concrete.Expr (MetaVar s)
+  :: MetaVar Abstract.Expr s
+  -> DataDef Concrete.Expr (MetaVar Abstract.Expr s)
   -> AbstractM s
-  -> TCM s ( DataDef Abstract.Expr (MetaVar s)
+  -> TCM s ( DataDef Abstract.Expr (MetaVar Abstract.Expr s)
            , AbstractM s
            )
 checkDataType name (DataDef cs) typ = mdo
@@ -353,20 +352,20 @@ checkDataType name (DataDef cs) typ = mdo
   return (DataDef cs', typ'')
 
 checkDefType
-  :: MetaVar s
-  -> Definition Concrete.Expr (MetaVar s)
+  :: MetaVar Abstract.Expr s
+  -> Definition Concrete.Expr (MetaVar Abstract.Expr s)
   -> AbstractM s
-  -> TCM s ( Definition Abstract.Expr (MetaVar s)
+  -> TCM s ( Definition Abstract.Expr (MetaVar Abstract.Expr s)
            , AbstractM s
            )
 checkDefType _ (Definition e) typ = first Definition <$> checkType Relevant Explicit e typ
 checkDefType v (DataDefinition d) typ = first DataDefinition <$> checkDataType v d typ
 
 generaliseDef
-  :: Vector (MetaVar s)
-  -> Definition Abstract.Expr (MetaVar s)
+  :: Vector (MetaVar Abstract.Expr s)
+  -> Definition Abstract.Expr (MetaVar Abstract.Expr s)
   -> AbstractM s
-  -> TCM s ( Definition Abstract.Expr (MetaVar s)
+  -> TCM s ( Definition Abstract.Expr (MetaVar Abstract.Expr s)
            , AbstractM s
            )
 generaliseDef vs (Definition e) t = do
@@ -390,11 +389,11 @@ generaliseDef vs (DataDefinition (DataDef cs)) typ = do
     g = pure . B . (+ Tele (length vs))
 
 generaliseDefs
-  :: Vector ( MetaVar s
-            , Definition Abstract.Expr (MetaVar s)
+  :: Vector ( MetaVar Abstract.Expr s
+            , Definition Abstract.Expr (MetaVar Abstract.Expr s)
             , AbstractM s
             )
-  -> TCM s (Vector ( Definition Abstract.Expr (Var Int (MetaVar s))
+  -> TCM s (Vector ( Definition Abstract.Expr (Var Int (MetaVar Abstract.Expr s))
                    , ScopeM Int Abstract.Expr s
                    )
            )
@@ -447,10 +446,10 @@ generaliseDefs xs = do
 
 checkRecursiveDefs
   :: Vector ( NameHint
-            , Definition Concrete.Expr (Var Int (MetaVar s))
+            , Definition Concrete.Expr (Var Int (MetaVar Abstract.Expr s))
             , ScopeM Int Concrete.Expr s
             )
-  -> TCM s (Vector ( Definition Abstract.Expr (Var Int (MetaVar s))
+  -> TCM s (Vector ( Definition Abstract.Expr (Var Int (MetaVar Abstract.Expr s))
                    , ScopeM Int Abstract.Expr s
                    )
            )

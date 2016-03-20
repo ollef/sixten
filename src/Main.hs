@@ -83,7 +83,7 @@ test inp = do
       ) mempty of
       (Left err, tr) -> do mapM_ putStrLn tr; putStrLn err
       (Right (res, restricted), _) -> do
-        mapM_ print $ (show . (\(x, (d, t)) -> runPrettyM $ prettyM x <+> prettyM "=" <+> prettyTypedDef (fe d) (fe t) (fst $ bindingsView Abstract.piView $ fe t))) <$> HM.toList res
+        mapM_ print $ ((\(x, (d, t)) -> runPrettyM $ prettyM x <+> prettyM "=" <+> prettyTypedDef (fe d) (fe t) (fst $ bindingsView Abstract.piView $ fe t))) <$> HM.toList res
         putStrLn "------------- erased ------------------"
         let erased = [(x, fe e') | (x, (e, _)) <- HM.toList res, Definition e' <- [eraseDef e]]
         mapM_ print $ pretty <$> erased
