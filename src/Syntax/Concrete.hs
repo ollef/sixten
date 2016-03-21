@@ -44,10 +44,6 @@ apps = Foldable.foldl (uncurry . App)
 
 -------------------------------------------------------------------------------
 -- * Views
-piView :: Expr v -> Maybe (NameHint, Annotation, Type v, Scope1 Expr v)
-piView (Pi n p e s) = Just (n, p, e, s)
-piView _            = Nothing
-
 globals :: Expr v -> Expr (Var Name v)
 globals expr = case expr of
   Var v -> Var $ F v
@@ -61,12 +57,24 @@ globals expr = case expr of
   Anno e t -> Anno (globals e) (globals t)
   Wildcard -> Wildcard
 
-telescope :: Expr v -> Telescope Expr v
-telescope (bindingsView piView -> (tele, _)) = tele
-
 -------------------------------------------------------------------------------
 -- Instances
-instance Eq1 Expr; instance Ord1 Expr; instance Show1 Expr
+instance Eq1 Expr
+instance Ord1 Expr
+instance Show1 Expr
+
+instance Syntax Expr where
+  piView (Pi n p e s) = Just (n, p, e, s)
+  piView _ = Nothing
+
+  lamView (Lam n p s) = Just (n, p, Wildcard, s)
+  lamView _ = Nothing
+
+  app = App
+
+  appView (App e1 p e2) = Just (e1, p, e2)
+  appView _ = Nothing
+
 
 instance Applicative Expr where
   pure = return

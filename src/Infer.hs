@@ -160,7 +160,7 @@ resolveConstrType
   -> TCM s Name
 resolveConstrType cs mtype = do
   n <- case mtype of
-    Just (Abstract.appsView -> (headType, _)) -> do
+    Just (appsView -> (headType, _)) -> do
       headType' <- whnf headType
       case headType' of
         Abstract.Global v -> do
@@ -196,14 +196,14 @@ inferBranches surrR surrP expr (ConBranches cbrs _) = mdo
   typeName <- resolveConstrType ((\(c, _, _) -> c) <$> cbrs) $ Just etype1
 
   (_, dataTypeType) <- Context.definition typeName
-  let (params, _) = bindingsView Abstract.piView dataTypeType
+  let params = telescope dataTypeType
       inst = instantiateTele (pure . snd <$> paramVars)
   paramVars <- forTele params $ \h p s -> do
     v <- exists h (inst s)
     return (p, v)
 
   let pureParamVars  = fmap pure <$> paramVars
-      dataType = Abstract.apps (Abstract.Global typeName) pureParamVars
+      dataType = apps (Abstract.Global typeName) pureParamVars
       implicitParamVars = (\(_p, v) -> (IrIm, pure v)) <$> paramVars
 
   (expr2, etype2) <- subtype surrR surrP expr1 etype1 dataType
@@ -222,7 +222,7 @@ inferBranches surrR surrP expr (ConBranches cbrs _) = mdo
         (br, resType') <- checkType surrR surrP (instantiateTele pureVs sbr) resType
         paramsArgsExpr' <- freeze paramsArgsExpr
 
-        let (_, args') = Abstract.appsView paramsArgsExpr'
+        let (_, args') = appsView paramsArgsExpr'
             vs = V.fromList $ map (\(p, arg) -> (p, case arg of
                 Abstract.Var v -> Just v
                 _ -> Nothing)) $ drop (teleLength params) args'
@@ -291,7 +291,7 @@ generalise expr typ = do
 checkConstrDef
   :: ConstrDef (ConcreteM s)
   -> TCM s (ConstrDef (AbstractM s), AbstractM s, AbstractM s)
-checkConstrDef (ConstrDef c (bindingsView Concrete.piView -> (args, ret))) = mdo
+checkConstrDef (ConstrDef c (pisView -> (args, ret))) = mdo
   let inst = instantiateTele $ (\(a, _, _, _, _) -> pure a) <$> args'
   args' <- forTele args $ \h a arg -> do
     argSize <- existsVar h Builtin.Size
@@ -321,13 +321,13 @@ checkDataType name (DataDef cs) typ = mdo
   typ' <- freeze typ
   tr "checkDataType t" typ'
 
-  ps' <- forTele (Abstract.telescope typ') $ \h p s -> do
+  ps' <- forTele (telescope typ') $ \h p s -> do
     let is = instantiateTele (pure <$> vs) s
     v <- forall_ h is
     return (v, h, p, is)
 
   let vs = (\(v, _, _, _) -> v) <$> ps'
-      constrRetType = Abstract.apps (pure name) [(p, pure v) | (v, _, p, _) <- V.toList ps']
+      constrRetType = apps (pure name) [(p, pure v) | (v, _, p, _) <- V.toList ps']
 
   params <- forM ps' $ \(_, h, p, t) -> (,,) h p <$> abstractM (fmap Tele . (`V.elemIndex` vs)) t
 
@@ -416,7 +416,7 @@ generaliseDefs xs = do
     return (x, ds)
    )
   let sortedFvs = map impure $ topoSort deps
-      appl x = Abstract.apps x [(ReIm, pure fv) | fv <- sortedFvs]
+      appl x = apps x [(ReIm, pure fv) | fv <- sortedFvs]
       instVars = appl . pure <$> vars
 
   instDefs <- forM xs $ \(_, d, t) -> do

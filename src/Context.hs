@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, MultiParamTypeClasses, TypeFamilies #-}
 module Context where
 
 import Control.Monad.Except
@@ -8,17 +8,22 @@ import qualified Data.Set as Set
 import qualified Data.Vector as Vector
 
 import Syntax
-import Syntax.Abstract
 import Util
 
 class Monad cxt => Context cxt where
-  lookupDefinition :: Name -> cxt (Maybe (Definition Expr v, Type v))
-  lookupConstructor :: Ord v => Constr -> cxt (Set (Name, Type v))
+  type ContextExpr cxt :: * -> *
+  lookupDefinition
+    :: Name
+    -> cxt (Maybe (Definition (ContextExpr cxt) v, ContextExpr cxt v))
+  lookupConstructor
+    :: Ord v
+    => Constr
+    -> cxt (Set (Name, ContextExpr cxt v))
 
 definition
-  :: (MonadError String cxt, Context cxt)
+  :: (MonadError String cxt, Context cxt, Functor (ContextExpr cxt))
   => Name
-  -> cxt (Definition Expr v, Type v)
+  -> cxt (Definition (ContextExpr cxt) v, ContextExpr cxt v)
 definition v = do
   mres <- lookupDefinition v
   maybe (throwError $ "Not in scope: " ++ show v)
@@ -26,20 +31,20 @@ definition v = do
         mres
 
 constructor
-  :: (MonadError String cxt, Context cxt, Ord v)
+  :: (MonadError String cxt, Context cxt, Ord (ContextExpr cxt v), Functor (ContextExpr cxt))
   => Either Constr QConstr
-  -> cxt (Set (Name, Type v))
+  -> cxt (Set (Name, ContextExpr cxt v))
 constructor (Right qc@(QConstr n _)) = Set.singleton . (,) n <$> qconstructor qc
 constructor (Left c) = Set.map (second $ fmap fromEmpty) <$> lookupConstructor c
 
 arity
-  :: (MonadError String cxt, Context cxt)
+  :: (MonadError String cxt, Context cxt, Syntax (ContextExpr cxt), Monad (ContextExpr cxt))
   => QConstr
   -> cxt Int
 arity = fmap (teleLength . fst . bindingsView piView) . qconstructor
 
 relevantArity
-  :: (MonadError String cxt, Context cxt)
+  :: (MonadError String cxt, Context cxt, Functor (ContextExpr cxt), Syntax (ContextExpr cxt), Monad (ContextExpr cxt))
   => QConstr
   -> cxt Int
 relevantArity
@@ -51,9 +56,9 @@ relevantArity
   . qconstructor
 
 qconstructor
-  :: (MonadError String cxt, Context cxt)
+  :: (MonadError String cxt, Context cxt, Functor (ContextExpr cxt))
   => QConstr
-  -> cxt (Type v)
+  -> cxt (ContextExpr cxt v)
 qconstructor qc@(QConstr n c) = do
   results <- lookupConstructor c
   let filtered = Set.filter ((== n) . fst) results

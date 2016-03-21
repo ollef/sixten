@@ -54,6 +54,7 @@ instance MonadST (TCM s) where
   liftST = TCM . liftST
 
 instance Context (TCM s) where
+  type ContextExpr (TCM s) = Expr
   lookupDefinition name = gets $ fmap (bimap (fmap fromEmpty) (fmap fromEmpty)) . HM.lookup name . tcContext
   lookupConstructor name = gets $ maybe mempty (Set.map $ second $ fmap fromEmpty) . HM.lookup name . tcConstrs
 

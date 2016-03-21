@@ -7,7 +7,9 @@ Propagate sizes to all variables
     Nil -> Nil
     Cons x xs' -> Cons (f x) (Ref (map f (deref xs')))
 
+  BuiltinPtr a | sizeof a <= 1 = a
   BuiltinPtr a = Ptr a
+  IndirectReturn a | sizeof a <= 1 = a
   IndirectReturn a = Address -> Unit
   write : StackPtr a -> Address -> Unit
   alloc : Size -> Address

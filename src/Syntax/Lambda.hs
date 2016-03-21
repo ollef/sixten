@@ -38,6 +38,18 @@ instance Eq1 Expr
 instance Ord1 Expr
 instance Show1 Expr
 
+instance Syntax Expr where
+  piView _ = Nothing
+
+  lamView (Lam n e s) = Just (n, ReEx, e, s)
+  lamView _ = Nothing
+
+  app e1 _ = App e1
+
+  appView (App e1 e2) = Just (e1, ReEx, e2)
+  appView _ = Nothing
+
+
 instance Applicative Expr where
   pure = return
   (<*>) = ap
@@ -51,10 +63,6 @@ instance Monad Expr where
   Lam h e s >>= f = Lam h (e >>= f) $ s >>>= f
   App e1 e2 >>= f = App (e1 >>= f) (e2 >>= f)
   Case e brs >>= f = Case (e >>= f) (brs >>>= f)
-
-lamView :: Expr v -> Maybe (NameHint, Annotation, Expr v, Scope1 Expr v)
-lamView (Lam h e s) = Just (h, ReEx, e, s)
-lamView _           = Nothing
 
 etaLam :: Hint (Maybe Name) -> Expr v -> Scope1 Expr v -> Expr v
 etaLam _ _ (Scope (App e (Var (B ()))))
@@ -77,9 +85,3 @@ instance (Eq v, IsString v, Pretty v)
     App e1 e2 -> prettyApp (prettyM e1) (prettyM e2)
     Case e brs -> parens `above` casePrec $
       prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> indent 2 (prettyM brs)
-
-appsView :: Expr v -> (Expr v, [Expr v])
-appsView = second reverse . go
-  where
-    go (App e1 e2) = second (e2 :) $ go e1
-    go e = (e, [])

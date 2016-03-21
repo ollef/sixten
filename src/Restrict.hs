@@ -11,7 +11,7 @@ import qualified Syntax.Lambda as Lambda
 import qualified Syntax.LL as LL
 
 restrictExpr
-  :: (MonadError String cxt, Context cxt, Eq v, Hashable v, Show v)
+  :: (MonadError String cxt, Context cxt, Eq v, Hashable v, Show v, Monad (ContextExpr cxt), Syntax (ContextExpr cxt))
   => Lambda.Expr v
   -> cxt (LL.LBody v)
 restrictExpr expr = case expr of
@@ -19,9 +19,9 @@ restrictExpr expr = case expr of
   Lambda.Global n -> return $ LL.constantLifted $ LL.Operand $ LL.Global n
   Lambda.Lit l -> return $ LL.constantLifted $ LL.Operand $ LL.Lit l
   Lambda.Case e brs -> LL.caseLifted <$> restrictExpr e <*> restrictBranches brs
-  (bindingsViewM Lambda.lamView -> Just (tele, s)) -> LL.lamLifted (teleNames tele) <$> restrictScope s
-  (Lambda.appsView -> (Lambda.Con qc, Vector.fromList -> es)) -> LL.conLifted qc =<< mapM restrictExpr es
-  (Lambda.appsView -> (e, Vector.fromList -> es)) -> LL.callLifted <$> restrictExpr e <*> mapM restrictExpr es
+  (bindingsViewM lamView -> Just (tele, s)) -> LL.lamLifted (teleNames tele) <$> restrictScope s
+  (appsView -> (Lambda.Con qc, Vector.fromList -> pes)) -> LL.conLifted qc =<< mapM restrictExpr (snd <$> pes)
+  (appsView -> (e, Vector.fromList -> pes)) -> LL.callLifted <$> restrictExpr e <*> mapM restrictExpr (snd <$> pes)
   where
     restrictBranches (ConBranches cbrs _) = LL.conBranchesLifted
       <$> sequence [(,,) c vs <$> restrictScope s | (c, vs, s) <- cbrs]

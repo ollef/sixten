@@ -41,36 +41,8 @@ etaLam _ p _ (Scope (App e p' (Var (B ()))))
     = join $ unvar (error "etaLam impossible") id <$> e
 etaLam n p t s = Lam n p t s
 
-piView :: Expr v -> Maybe (NameHint, Annotation, Type v, Scope1 Expr v)
-piView (Pi n p e s) = Just (n, p, e, s)
-piView _            = Nothing
-
-usedPiView :: Expr v -> Maybe (NameHint, Annotation, Type v, Scope1 Expr v)
-usedPiView (Pi n p e s@(unusedScope -> Nothing)) = Just (n, p, e, s)
-usedPiView _                                     = Nothing
-
-lamView :: Expr v -> Maybe (NameHint, Annotation, Type v, Scope1 Expr v)
-lamView (Lam n p e s) = Just (n, p, e, s)
-lamView _             = Nothing
-
-appsView :: Expr v -> (Expr v, [(Annotation, Expr v)])
-appsView = second reverse . go
-  where
-    go (App e1 p e2) = second ((p, e2) :) $ go e1
-    go e = (e, [])
-
 arrow :: Annotation -> Expr v -> Expr v -> Expr v
 arrow p a b = Pi (Hint Nothing) p a $ Scope $ pure $ F b
-
-betaApp :: Expr v -> Annotation -> Expr v -> Expr v
-betaApp e1@(Lam _ p1 _ s) p2 e2 | p1 == p2 = case bindings s of
-  []  -> instantiate1 e2 s
-  [_] -> instantiate1 e2 s
-  _   -> App e1 p1 e2
-betaApp e1 p e2 = App e1 p e2
-
-apps :: Foldable t => Expr v -> t (Annotation, Expr v) -> Expr v
-apps = Foldable.foldl (uncurry . App)
 
 globals :: Expr v -> Expr (Var Name v)
 globals expr = case expr of
@@ -83,11 +55,20 @@ globals expr = case expr of
   App e1 p e2 -> App (globals e1) p (globals e2)
   Case e brs  -> Case (globals e) (exposeBranches globals brs)
 
-telescope :: Expr v -> Telescope Expr v
-telescope (bindingsView piView -> (tele, _)) = tele
-
 -------------------------------------------------------------------------------
 -- Instances
+instance Syntax Expr where
+  piView (Pi n p e s) = Just (n, p, e, s)
+  piView _ = Nothing
+
+  lamView (Lam n p e s) = Just (n, p, e, s)
+  lamView _ = Nothing
+
+  app = App
+
+  appView (App e1 p e2) = Just (e1, p, e2)
+  appView _ = Nothing
+
 instance Eq1 Expr
 instance Ord1 Expr
 instance Show1 Expr
