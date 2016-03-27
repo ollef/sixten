@@ -14,11 +14,10 @@ class Monad cxt => Context cxt where
   type ContextExpr cxt :: * -> *
   lookupDefinition
     :: Name
-    -> cxt (Maybe (Definition (ContextExpr cxt) v, ContextExpr cxt v))
+    -> cxt (Maybe (Definition (ContextExpr cxt) Empty, ContextExpr cxt Empty))
   lookupConstructor
-    :: Ord v
-    => Constr
-    -> cxt (Set (Name, ContextExpr cxt v))
+    :: Constr
+    -> cxt (Set (Name, ContextExpr cxt Empty))
 
 definition
   :: (MonadError String cxt, Context cxt, Functor (ContextExpr cxt))
@@ -31,20 +30,20 @@ definition v = do
         mres
 
 constructor
-  :: (MonadError String cxt, Context cxt, Ord (ContextExpr cxt v), Functor (ContextExpr cxt))
+  :: (MonadError String cxt, Context cxt, Ord (ContextExpr cxt v), Ord (ContextExpr cxt Empty), Functor (ContextExpr cxt))
   => Either Constr QConstr
   -> cxt (Set (Name, ContextExpr cxt v))
 constructor (Right qc@(QConstr n _)) = Set.singleton . (,) n <$> qconstructor qc
 constructor (Left c) = Set.map (second $ fmap fromEmpty) <$> lookupConstructor c
 
 arity
-  :: (MonadError String cxt, Context cxt, Syntax (ContextExpr cxt), Monad (ContextExpr cxt))
+  :: (MonadError String cxt, Context cxt, Syntax (ContextExpr cxt), Ord (ContextExpr cxt Empty))
   => QConstr
   -> cxt Int
 arity = fmap (teleLength . fst . bindingsView piView) . qconstructor
 
 relevantArity
-  :: (MonadError String cxt, Context cxt, Functor (ContextExpr cxt), Syntax (ContextExpr cxt), Monad (ContextExpr cxt))
+  :: (MonadError String cxt, Context cxt, Syntax (ContextExpr cxt), Ord (ContextExpr cxt Empty))
   => QConstr
   -> cxt Int
 relevantArity
@@ -56,7 +55,7 @@ relevantArity
   . qconstructor
 
 qconstructor
-  :: (MonadError String cxt, Context cxt, Functor (ContextExpr cxt))
+  :: (MonadError String cxt, Context cxt, Functor (ContextExpr cxt), Ord (ContextExpr cxt Empty))
   => QConstr
   -> cxt (ContextExpr cxt v)
 qconstructor qc@(QConstr n c) = do

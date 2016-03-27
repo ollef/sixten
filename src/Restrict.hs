@@ -9,9 +9,10 @@ import Context
 import Syntax
 import qualified Syntax.Lambda as Lambda
 import qualified Syntax.LL as LL
+import Util
 
 restrictExpr
-  :: (MonadError String cxt, Context cxt, Eq v, Hashable v, Show v, Monad (ContextExpr cxt), Syntax (ContextExpr cxt))
+  :: (MonadError String cxt, Context cxt, Eq v, Hashable v, Show v, Syntax (ContextExpr cxt), Ord (ContextExpr cxt Empty))
   => Lambda.Expr v
   -> cxt (LL.LBody v)
 restrictExpr expr = case expr of

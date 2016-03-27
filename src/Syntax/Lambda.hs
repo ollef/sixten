@@ -39,6 +39,7 @@ instance Ord1 Expr
 instance Show1 Expr
 
 instance Syntax Expr where
+  pi_ _ _ _ _ = Lit 0
   piView _ = Nothing
 
   lamView (Lam n e s) = Just (n, ReEx, e, s)

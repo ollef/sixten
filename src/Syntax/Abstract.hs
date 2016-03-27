@@ -41,9 +41,6 @@ etaLam _ p _ (Scope (App e p' (Var (B ()))))
     = join $ unvar (error "etaLam impossible") id <$> e
 etaLam n p t s = Lam n p t s
 
-arrow :: Annotation -> Expr v -> Expr v -> Expr v
-arrow p a b = Pi (Hint Nothing) p a $ Scope $ pure $ F b
-
 globals :: Expr v -> Expr (Var Name v)
 globals expr = case expr of
   Var v       -> Var $ F v
@@ -58,6 +55,8 @@ globals expr = case expr of
 -------------------------------------------------------------------------------
 -- Instances
 instance Syntax Expr where
+  pi_ = Pi
+
   piView (Pi n p e s) = Just (n, p, e, s)
   piView _ = Nothing
 

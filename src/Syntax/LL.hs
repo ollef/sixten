@@ -196,7 +196,7 @@ callLifted fun args
   $ Call (Local $ B 0) $ Local . B <$> Vector.enumFromN 1 (Vector.length args)
 
 conLifted
-  :: (MonadError String cxt, Context cxt, Eq v, Hashable v, Monad (ContextExpr cxt), Syntax (ContextExpr cxt))
+  :: (MonadError String cxt, Context cxt, Eq v, Hashable v, Monad (ContextExpr cxt), Syntax (ContextExpr cxt), Ord (ContextExpr cxt Empty))
   => QConstr
   -> Vector (LBody v)
   -> cxt (LBody v)

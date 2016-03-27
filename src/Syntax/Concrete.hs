@@ -64,6 +64,8 @@ instance Ord1 Expr
 instance Show1 Expr
 
 instance Syntax Expr where
+  pi_ = Pi
+
   piView (Pi n p e s) = Just (n, p, e, s)
   piView _ = Nothing
 

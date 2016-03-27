@@ -84,10 +84,8 @@ enterLevel x = do
   modify $ \s -> s {tcLevel = l}
   return r
 
-trace _ y = y
-
 log :: String -> TCM s ()
-log l = trace l $ modify $ \s -> s {tcLog = l : tcLog s}
+log l = modify $ \s -> s {tcLog = l : tcLog s}
 
 addContext :: Program Expr Empty -> TCM s ()
 addContext prog = modify $ \s -> s
@@ -97,7 +95,7 @@ addContext prog = modify $ \s -> s
     cs = HM.fromList $ do
       (n, (DataDefinition d, defType)) <- HM.toList prog
       ConstrDef c t <- quantifiedConstrTypes
-                         (\h _p -> Pi h IrIm)
+                         (\h _p -> Syntax.pi_ h IrIm)
                          d
                          (telescope defType)
       return (c, Set.fromList [(n, t)])
