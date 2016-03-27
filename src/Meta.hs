@@ -98,10 +98,19 @@ existsAtLevel hint typ l = do
 exists :: NameHint -> e (MetaVar e s) -> TCM s (MetaVar e s)
 exists hint typ = existsAtLevel hint typ =<< level
 
-existsVar :: Applicative g => NameHint -> e (MetaVar e s) -> TCM s (g (MetaVar e s))
+existsVar
+  :: Applicative g
+  => NameHint
+  -> e (MetaVar e s)
+  -> TCM s (g (MetaVar e s))
 existsVar hint typ = pure <$> exists hint typ
 
-existsVarAtLevel :: Applicative g => NameHint -> e (MetaVar e s) -> Level -> TCM s (g (MetaVar e s))
+existsVarAtLevel
+  :: Applicative g
+  => NameHint
+  -> e (MetaVar e s)
+  -> Level
+  -> TCM s (g (MetaVar e s))
 existsVarAtLevel hint typ l = pure <$> existsAtLevel hint typ l
 
 forall_ :: NameHint -> e (MetaVar e s) -> TCM s (MetaVar e s)
@@ -110,7 +119,11 @@ forall_ hint typ = do
   TCM.log $ "forall: " ++ show i
   return $ MetaVar i typ hint Nothing
 
-forallVar :: Applicative g => NameHint -> e (MetaVar e s) -> TCM s (g (MetaVar e s))
+forallVar
+  :: Applicative g
+  => NameHint
+  -> e (MetaVar e s)
+  -> TCM s (g (MetaVar e s))
 forallVar hint typ = pure <$> forall_ hint typ
 
 solution :: Exists e s -> TCM s (Either Level (e (MetaVar e s)))
@@ -119,7 +132,11 @@ solution = liftST . readSTRef
 solve :: Exists e s -> e (MetaVar e s) -> TCM s ()
 solve r x = liftST $ writeSTRef r $ Right x
 
-refineIfSolved :: Exists e s -> e (MetaVar e s) -> (e (MetaVar e s) -> TCM s (e (MetaVar e s))) -> TCM s (e (MetaVar e s))
+refineIfSolved
+  :: Exists e s
+  -> e (MetaVar e s)
+  -> (e (MetaVar e s) -> TCM s (e (MetaVar e s)))
+  -> TCM s (e (MetaVar e s))
 refineIfSolved r d f = do
   sol <- solution r
   case sol of
@@ -129,18 +146,29 @@ refineIfSolved r d f = do
       solve r e'
       return e'
 
-letMeta :: NameHint -> e (MetaVar e s) -> e (MetaVar e s) -> TCM s (MetaVar e s)
+letMeta
+  :: NameHint
+  -> e (MetaVar e s)
+  -> e (MetaVar e s)
+  -> TCM s (MetaVar e s)
 letMeta hint expr typ = do
   i   <- fresh
   ref <- liftST $ newSTRef $ Right expr
   return $ MetaVar i typ hint (Just ref)
 
-letVar :: Applicative g
-       => NameHint -> e (MetaVar e s) -> e (MetaVar e s) -> TCM s (g (MetaVar e s))
+letVar
+  :: Applicative g
+  => NameHint
+  -> e (MetaVar e s)
+  -> e (MetaVar e s)
+  -> TCM s (g (MetaVar e s))
 letVar hint expr typ = pure <$> letMeta hint expr typ
 
-foldMapM :: (Foldable e, Foldable f, Monoid m)
-         => (MetaVar e s -> m) -> f (MetaVar e s) -> TCM s m
+foldMapM
+  :: (Foldable e, Foldable f, Monoid m)
+  => (MetaVar e s -> m)
+  -> f (MetaVar e s)
+  -> TCM s m
 foldMapM f = foldrM go mempty
   where
     go v m = (<> m) . (<> f v) <$>

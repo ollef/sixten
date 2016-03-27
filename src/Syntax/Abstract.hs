@@ -3,7 +3,6 @@ module Syntax.Abstract where
 
 import Control.Monad
 import Data.Bifunctor
-import qualified Data.Foldable as Foldable
 import Data.Monoid
 import qualified Data.Set as S
 import Data.String
