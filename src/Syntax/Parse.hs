@@ -255,9 +255,9 @@ branches = dropAnchor $  ConBranches <$> manySameCol conBranch <*> pure Wildcard
   where
     litBranch = (,) <$> literal <*% symbol "->" <*>% expr
     conBranch = con <$> constructor <*> manyBindings <*% symbol "->" <*>% expr
-    con c bs e = (Left c, bs', abstract (fmap Tele . (`Vector.elemIndex` ns) . Just) e)
-      where bs' = bindingHints bs
-            ns = fmap (unHint . fst) bs'
+    con c bs e = (Left c, bindingsTelescope bs, abstract (fmap Tele . (`Vector.elemIndex` ns) . Just) e)
+      where
+        ns = unHint . fst <$> bindingHints bs
 
 rel :: Parser Relevance
 rel = Irrelevant <$ symbol "~"  <|> pure Relevant

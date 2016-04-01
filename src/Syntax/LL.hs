@@ -14,8 +14,8 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Prelude.Extras
 
-import Context
 import Syntax
+import TCM
 import Util
 
 data Lifted e v = Lifted (Vector (NameHint, Body Expr Tele)) (Simple.Scope Tele e v)
@@ -131,30 +131,44 @@ caseLifted b brs
   $ brs
 
 newtype ExposedConBranches b v
-  = ExposedConBranches [(QConstr, Vector (NameHint, Annotation), b v)]
+  = ExposedConBranches [(QConstr, Vector (NameHint, Annotation, b v), b v)]
   deriving (Functor)
 
 instance Bound ExposedConBranches where
   ExposedConBranches brs >>>= f
-    = ExposedConBranches [(qc, hs, br >>= f) | (qc, hs, br) <- brs]
+    = ExposedConBranches [ (qc, (\(h, a, t) -> (h, a, t >>= f)) <$> tele, br >>= f)
+                         | (qc, tele, br) <- brs]
 
 bindExposedConBranches
   :: ExposedConBranches Expr (Var Tele v)
   -> Expr v
   -> Branches QConstr Expr v
 bindExposedConBranches (ExposedConBranches brs) typ
-  = ConBranches [(qc, hs, toScope b) | (qc, hs, b) <- brs] typ
+  = ConBranches [ (qc, Telescope $ (\(h, a, t) -> (h, a, toScope t)) <$> tele, toScope b)
+                | (qc, tele, b) <- brs] typ
 
 conBranchesLifted
   :: (Eq v, Hashable v)
-  => [(QConstr, Vector (NameHint, Annotation), LBody (Var Tele v))]
+  => [(QConstr, Vector (NameHint, Annotation, LBody (Var Tele v)), LBody (Var Tele v))]
   -> Expr v
   -> LBranches v
 conBranchesLifted brs typ
   = mapLifted (flip bindExposedConBranches (F <$> typ) . fmap commute)
-  $ letLifteds (\_ e b -> b >>>= unvar (\() -> e) pure)
-               (Vector.fromList [(mempty, br) | (_, _, br) <- brs])
-               (Simple.Scope $ pureLifted $ ExposedConBranches [(c, hs, pure $ B n) | ((c, hs, _), n) <- zip brs [0..]])
+  $ letLifteds
+    (\_ e b -> b >>>= unvar (\() -> e) pure)
+    (Vector.fromList [(mempty, br) | (_, _, br) <- brs]
+    <> Vector.concat [(\(h, _, e) -> (h, e)) <$> tele | (_, tele, _) <- brs])
+  $ Simple.Scope
+  $ pureLifted
+  $ ExposedConBranches [(c, (\((h, a, _), t) -> (h, a, t)) <$> tele, pure $ B n) | ((c, tele), n) <- zip numberedBrs [0..]]
+  where
+    numberedBrs = fst $ foldr
+      (\(c, tele, _) (brs', n) ->
+        let len = Vector.length tele in
+        ((c, Vector.zip tele $ pure . B <$> Vector.enumFromN n len) : brs', n + len)
+      )
+      ([], length brs)
+      brs
 
 litBranchesLifted
   :: (Eq v, Hashable v)
@@ -196,12 +210,12 @@ callLifted fun args
   $ Call (Local $ B 0) $ Local . B <$> Vector.enumFromN 1 (Vector.length args)
 
 conLifted
-  :: (MonadError String cxt, Context cxt, Eq v, Hashable v, Monad (ContextExpr cxt), Syntax (ContextExpr cxt), Ord (ContextExpr cxt Empty))
+  :: (Eq v, Hashable v)
   => QConstr
   -> Vector (LBody v)
-  -> cxt (LBody v)
+  -> TCM s (LBody v)
 conLifted qc args = do
-  n <- Context.relevantArity qc
+  n <- relevantArity qc
   let argsLen = Vector.length args
   case compare argsLen n of
     LT -> return $ letLifteds letBody ((,) mempty <$> args)

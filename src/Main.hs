@@ -78,15 +78,15 @@ test inp = do
       constrs <- HS.fromList . HM.keys <$> gets tcConstrs
       inferProgram constrs p
       cxt <- gets tcContext
-      restricted <- sequence [(,) x <$> Restrict.restrictExpr (fe e') | (x, (e, _)) <- HM.toList cxt, Definition e' <- [eraseDef e]]
-      return (cxt, restricted)
+      erased <- sequence [(,) x <$> eraseDef e | (x, (e, _)) <- HM.toList cxt]
+      restricted <- sequence [(,) x <$> Restrict.restrictExpr (fe e') | (x, Definition e') <- erased]
+      return (cxt, erased, restricted)
       ) mempty of
       (Left err, tr) -> do mapM_ putStrLn tr; putStrLn err
-      (Right (res, restricted), _) -> do
+      (Right (res, erased, restricted), _) -> do
         mapM_ print $ ((\(x, (d, t)) -> runPrettyM $ prettyM x <+> prettyM "=" <+> prettyTypedDef (fe d) (fe t) (fst $ bindingsView piView $ fe t))) <$> HM.toList res
         putStrLn "------------- erased ------------------"
-        let erased = [(x, fe e') | (x, (e, _)) <- HM.toList res, Definition e' <- [eraseDef e]]
-        mapM_ print $ pretty <$> erased
+        mapM_ print $ pretty <$> [(x, e) | (x, Definition e) <- erased]
         putStrLn "------------- restricted --------------"
         mapM_ print $ pretty <$> restricted
   where

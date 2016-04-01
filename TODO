@@ -1,20 +1,29 @@
 Propagate sizes to all variables
   Make a transform that makes all arguments constant size indirecting
   non-constant sized types
+  Irrelevant : Type 0
 
   map : (a -> b) -> List a -> List b
   map f xs = case xs of
     Nil -> Nil
     Cons x xs' -> Cons (f x) (Ref (map f (deref xs')))
 
-  BuiltinPtr a | sizeof a <= 1 = a
-  BuiltinPtr a = Ptr a
-  IndirectReturn a | sizeof a <= 1 = a
-  IndirectReturn a = Address -> Unit
+  IndArg a | sizeof a <= 1 = a
+  IndArg a = Ptr a
+  IndRet a | sizeof a <= 1 = a
+  IndRet a = Address -> Unit
   write : StackPtr a -> Address -> Unit
   alloc : Size -> Address
 
-  map : (BuiltinPtr a -> IndirectReturn b) -> BuiltinPtr (List a) -> IndirectReturn (List b)
+  Indirection part of annotation?
+
+  indRet : forall {a}{A : Type a}. A -> IndRet A
+  indArg : forall {a}{A : Type a}. A -> IndArg A
+
+  ret : forall {a}{A : Type a}. IndRet A -> A
+  arg : forall {a}{A : Type a}. IndArg A -> A
+
+  map : (IndArg a -> IndRet b) -> IndArg (List a) -> IndRet (List b)
   map f xsp retAdr = case deref xsp of
     Nil -> write Nil retAdr
     Cons x xs' ->
@@ -29,7 +38,7 @@ Propagate sizes to all variables
     Nil -> Ref Nil
     Cons x xs' -> Ref (Cons (f x) (map f xs'))
 
-  map : (BuiltinPtr a -> IndirectReturn b) -> Ptr (List a) -> Ptr (List b)
+  map : (IndArg a -> IndRet b) -> Ptr (List a) -> Ptr (List b)
   map f xsp = case deref xsp of
     Nil ->
       let res = alloc 1 in

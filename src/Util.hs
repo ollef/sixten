@@ -62,6 +62,7 @@ data Empty
 instance Eq Empty where _ == _ = True
 instance Ord Empty where compare _ _ = EQ
 instance Show Empty where show = error "show Empty"
+instance IsString Empty where fromString = error "fromString Empty"
 
 fromEmpty :: Empty -> a
 fromEmpty = error "fromEmpty"

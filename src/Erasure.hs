@@ -8,12 +8,14 @@ import qualified Data.Vector as Vector
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Lambda as Lambda
+import Meta
+import Util
+import TCM
 
-type Abstract = Abstract.Expr
-type Lambda = Lambda.Expr
-
-erase :: Abstract v -> Lambda v
-erase expr = case expr of
+erase :: AbstractM s -> TCM s (LambdaM v)
+erase expr = undefined
+  {-
+  case expr of
   Abstract.Var v -> Lambda.Var v
   Abstract.Global g -> Lambda.Global g
   Abstract.Con c -> Lambda.Con c
@@ -38,8 +40,11 @@ erase expr = case expr of
     eraseScope = toScope . erase . fromScope
     eraseBranches (ConBranches cbrs t) = ConBranches [(c, has', eraseScope $ mapBound permFun s)  | (c, has, s) <- cbrs, let (permFun, has') = eraseVars has] (erase t)
     eraseBranches (LitBranches lbrs d) = LitBranches [(l, erase e) | (l, e) <- lbrs] (erase d)
+    -}
 
-eraseDef :: Definition Abstract v -> Definition Lambda v
-eraseDef (Definition e) = Definition $ erase e
+eraseDef
+  :: Definition Abstract.Expr Empty
+  -> TCM s (Definition Lambda.Expr Empty)
+eraseDef (Definition e) = fmap (error "impossible") . Definition <$> erase (fromEmpty <$> e)
 eraseDef (DataDefinition DataDef {})
-  = DataDefinition $ DataDef mempty
+  = return $ DataDefinition $ DataDef mempty

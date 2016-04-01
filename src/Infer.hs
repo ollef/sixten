@@ -14,7 +14,6 @@ import Data.Vector(Vector)
 import qualified Data.Vector as V
 
 import qualified Builtin
-import qualified Context
 import Meta
 import TCM
 import Normalise
@@ -102,13 +101,13 @@ inferType surrR surrP expr = do
   modifyIndent succ
   (e, t) <- case expr of
     Concrete.Global v -> do
-      (_, typ) <- Context.definition v
+      (_, typ) <- definition v
       return (Abstract.Global v, typ)
     Concrete.Var v -> return (Abstract.Var v, metaType v)
     Concrete.Con con -> do
       n <- resolveConstrType [con] Nothing
       let qc = qualify n con
-      typ <- Context.qconstructor qc
+      typ <- qconstructor qc
       return (Abstract.Con qc, typ)
     Concrete.Lit l -> return (Abstract.Lit l, Builtin.Size)
     Concrete.Pi n p t s -> do
@@ -164,13 +163,13 @@ resolveConstrType cs mtype = do
       headType' <- whnf headType
       case headType' of
         Abstract.Global v -> do
-          (d, _) <- Context.definition v
+          (d, _) <- definition v
           return $ case d of
             DataDefinition _ -> [Set.singleton v]
             _                -> mempty
         _ -> return mempty
     _ -> return mempty
-  ns <- mapM (fmap (Set.map (fst :: (Name, Abstract.Expr ()) -> Name)) . Context.constructor) cs
+  ns <- mapM (fmap (Set.map (fst :: (Name, Abstract.Expr ()) -> Name)) . constructor) cs
   case Set.toList $ List.foldl1' Set.intersection (n ++ ns) of
     [x] -> return x
     xs -> throwError $ "Ambiguous constructors: " ++ show cs ++ ". Possible types: "
@@ -195,7 +194,7 @@ inferBranches surrR surrP expr (ConBranches cbrs _) = mdo
 
   typeName <- resolveConstrType ((\(c, _, _) -> c) <$> cbrs) $ Just etype1
 
-  (_, dataTypeType) <- Context.definition typeName
+  (_, dataTypeType) <- definition typeName
   let params = telescope dataTypeType
       inst = instantiateTele (pure . snd <$> paramVars)
   paramVars <- forTele params $ \h p s -> do
@@ -208,10 +207,11 @@ inferBranches surrR surrP expr (ConBranches cbrs _) = mdo
 
   (expr2, etype2) <- subtype surrR surrP expr1 etype1 dataType
 
-  let go (c, nps, sbr) (etype, resBrs, resType) = do
-        args <- V.forM nps $ \(h, p) -> do
-          t <- existsType h
-          v <- forall_ h t
+  let go (c, tele, sbr) (etype, resBrs, resType) = mdo
+        args <- forTele tele $ \h p s -> do
+          tType <- existsTypeType h
+          (t', _) <- checkType Irrelevant surrP (instantiateTele pureVs s) tType
+          v <- forall_ h t'
           return (p, pure v)
         let qc = qualify typeName c
             pureVs = snd <$> args
@@ -224,11 +224,13 @@ inferBranches surrR surrP expr (ConBranches cbrs _) = mdo
 
         let (_, args') = appsView paramsArgsExpr'
             vs = V.fromList $ map (\(p, arg) -> (p, case arg of
-                Abstract.Var v -> Just v
-                _ -> Nothing)) $ drop (teleLength params) args'
-        sbr' <- abstractM (teleAbstraction (snd <$> vs) . Just) br
-        let nps' = (\(p, mv) -> (maybe (Hint Nothing) metaHint mv, p)) <$> vs
-        return (etype', (qc, nps', sbr'):resBrs, resType')
+                Abstract.Var v -> v
+                _ -> error "inferBranches")) $ drop (teleLength params) args'
+        sbr' <- abstractM (teleAbstraction (snd <$> vs)) br
+        tele' <- V.forM vs $ \(p, v) -> do
+          s <- abstractM (teleAbstraction (snd <$> vs)) $ metaType v
+          return (metaHint v, p, s)
+        return (etype', (qc, Telescope tele', sbr'):resBrs, resType')
 
   resType1 <- existsType mempty
 

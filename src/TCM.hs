@@ -11,8 +11,8 @@ import Data.HashMap.Lazy(HashMap)
 import Data.Monoid
 import Data.Set(Set)
 import qualified Data.Set as Set
+import qualified Data.Vector as Vector
 
-import Context
 import Syntax
 import Syntax.Abstract
 import Util
@@ -52,11 +52,6 @@ newtype TCM s a = TCM (ExceptT String (StateT State (ST s)) a)
 instance MonadST (TCM s) where
   type World (TCM s) = s
   liftST = TCM . liftST
-
-instance Context (TCM s) where
-  type ContextExpr (TCM s) = Expr
-  lookupDefinition name = gets $ fmap (bimap (fmap fromEmpty) (fmap fromEmpty)) . HM.lookup name . tcContext
-  lookupConstructor name = gets $ maybe mempty (Set.map $ second $ fmap fromEmpty) . HM.lookup name . tcConstrs
 
 unTCM :: (forall s. TCM s a) -> forall s. ExceptT String (StateT State (ST s)) a
 unTCM (TCM x) = x
@@ -102,3 +97,53 @@ addContext prog = modify $ \s -> s
 
 modifyIndent :: (Int -> Int) -> TCM s ()
 modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
+
+lookupDefinition :: Name -> TCM s (Maybe (Definition Expr b, Type b'))
+lookupDefinition name = gets $ fmap (bimap (fmap fromEmpty) (fmap fromEmpty)) . HM.lookup name . tcContext
+lookupConstructor :: Ord b => Constr -> TCM s (Set (Name, Type b))
+lookupConstructor name = gets $ maybe mempty (Set.map $ second $ fmap fromEmpty) . HM.lookup name . tcConstrs
+
+definition
+  :: Name
+  -> TCM s (Definition Expr v, Type v)
+definition v = do
+  mres <- lookupDefinition v
+  maybe (throwError $ "Not in scope: " ++ show v)
+        (return . bimap (fmap fromEmpty) (fmap fromEmpty))
+        mres
+
+constructor
+  :: Ord v
+  => Either Constr QConstr
+  -> TCM s (Set (Name, Type v))
+constructor (Right qc@(QConstr n _)) = Set.singleton . (,) n <$> qconstructor qc
+constructor (Left c) = Set.map (second $ fmap fromEmpty) <$> lookupConstructor c
+
+qconstructor
+  :: QConstr
+  -> TCM s (Type v)
+qconstructor qc@(QConstr n c) = do
+  results <- lookupConstructor c
+  let filtered = Set.filter ((== n) . fst) results
+  case Set.size filtered of
+    1 -> do
+      let [(_, t)] = Set.toList filtered
+      return (fromEmpty <$> t)
+    0 -> throwError $ "Not in scope: constructor " ++ show qc
+    _ -> throwError $ "Ambiguous constructor: " ++ show qc
+
+arity
+  :: QConstr
+  -> TCM s Int
+arity = fmap (teleLength . fst . bindingsView piView) . qconstructor
+
+relevantArity
+  :: QConstr
+  -> TCM s Int
+relevantArity
+  = fmap ( Vector.length
+         . Vector.filter (\(_, a, _) -> relevance a == Relevant)
+         . unTelescope
+         . fst
+         . bindingsView piView)
+  . qconstructor

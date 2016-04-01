@@ -10,7 +10,6 @@ import qualified Data.Set as S
 import Data.STRef
 
 import qualified Builtin
-import qualified Context
 import Meta
 import TCM
 import Normalise
@@ -181,10 +180,10 @@ typeOf expr = do
   modifyIndent succ
   t <- case expr of
     Global v -> do
-      (_, typ) <- Context.definition v
+      (_, typ) <- definition v
       return typ
     Var v -> return $ metaType v
-    Con qc -> Context.qconstructor qc
+    Con qc -> qconstructor qc
     Lit _ -> return Builtin.Size
     Pi {} -> return $ Builtin.Type $ Lit 1
     Lam n a t s -> do
