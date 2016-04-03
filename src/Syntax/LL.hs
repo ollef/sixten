@@ -104,7 +104,7 @@ letLifted k h (Lifted ds1 (Simple.Scope b1)) (Simple.Scope (Lifted ds2 b2)) = do
       Lifted (newContext <> pure (h, function'))
              $ Simple.toScope $ b2' >>>= unvar (pure . B)
                                                (unvar (const $ Call (Local $ B len) $ Local . F <$> vs')  (pure . F))
-    Constant e1 -> Lifted newContext $ Simple.Scope $ (k h) e1 $ permuteVars <$> b2'
+    Constant e1 -> Lifted newContext $ Simple.Scope $ k h e1 $ permuteVars <$> b2'
 
 letLifteds
   :: (Eq v, Functor (t Expr), Bound t, Hashable v)
@@ -127,8 +127,7 @@ caseLifted
 caseLifted b brs
   = letLifted letBody mempty b
   $ Simple.Scope
-  $ mapLifted (Constant . Case (Local $ F $ B ()) . fmap (fmap F))
-  $ brs
+  $ mapLifted (Constant . Case (Local $ F $ B ()) . fmap (fmap F)) brs
 
 newtype ExposedConBranches b v
   = ExposedConBranches [(QConstr, Vector (NameHint, Annotation, b v), b v)]
@@ -143,9 +142,9 @@ bindExposedConBranches
   :: ExposedConBranches Expr (Var Tele v)
   -> Expr v
   -> Branches QConstr Expr v
-bindExposedConBranches (ExposedConBranches brs) typ
+bindExposedConBranches (ExposedConBranches brs)
   = ConBranches [ (qc, Telescope $ (\(h, a, t) -> (h, a, toScope t)) <$> tele, toScope b)
-                | (qc, tele, b) <- brs] typ
+                | (qc, tele, b) <- brs]
 
 conBranchesLifted
   :: (Eq v, Hashable v)

@@ -45,8 +45,8 @@ instantiatePrefix
   -> Telescope expr v
 instantiatePrefix es (Telescope tele)
   = Telescope
-  $ fmap (\(h, p, s) -> (h, p, toScope $ instantiate f $ F <$> s))
-  $ Vector.drop len tele
+  $ (\(h, p, s) -> (h, p, toScope $ instantiate f $ F <$> s))
+  <$> Vector.drop len tele
   where
     es' = fmap F <$> es
     len = Vector.length es

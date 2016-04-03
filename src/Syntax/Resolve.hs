@@ -5,6 +5,7 @@ module Syntax.Resolve where
 import Bound
 import Control.Applicative
 import Control.Monad.Except
+import Data.Bifunctor
 import Data.Foldable
 import Data.Hashable
 import Data.HashMap.Lazy(HashMap)
@@ -46,7 +47,7 @@ program xs = snd <$> foldlM resolveName (Nothing, mempty) xs >>= matchTypes
       [] -> do
         let defs' = HM.unionWith (\(d, _) (t, _) -> (d, t)) (flip (,) Wildcard <$> defs)
                                                             (flip (,) Wildcard <$> types)
-            ldefs = (\(e, t) -> (Definition e, t)) <$> defs'
+            ldefs = first Definition <$> defs'
             rdatas = (\(tele, d) -> (DataDefinition d, quantify Pi (Scope $ App (Global Builtin.TypeName) IrIm Wildcard) tele)) <$> datas
         case HM.keys $ HM.intersection ldefs rdatas of
           [] -> return $ ldefs <> rdatas

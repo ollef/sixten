@@ -151,7 +151,7 @@ prettyApp :: PrettyM Doc -> PrettyM Doc -> PrettyM Doc
 prettyApp p q = parens `above` appPrec $ associate appPrec p <+> q
 
 prettyApps :: Foldable t => PrettyM Doc -> t (PrettyM Doc) -> PrettyM Doc
-prettyApps p ps = foldl prettyApp p ps
+prettyApps = foldl prettyApp
 
 prettyTightApp :: PrettyM Doc -> PrettyM Doc -> PrettyM Doc
 prettyTightApp p q = parens `above` tightAppPrec $ associate tightAppPrec p <> q

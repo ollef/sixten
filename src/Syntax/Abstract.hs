@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, Rank2Types, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, ViewPatterns #-}
 module Syntax.Abstract where
 
 import Control.Monad
@@ -94,7 +94,7 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
     Con c     -> prettyM c
     Lit l     -> prettyM l
     Pi  _ a t (unusedScope -> Just e) -> parens `above` arrPrec $
-      (prettyAnnotation a $ prettyM t)
+      prettyAnnotation a (prettyM t)
       <+> prettyM "->" <+>
       associate arrPrec (prettyM e)
     (bindingsViewM usedPiView -> Just (tele, s)) -> withTeleHints tele $ \ns ->
