@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, Rank2Types, ViewPatterns #-}
-module Syntax.LL where
+module Syntax.Lifted where
 
 import qualified Bound.Scope.Simple as Simple
 import Control.Monad
@@ -60,8 +60,8 @@ operandView _ = Nothing
 pureLifted :: Functor e => e v -> Lifted e v
 pureLifted = Lifted mempty . Simple.Scope . fmap F
 
-constantLifted :: Functor e => e v -> Lifted (Body e) v
-constantLifted = pureLifted . Constant
+constant :: Functor e => e v -> Lifted (Body e) v
+constant = pureLifted . Constant
 
 liftFunction
   :: (Eq f, Hashable f)
@@ -84,14 +84,14 @@ liftFunction vs s =
 permuteVars :: Var a (Var b c) -> Var b (Var a c)
 permuteVars = unvar (F . B) (unvar B (F . F))
 
-letLifted
+let_
   :: (Eq v, Functor (t Expr), Bound t, Hashable v)
   => (forall a. NameHint -> Expr a -> t Expr (Var () a) -> t Expr a)
   -> NameHint
   -> LBody v
   -> Simple.Scope () (Lifted (t Expr)) v
   -> Lifted (t Expr) v
-letLifted k h (Lifted ds1 (Simple.Scope b1)) (Simple.Scope (Lifted ds2 b2)) = do
+let_ k h (Lifted ds1 (Simple.Scope b1)) (Simple.Scope (Lifted ds2 b2)) = do
   let newContext = ds1 <> ds2'
       len = Tele $ Vector.length newContext
       (f, fScope) | Vector.null ds1 = (id, id)
@@ -106,26 +106,26 @@ letLifted k h (Lifted ds1 (Simple.Scope b1)) (Simple.Scope (Lifted ds2 b2)) = do
                                                (unvar (const $ Call (Local $ B len) $ Local . F <$> vs')  (pure . F))
     Constant e1 -> Lifted newContext $ Simple.Scope $ k h e1 $ permuteVars <$> b2'
 
-letLifteds
+lets
   :: (Eq v, Functor (t Expr), Bound t, Hashable v)
   => (forall a. NameHint -> Expr a -> t Expr (Var () a) -> t Expr a)
   -> Vector (NameHint, LBody v)
   -> Simple.Scope Int (Lifted (t Expr)) v
   -> Lifted (t Expr) v
-letLifteds k es s = unvar (error "LL.lets'") id <$> foldr go (Simple.fromScope s) (Vector.indexed es)
+lets k es s = unvar (error "Lifted.lets'") id <$> foldr go (Simple.fromScope s) (Vector.indexed es)
   where
-    go (n, (h, e)) e' = letLifted k h (F <$> e) $ Simple.abstract f e'
+    go (n, (h, e)) e' = let_ k h (F <$> e) $ Simple.abstract f e'
       where
         f (B n') | n == n' = Just ()
         f _ = Nothing
 
-caseLifted
+case_
   :: (Eq v, Hashable v)
   => LBody v
   -> LBranches v
   -> LBody v
-caseLifted b brs
-  = letLifted letBody mempty b
+case_ b brs
+  = let_ letBody mempty b
   $ Simple.Scope
   $ mapLifted (Constant . Case (Local $ F $ B ()) . fmap (fmap F)) brs
 
@@ -146,14 +146,14 @@ bindExposedConBranches (ExposedConBranches brs)
   = ConBranches [ (qc, Telescope $ (\(h, a, t) -> (h, a, toScope t)) <$> tele, toScope b)
                 | (qc, tele, b) <- brs]
 
-conBranchesLifted
+conBranches
   :: (Eq v, Hashable v)
   => [(QConstr, Vector (NameHint, Annotation, LBody (Var Tele v)), LBody (Var Tele v))]
   -> Expr v
   -> LBranches v
-conBranchesLifted brs typ
+conBranches brs typ
   = mapLifted (flip bindExposedConBranches (F <$> typ) . fmap commute)
-  $ letLifteds
+  $ lets
     (\_ e b -> b >>>= unvar (\() -> e) pure)
     (Vector.fromList [(mempty, br) | (_, _, br) <- brs]
     <> Vector.concat [(\(h, _, e) -> (h, e)) <$> tele | (_, tele, _) <- brs])
@@ -169,24 +169,24 @@ conBranchesLifted brs typ
       ([], length brs)
       brs
 
-litBranchesLifted
+litBranches
   :: (Eq v, Hashable v)
   => [(Literal, LBody v)]
   -> LBody v
   -> LBranches v
-litBranchesLifted brs def
-  = letLifteds (\_ e b -> b >>>= unvar (\() -> e) pure)
+litBranches brs def
+  = lets (\_ e b -> b >>>= unvar (\() -> e) pure)
   (Vector.fromList $ pure (mempty, def) <> (first (const mempty) <$> brs))
   (Simple.Scope $ pureLifted $ LitBranches [(l, pure $ B n) | ((l, _), n) <- zip brs [1..]] (pure $ B 0))
 
-lamLifted :: Vector NameHint -> LBody (Var Tele v) -> LBody v
-lamLifted hs (Lifted bs (Simple.Scope (Constant expr)))
+lam :: Vector NameHint -> LBody (Var Tele v) -> LBody v
+lam hs (Lifted bs (Simple.Scope (Constant expr)))
   = Lifted bs
   $ Simple.Scope
   $ Function hs
   $ toScope
   $ commute <$> expr
-lamLifted hs (Lifted bs (Simple.Scope (Function hs' expr)))
+lam hs (Lifted bs (Simple.Scope (Function hs' expr)))
   = Lifted bs
   $ Simple.Scope
   $ Function (hs <> hs')
@@ -198,34 +198,34 @@ lamLifted hs (Lifted bs (Simple.Scope (Function hs' expr)))
 commute :: Var a (Var b c) -> Var b (Var a c)
 commute = unvar (F . B) (unvar B (F . F))
 
-callLifted
+call
   :: (Eq v, Hashable v)
   => LBody v
   -> Vector (LBody v)
   -> LBody v
-callLifted fun args
-  = letLifteds letBody ((,) mempty <$> pure fun <> args)
-  $ Simple.Scope $ constantLifted
+call fun args
+  = lets letBody ((,) mempty <$> pure fun <> args)
+  $ Simple.Scope $ constant
   $ Call (Local $ B 0) $ Local . B <$> Vector.enumFromN 1 (Vector.length args)
 
-conLifted
+con
   :: (Eq v, Hashable v)
   => QConstr
   -> Vector (LBody v)
   -> TCM s (LBody v)
-conLifted qc args = do
+con qc args = do
   n <- relevantArity qc
   let argsLen = Vector.length args
   case compare argsLen n of
-    LT -> return $ letLifteds letBody ((,) mempty <$> args)
+    LT -> return $ lets letBody ((,) mempty <$> args)
         $ Simple.Scope $ pureLifted
         $ Function (Vector.replicate (n - argsLen) mempty)
         $ toScope $ Con qc
         $ (Local . F . B <$> Vector.enumFromN 0 argsLen)
            <> (Local . B <$> Vector.enumFromN 0 ((n - argsLen) `max` 0))
-    EQ -> return $ letLifteds letBody ((,) mempty <$> args) $ Simple.Scope
-        $ constantLifted $ Con qc $ Local . B <$> Vector.enumFromN 0 n
-    GT -> throwError $ "conLifted: too many args to constructor: " ++ show qc
+    EQ -> return $ lets letBody ((,) mempty <$> args) $ Simple.Scope
+        $ constant $ Con qc $ Local . B <$> Vector.enumFromN 0 n
+    GT -> throwError $ "Lifted.con: too many args to constructor: " ++ show qc
 
 letBody :: NameHint -> Expr v -> Body Expr (Var () v) -> Body Expr v
 letBody h e (Constant e') = Constant $ letExpr h e (toScope e')
@@ -244,7 +244,7 @@ instantiate1Body :: Expr v -> Body Expr (Var () v) -> Body Expr v
 instantiate1Body e = instantiateBody (\() -> e)
 
 letExprs :: Vector (NameHint, Expr v) -> Scope Int Expr v -> Expr v
-letExprs es s = unvar (error "LL.letExprs") id <$> foldr go (fromScope s) (Vector.indexed es)
+letExprs es s = unvar (error "Lifted.letExprs") id <$> foldr go (fromScope s) (Vector.indexed es)
   where
     go :: (Int, (NameHint, Expr v)) -> Expr (Var Int v) -> Expr (Var Int v)
     go (n, (h, e)) e' = letExpr h (F <$> e) $ abstract f e'
