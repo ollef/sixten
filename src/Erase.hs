@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, RecursiveDo  #-}
-module Erasure where
+module Erase where
 
 import Bound.Scope
 import Data.Traversable

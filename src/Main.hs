@@ -14,7 +14,7 @@ import qualified Data.Vector as V
 import System.Environment
 
 import Builtin
-import Erasure
+import Erase
 import Infer
 import TCM
 import Syntax
