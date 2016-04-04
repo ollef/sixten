@@ -17,7 +17,7 @@ import Syntax
 import Syntax.Abstract
 import Util
 
--- import Debug.Trace
+import Debug.Trace
 
 newtype Level = Level Int
   deriving (Eq, Num, Ord, Show)
@@ -80,7 +80,7 @@ enterLevel x = do
   return r
 
 log :: String -> TCM s ()
-log l = modify $ \s -> s {tcLog = l : tcLog s}
+log l = trace l $ modify $ \s -> s {tcLog = l : tcLog s}
 
 addContext :: Program Expr Empty -> TCM s ()
 addContext prog = modify $ \s -> s

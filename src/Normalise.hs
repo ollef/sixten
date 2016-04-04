@@ -30,7 +30,7 @@ whnf expr = case expr of
     e1' <- whnf e1
     case e1' of
       Lam h p' t2 s | p == p' -> do
-        e2' <- letVar h e2 t2
+        e2' <- whnf e2
         whnf $ instantiate1 e2' s
       _ -> return expr
   Case _ _ -> return expr -- TODO

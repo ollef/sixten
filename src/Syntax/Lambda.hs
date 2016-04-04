@@ -6,7 +6,6 @@ import Data.Bifunctor
 import Data.Monoid
 import qualified Data.Set as S
 import Data.String
-import qualified Data.Vector as Vector
 import Prelude.Extras
 
 import Syntax
@@ -80,7 +79,7 @@ instance (Eq v, IsString v, Pretty v)
     Lit l -> prettyM l
     (bindingsViewM lamView -> Just (tele, s)) -> parens `above` absPrec $
       withTeleHints tele $ \ns ->
-        prettyM "\\" <> hsep (map prettyM $ Vector.toList ns) <> prettyM "." <+>
+        prettyM "\\" <> prettyTeleVarTypes ns tele <> prettyM "." <+>
         associate absPrec (prettyM $ instantiateTele (pure . fromText <$> ns) s)
     Lam {} -> error "impossible prettyPrec lam"
     App e1 e2 -> prettyApp (prettyM e1) (prettyM e2)

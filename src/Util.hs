@@ -61,11 +61,11 @@ exposeScope f (Scope s) = Scope $ fmap (unvar (F . pure . B) id) $ f $ fmap f <$
 data Empty
 instance Eq Empty where _ == _ = True
 instance Ord Empty where compare _ _ = EQ
-instance Show Empty where show = error "show Empty"
-instance IsString Empty where fromString = error "fromString Empty"
+instance Show Empty where show e = e `seq` error "show Empty"
+instance IsString Empty where fromString e = e `seq` error "fromString Empty"
 
 fromEmpty :: Empty -> a
-fromEmpty = error "fromEmpty"
+fromEmpty e = e `seq` error "fromEmpty"
 
 recursiveAbstract :: (Eq v, Foldable t, Functor t, Hashable v, Monad f)
                   => t (v, f v) -> t (Scope Int f v)

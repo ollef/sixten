@@ -50,20 +50,20 @@ context = HM.fromList
                        [ ConstrDef ref $ toScope $ fmap B $ arrow ReEx (pure 1)
                                        $ apps (Global pointer) [(IrIm, pure 0), (IrEx, pure 1)]
                        ])
-  , (IndArgTypeName, opaque $ Abstract.pi_ "size" IrIm Size
-                            $ arrow IrEx (Type $ pure "size")
-                            $ Type $ Lit 1)
-  , (IndRetTypeName, opaque $ Abstract.pi_ "size" IrIm Size
-                            $ arrow IrEx (Type $ pure "size")
-                            $ Type $ Lit 1)
-  , (IndRetName, opaque $ Abstract.pi_ "size" ReIm Size
-                        $ Abstract.pi_ "t" IrIm (Type $ pure "size")
-                        $ arrow ReEx (Type $ pure "t")
-                        $ IndRetType (pure "size") (pure "t"))
-  , (IndArgName, opaque $ Abstract.pi_ "size" ReIm Size
-                        $ Abstract.pi_ "t" IrIm (Type $ pure "size")
-                        $ arrow ReEx (Type $ pure "t")
-                        $ IndArgType (pure "size") (pure "t"))
+  -- , (IndArgTypeName, opaque $ Abstract.pi_ "size" IrIm Size
+  --                           $ arrow IrEx (Type $ pure "size")
+  --                           $ Type $ Lit 1)
+  -- , (IndRetTypeName, opaque $ Abstract.pi_ "size" IrIm Size
+  --                           $ arrow IrEx (Type $ pure "size")
+  --                           $ Type $ Lit 1)
+  -- , (IndRetName, opaque $ Abstract.pi_ "size" ReIm Size
+  --                       $ Abstract.pi_ "t" IrIm (Type $ pure "size")
+  --                       $ arrow ReEx (Type $ pure "t")
+  --                       $ IndRetType (pure "size") (pure "t"))
+  -- , (IndArgName, opaque $ Abstract.pi_ "size" ReIm Size
+  --                       $ Abstract.pi_ "t" IrIm (Type $ pure "size")
+  --                       $ arrow ReEx (Type $ pure "t")
+  --                       $ IndArgType (pure "size") (pure "t"))
   ]
   where
     cl = fromMaybe (error "Builtin not closed") . closed

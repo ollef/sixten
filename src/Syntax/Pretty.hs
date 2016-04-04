@@ -182,7 +182,7 @@ instance Pretty Float   where pretty = text . show
 instance Pretty Double  where pretty = text . show
 instance Pretty Doc     where pretty = id
 instance Pretty Text    where pretty = text . Text.unpack
-instance Pretty Empty   where pretty = error "pretty Empty"
+instance Pretty Empty   where pretty e = e `seq` error "pretty Empty"
 
 instance Pretty QConstr where
   prettyM (QConstr q n) = prettyM q <> prettyM "." <> prettyM n

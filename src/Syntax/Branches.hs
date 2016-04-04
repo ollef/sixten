@@ -3,6 +3,7 @@ module Syntax.Branches where
 import Bound
 import Data.String
 import qualified Data.Vector as Vector
+import Prelude.Extras
 
 import Syntax.Pretty
 import Syntax.Telescope
@@ -17,11 +18,11 @@ instance Bound (Branches c) where
   ConBranches cbrs typ >>>= f = ConBranches [(c, t >>>= f, s >>>= f) | (c, t, s) <- cbrs] (typ >>= f)
   LitBranches lbrs d >>>= f = LitBranches [(l, e >>= f) | (l, e) <- lbrs] (d >>= f)
 
-instance (Monad f, Pretty c, Pretty (f v), IsString v)
+instance (Eq v, Eq1 f, Monad f, Pretty c, Pretty (f v), IsString v)
   => Pretty (Branches c f v) where
   prettyM (ConBranches cbrs _) = vcat
     [ withTeleHints tele $ \ns ->
-        prettyM c <+> prettyTeleVars ns tele <+>
+        prettyM c <+> prettyTeleVarTypes ns tele <+>
         prettyM "->" <+> prettyM (instantiate (pure . fromText . (ns Vector.!) . unTele) s)
     | (c, tele, s) <- cbrs ]
   prettyM (LitBranches lbrs def) = vcat $

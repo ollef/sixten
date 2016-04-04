@@ -153,16 +153,9 @@ letMeta
   -> TCM s (MetaVar e s)
 letMeta hint expr typ = do
   i   <- fresh
+  TCM.log $ "let: " ++ show i
   ref <- liftST $ newSTRef $ Right expr
   return $ MetaVar i typ hint (Just ref)
-
-letVar
-  :: Applicative g
-  => NameHint
-  -> e (MetaVar e s)
-  -> e (MetaVar e s)
-  -> TCM s (g (MetaVar e s))
-letVar hint expr typ = pure <$> letMeta hint expr typ
 
 foldMapM
   :: (Foldable e, Foldable f, Monoid m)

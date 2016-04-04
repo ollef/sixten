@@ -96,7 +96,7 @@ instance Monad Expr where
     Anno e t    -> Anno (e >>= f) (t >>= f)
     Wildcard    -> Wildcard
 
-instance (IsString v, Pretty v) => Pretty (Expr v) where
+instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
   prettyM expr = case expr of
     Var v -> prettyM v
     Global g -> prettyM g

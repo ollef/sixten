@@ -172,6 +172,7 @@ subtype surrR surrP expr type1 type2 = do
           go False False e typ1' typ2'
         _ -> do unify typ1 typ2; return (e, typ2)
 
+-- TODO move these
 typeOf
   :: AbstractM s
   -> TCM s (AbstractM s)
@@ -197,8 +198,22 @@ typeOf expr = do
       case e1type' of
         Pi _ a' _ resType | a == a' -> return $ instantiate1 e2 resType
         _ -> throwError $ "typeOf: expected pi type " ++ show e1type'
-    Case _ (ConBranches _ t) -> return t
+    Case _ (ConBranches _ t) -> return t -- TODO do this properly to get rid of the ConBranches type field
     Case _ (LitBranches _ def) -> typeOf def
   modifyIndent pred
   tr "typeOf res" =<< freeze t
   return t
+
+sizeOfType
+  :: AbstractM s
+  -> TCM s (AbstractM s)
+sizeOfType expr = do
+  tr "sizeOf" expr
+  modifyIndent succ
+  t <- whnf =<< typeOf expr
+  case t of
+    Builtin.Type sz -> do
+      modifyIndent pred
+      tr "sizeOf res" sz
+      return sz
+    _ -> throwError $ "sizeOfType: Not a type: " ++ show t
