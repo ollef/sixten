@@ -1,8 +1,4 @@
-Propagate sizes to all variables
-  Make a transform that makes all arguments constant size indirecting
-  non-constant sized types
-  Irrelevant : Type 0
-
+Constant-size transform
   map : (a -> b) -> List a -> List b
   map f xs = case xs of
     Nil -> Nil
@@ -53,7 +49,7 @@ Propagate sizes to all variables
 
 Closure conversion
 LLVM code generation
-Usage analysisis for better erasure
+Usage analysis for better erasure
 Add new Int type
 instantiate implicits at variable use sites?
 Size types

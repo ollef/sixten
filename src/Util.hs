@@ -52,20 +52,12 @@ bifoldMapScope :: (Bifoldable expr, Monoid m)
                -> Scope b (expr x) y -> m
 bifoldMapScope f g (Scope s) = bifoldMap f (unvar mempty $ bifoldMap f g) s
 
-exposeScope :: Applicative expr
-            => (forall x. expr x -> expr (Var e x))
-            -> Scope b expr a
-            -> Scope b expr (Var e a)
+exposeScope
+  :: Applicative expr
+  => (forall x. expr x -> expr (Var e x))
+  -> Scope b expr a
+  -> Scope b expr (Var e a)
 exposeScope f (Scope s) = Scope $ fmap (unvar (F . pure . B) id) $ f $ fmap f <$> s
-
-data Empty
-instance Eq Empty where _ == _ = True
-instance Ord Empty where compare _ _ = EQ
-instance Show Empty where show e = e `seq` error "show Empty"
-instance IsString Empty where fromString e = e `seq` error "fromString Empty"
-
-fromEmpty :: Empty -> a
-fromEmpty e = e `seq` error "fromEmpty"
 
 recursiveAbstract :: (Eq v, Foldable t, Functor t, Hashable v, Monad f)
                   => t (v, f v) -> t (Scope Int f v)

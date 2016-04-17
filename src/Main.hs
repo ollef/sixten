@@ -11,17 +11,21 @@ import qualified Data.HashSet as HS
 import Data.Monoid
 import qualified Data.Text.IO as Text
 import qualified Data.Vector as V
+import Data.Void
 import System.Environment
 
 import Builtin
+import ClosureConvert
 import Erase
 import Infer
+import Meta
 import TCM
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete as Concrete
-import qualified Syntax.Resolve
+import qualified Syntax.Lifted as Lifted
 import qualified Syntax.Parse
+import qualified Syntax.Resolve
 import Restrict
 import TopoSort
 import Util
@@ -79,19 +83,33 @@ test inp = do
       inferProgram constrs p
       cxt <- gets tcContext
       erased <- sequence [(,) x <$> eraseDef e | (x, (e, _)) <- HM.toList cxt]
-      restricted <- sequence [(,) x <$> Restrict.restrictExpr (fe e') | (x, Definition e') <- erased]
-      return (cxt, erased, restricted)
+      restricted <- sequence [(,) x <$> Restrict.restrictExpr e | (x, Definition e) <- erased]
+      let liftedRestricted = Restrict.liftProgram restricted
+      forM_ liftedRestricted $ \(x, b) -> addArity x $ case b of
+        Lifted.Function xs _ -> V.length xs
+        Lifted.Constant _ -> 0
+
+      converted' <- sequence [(,) x <$> ClosureConvert.convertBody (vacuous e) | (x, e) <- liftedRestricted]
+      trs "converted'" $ show converted'
+      converted <- traverse (traverse (traverse vf)) converted'
+      trs "converted" $ show converted
+
+      return (cxt, erased, restricted, converted)
       ) mempty of
-      (Left err, tr) -> do mapM_ putStrLn tr; putStrLn err
-      (Right (res, erased, restricted), _) -> do
+      (Left err, t) -> do mapM_ putStrLn t; putStrLn err
+      (Right (res, erased, restricted, converted), _) -> do
         mapM_ print $ (\(x, (d, t)) -> runPrettyM $ prettyM x <+> prettyM "=" <+> prettyTypedDef (fe d) (fe t) (fst $ bindingsView piView $ fe t)) <$> HM.toList res
         putStrLn "------------- erased ------------------"
         mapM_ print $ pretty <$> [(x, fe e) | (x, Definition e) <- erased]
         putStrLn "------------- restricted --------------"
-        mapM_ print $ pretty <$> restricted
+        mapM_ print $ pretty . fmap (fmap show) <$> restricted
+        putStrLn "------------- closure-converted --------------"
+        mapM_ print $ pretty <$> converted
   where
-    fe :: Functor f => f Empty -> f String
-    fe = fmap fromEmpty
+    fe :: Functor f => f Void -> f String
+    fe = vacuous
+    vf :: a -> TCM s String
+    vf _ = error "inferProgram"
 
 main :: IO ()
 main = do

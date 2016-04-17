@@ -4,12 +4,12 @@ module Erase where
 import Bound.Scope
 import Data.Traversable
 import qualified Data.Vector as Vector
+import Data.Void
 
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Lambda as Lambda
 import Meta
-import Util
 import TCM
 import Unify
 
@@ -77,8 +77,8 @@ eraseBranches (ConBranches cbrs typ) = do
 eraseBranches (LitBranches lbrs d) = LitBranches <$> sequence [(,) l <$> erase e | (l, e) <- lbrs] <*> erase d
 
 eraseDef
-  :: Definition Abstract.Expr Empty
-  -> TCM s (Definition Lambda.Expr Empty)
-eraseDef (Definition e) = fmap (error . show) . Definition <$> erase (fromEmpty <$> e)
+  :: Definition Abstract.Expr Void
+  -> TCM s (Definition Lambda.Expr Void)
+eraseDef (Definition e) = fmap (error . show) . Definition <$> erase (vacuous e)
 eraseDef (DataDefinition DataDef {})
   = return $ DataDefinition $ DataDef mempty

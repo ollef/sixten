@@ -28,6 +28,7 @@ import Data.Text(Text)
 import qualified Data.Text as Text
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
+import Data.Void
 import Data.String
 import Text.PrettyPrint.ANSI.Leijen
   ( Doc
@@ -40,7 +41,6 @@ import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 
 import Syntax.Hint
 import Syntax.Name
-import Util
 
 infixr 6 <+>
 
@@ -182,7 +182,7 @@ instance Pretty Float   where pretty = text . show
 instance Pretty Double  where pretty = text . show
 instance Pretty Doc     where pretty = id
 instance Pretty Text    where pretty = text . Text.unpack
-instance Pretty Empty   where pretty e = e `seq` error "pretty Empty"
+instance Pretty Void    where pretty e = absurd e
 
 instance Pretty QConstr where
   prettyM (QConstr q n) = prettyM q <> prettyM "." <> prettyM n

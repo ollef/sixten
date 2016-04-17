@@ -3,10 +3,11 @@ module Builtin where
 
 import qualified Data.HashMap.Lazy as HM
 import Data.Maybe
+import Data.String
+import Data.Void
 
 import Syntax
 import Syntax.Abstract as Abstract
-import Util
 
 pattern SizeName <- ((==) "Size" -> True) where SizeName = "Size"
 pattern Size = Global SizeName
@@ -32,13 +33,19 @@ pattern IndArg sz t a = App (App (App (Global IndArgName) ReIm sz) IrIm t) ReEx 
 pattern IndRetName <- ((==) "indRet" -> True) where IndRetName = "indRet"
 pattern IndRet sz t a = App (App (App (Global IndRetName) ReIm sz) IrIm t) ReEx a
 
+apply :: Int -> Name
+apply n = "apply_" `mappend` fromString (show n)
+
+closure :: QConstr
+closure = QConstr "Builtin" "CL"
+
 pointer :: Name
 pointer = "Ptr"
 
 ref :: Constr
 ref = "Ref"
 
-context :: Program Expr Empty
+context :: Program Expr Void
 context = HM.fromList
   [ (SizeName, opaque $ Type $ Lit 1)
   , (AddSizeName, opaque $ arrow ReEx Size $ arrow ReEx Size Size)
