@@ -1,8 +1,10 @@
 {-# LANGUAGE RecursiveDo #-}
 module ClosureConvert where
+
 import qualified Bound.Scope.Simple as Simple
 import Control.Applicative
 import Control.Monad.Except
+import Data.Bitraversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Prelude.Extras
@@ -31,7 +33,7 @@ convertExpr expr = do
   modifyIndent succ
   result <- case expr of
     Operand o -> convertOperand o
-    Con qc os -> conLExpr qc =<< mapM convertOperand os
+    Con qc os -> conLExpr qc <$> mapM (bitraverse convertOperand convertOperand) os
     Ref _e -> undefined
     Let h e s -> do
       v <- forall_ h Unknown
@@ -78,9 +80,9 @@ convertCall operand args = case operand of
           )] $ Operand $ Lit 0
         )
         $ Simple.Scope $ Con Builtin.closure
-        $ Vector.cons (Local $ B ())
-        $ Vector.cons (Lit $ fromIntegral $ arity - argsLen)
-        $ fmap F <$> args
+        $ Vector.cons (Local $ B (), Lit 1)
+        $ Vector.cons (Lit $ fromIntegral $ arity - argsLen, Lit 1)
+        $ (\x -> (fmap F x, Lit 1)) <$> args
       | argsLen > arity = do
         let (args', rest) = Vector.splitAt argsLen args
         return $ pureLifted
@@ -94,7 +96,7 @@ convertBranches
   -> TCM s (Lifted (Branches QConstr Expr) (Meta s))
 convertBranches (ConBranches cbrs _) = do
   cbrs' <- forM cbrs $ \(c, tele, brScope) -> mdo
-    tele' <- forTele tele $ \h a s -> do
+    tele' <- forMTele tele $ \h a s -> do
       let t = instantiateTele pureVs s
       t' <- convertExpr t
       v <- forall_ h Unknown

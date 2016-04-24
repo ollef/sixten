@@ -105,9 +105,8 @@ addContext prog = modify $ \s -> s
     cs = HM.fromList $ do
       (n, (DataDefinition d, defType)) <- HM.toList prog
       ConstrDef c t <- quantifiedConstrTypes
-                         (\h _p -> Syntax.pi_ h IrIm)
                          d
-                         (telescope defType)
+                         (mapAnnotations (const IrIm) $ telescope defType)
       return (c, Set.fromList [(n, t)])
 
 addArity :: Name -> Int -> TCM s ()

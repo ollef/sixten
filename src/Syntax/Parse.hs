@@ -18,7 +18,7 @@ import Text.Trifecta((<?>))
 import Text.Trifecta.Delta
 
 import Syntax
-import Syntax.Concrete
+import Syntax.Concrete as Concrete
 import Util
 
 type Input = Text
@@ -188,7 +188,6 @@ bindingHints :: [Binding] -> Vector (NameHint, Annotation)
 bindingHints bs = Vector.fromList $ bs >>= flatten
   where
     flatten (Plain p names) = [(Hint n, p) | n <- names]
-    -- TODO type?
     flatten (Typed p names _type) = [(Hint n, p) | n <- names]
 
 bindingsTelescope :: [Binding] -> Telescope Expr Name
@@ -241,7 +240,7 @@ atomicExpr
  <|> Wildcard <$ wildcard
  <|> Var      <$> ident
  <|> abstr (reserved "forall") piType
- <|> abstr (symbol   "\\")     lam
+ <|> abstr (symbol   "\\")     Concrete.tlam
  <|> Case <$ reserved "case" <*>% expr <*% reserved "of" <*>% dropAnchor branches
  <|> symbol "(" *>% expr <*% symbol ")"
  <?> "atomic expression"
@@ -292,7 +291,7 @@ def = ident    <**>% (typeDecl <|> mkDef Just)
   <|> wildcard <**>% mkDef (const Nothing)
   where
     typeDecl = flip ParsedTypeDecl <$ symbol ":" <*>% expr
-    mkDef f = (\e n -> ParsedDefLine (f n) e) <$> (abstractBindings lam <$> manyBindings <*% symbol "=" <*>% expr)
+    mkDef f = (\e n -> ParsedDefLine (f n) e) <$> (abstractBindings Concrete.tlam <$> manyBindings <*% symbol "=" <*>% expr)
 
 dataDef :: Parser (TopLevelParsed Name)
 dataDef = mkDataDef <$ reserved "data" <*>% constructor <*> manyBindings

@@ -59,6 +59,8 @@ instance Syntax Expr where
   piView (Pi n p e s) = Just (n, p, e, s)
   piView _ = Nothing
 
+  lam = Lam
+
   lamView (Lam n p e s) = Just (n, p, e, s)
   lamView _ = Nothing
 

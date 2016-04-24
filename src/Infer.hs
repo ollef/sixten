@@ -5,7 +5,6 @@ import Control.Monad.Except
 import Control.Monad.ST()
 import Data.Bifunctor
 import Data.Foldable as F
-import qualified Data.HashMap.Lazy as HM
 import qualified Data.HashSet as HS
 import Data.List as List
 import Data.Monoid
@@ -197,7 +196,7 @@ inferBranches surrR surrP expr (ConBranches cbrs _) = mdo
   (_, dataTypeType) <- definition typeName
   let params = telescope dataTypeType
       inst = instantiateTele (pure . snd <$> paramVars)
-  paramVars <- forTele params $ \h p s -> do
+  paramVars <- forMTele params $ \h p s -> do
     v <- exists h (inst s)
     return (p, v)
 
@@ -208,7 +207,7 @@ inferBranches surrR surrP expr (ConBranches cbrs _) = mdo
   (expr2, etype2) <- subtype surrR surrP expr1 etype1 dataType
 
   let go (c, tele, sbr) (etype, resBrs, resType) = mdo
-        args <- forTele tele $ \h p s -> do
+        args <- forMTele tele $ \h p s -> do
           tType <- existsTypeType h
           (t', _) <- checkType Irrelevant surrP (instantiateTele pureVs s) tType
           v <- forall_ h t'
@@ -272,9 +271,9 @@ generalise expr typ = do
   l   <- level
   let p (metaRef -> Just r) = either (> l) (const False) <$> solution r
       p _                   = return False
-  fvs' <- filterM p fvs
+  fvs' <- HS.fromList <$> filterM p fvs
 
-  deps <- HM.fromList <$> forM fvs' (\x -> do
+  deps <- forM (HS.toList fvs') (\x -> do
     ds <- foldMapM HS.singleton $ metaType x
     return (x, ds)
    )
@@ -295,7 +294,7 @@ checkConstrDef
   -> TCM s (ConstrDef (AbstractM s), AbstractM s, AbstractM s)
 checkConstrDef (ConstrDef c (pisView -> (args, ret))) = mdo
   let inst = instantiateTele $ (\(a, _, _, _, _) -> pure a) <$> args'
-  args' <- forTele args $ \h a arg -> do
+  args' <- forMTele args $ \h a arg -> do
     argSize <- existsVar h Builtin.Size
     (arg', _) <- checkType Irrelevant (plicitness a) (inst arg) $ Builtin.Type argSize
     v <- forall_ h arg'
@@ -323,7 +322,7 @@ checkDataType name (DataDef cs) typ = mdo
   typ' <- freeze typ
   tr "checkDataType t" typ'
 
-  ps' <- forTele (telescope typ') $ \h p s -> do
+  ps' <- forMTele (telescope typ') $ \h p s -> do
     let is = instantiateTele (pure <$> vs) s
     v <- forall_ h is
     return (v, h, p, is)
@@ -345,7 +344,7 @@ checkDataType name (DataDef cs) typ = mdo
   typeSize' <- normalise typeSize
 
   let typeReturnType = Builtin.Type typeSize'
-  let typ'' = quantify Abstract.Pi (abstractNone typeReturnType) $ Telescope params
+  let typ'' = pis (Telescope params) $ abstractNone typeReturnType
 
   unify typeReturnType =<< typeOf constrRetType
 
@@ -408,12 +407,12 @@ generaliseDefs xs = do
   l   <- level
   let p (metaRef -> Just r) = either (> l) (const False) <$> solution r
       p _                   = return False
-  fvs' <- filterM p fvs -- (fvs <> dfvs)
+  fvs' <- HS.fromList <$> filterM p fvs
   trs "generaliseDefs l" l
   trs "generaliseDefs fvs" fvs
   trs "generaliseDefs fvs'" fvs'
 
-  deps <- HM.fromList <$> forM fvs' (\x -> do
+  deps <- forM (HS.toList fvs') (\x -> do
     ds <- foldMapM HS.singleton $ metaType x
     return (x, ds)
    )

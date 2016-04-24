@@ -7,8 +7,7 @@ import Data.String
 import qualified Data.Vector as Vector
 import Prelude.Extras
 
-import Syntax.Annotation
-import Syntax.Hint
+import Syntax.Class
 import Syntax.Name
 import Syntax.Pretty
 import Syntax.Telescope
@@ -18,14 +17,11 @@ newtype DataDef typ v = DataDef { dataConstructors :: [ConstrDef (Scope Tele typ
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 quantifiedConstrTypes
-  :: (Eq v, Monad typ)
-  => (NameHint -> Annotation -> typ (Var Tele v)
-               -> Scope1 typ (Var Tele v)
-               -> typ (Var Tele v))
-  -> DataDef typ v
+  :: (Eq v, Syntax typ)
+  => DataDef typ v
   -> Telescope typ v
   -> [ConstrDef (typ v)]
-quantifiedConstrTypes pifun (DataDef cs) ps = map (fmap $ \s -> quantify pifun s ps) cs
+quantifiedConstrTypes (DataDef cs) ps = map (fmap $ \s -> pis ps s) cs
 
 constructorNames :: DataDef typ v -> [Constr]
 constructorNames = map constrName . dataConstructors

@@ -1,8 +1,9 @@
-{-# LANGUAGE OverloadedStrings, RecursiveDo  #-}
+{-# LANGUAGE OverloadedStrings, RecursiveDo, ViewPatterns #-}
 module Erase where
 
 import Bound.Scope
-import Data.Traversable
+import Control.Monad.Except
+import Data.Monoid
 import qualified Data.Vector as Vector
 import Data.Void
 
@@ -20,7 +21,6 @@ erase expr = do
   res <- case expr of
     Abstract.Var v -> return $ Lambda.Var v
     Abstract.Global g -> return $ Lambda.Global g
-    Abstract.Con c -> return $ Lambda.Con c
     Abstract.Lit l -> return $ Lambda.Lit l
     Abstract.Pi {} -> return $ Lambda.Global "__unit"
     Abstract.Lam h a t s
@@ -32,6 +32,24 @@ erase expr = do
       | otherwise -> do
         v <- forall_ h t
         erase $ instantiate1 (pure v) s
+    (appsView -> (Abstract.Con qc, es)) -> do
+      n <- constrArity qc
+      case compare argsLen n of
+        GT -> throwError $ "erase: too many args for constructor: " ++ show qc
+        EQ -> Lambda.Con qc <$> mapM (\e -> (,) <$> erase e <*> (erase =<< sizeOf e)) es'
+        LT -> do
+          conType <- qconstructor qc
+          let Just appliedConType = typeApps conType $ snd <$> es
+              tele = telescope appliedConType
+          erase $ lams tele
+                $ Scope
+                $ apps (Abstract.Con qc)
+                $ Vector.fromList (fmap (pure . pure) <$> es)
+                <> forTele tele (\_ a t -> (a, unscope t))
+      where
+        es' = Vector.fromList $ snd <$> filter (\(a, _) -> relevance a == Relevant) es
+        argsLen = length es
+    Abstract.Con _qc -> throwError "erase impossible"
     Abstract.App e1 a e2
       | relevance a == Relevant -> Lambda.App <$> erase e1 <*> erase e2
       | otherwise -> erase e1
@@ -58,7 +76,7 @@ eraseBranches (ConBranches cbrs typ) = do
   modifyIndent succ
   typSize <- erase =<< sizeOfType typ
   cbrs' <- forM cbrs $ \(c, tele, brScope) -> mdo
-    tele' <- forTele tele $ \h a s -> do
+    tele' <- forMTele tele $ \h a s -> do
       let t = instantiateTele pureVs s
       tsz <- erase =<< sizeOfType t
       v <- forall_ h t

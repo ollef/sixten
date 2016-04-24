@@ -3,8 +3,8 @@ module Syntax.Lifted where
 
 import qualified Bound.Scope.Simple as Simple
 import Control.Monad
-import Control.Monad.Except
 import Data.Bifunctor
+import Data.Bitraversable
 import Data.Maybe
 import Data.String
 import Data.Foldable
@@ -17,7 +17,6 @@ import Data.Void
 import Prelude.Extras
 
 import Syntax
-import TCM
 import Util
 
 data Lifted e v = Lifted (Vector (NameHint, Body Expr Tele)) (Simple.Scope Tele e v)
@@ -46,7 +45,7 @@ data Operand v
 
 data Expr v
   = Operand (Operand v)
-  | Con QConstr (Vector (Operand v)) -- ^ fully applied
+  | Con QConstr (Vector (Operand v, Operand v)) -- ^ fully applied
   | Ref (Expr v)
   | Let NameHint (Expr v) (Scope () Expr v)
   | Call (Operand v) (Vector (Operand v))
@@ -123,11 +122,14 @@ callExpr e es
   = letExprs ((,) mempty <$> Vector.cons e es)
   $ Scope $ Call (Local $ B 0) $ Local . B <$> Vector.enumFromN 1 (Vector.length es)
 
-conExpr :: QConstr -> Vector (Expr v) -> Expr v
-conExpr qc (mapM operandView -> Just vs) = Con qc vs
-conExpr qc es
-  = letExprs ((,) mempty <$> es)
-  $ Scope $ Con qc $ Local . B <$> Vector.enumFromN 0 (Vector.length es)
+conExpr :: QConstr -> Vector (Expr v, Expr v) -> Expr v
+conExpr qc (mapM (bitraverse operandView operandView) -> Just vs) = Con qc vs
+conExpr qc (Vector.unzip -> (es, szs))
+  = letExprs ((,) mempty <$> es <> szs)
+  $ Scope $ Con qc $ Vector.zip (Local . B <$> Vector.enumFromN 0 len)
+                                (Local . B <$> Vector.enumFromN len len)
+  where
+    len = Vector.length es
 
 caseExpr :: Expr v -> Branches QConstr Expr v -> Expr v
 caseExpr (Operand v) brs = Case v brs
@@ -228,13 +230,24 @@ litLExprBranches brs def
   (Vector.fromList $ pure (mempty, def) <> (first (const mempty) <$> brs))
   (Simple.Scope $ pureLifted $ LitBranches [(l, pure $ B n) | ((l, _), n) <- zip brs [1..]] (pure $ B 0))
 
-conLExpr :: (Eq v, Hashable v) => QConstr -> Vector (LExpr v) -> TCM s (LExpr v)
-conLExpr qc args = do
-  n <- relevantConstrArity qc
-  let argsLen = Vector.length args
-  when (argsLen /= n) $ throwError "Lifted.conLExpr: Wrong number of constructor arguments"
-  return $ letLExprs letExpr ((,) mempty <$> args) $ Simple.Scope
-         $ pureLifted $ Con qc $ Local . B <$> Vector.enumFromN 0 n
+conLExpr :: (Eq v, Hashable v) => QConstr -> Vector (LExpr v, LExpr v) -> LExpr v
+conLExpr qc (Vector.unzip -> (es, szs))
+  = letLExprs letExpr ((,) mempty <$> es <> szs) $ Simple.Scope
+  $ pureLifted $ Con qc $ Vector.zip (Local . B <$> Vector.enumFromN 0 len)
+                                     (Local . B <$> Vector.enumFromN len len)
+  where
+    len = Vector.length es
+
+{-
+conExpr :: QConstr -> Vector (Expr v, Expr v) -> Expr v
+conExpr qc (mapM (bitraverse operandView operandView) -> Just vs) = Con qc vs
+conExpr qc (Vector.unzip -> (es, szs))
+  = letExprs ((,) mempty <$> es <> szs)
+  $ Scope $ Con qc $ Vector.zip (Local . B <$> Vector.enumFromN 0 len)
+                                (Local . B <$> Vector.enumFromN len len)
+  where
+    len = Vector.length es
+    -}
 
 -------------------------------------------------------------------------------
 -- Bodies
@@ -382,21 +395,14 @@ callLBody fun args
 conLBody
   :: (Eq v, Hashable v)
   => QConstr
-  -> Vector (LBody v)
-  -> TCM s (LBody v)
-conLBody qc args = do
-  n <- relevantConstrArity qc
-  let argsLen = Vector.length args
-  case compare argsLen n of
-    LT -> return $ letLBodies letBody ((,) mempty <$> args)
-        $ Simple.Scope $ pureLifted
-        $ Function (Vector.replicate (n - argsLen) mempty)
-        $ toScope $ Con qc
-        $ (Local . F . B <$> Vector.enumFromN 0 argsLen)
-           <> (Local . B <$> Vector.enumFromN 0 ((n - argsLen) `max` 0))
-    EQ -> return $ letLBodies letBody ((,) mempty <$> args) $ Simple.Scope
-        $ constantLBody $ Con qc $ Local . B <$> Vector.enumFromN 0 n
-    GT -> throwError $ "Lifted.conLBody: too many args to constructor: " ++ show qc
+  -> Vector (LBody v, LBody v)
+  -> LBody v
+conLBody qc (Vector.unzip -> (es, szs))
+  = letLBodies letBody ((,) mempty <$> es <> szs) $ Simple.Scope
+  $ constantLBody $ Con qc $ Vector.zip (Local . B <$> Vector.enumFromN 0 len)
+                                        (Local . B <$> Vector.enumFromN len len)
+  where
+    len = Vector.length es
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -423,7 +429,7 @@ bindOperand _ (Lit l) = Operand $ Lit l
 instance Monad Expr where
   return = Operand . Local
   Operand v >>= f = bindOperand f v
-  Con c vs >>= f = conExpr c $ bindOperand f <$> vs
+  Con c vs >>= f = conExpr c $ bimap (bindOperand f) (bindOperand f) <$> vs
   Ref e >>= f = Ref (e >>= f)
   Let h e s >>= f = letExpr h (e >>= f) (s >>>= f)
   Call v vs >>= f = callExpr (bindOperand f v) (bindOperand f <$> vs)
@@ -457,7 +463,9 @@ instance (Eq v, IsString v, Pretty v)
       => Pretty (Expr v) where
   prettyM expr = case expr of
     Operand v -> prettyM v
-    Con c vs -> prettyApps (prettyM c) (prettyM <$> vs)
+    Con c vs -> prettyApps
+      (prettyM c)
+      ((\(e, t) -> parens `above` annoPrec $ prettyM e <+> prettyM ":" <+> prettyM t) <$> vs)
     Ref e -> prettyApp (prettyM "Ref") $ prettyM e
     Let h e s -> parens `above` letPrec $
       withNameHint h $ \n ->

@@ -89,9 +89,9 @@ unify type1 type2 = do
       case sol of
         Left l -> do
           occurs l v t
-          solve r =<< lams pvs t
+          solve r =<< lambdas pvs t
         Right c -> go True (apps c $ map (second pure) pvs) t
-    lams pvs t = foldrM (\(p, v) -> fmap (Lam (Hint Nothing) p $ metaType v) . abstract1M v) t pvs
+    lambdas pvs t = foldrM (\(p, v) -> fmap (Lam (Hint Nothing) p $ metaType v) . abstract1M v) t pvs
 
 subtype
   :: Relevance
@@ -217,3 +217,8 @@ sizeOfType expr = do
       tr "sizeOf res" sz
       return sz
     _ -> throwError $ "sizeOfType: Not a type: " ++ show t
+
+sizeOf
+  :: AbstractM s
+  -> TCM s (AbstractM s)
+sizeOf = typeOf >=> sizeOfType

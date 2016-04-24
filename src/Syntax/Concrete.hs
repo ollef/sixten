@@ -27,9 +27,10 @@ data Expr v
 type Type = Expr
 
 -- * Smart constructors
-lam :: NameHint -> Annotation -> Maybe (Type v) -> Scope1 Expr v -> Expr v
-lam x p Nothing  = Lam x p
-lam x p (Just t) = (`Anno` Pi x p t (Scope Wildcard)) . Lam x p
+tlam :: NameHint -> Annotation -> Maybe (Type v) -> Scope1 Expr v -> Expr v
+tlam x p Nothing  = Lam x p
+tlam x p (Just Wildcard) = Lam x p
+tlam x p (Just t) = (`Anno` Pi x p t (Scope Wildcard)) . Lam x p
 
 piType :: NameHint -> Annotation -> Maybe (Type v) -> Scope1 Expr v -> Expr v
 piType x p Nothing  = Pi x p Wildcard
@@ -68,6 +69,8 @@ instance Syntax Expr where
 
   piView (Pi n p e s) = Just (n, p, e, s)
   piView _ = Nothing
+
+  lam h a = tlam h a . Just
 
   lamView (Lam n p s) = Just (n, p, Wildcard, s)
   lamView _ = Nothing

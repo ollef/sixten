@@ -182,7 +182,7 @@ instance Pretty Float   where pretty = text . show
 instance Pretty Double  where pretty = text . show
 instance Pretty Doc     where pretty = id
 instance Pretty Text    where pretty = text . Text.unpack
-instance Pretty Void    where pretty e = absurd e
+instance Pretty Void    where pretty = absurd
 
 instance Pretty QConstr where
   prettyM (QConstr q n) = prettyM q <> prettyM "." <> prettyM n

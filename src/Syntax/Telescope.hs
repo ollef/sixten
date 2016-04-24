@@ -28,6 +28,9 @@ newtype Telescope expr v = Telescope
   { unTelescope :: Vector (NameHint, Annotation, Scope Tele expr v)
   } deriving (Eq, Foldable, Functor, Monoid, Ord, Show, Traversable)
 
+mapAnnotations :: (Annotation -> Annotation) -> Telescope e v -> Telescope e v
+mapAnnotations f (Telescope xs) = Telescope $ (\(h, a, s) -> (h, f a, s)) <$> xs
+
 teleLength :: Telescope expr v -> Int
 teleLength = Vector.length . unTelescope
 
@@ -113,17 +116,24 @@ instance (Eq1 expr, Eq v, Pretty (expr v), Monad expr, IsString v)
   => Pretty (Telescope expr v) where
   prettyM tele = withTeleHints tele $ \ns -> prettyTeleVarTypes ns tele
 
-forTele :: Monad m
-        => Telescope expr a
-        -> (NameHint -> Annotation -> Scope Tele expr a -> m b)
-        -> m (Vector b)
-forTele (Telescope t) f = forM t $ \(h, d, s) -> f h d s
+forMTele
+  :: Monad m
+  => Telescope expr a
+  -> (NameHint -> Annotation -> Scope Tele expr a -> m b)
+  -> m (Vector b)
+forMTele (Telescope t) f = forM t $ \(h, d, s) -> f h d s
 
-iforTele :: Monad m
+forTele
+  :: Telescope expr a
+  -> (NameHint -> Annotation -> Scope Tele expr a -> b)
+  -> Vector b
+forTele (Telescope t) f = (\(h, d, s) -> f h d s) <$> t
+
+iforMTele :: Monad m
          => Telescope expr a
          -> (Int -> NameHint -> Annotation -> Scope Tele expr a -> m b)
          -> m (Vector b)
-iforTele (Telescope t) f = flip Vector.imapM t $ \i (h, d, s) -> f i h d s
+iforMTele (Telescope t) f = flip Vector.imapM t $ \i (h, d, s) -> f i h d s
 
 instantiateTele :: Monad f => Vector (f a) -> Scope Tele f a -> f a
 instantiateTele vs = instantiate ((vs Vector.!) . unTele)

@@ -239,7 +239,7 @@ abstractDataDefM f (DataDef cs) typ = mdo
   let inst = instantiateTele $ pure <$> vs
       vs = (\(_, _, _, v) -> v) <$> ps'
   typ' <- freeze typ
-  ps' <- forTele (telescope typ') $ \h p s -> do
+  ps' <- forMTele (telescope typ') $ \h p s -> do
     let is = inst s
     v <- forall_ h is
     return (h, p, is, v)
