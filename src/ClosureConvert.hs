@@ -5,6 +5,7 @@ import qualified Bound.Scope.Simple as Simple
 import Control.Applicative
 import Control.Monad.Except
 import Data.Bitraversable
+import Data.String
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Prelude.Extras
@@ -34,13 +35,12 @@ convertExpr expr = do
   result <- case expr of
     Operand o -> convertOperand o
     Con qc os -> conLExpr qc <$> mapM (bitraverse convertOperand convertOperand) os
-    Ref _e -> undefined
     Let h e s -> do
       v <- forall_ h Unknown
       e' <- convertExpr e
       s' <- convertExpr $ instantiate1 (pure v) s
       return $ letLExpr letExpr h e' $ Simple.abstract1 v s'
-    Call o os -> convertCall o os
+    Call sz o os -> convertCall sz o os
     Case o brs -> caseLExpr <$> convertOperand o <*> convertBranches brs
     Error -> return $ pureLifted Error
   modifyIndent pred
@@ -50,16 +50,18 @@ convertExpr expr = do
 convertOperand :: OperandM s -> TCM s (LiftedM Expr s)
 convertOperand operand = case operand of
   Local v -> return $ pureLifted $ Operand $ Local v
-  Global _ -> convertCall operand mempty
+  Global _ -> convertCall (Global $ fromString "convertOperand TODO") operand mempty
   Lit l -> return $ pureLifted $ Operand $ Lit l
 
 convertCall
   :: OperandM s
+  -> OperandM s
   -> Vector (OperandM s)
   -> TCM s (LiftedM Expr s)
-convertCall operand args = case operand of
+convertCall sz operand args = case operand of
   Local _ -> return $ pureLifted
-           $ Call (Global $ Builtin.apply argsLen)
+           $ Call sz
+                  (Global $ Builtin.apply argsLen)
                   (Vector.cons operand args)
   Global g -> known g =<< relevantDefArity g
   Lit _ -> throwError "convertCall: Lit"
@@ -74,7 +76,8 @@ convertCall operand args = case operand of
           [( Builtin.closure
           , Telescope $ Vector.replicate (arity + 2)
           (mempty, ReEx, Scope $ Operand $ Lit 0)
-          , toScope $ Call (Global g)
+          -- TODO lift the size?
+          , toScope $ Call (Global $ fromString "convertCall-TODO") (Global g)
                     $ Local . B <$> Vector.enumFromN 2 argsLen
                    <|> Local . F . B <$> Vector.enumFromN 1 (arity - argsLen)
           )] $ Operand $ Lit 0
@@ -86,10 +89,11 @@ convertCall operand args = case operand of
       | argsLen > arity = do
         let (args', rest) = Vector.splitAt argsLen args
         return $ pureLifted
-               $ letExpr mempty (Call (Global g) args') $ toScope
-               $ Call (Global $ Builtin.apply $ Vector.length args')
+               $ letExpr mempty (Call (Lit 1) (Global g) args') $ toScope
+               $ Call (F <$> sz)
+                      (Global $ Builtin.apply $ Vector.length args')
                       (Vector.cons (Local $ B ()) $ fmap F <$> rest)
-      | otherwise = return $ pureLifted $ Call (Global g) args
+      | otherwise = return $ pureLifted $ Call sz (Global g) args
 
 convertBranches
   :: Branches QConstr Expr (Meta s)

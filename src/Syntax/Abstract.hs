@@ -53,21 +53,25 @@ globals expr = case expr of
 
 -------------------------------------------------------------------------------
 -- Instances
-instance Syntax Expr where
+instance SyntaxPi Expr where
   pi_ = Pi
 
   piView (Pi n p e s) = Just (n, p, e, s)
   piView _ = Nothing
 
+instance SyntaxLambda Expr where
   lam = Lam
 
   lamView (Lam n p e s) = Just (n, p, e, s)
   lamView _ = Nothing
 
+instance SyntaxApp Expr where
   app = App
 
   appView (App e1 p e2) = Just (e1, p, e2)
   appView _ = Nothing
+
+instance Syntax Expr
 
 instance Eq1 Expr
 instance Ord1 Expr

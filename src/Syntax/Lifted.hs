@@ -46,9 +46,8 @@ data Operand v
 data Expr v
   = Operand (Operand v)
   | Con QConstr (Vector (Operand v, Operand v)) -- ^ fully applied
-  | Ref (Expr v)
   | Let NameHint (Expr v) (Scope () Expr v)
-  | Call (Operand v) (Vector (Operand v))
+  | Call (Operand v) (Operand v) (Vector (Operand v))
   | Case (Operand v) (Branches QConstr Expr v)
   | Error
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
@@ -115,12 +114,11 @@ letExprs es s = unvar (error "Lifted.letExprs") id <$> foldr go (fromScope s) (V
         f (B n') | n == n' = Just ()
         f _ = Nothing
 
-callExpr :: Expr v -> Vector (Expr v) -> Expr v
-callExpr (Operand v) (mapM operandView -> Just vs) = Call v vs
-callExpr (Call v vs) (mapM operandView -> Just vs') = Call v $ vs <> vs'
-callExpr e es
-  = letExprs ((,) mempty <$> Vector.cons e es)
-  $ Scope $ Call (Local $ B 0) $ Local . B <$> Vector.enumFromN 1 (Vector.length es)
+callExpr :: Expr v -> Expr v -> Vector (Expr v) -> Expr v
+callExpr (Operand sz) (Operand v) (mapM operandView -> Just vs) = Call sz v vs
+callExpr sz e es
+  = letExprs ((,) mempty <$> Vector.cons sz (Vector.cons e es))
+  $ Scope $ Call (Local $ B 0) (Local $ B 1) $ Local . B <$> Vector.enumFromN 2 (Vector.length es)
 
 conExpr :: QConstr -> Vector (Expr v, Expr v) -> Expr v
 conExpr qc (mapM (bitraverse operandView operandView) -> Just vs) = Con qc vs
@@ -307,7 +305,7 @@ letLBody k h (Lifted ds1 (Simple.Scope b1)) (Simple.Scope (Lifted ds2 b2)) = do
       let (function', vs') = liftFunction vs s
       Lifted (newContext <> pure (h, function'))
              $ Simple.toScope $ b2' >>>= unvar (pure . B)
-                                               (unvar (const $ Call (Local $ B len) $ Local . F <$> vs')  (pure . F))
+                                               (unvar (const $ Call (Lit 1) (Local $ B len) $ Local . F <$> vs')  (pure . F))
     Constant e1 -> Lifted newContext $ Simple.Scope $ k h e1 $ commuteVars <$> b2'
 
 letLBodies
@@ -385,12 +383,13 @@ lamLBody hs (Lifted bs (Simple.Scope (Function hs' expr)))
 callLBody
   :: (Eq v, Hashable v)
   => LBody v
+  -> LBody v
   -> Vector (LBody v)
   -> LBody v
-callLBody fun args
-  = letLBodies letBody ((,) mempty <$> pure fun <> args)
+callLBody sz fun args
+  = letLBodies letBody ((,) mempty <$> Vector.cons sz (Vector.cons fun args))
   $ Simple.Scope $ constantLBody
-  $ Call (Local $ B 0) $ Local . B <$> Vector.enumFromN 1 (Vector.length args)
+  $ Call (Local $ B 0) (Local $ B 1) $ Local . B <$> Vector.enumFromN 2 (Vector.length args)
 
 conLBody
   :: (Eq v, Hashable v)
@@ -430,9 +429,8 @@ instance Monad Expr where
   return = Operand . Local
   Operand v >>= f = bindOperand f v
   Con c vs >>= f = conExpr c $ bimap (bindOperand f) (bindOperand f) <$> vs
-  Ref e >>= f = Ref (e >>= f)
   Let h e s >>= f = letExpr h (e >>= f) (s >>>= f)
-  Call v vs >>= f = callExpr (bindOperand f v) (bindOperand f <$> vs)
+  Call sz v vs >>= f = callExpr (bindOperand f sz) (bindOperand f v) (bindOperand f <$> vs)
   Case v brs >>= f = caseExpr (bindOperand f v) (brs >>>= f)
   Error >>= _ = Error
 
@@ -466,12 +464,11 @@ instance (Eq v, IsString v, Pretty v)
     Con c vs -> prettyApps
       (prettyM c)
       ((\(e, t) -> parens `above` annoPrec $ prettyM e <+> prettyM ":" <+> prettyM t) <$> vs)
-    Ref e -> prettyApp (prettyM "Ref") $ prettyM e
     Let h e s -> parens `above` letPrec $
       withNameHint h $ \n ->
         prettyM "let" <+> prettyM n <+> prettyM "=" <+> inviolable (prettyM e) <+> prettyM "in" <$$>
           indent 2 (inviolable $ prettyM $ instantiate1 (pure $ fromText n) s)
-    Call v vs -> prettyApps (prettyM v) (prettyM <$> vs)
+    Call sz v vs -> parens `above` annoPrec $ prettyApps (prettyM v) (prettyM <$> vs) <+> prettyM ":" <+> prettyM sz
     Case v brs -> parens `above` casePrec $
       prettyM "case" <+> inviolable (prettyM v) <+> prettyM "of" <$$> indent 2 (prettyM brs)
     Error  -> prettyM "ERROR"

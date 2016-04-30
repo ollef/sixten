@@ -8,6 +8,7 @@ import Control.Monad.ST.Class
 import Data.Bifunctor
 import qualified Data.HashMap.Lazy as HM
 import Data.HashMap.Lazy(HashMap)
+import Data.List as List
 import Data.Monoid
 import Data.Set(Set)
 import qualified Data.Set as Set
@@ -162,6 +163,15 @@ constrArity
   :: QConstr
   -> TCM s Int
 constrArity = fmap (teleLength . fst . bindingsView piView) . qconstructor
+
+constrIndex
+  :: QConstr
+  -> TCM s Int
+constrIndex qc@(QConstr n c) = do
+  (DataDefinition (DataDef cs), _) <- definition n
+  case List.findIndex ((== c) . constrName) cs of
+    Just i -> return i
+    Nothing -> throwError $ "Can't find index for " ++ show qc
 
 relevantConstrArity
   :: QConstr

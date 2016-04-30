@@ -9,6 +9,7 @@ import qualified Data.HashMap.Lazy as HM
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HS
 import Data.Monoid
+import Data.String
 import qualified Data.Text.IO as Text
 import qualified Data.Vector as V
 import Data.Void
@@ -17,6 +18,7 @@ import System.Environment
 import Builtin
 import ClosureConvert
 import Erase
+import qualified Generate
 import Infer
 import Meta
 import TCM
@@ -90,14 +92,18 @@ test inp = do
         Lifted.Constant _ -> 0
 
       converted' <- sequence [(,) x <$> ClosureConvert.convertBody (vacuous e) | (x, e) <- liftedRestricted]
-      trs "converted'" $ show converted'
+      -- trs "converted'" $ show converted'
       converted <- traverse (traverse (traverse vf)) converted'
-      trs "converted" $ show converted
+      -- trs "converted" $ show converted
 
-      return (cxt, erased, restricted, converted)
+      liftedConverted <- traverse (traverse $ traverse va) $ Restrict.liftProgram converted
+
+      generated <- sequence [(,) x <$> Generate.generateBody e | (x, e) <- liftedConverted]
+
+      return (cxt, erased, restricted, converted, generated)
       ) mempty of
       (Left err, t) -> do mapM_ putStrLn t; putStrLn err
-      (Right (res, erased, restricted, converted), _) -> do
+      (Right (res, erased, restricted, converted, generated), _) -> do
         mapM_ print $ (\(x, (d, t)) -> runPrettyM $ prettyM x <+> prettyM "=" <+> prettyTypedDef (fe d) (fe t) (fst $ bindingsView piView $ fe t)) <$> HM.toList res
         putStrLn "------------- erased ------------------"
         mapM_ print $ pretty <$> [(x, fe e) | (x, Definition e) <- erased]
@@ -105,11 +111,18 @@ test inp = do
         mapM_ print $ pretty . fmap (fmap show) <$> restricted
         putStrLn "------------- closure-converted --------------"
         mapM_ print $ pretty <$> converted
+        putStrLn "------------- generated --------------"
+        forM_ generated $ \(n, b) -> do
+          Text.putStrLn (n <> fromString " ------------------- ")
+          Text.putStrLn b
+        -- mapM_ print $ fmap Builder.toLazyText <$> (generated :: [(Name, Builder.Builder)])
   where
     fe :: Functor f => f Void -> f String
     fe = vacuous
     vf :: a -> TCM s String
     vf _ = error "inferProgram"
+    va :: a -> TCM s b
+    va _ = throwError "inferProgram a"
 
 main :: IO ()
 main = do

@@ -6,7 +6,6 @@ import qualified Bound.Scope.Simple as Simple
 import Data.Hashable
 import Data.Maybe
 import Data.Monoid
-import qualified Data.Vector as Vector
 
 import Syntax
 import qualified Syntax.Lambda as Lambda
@@ -14,6 +13,14 @@ import qualified Syntax.Lifted as Lifted
 import Meta
 import TCM
 import Util
+import Data.Vector(Vector)
+import qualified Data.Vector as Vector
+
+lambdaAppsView :: Lambda.Expr v -> (Lambda.Expr v, Vector (Lambda.Expr v, Lambda.Expr v))
+lambdaAppsView = go []
+  where
+    go args (Lambda.App sz e1 e2) = go ((sz, e2):args) e1
+    go args e = (e, Vector.reverse $ Vector.fromList args)
 
 restrictExpr
   :: (Eq v, Hashable v, Show v)
@@ -29,7 +36,7 @@ restrictExpr expr = do
     Lambda.Case e brs -> Lifted.caseLBody <$> restrictExpr e <*> restrictBranches brs
     Lambda.Con qc es -> Lifted.conLBody qc <$> mapM (bitraverse restrictExpr restrictExpr) es
     (bindingsViewM lamView -> Just (tele, s)) -> Lifted.lamLBody (teleNames tele) <$> restrictScope s
-    (appsView -> (e, Vector.fromList -> pes)) -> Lifted.callLBody <$> restrictExpr e <*> mapM restrictExpr (snd <$> pes)
+    (lambdaAppsView -> (e, pes)) -> Lifted.callLBody <$> restrictExpr (fst $ Vector.last pes) <*> restrictExpr e <*> mapM restrictExpr (snd <$> pes)
   modifyIndent pred
   trp "restrictExpr res: " $ show <$> result
   return result

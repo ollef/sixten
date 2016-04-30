@@ -51,7 +51,9 @@ erase expr = do
         argsLen = length es
     Abstract.Con _qc -> throwError "erase impossible"
     Abstract.App e1 a e2
-      | relevance a == Relevant -> Lambda.App <$> erase e1 <*> erase e2
+      | relevance a == Relevant -> do
+        sz <- sizeOf expr
+        Lambda.App <$> erase sz <*> erase e1 <*> erase e2
       | otherwise -> erase e1
     Abstract.Case e brs -> Lambda.Case <$> erase e <*> eraseBranches brs
   modifyIndent pred
