@@ -8,8 +8,18 @@ Constant-size transform
   IndArg a = Ptr a
   IndRet a | sizeof a <= 1 = a
   IndRet a = Address -> Unit
-  write : StackPtr a -> Address -> Unit
+
+  \xs. e
+  \xs adr -> return e adr
+
+  f xs
+
+  let adr = alloc sz
+  in read adr (f xs adr)
+
+  return : a -> Address -> Unit
   alloc : Size -> Address
+  read : Address -> Unit -> a
 
   Indirection part of annotation?
 
@@ -47,21 +57,21 @@ Constant-size transform
       write (map f xs') (res + sizeof a + 1);
       res
 
-Closure conversion
 LLVM code generation
+Cleanup
 Usage analysis for better erasure
 Add new Int type
 instantiate implicits at variable use sites?
 Size types
   How to cleanly make `(a -> b) : Type 0` when `b : Type 0`?
+    Maybe just make the usage analysis pass aware of this
   Reorder data to pass fewer sizes
     (Depends on relevance analysis and/or removal of unused args)
     Reorder data to enable tagged pointers?
-Javascript code generation
 Cases
   Make Concrete syntax have deep patterns and desugar them
   Normalisation
-Let definitions
+Let(rec) definitions
 Laziness
 Specialisation pragma
   data Strategy = Eager | Lazy
