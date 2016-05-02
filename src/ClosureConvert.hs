@@ -41,8 +41,8 @@ convertExpr expr = do
       s' <- convertExpr $ instantiate1 (pure v) s
       return $ letLExpr letExpr h e' $ Simple.abstract1 v s'
     Call sz o os -> convertCall sz o os
-    Case o brs -> caseLExpr <$> convertOperand o <*> convertBranches brs
-    Error -> return $ pureLifted Error
+    Case sz o brs -> caseLExpr <$> convertOperand sz <*> convertOperand o <*> convertBranches brs
+    -- Error -> return $ pureLifted Error
   modifyIndent pred
   trp "convertExpr res" $ show <$> result
   return result
@@ -71,7 +71,7 @@ convertCall sz operand args = case operand of
       | argsLen < arity
         = return $ singleLifted mempty
         ( Function (Vector.replicate (1 + arity - argsLen) mempty)
-        $ toScope $ Case (Local $ B 0)
+        $ toScope $ Case (Global $ fromString "convertCall-TODO") (Local $ B 0)
         $ ConBranches
           [( Builtin.closure
           , Telescope $ Vector.replicate (arity + 2)

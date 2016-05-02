@@ -5,9 +5,11 @@ import Control.Monad.State
 import Data.Bifoldable
 import Data.Bifunctor
 import Data.Bitraversable
+import Data.Foldable
 import qualified Data.HashMap.Lazy as HM
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HS
+import Data.List
 import Data.Monoid
 import Data.String
 import qualified Data.Text.IO as Text
@@ -20,6 +22,7 @@ import ClosureConvert
 import Erase
 import qualified Generate
 import Infer
+import qualified LLVM
 import Meta
 import TCM
 import Syntax
@@ -98,7 +101,7 @@ test inp = do
 
       liftedConverted <- traverse (traverse $ traverse va) $ Restrict.liftProgram converted
 
-      generated <- sequence [(,) x <$> Generate.generateBody e | (x, e) <- liftedConverted]
+      let generated = [(x, fold $ intersperse (fromString "\n") $ snd $ LLVM.runGen $ Generate.generateBody e) | (x, e) <- liftedConverted]
 
       return (cxt, erased, restricted, converted, generated)
       ) mempty of

@@ -55,7 +55,9 @@ erase expr = do
         sz <- sizeOf expr
         Lambda.App <$> erase sz <*> erase e1 <*> erase e2
       | otherwise -> erase e1
-    Abstract.Case e brs -> Lambda.Case <$> erase e <*> eraseBranches brs
+    Abstract.Case e brs -> do
+      sz <- sizeOf expr
+      Lambda.Case <$> erase sz <*> erase e <*> eraseBranches brs
   modifyIndent pred
   tr "erase res" res
   return res

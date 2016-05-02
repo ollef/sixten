@@ -21,6 +21,9 @@ instance Ord (Hint a) where
 
 type NameHint = Hint (Maybe Name)
 
+nameHint :: Name -> NameHint
+nameHint = Hint . Just
+
 -- | Alternative means that 'Just's don't get appended if 'm' is 'Maybe'
 instance Alternative m => Monoid (Hint (m a)) where
   mempty = Hint empty

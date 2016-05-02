@@ -1,63 +1,12 @@
-Constant-size transform
-  map : (a -> b) -> List a -> List b
-  map f xs = case xs of
-    Nil -> Nil
-    Cons x xs' -> Cons (f x) (Ref (map f (deref xs')))
-
-  IndArg a | sizeof a <= 1 = a
-  IndArg a = Ptr a
-  IndRet a | sizeof a <= 1 = a
-  IndRet a = Address -> Unit
-
-  \xs. e
-  \xs adr -> return e adr
-
-  f xs
-
-  let adr = alloc sz
-  in read adr (f xs adr)
-
-  return : a -> Address -> Unit
-  alloc : Size -> Address
-  read : Address -> Unit -> a
-
-  Indirection part of annotation?
-
-  indRet : forall {a}{A : Type a}. A -> IndRet A
-  indArg : forall {a}{A : Type a}. A -> IndArg A
-
-  ret : forall {a}{A : Type a}. IndRet A -> A
-  arg : forall {a}{A : Type a}. IndArg A -> A
-
-  map : (IndArg a -> IndRet b) -> IndArg (List a) -> IndRet (List b)
-  map f xsp retAdr = case deref xsp of
-    Nil -> write Nil retAdr
-    Cons x xs' ->
-      write Cons retAdr;
-      f (Ref x) (retAdr + 1);
-      let nextAdr = alloc (sizeof (List b))
-      map f xs' nextAdr;
-      write nextAdr (retAdr + 1 + sizeof (List b))
-
-  map : (a -> b) -> Ptr (List a) -> Ptr (List b)
-  map f xs = case deref xs of
-    Nil -> Ref Nil
-    Cons x xs' -> Ref (Cons (f x) (map f xs'))
-
-  map : (IndArg a -> IndRet b) -> Ptr (List a) -> Ptr (List b)
-  map f xsp = case deref xsp of
-    Nil ->
-      let res = alloc 1 in
-      write Nil res;
-      res
-    Cons x xs' -> 
-      let res = alloc (1 + sizeof a + 1) in
-      write Cons res;
-      f (xsp + 1) (res + 1);
-      write (map f xs') (res + sizeof a + 1);
-      res
-
 LLVM code generation
+  - Fix return memcpy size
+  - in-place generateOperand that just takes address to put result in
+  - memcpy & alloca byte size
+  - Define builtins
+  - Special-case the `Ref` constructor to use gc_alloc
+  - Pattern matching on literals
+  - Add more phis (keep track of predecessor blocks)
+  - Return and pass things of size 1 normally?
 Cleanup
 Usage analysis for better erasure
 Add new Int type

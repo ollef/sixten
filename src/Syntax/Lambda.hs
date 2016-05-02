@@ -19,7 +19,7 @@ data Expr v
   | Lit Literal
   | Lam !NameHint (Expr v) (Scope1 Expr v)
   | App (Expr v) (Expr v) (Expr v)
-  | Case (Expr v) (Branches QConstr Expr v)
+  | Case (Expr v) (Expr v) (Branches QConstr Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 globals :: Expr v -> Expr (Var Name v)
@@ -30,7 +30,7 @@ globals expr = case expr of
   Con c es -> Con c $ bimap globals globals <$> es
   Lam h e s -> Lam h (globals e) $ exposeScope globals s
   App sz e1 e2 -> App (globals sz) (globals e1) (globals e2)
-  Case e brs -> Case (globals e) (exposeBranches globals brs)
+  Case sz e brs -> Case (globals sz) (globals e) (exposeBranches globals brs)
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -56,10 +56,10 @@ instance Monad Expr where
   Lit l >>= _ = Lit l
   Lam h e s >>= f = Lam h (e >>= f) $ s >>>= f
   App sz e1 e2 >>= f = App (sz >>= f) (e1 >>= f) (e2 >>= f)
-  Case e brs >>= f = Case (e >>= f) (brs >>>= f)
+  Case sz e brs >>= f = Case (sz >>= f) (e >>= f) (brs >>>= f)
 
 etaLam :: Hint (Maybe Name) -> Expr v -> Scope1 Expr v -> Expr v
-etaLam _ _ (Scope (App sz e (Var (B ()))))
+etaLam _ _ (Scope (App _sz e (Var (B ()))))
   | B () `S.notMember` toSet (second (const ()) <$> e)
     = join $ unvar (error "etaLam impossible") id <$> e
 etaLam n e s = Lam n e s
@@ -79,5 +79,7 @@ instance (Eq v, IsString v, Pretty v)
     Lam {} -> error "impossible prettyPrec lam"
     App sz e1 e2 -> parens `above` annoPrec $
       prettyApp (prettyM e1) (prettyM e2) <+> prettyM ":" <+> prettyM sz
-    Case e brs -> parens `above` casePrec $
-      prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> indent 2 (prettyM brs)
+    Case sz e brs -> parens `above` casePrec $
+      prettyM "case" <+> inviolable (prettyM e) <+>
+      prettyM "of size" <+> inviolable (prettyM sz) <+>
+      prettyM "of" <$$> indent 2 (prettyM brs)

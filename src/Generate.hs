@@ -5,161 +5,112 @@ import Bound
 import qualified Data.Foldable as Foldable
 import Data.List
 import Data.Monoid
-import Data.Text(Text)
 import qualified Data.Traversable as Traversable
 import qualified Data.Vector as Vector
 
+import LLVM hiding (Operand)
+import qualified LLVM
 import Syntax.Branches
+import Syntax.Hint
 import Syntax.Lifted
 import Syntax.Name
 import Syntax.Telescope
-import TCM
 import Util
 
-type B = Text
+type OperandG = Operand (LLVM.Operand Ptr)
+type ExprG = Expr (LLVM.Operand Ptr)
+type BodyG e = Body e (LLVM.Operand Ptr)
+type BranchesG e = Branches QConstr e (LLVM.Operand Ptr)
 
-int, ptr, align, void :: B
-int = "i64"
-ptr = int <> "*"
-align = "8"
-void = "void"
+sizeOfOperand :: OperandG -> LLVM.Operand Ptr
+sizeOfOperand = undefined
 
-(<+>) :: B -> B -> B
-x <+> y = x <> " " <> y
-infixr 6 <+>
+sizeOfExpr :: ExprG -> LLVM.Operand Ptr
+sizeOfExpr expr = case expr of
+  Operand o -> undefined
 
-indent :: [B] -> [B]
-indent = map ("  " <>)
-
-type OperandB = Operand B
-type ExprB = Expr B
-type BodyB e = Body e B
-type BranchesB e = Branches QConstr e B
-
-adds :: Foldable f => f OperandB -> TCM s ([B], [B], B)
-adds = Foldable.foldlM go ([], [], "0")
-  where
-    go (xs, ys, v) o = do
-      i <- fresh
-      let name = "%" <> shower i
-      return ( xs <> pure (name =: "add" <+> int <+> v <> "," <+> generateOperand o)
-             , ys <> pure v
-             , name
-             )
-
-memcpy :: B -> B -> B -> B
-memcpy dst src sz
-  = "call void @llvm.memcpy.p0i8.p0i8.i64(i8* bitcast ("
-  <> ptr <+> dst <+> "to i8*)," <+> "i8* bitcast ("
-  <> ptr <+> src <+> "to i8*),"
-  <+> int <+> sz <> ", i64" <+> align <> ", i1 false)"
-
-getElementPtr :: B -> B -> B
-getElementPtr x i = "getelementptr" <+> int <> "," <+> ptr <+> x <> "," <+> int <+> i
-
-alloca :: B -> B
-alloca sz = "alloca" <+> int <> "," <+> int <+> sz <> ", align" <+> align
-
-br :: B -> B
-br l = "br label" <+> l
-
-(=:) :: B -> B -> B
-x =: y = x <+> "=" <+> y
-infixr 6 =:
-
-switch :: B -> B -> [(Int, B)] -> B
-switch e def brs
-  = "switch" <+> int <+> e <> ", label" <+> def
-  <+> "[" <> Foldable.fold (intersperse ", " $ (\(i, l) -> int <+> shower i <> ", label" <+> l) <$> brs)
-  <> "]"
-
-phi :: [(B, B)] -> B
-phi xs
-  = "phi" <+> ptr <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> v <> "," <+> l <> "]") <$> xs)
-
-generateOperand :: OperandB -> B
+generateOperand :: OperandG -> Gen (LLVM.Operand Ptr)
 generateOperand op = case op of
-  Local l -> l
-  Global g -> "@" <> g -- TODO constants?
-  Lit l -> shower l
+  Local l -> return $ l
+  Global g -> return $ LLVM.Operand $ "@" <> g -- TODO constants?
+  Lit l -> do
+    litPtr <- nameHint "stacklit" =: alloca ptrSize
+    emit $ store (shower l) litPtr
+    return litPtr
 
-generateExpr :: ExprB -> TCM s ([B], B)
+generateExpr :: ExprG -> Gen (LLVM.Operand Ptr)
 generateExpr expr = case expr of
-  Operand o -> return (mempty, generateOperand o)
+  Operand o -> generateOperand o
   Con qc os -> do
-    qcIndex <- constrIndex qc
+    qcIndex <- return 123 -- TODO constrIndex qc
     let os' = Vector.cons (Lit $ fromIntegral qcIndex, Lit 1) os
-    (bs, is, fullSize) <- adds $ snd <$> os'
-    result <- ("%" <>) . shower <$> fresh
-    copies <- Traversable.forM (zip is $ Vector.toList os') $ \(i, (o, sz)) -> do
-      index <- ("%" <>) . shower <$> fresh
-      return
-        [ index =: getElementPtr result i
-        , memcpy index (generateOperand o) (generateOperand sz)
-        ]
-    return
-      ( bs <> pure (result =: alloca fullSize)
-      <> concat copies
-      , result
-      )
-  Let h e s -> do
-    (bs, i) <- generateExpr e
-    (bs', i') <- generateExpr $ instantiate1 (pure i) s
-    return (bs <> bs', i')
+    ptrs <- mapM (generateOperand . snd) os'
+    ints <- Traversable.forM ptrs $ \ptr -> mempty =: load ptr
+    (is, fullSize) <- adds ints
+    result <- mempty =: alloca fullSize
+    Foldable.forM_ (zip (Vector.toList ptrs) $ zip is $ Vector.toList os') $ \(ptr, (i, (_, sz))) -> do
+      index <- nameHint "index" =: getElementPtr result i
+      szPtr <- generateOperand sz
+      szInt <- nameHint "size" =: load szPtr
+      emit $ memcpy index ptr szInt
+    return result
+  Let _h e s -> do
+    o <- generateExpr e
+    generateExpr $ instantiate1 (pure o) s
   Call sz o os -> do
-    name <- ("%" <>) . shower <$> fresh
-    return
-      ( pure (name =: alloca (generateOperand sz))
-      <> pure ("call" <+> void <+> generateOperand o <> "(" <> Foldable.fold (intersperse ", " $ Vector.toList $ (generateOperand <$> os) <> pure name) <> ")")
-      , name
-      )
-  Case o brs -> generateBranches (generateOperand o) brs
-  Error -> return (pure "call void @exit(i32 1)", "undef")
+    szPtr <- generateOperand sz
+    szInt <- nameHint "size" =: load szPtr
+    ret <- nameHint "return" =: alloca szInt
+    fptr <- generateOperand o
+    f <- nameHint "f" =: bitcastToFun fptr (Vector.length os + 1)
+    args <- mapM generateOperand os
+    emit $ callFun f (Vector.snoc args ret)
+    return ret
+  Case _sz o brs -> do
+    e <- generateOperand o
+    generateBranches e brs
 
-generateBranches :: B -> BranchesB Expr -> TCM s ([B], B)
+generateBranches :: LLVM.Operand Ptr -> BranchesG Expr -> Gen (LLVM.Operand Ptr)
 generateBranches expr branches = case branches of
   ConBranches cbrs _ -> do
-    postLabel <- ("%" <>) . shower <$> fresh
-    cbrs' <- Traversable.forM cbrs $ \(qc, tele, brScope) -> mdo
-      qcIndex <- constrIndex qc
-      let inst = instantiateTele $ pure . snd <$> args
-      args <- forMTele tele $ \h _ sz -> do
-        (szBs, szv) <- generateExpr $ inst sz
-        return (szBs, szv)
-      (addBs, is, _) <- adds $ Vector.cons (Lit 1) $ Local . snd <$> args
-      let ixBs = [v =: getElementPtr expr i | (i, (_, v)) <- zip is $ Vector.toList args]
-          szBss = Foldable.fold $ fst <$> args
-      (branchBs, branchResult) <- generateExpr $ inst brScope
-      label <- ("%" <>) . shower <$> fresh
-      return (qcIndex, label, pure (label <> ":") <> (indent $ szBss <> addBs <> ixBs <> branchBs <> pure (br postLabel)), branchResult)
+    postLabel <- LLVM.Operand <$> freshenName "afterBranches"
+    e0Ptr <- nameHint "tagPtr" =: getElementPtr expr (LLVM.Operand "0")
+    e0 <- nameHint "tag" =: load e0Ptr
+    branchLabels <- Traversable.forM cbrs $ \(qc@(QConstr _ c), tele, brScope) -> do
+      qcIndex <- return 123 -- TODO constrIndex qc
+      branchLabel <- LLVM.Operand <$> freshenName c
+      return (qcIndex, branchLabel)
 
-    e0 <- ("%" <>) . shower <$> fresh
-    result <- ("%" <>) . shower <$> fresh
-    let caseBs =
-          [ e0 =: getElementPtr expr "0"
-          , switch e0 "%patternmatchfailed" [(qcIndex, l) | (qcIndex, l, _, _) <- cbrs']
-          ]
-        branchBs = concat [bs | (_, _, bs, _) <- cbrs']
-        postBs =
-          [ postLabel <> ":"
-          , result =: phi [(res, l) | (_, l, _, res) <- cbrs']
-          ]
+    failLabel <- LLVM.Operand <$> freshenName "patternMatchFailure"
 
-    return (caseBs <> branchBs <> postBs, result)
+    emit $ switch e0 failLabel branchLabels
+
+    branchResults <- Traversable.forM (zip cbrs branchLabels) $ \((_, tele, brScope), (_, branchLabel)) -> mdo
+      emitLabel branchLabel
+      let inst = instantiateTele $ pure <$> args
+      argSizes <- forMTele tele $ \_ _ sz -> do
+        szPtr <- generateExpr $ inst sz
+        nameHint "size" =: load szPtr
+      (is, _) <- adds $ Vector.cons (LLVM.Operand "1") argSizes
+      args <- Traversable.forM (Vector.zip (Vector.fromList is) $ teleNames tele) $ \(i, h) ->
+        h =: getElementPtr expr i
+      branchResult <- generateExpr $ inst brScope
+      emit $ br postLabel
+      return branchResult
+    emitLabel failLabel
+    emit $ exit 1
+    emit $ retVoid
+    emitLabel postLabel
+    nameHint "result" =: phiPtr [(res, l) | ((_, l), res) <- zip branchLabels branchResults]
   LitBranches _ _ -> undefined
 
-generateBody :: BodyB Expr -> TCM s B
+generateBody :: BodyG Expr -> Gen ()
 generateBody body = case body of
   Constant _ -> error "generateBody Constant"
   Function hs e -> do
-    vs <- Traversable.forM hs $ \h -> ("%" <>) . shower <$> fresh
-    (bs, b) <- generateExpr $ instantiate (pure . (vs Vector.!) . unTele) e
-    retptr <- ("%" <>) . shower <$> fresh
-    retvar <- ("%" <>) . shower <$> fresh
-    let header = pure $ "(" <> Foldable.fold (intersperse ", " $ (ptr <+>) <$> Vector.toList vs) <> "," <+> ptr <> "*" <+> retptr <> ")"
-        footer =
-          [ retvar =: getElementPtr retptr "0"
-          , memcpy retvar b "TODO" -- bsize
-          ]
-    return $ mconcat $ intersperse "\n" $ header <> bs <> footer
-
+    vs <- Traversable.forM hs $ fmap LLVM.Operand . freshWithHint
+    retPtr <- LLVM.Operand <$> freshenName "return"
+    emit $ Instr $ "(" <> Foldable.fold (intersperse ", " $ ptr <$> Vector.toList vs) <> "," <+> ptr retPtr <> ")"
+    b <- generateExpr $ instantiate (pure . (vs Vector.!) . unTele) e
+    emit $ memcpy retPtr b $ LLVM.Operand "TODO"
+    emit $ retVoid

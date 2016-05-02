@@ -48,8 +48,8 @@ data Expr v
   | Con QConstr (Vector (Operand v, Operand v)) -- ^ fully applied
   | Let NameHint (Expr v) (Scope () Expr v)
   | Call (Operand v) (Operand v) (Vector (Operand v))
-  | Case (Operand v) (Branches QConstr Expr v)
-  | Error
+  | Case (Operand v) (Operand v) (Branches QConstr Expr v)
+  -- | Error
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 pureLifted :: Functor e => e v -> Lifted e v
@@ -129,9 +129,9 @@ conExpr qc (Vector.unzip -> (es, szs))
   where
     len = Vector.length es
 
-caseExpr :: Expr v -> Branches QConstr Expr v -> Expr v
-caseExpr (Operand v) brs = Case v brs
-caseExpr e brs = letExpr mempty e $ Scope $ Case (Local $ B ()) $ F . pure <$> brs
+caseExpr :: Expr v -> Expr v -> Branches QConstr Expr v -> Expr v
+caseExpr (Operand sz) (Operand v) brs = Case sz v brs
+caseExpr sz e brs = letExprs ((,) mempty <$> Vector.fromList [sz, e]) $ Scope $ Case (Local $ B 0) (Local $ B 1) $ F . pure <$> brs
 
 -------------------------------------------------------------------------------
 -- Lifted Exprs
@@ -188,12 +188,13 @@ letLExprs k es s = unvar (error "Lifted.letLExprs") id <$> foldr go (Simple.from
 caseLExpr
   :: (Eq v, Hashable v)
   => LExpr v
+  -> LExpr v
   -> LBranches v
   -> LExpr v
-caseLExpr b brs
-  = letLExpr letExpr mempty b
+caseLExpr szb b brs
+  = letLExprs letExpr ((,) mempty <$> Vector.fromList [szb, b])
   $ Simple.Scope
-  $ mapLifted (Case (Local $ F $ B ()) . fmap (fmap F)) brs
+  $ mapLifted (Case (Local $ F $ B 0) (Local $ F $ B 1) . fmap (fmap F)) brs
 
 conLExprBranches
   :: (Eq v, Hashable v)
@@ -324,12 +325,13 @@ letLBodies k es s = unvar (error "Lifted.letLBodies") id <$> foldr go (Simple.fr
 caseLBody
   :: (Eq v, Hashable v)
   => LBody v
+  -> LBody v
   -> LBranches v
   -> LBody v
-caseLBody b brs
-  = letLBody letBody mempty b
+caseLBody szb b brs
+  = letLBodies letBody ((,) mempty <$> Vector.fromList [szb, b])
   $ Simple.Scope
-  $ mapLifted (Constant . Case (Local $ F $ B ()) . fmap (fmap F)) brs
+  $ mapLifted (Constant . Case (Local $ F $ B 0) (Local $ F $ B 1) . fmap (fmap F)) brs
 
 conLBodyBranches
   :: (Eq v, Hashable v)
@@ -431,8 +433,8 @@ instance Monad Expr where
   Con c vs >>= f = conExpr c $ bimap (bindOperand f) (bindOperand f) <$> vs
   Let h e s >>= f = letExpr h (e >>= f) (s >>>= f)
   Call sz v vs >>= f = callExpr (bindOperand f sz) (bindOperand f v) (bindOperand f <$> vs)
-  Case v brs >>= f = caseExpr (bindOperand f v) (brs >>>= f)
-  Error >>= _ = Error
+  Case sz v brs >>= f = caseExpr (bindOperand f sz) (bindOperand f v) (brs >>>= f)
+  -- Error >>= _ = Error
 
 instance (Eq v, IsString v, Pretty v, Pretty (e v), Functor e)
       => Pretty (Lifted e v) where
@@ -469,6 +471,8 @@ instance (Eq v, IsString v, Pretty v)
         prettyM "let" <+> prettyM n <+> prettyM "=" <+> inviolable (prettyM e) <+> prettyM "in" <$$>
           indent 2 (inviolable $ prettyM $ instantiate1 (pure $ fromText n) s)
     Call sz v vs -> parens `above` annoPrec $ prettyApps (prettyM v) (prettyM <$> vs) <+> prettyM ":" <+> prettyM sz
-    Case v brs -> parens `above` casePrec $
-      prettyM "case" <+> inviolable (prettyM v) <+> prettyM "of" <$$> indent 2 (prettyM brs)
-    Error  -> prettyM "ERROR"
+    Case sz v brs -> parens `above` casePrec $
+      prettyM "case" <+> inviolable (prettyM v) <+>
+      prettyM "of size" <+> inviolable (prettyM sz) <+>
+      prettyM "of" <$$> indent 2 (prettyM brs)
+    -- Error  -> prettyM "ERROR"
