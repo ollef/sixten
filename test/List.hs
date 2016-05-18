@@ -11,7 +11,7 @@ tail xs = case deref xs of
   Nil -> Ref Nil
   Cons x xs' -> xs'
 
-map : forall {m}~{n}~{a : Type {m}}~{b : Type {n}}. (a -> b) -> Ptr (List a) -> Ptr (List b)
+map : forall {m}{n}{a : Type {m}}~{b : Type {n}}. (a -> b) -> Ptr (List a) -> Ptr (List b)
 map f xs = Ref (case deref xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (map f xs'))

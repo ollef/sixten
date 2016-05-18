@@ -122,8 +122,8 @@ h =: i = do
   return $ Operand x
 infixr 6 =:
 
-adds :: Foldable f => f (Operand Int) -> Gen ([Operand Int], Operand Int)
-adds = fmap (first reverse) . Foldable.foldlM go ([], "0")
+adds :: Foldable f => f (Operand Int) -> Gen [Operand Int]
+adds = fmap (reverse . fst) . Foldable.foldlM go ([], "0")
   where
     go (ys, v) o = do
       name <- mempty =: add v o

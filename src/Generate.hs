@@ -64,7 +64,10 @@ generateInnerExpr
   -> Gen (LLVM.Operand Ptr)
 generateInnerExpr expr sz = case expr of
   Operand o -> generateOperand o
-  Con qc os -> generateCon (\fullSize -> mempty =: alloca fullSize) qc os
+  Con qc os -> do
+    ret <- nameHint "cons-cell" =: alloca sz
+    storeCon qc os ret
+    return ret
   Call o os -> do
     ret <- nameHint "return" =: alloca sz
     storeCall o os ret
@@ -88,7 +91,7 @@ storeInnerExpr
   -> Gen ()
 storeInnerExpr expr sz ret = case expr of
   Operand o -> storeOperand o sz ret
-  Con qc os -> void $ generateCon (const $ return ret) qc os
+  Con qc os -> storeCon qc os ret
   Call o os -> storeCall o os ret
 
 storeCall
@@ -101,6 +104,23 @@ storeCall o os ret = do
   f <- nameHint "function" =: bitcastToFun fptr (Vector.length os + 1)
   args <- mapM generateOperand os
   emit $ callFun f (Vector.snoc args ret)
+
+storeCon
+  :: QConstr
+  -> Vector (OperandG, OperandG)
+  -> LLVM.Operand Ptr
+  -> Gen ()
+storeCon qc os ret = do
+  qcIndex <- return 123 -- TODO constrIndex qc
+  let os' = Vector.cons (Lit $ fromIntegral qcIndex, Lit 1) os
+  ptrs <- mapM (generateOperand . snd) os'
+  ints <- Traversable.forM ptrs $ \ptr -> mempty =: load ptr
+  is <- adds ints
+  Foldable.forM_ (zip (Vector.toList ptrs) $ zip is $ Vector.toList os') $ \(ptr, (i, (_, sz))) -> do
+    index <- nameHint "index" =: getElementPtr ret i
+    szPtr <- generateOperand sz
+    szInt <- nameHint "size" =: load szPtr
+    emit $ memcpy index ptr szInt
 
 generateBranches
   :: OperandG
@@ -129,7 +149,7 @@ generateBranches op branches brCont = do
         argSizes <- forMSimpleTele tele $ \_ sz -> do
           szPtr <- generateExpr $ inst sz
           nameHint "size" =: load szPtr
-        (is, _) <- adds $ Vector.cons (LLVM.Operand "1") argSizes
+        is <- adds $ Vector.cons (LLVM.Operand "1") argSizes
         args <- Traversable.forM (Vector.zip (Vector.fromList is) $ simpleTeleNames tele) $ \(i, h) ->
           h =: getElementPtr expr i
         contResult <- brCont $ inst brScope
@@ -141,25 +161,6 @@ generateBranches op branches brCont = do
       emitLabel postLabel
       return $ zip contResults $ snd <$> branchLabels
     SimpleLitBranches _ _ -> undefined -- TODO
-
-generateCon
-  :: (LLVM.Operand Int -> Gen (LLVM.Operand Ptr))
-  -> QConstr
-  -> Vector (OperandG, OperandG)
-  -> Gen (LLVM.Operand Ptr)
-generateCon resultLoc qc os = do
-  qcIndex <- return 123 -- TODO constrIndex qc
-  let os' = Vector.cons (Lit $ fromIntegral qcIndex, Lit 1) os
-  ptrs <- mapM (generateOperand . snd) os'
-  ints <- Traversable.forM ptrs $ \ptr -> mempty =: load ptr
-  (is, fullSize) <- adds ints
-  result <- resultLoc fullSize
-  Foldable.forM_ (zip (Vector.toList ptrs) $ zip is $ Vector.toList os') $ \(ptr, (i, (_, sz))) -> do
-    index <- nameHint "index" =: getElementPtr result i
-    szPtr <- generateOperand sz
-    szInt <- nameHint "size" =: load szPtr
-    emit $ memcpy index ptr szInt
-  return result
 
 generateBody :: BodyG Expr -> Gen ()
 generateBody body = case body of
