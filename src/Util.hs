@@ -35,6 +35,12 @@ abstractNone = Scope . return . F
 -- instantiateSome :: Functor f => (b -> Var b' (f a)) -> Scope b f a -> Scope b' f a
 -- instantiateSome f (Scope s) = Scope $ fmap g s
 
+instantiateVar :: Functor f => (b -> a) -> Simple.Scope b f a -> f a
+instantiateVar f (Simple.Scope s) = unvar f id <$> s
+
+instantiate1Var :: Functor f => a -> Simple.Scope () f a -> f a
+instantiate1Var a = instantiateVar (\() -> a)
+
 boundJoin :: (Monad f, Bound t) => t f (f a) -> t f a
 boundJoin = (>>>= id)
 

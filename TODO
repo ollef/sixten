@@ -1,5 +1,7 @@
 LLVM code generation
+  - Con needs to know its size (needs to be bigger)
   - Fix return memcpy size
+  - generateFunctionOperand
   - in-place generateOperand that just takes address to put result in
   - memcpy & alloca byte size
   - Define builtins

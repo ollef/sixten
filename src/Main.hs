@@ -23,11 +23,11 @@ import Erase
 import qualified Generate
 import Infer
 import qualified LLVM
-import Meta
 import TCM
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete as Concrete
+import qualified Syntax.Lambda as Lambda
 import qualified Syntax.Lifted as Lifted
 import qualified Syntax.Parse
 import qualified Syntax.Resolve
@@ -88,7 +88,7 @@ test inp = do
       inferProgram constrs p
       cxt <- gets tcContext
       erased <- sequence [(,) x <$> eraseDef e | (x, (e, _)) <- HM.toList cxt]
-      restricted <- sequence [(,) x <$> Restrict.restrictExpr e | (x, Definition e) <- erased]
+      restricted <- sequence [(,) x <$> Restrict.restrictBody (Lambda.Sized (Lambda.Lit 1) e) | (x, Definition e) <- erased]
       let liftedRestricted = Restrict.liftProgram restricted
       forM_ liftedRestricted $ \(x, b) -> addArity x $ case b of
         Lifted.Function xs _ -> V.length xs

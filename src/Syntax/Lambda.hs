@@ -1,67 +1,59 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, Rank2Types, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, Rank2Types, ViewPatterns #-}
 module Syntax.Lambda where
 
-import Control.Monad
+import qualified Bound.Scope.Simple as Simple
 import Data.Bifunctor
 import Data.Monoid
 import qualified Data.Set as S
 import Data.String
 import Data.Vector(Vector)
+import qualified Data.Vector as Vector
 import Prelude.Extras
 
 import Syntax
 import Util
 
+data Sized e v = Sized (e v) (e v)
+  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+type SExpr = Sized Expr
+
 data Expr v
   = Var v
   | Global Name
-  | Con QConstr (Vector (Expr v, Expr v)) -- ^ Fully applied
+  | Con QConstr (Vector (SExpr v)) -- ^ Fully applied
   | Lit Literal
-  | Lam !NameHint (Expr v) (Scope1 Expr v)
-  | App (Expr v) (Expr v) (Expr v)
-  | Case (Expr v) (Expr v) (Branches QConstr Expr v)
+  | Lam !NameHint (Expr v) (Simple.Scope () SExpr v)
+  | App (SExpr v) (SExpr v)
+  | Case (SExpr v) (SimpleBranches QConstr Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-globals :: Expr v -> Expr (Var Name v)
-globals expr = case expr of
-  Var v -> Var $ F v
-  Global g -> Var $ B g
-  Lit l -> Lit l
-  Con c es -> Con c $ bimap globals globals <$> es
-  Lam h e s -> Lam h (globals e) $ exposeScope globals s
-  App sz e1 e2 -> App (globals sz) (globals e1) (globals e2)
-  Case sz e brs -> Case (globals sz) (globals e) (exposeBranches globals brs)
+appsView :: Expr v -> (Expr v, Vector (SExpr v))
+appsView = go []
+  where
+    go args (App (Sized _ e1) se2) = go (se2:args) e1
+    go args e = (e, Vector.reverse $ Vector.fromList args)
+
+lamView :: SExpr v -> Maybe (NameHint, Expr v, Simple.Scope () SExpr v)
+lamView (Sized _ (Lam h e s)) = Just (h, e, s)
+lamView _ = Nothing
 
 -------------------------------------------------------------------------------
 -- Instances
+instance Bound Sized where
+  Sized s e >>>= f = Sized (s >>= f) (e >>= f)
+
 instance Eq1 Expr
 instance Ord1 Expr
 instance Show1 Expr
+instance Eq1 (Sized Expr)
+instance Ord1 (Sized Expr)
+instance Show1 (Sized Expr)
 
-instance SyntaxLambda Expr where
-  lam h _ = Lam h
-
-  lamView (Lam n e s) = Just (n, ReEx, e, s)
-  lamView _ = Nothing
-
-instance Applicative Expr where
-  pure = return
-  (<*>) = ap
-
-instance Monad Expr where
-  return = Var
-  Var v >>= f = f v
-  Global g >>= _ = Global g
-  Con c es >>= f = Con c $ (\(e, sz) -> (e >>= f, sz >>= f)) <$> es
-  Lit l >>= _ = Lit l
-  Lam h e s >>= f = Lam h (e >>= f) $ s >>>= f
-  App sz e1 e2 >>= f = App (sz >>= f) (e1 >>= f) (e2 >>= f)
-  Case sz e brs >>= f = Case (sz >>= f) (e >>= f) (brs >>>= f)
-
-etaLam :: Hint (Maybe Name) -> Expr v -> Scope1 Expr v -> Expr v
-etaLam _ _ (Scope (App _sz e (Var (B ()))))
+etaLam :: Hint (Maybe Name) -> Expr v -> Simple.Scope () SExpr v -> Expr v
+etaLam _ _ (Simple.Scope (Sized _ (App (Sized _ e) (Sized _ (Var (B ()))))))
   | B () `S.notMember` toSet (second (const ()) <$> e)
-    = join $ unvar (error "etaLam impossible") id <$> e
+    = unvar (error "etaLam") id <$> e
 etaLam n e s = Lam n e s
 
 instance (Eq v, IsString v, Pretty v)
@@ -69,17 +61,24 @@ instance (Eq v, IsString v, Pretty v)
   prettyM expr = case expr of
     Var v -> prettyM v
     Global g -> prettyM g
-    Con c es -> prettyApps (prettyM c)
-              $ (\(e, sz) -> parens `above` annoPrec $ prettyM e <+> prettyM ":" <+> prettyM sz) <$> es
+    Con c es -> prettyApps (prettyM c) $ prettyM <$> es
     Lit l -> prettyM l
+    Lam h sz s -> withNameHint h $ \n ->
+      prettyM "\\(" <> prettyM n <+> prettyM ":" <+> prettyM sz <> prettyM ")." <+>
+        prettyM (instantiateVar (\() -> fromText n) s)
+  {-
     (bindingsViewM lamView -> Just (tele, s)) -> parens `above` absPrec $
       withTeleHints tele $ \ns ->
         prettyM "\\" <> prettyTeleVarTypes ns tele <> prettyM "." <+>
-        associate absPrec (prettyM $ instantiateTele (pure . fromText <$> ns) s)
+        associate absPrec (prettyM $ instantiateTeleVars (fromText <$> ns) s)
     Lam {} -> error "impossible prettyPrec lam"
-    App sz e1 e2 -> parens `above` annoPrec $
-      prettyApp (prettyM e1) (prettyM e2) <+> prettyM ":" <+> prettyM sz
-    Case sz e brs -> parens `above` casePrec $
+    -}
+    App e1 e2 -> parens `above` annoPrec $
+      prettyApp (prettyM e1) (prettyM e2)
+    Case e brs -> parens `above` casePrec $
       prettyM "case" <+> inviolable (prettyM e) <+>
-      prettyM "of size" <+> inviolable (prettyM sz) <+>
       prettyM "of" <$$> indent 2 (prettyM brs)
+
+instance Pretty (e v) => Pretty (Sized e v) where
+  prettyM (Sized sz e) = parens `above` annoPrec $
+    prettyM e <+> prettyM ":" <+> prettyM sz

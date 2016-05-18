@@ -89,18 +89,18 @@ data Label
 align :: B
 align = "8"
 
-intT, ptrT :: B
-intT = "i64"
-ptrT = intT <> "*"
+integerT, pointerT :: B
+integerT = "i64"
+pointerT = integerT <> "*"
 
 ptrSize :: Operand Int
 ptrSize = "8"
 
-int :: Operand Int -> B
-int (Operand b) = intT <+> b
+integer :: Operand Int -> B
+integer (Operand b) = integerT <+> b
 
-ptr :: Operand Ptr -> B
-ptr (Operand b) = ptrT <+> b
+pointer :: Operand Ptr -> B
+pointer (Operand b) = pointerT <+> b
 
 label :: Operand Label -> B
 label (Operand b) = "label" <+> b
@@ -109,11 +109,11 @@ label (Operand b) = "label" <+> b
 -- * Instructions
 -------------------------------------------------------------------------------
 add :: Operand Int -> Operand Int -> Instr Int
-add x y = Instr $ "add" <+> int x <> "," <+> unOperand y
+add x y = Instr $ "add" <+> integer x <> "," <+> unOperand y
 
 callFun :: (Foldable f, Functor f) => Operand Fun -> f (Operand Ptr) -> Instr ()
 callFun name xs = Instr
-  $ "call" <+> "void" <+> unOperand name <> "(" <> Foldable.fold (intersperse ", " $ Foldable.toList $ ptr <$> xs) <> ")"
+  $ "call" <+> "void" <+> unOperand name <> "(" <> Foldable.fold (intersperse ", " $ Foldable.toList $ pointer <$> xs) <> ")"
 
 (=:) :: NameHint -> Instr a -> Gen (Operand a)
 h =: i = do
@@ -136,44 +136,44 @@ memcpy
   -> Instr ()
 memcpy dst src sz = Instr
   $ "call void @llvm.memcpy.p0i8.p0i8.i64(i8* bitcast ("
-  <> ptr dst <+> "to i8*)," <+> "i8* bitcast ("
-  <> ptr src <+> "to i8*),"
-  <+> int sz <> ", i64" <+> align <> ", i1 false)"
+  <> pointer dst <+> "to i8*)," <+> "i8* bitcast ("
+  <> pointer src <+> "to i8*),"
+  <+> integer sz <> ", i64" <+> align <> ", i1 false)"
 
 getElementPtr :: Operand Ptr -> Operand Int -> Instr Ptr
-getElementPtr x i = Instr $ "getelementptr" <+> intT <> "," <+> ptr x <> "," <+> int i
+getElementPtr x i = Instr $ "getelementptr" <+> integerT <> "," <+> pointer x <> "," <+> integer i
 
 alloca :: Operand Int -> Instr Ptr
-alloca sz = Instr $ "alloca" <+> intT <> "," <+> int sz <> ", align" <+> align
+alloca sz = Instr $ "alloca" <+> integerT <> "," <+> integer sz <> ", align" <+> align
 
-br :: Operand Label -> Instr ()
-br l = Instr $ "br" <+> label l
+branch :: Operand Label -> Instr ()
+branch l = Instr $ "br" <+> label l
 
 load :: Operand Ptr -> Instr Int
-load x = Instr $ "load" <+> intT <> "," <+> ptr x
+load x = Instr $ "load" <+> integerT <> "," <+> pointer x
 
 store :: Operand Int -> Operand Ptr -> Instr Int
-store x p = Instr $ "store" <+> int x <> "," <+> ptr p
+store x p = Instr $ "store" <+> integer x <> "," <+> pointer p
 
 switch :: Operand Int -> Operand Label -> [(Int, Operand Label)] -> Instr ()
 switch e def brs = Instr
-  $ "switch" <+> int e <> "," <+> label def
-  <+> "[" <> Foldable.fold (intersperse ", " $ (\(i, l) -> int (shower i) <> "," <+> label l) <$> brs)
+  $ "switch" <+> integer e <> "," <+> label def
+  <+> "[" <> Foldable.fold (intersperse ", " $ (\(i, l) -> integer (shower i) <> "," <+> label l) <$> brs)
   <> "]"
 
 phiPtr :: [(Operand Ptr, Operand Label)] -> Instr Ptr
 phiPtr xs = Instr
-  $ "phi" <+> ptrT
-  <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> ptr v <> "," <+> label l <> "]") <$> xs)
+  $ "phi" <+> pointerT
+  <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> pointer v <> "," <+> label l <> "]") <$> xs)
 
 phiInt :: [(Operand Int, Operand Label)] -> Instr Int
 phiInt xs = Instr
-  $ "phi" <+> intT
-  <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> int v <> "," <+> label l <> "]") <$> xs)
+  $ "phi" <+> integerT
+  <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> integer v <> "," <+> label l <> "]") <$> xs)
 
 bitcastToFun :: Operand Ptr -> Int -> Instr Fun
 bitcastToFun p arity = Instr
-  $ "bitcast" <+> ptr p <+> "to" <+> "void (" <> Foldable.fold (replicate (arity - 1) (ptrT <> ", ")) <> ptrT <> ")"
+  $ "bitcast" <+> pointer p <+> "to" <+> "void (" <> Foldable.fold (replicate (arity - 1) (pointerT <> ", ")) <> pointerT <> ")"
 
 exit :: Int -> Instr ()
 exit n = Instr $ "call void @exit(i32" <+> shower n <> ")"

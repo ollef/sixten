@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings, RecursiveDo, ViewPatterns #-}
 module Erase where
 
+import qualified Bound.Scope.Simple as Simple
 import Bound.Scope
 import Control.Monad.Except
 import Data.Monoid
@@ -14,6 +15,9 @@ import Meta
 import TCM
 import Unify
 
+eraseS :: AbstractM s -> TCM s (SLambdaM s)
+eraseS e = Lambda.Sized <$> (erase =<< sizeOf e) <*> erase e
+
 erase :: AbstractM s -> TCM s (LambdaM s)
 erase expr = do
   tr "erase expr" expr
@@ -26,9 +30,9 @@ erase expr = do
     Abstract.Lam h a t s
       | relevance a == Relevant -> do
         v <- forall_ h t
-        e <- erase $ instantiate1 (pure v) s
+        e <- eraseS $ instantiate1 (pure v) s
         sz <- erase =<< sizeOfType t
-        return $ Lambda.Lam h sz $ abstract1 v e
+        return $ Lambda.Lam h sz $ Simple.abstract1 v e
       | otherwise -> do
         v <- forall_ h t
         erase $ instantiate1 (pure v) s
@@ -36,7 +40,7 @@ erase expr = do
       n <- constrArity qc
       case compare argsLen n of
         GT -> throwError $ "erase: too many args for constructor: " ++ show qc
-        EQ -> Lambda.Con qc <$> mapM (\e -> (,) <$> erase e <*> (erase =<< sizeOf e)) es'
+        EQ -> Lambda.Con qc <$> mapM eraseS es'
         LT -> do
           conType <- qconstructor qc
           let Just appliedConType = typeApps conType $ snd <$> es
@@ -51,13 +55,9 @@ erase expr = do
         argsLen = length es
     Abstract.Con _qc -> throwError "erase impossible"
     Abstract.App e1 a e2
-      | relevance a == Relevant -> do
-        sz <- sizeOf expr
-        Lambda.App <$> erase sz <*> erase e1 <*> erase e2
+      | relevance a == Relevant -> Lambda.App <$> eraseS e1 <*> eraseS e2
       | otherwise -> erase e1
-    Abstract.Case e brs -> do
-      sz <- sizeOf expr
-      Lambda.Case <$> erase sz <*> erase e <*> eraseBranches brs
+    Abstract.Case e brs -> Lambda.Case <$> eraseS e <*> eraseBranches brs
   modifyIndent pred
   tr "erase res" res
   return res
@@ -74,29 +74,32 @@ relevantAbstraction tele (Tele n) = Tele <$> perm Vector.! n
 eraseBranches
   :: Pretty c
   => BranchesM c Abstract.Expr s
-  -> TCM s (BranchesM c Lambda.Expr s)
+  -> TCM s (SimpleBranchesM c Lambda.Expr s)
 eraseBranches (ConBranches cbrs typ) = do
   tr "eraseBranches brs" $ ConBranches cbrs typ
   modifyIndent succ
-  typSize <- erase =<< sizeOfType typ
   cbrs' <- forM cbrs $ \(c, tele, brScope) -> mdo
     tele' <- forMTele tele $ \h a s -> do
       let t = instantiateTele pureVs s
       tsz <- erase =<< sizeOfType t
       v <- forall_ h t
-      return (v, (h, a, abstract abstr tsz))
+      return (v, (h, a, Simple.abstract abstr tsz))
     let vs = fst <$> tele'
         abstr v = relevantAbstraction tele =<< teleAbstraction vs v
         pureVs = pure <$> vs
-        tele'' = Telescope
+        tele'' = SimpleTelescope
+               $ fmap (\(h, _, t) -> (h, t))
                $ Vector.filter (\(_, a, _) -> relevance a == Relevant)
                $ snd <$> tele'
     brScope' <- erase $ instantiateTele pureVs brScope
-    return (c, tele'', abstract abstr brScope')
+    return (c, tele'', Simple.abstract abstr brScope')
   modifyIndent pred
-  tr "eraseBranches res" $ ConBranches cbrs' typSize
-  return $ ConBranches cbrs' typSize
-eraseBranches (LitBranches lbrs d) = LitBranches <$> sequence [(,) l <$> erase e | (l, e) <- lbrs] <*> erase d
+  tr "eraseBranches res" $ SimpleConBranches cbrs'
+  return $ SimpleConBranches cbrs'
+eraseBranches (LitBranches lbrs d)
+  = SimpleLitBranches
+    <$> sequence [(,) l <$> erase e | (l, e) <- lbrs]
+    <*> erase d
 
 eraseDef
   :: Definition Abstract.Expr Void

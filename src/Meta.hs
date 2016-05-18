@@ -35,8 +35,10 @@ data MetaVar e s = MetaVar
 type ConcreteM s = Concrete.Expr (MetaVar Abstract.Expr s)
 type AbstractM s = Abstract.Expr (MetaVar Abstract.Expr s)
 type LambdaM s = Lambda.Expr (MetaVar Abstract.Expr s)
+type SLambdaM s = Lambda.SExpr (MetaVar Abstract.Expr s)
 type ScopeM b f s = Scope b f (MetaVar Abstract.Expr s)
 type BranchesM c f s = Branches c f (MetaVar Abstract.Expr s)
+type SimpleBranchesM c f s = SimpleBranches c f (MetaVar Abstract.Expr s)
 
 instance Eq (MetaVar e s) where
   (==) = (==) `on` metaId

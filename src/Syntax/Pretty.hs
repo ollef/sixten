@@ -57,7 +57,7 @@ data PrettyEnv = PrettyEnv
 
 class Pretty a where
   pretty  :: a -> Doc
-  pretty = runPrettyM . prettyM 
+  pretty = runPrettyM . prettyM
   prettyM :: a -> PrettyM Doc
   prettyM = return . pretty
   prettyList :: [a] -> PrettyM Doc
