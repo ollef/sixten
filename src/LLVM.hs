@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings, ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts, GeneralizedNewtypeDeriving, OverloadedStrings, ViewPatterns #-}
 module LLVM where
 
 import Control.Monad.State
@@ -27,14 +27,14 @@ infixr 6 <+>
 -------------------------------------------------------------------------------
 -- * The generation type
 -------------------------------------------------------------------------------
-data GenState = GenState
+data LLVMState = LLVMState
   { boundNames :: HashSet B
   , freeNames :: [B]
   , instructions :: [B]
   }
 
-runGen :: Gen a -> (a, [B])
-runGen = second (reverse . instructions) . flip runState GenState
+runLLVM :: State LLVMState a -> (a, [B])
+runLLVM = second (reverse . instructions) . flip runState LLVMState
   { boundNames = mempty
   , freeNames = do
     n <- [(0 :: Int)..]
@@ -43,12 +43,10 @@ runGen = second (reverse . instructions) . flip runState GenState
   , instructions = mempty
   }
 
-type Gen a = State GenState a
+emit :: MonadState LLVMState m => Instr a -> m ()
+emit b = modify $ \s -> s { instructions = unInstr ("  " <> b) : instructions s }
 
-emit :: Instr a -> Gen ()
-emit b = modify $ \s -> s { instructions = (unInstr $ "  " <> b) : instructions s }
-
-emitLabel :: Operand Label -> Gen ()
+emitLabel :: MonadState LLVMState m => Operand Label -> m ()
 emitLabel l = modify $ \s -> s { instructions = (unOperand l <> ":") : instructions s }
 
 -------------------------------------------------------------------------------
@@ -58,7 +56,7 @@ percent :: B -> B
 percent b | Text.head b == '%' = b
 percent b = "%" <> b
 
-freshenName :: B -> Gen B
+freshenName :: MonadState LLVMState m => B -> m B
 freshenName (percent -> name) = do
   bnames <- gets boundNames
   let candidates = name : [name <> shower n | n <- [(1 :: Int)..]]
@@ -67,13 +65,13 @@ freshenName (percent -> name) = do
   modify $ \s -> s { boundNames = bnames' }
   return actualName
 
-freshName :: Gen B
+freshName :: MonadState LLVMState m => m B
 freshName = do
   name:fnames <- gets freeNames
   modify $ \s -> s { freeNames = fnames }
   freshenName name
 
-freshWithHint :: NameHint -> Gen B
+freshWithHint :: MonadState LLVMState m => NameHint -> m B
 freshWithHint (Hint (Just name)) = freshenName name
 freshWithHint (Hint Nothing) = freshName
 
@@ -115,14 +113,14 @@ callFun :: (Foldable f, Functor f) => Operand Fun -> f (Operand Ptr) -> Instr ()
 callFun name xs = Instr
   $ "call" <+> "void" <+> unOperand name <> "(" <> Foldable.fold (intersperse ", " $ Foldable.toList $ pointer <$> xs) <> ")"
 
-(=:) :: NameHint -> Instr a -> Gen (Operand a)
+(=:) :: MonadState LLVMState m => NameHint -> Instr a -> m (Operand a)
 h =: i = do
   x <- freshWithHint h
   emit $ Instr $ x <+> "=" <+> unInstr i
   return $ Operand x
 infixr 6 =:
 
-adds :: Foldable f => f (Operand Int) -> Gen [Operand Int]
+adds :: (MonadState LLVMState m, Foldable f) => f (Operand Int) -> m [Operand Int]
 adds = fmap (reverse . fst) . Foldable.foldlM go ([], "0")
   where
     go (ys, v) o = do

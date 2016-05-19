@@ -1,7 +1,8 @@
-{-# LANGUAGE DeriveFunctor, OverloadedStrings, RecursiveDo #-}
+{-# LANGUAGE DeriveFunctor, GeneralizedNewtypeDeriving, OverloadedStrings, RecursiveDo #-}
 module Generate where
 
-import Control.Monad
+import Control.Monad.State
+import Control.Monad.Reader
 import qualified Data.Foldable as Foldable
 import Data.List
 import Data.Monoid
@@ -23,6 +24,14 @@ type InnerExprG = InnerExpr (LLVM.Operand Ptr)
 type ExprG = Expr (LLVM.Operand Ptr)
 type BodyG e = Body e (LLVM.Operand Ptr)
 type BranchesG e = Branches QConstr e (LLVM.Operand Ptr)
+
+type Gen = ReaderT (QConstr -> Maybe Int) (State LLVMState)
+
+runGen :: (QConstr -> Maybe Int) -> Gen a -> (a, [B])
+runGen f m = runLLVM $ runReaderT m f
+
+constrIndex :: QConstr -> Gen (Maybe Int)
+constrIndex qc = asks ($ qc)
 
 generateOperand :: OperandG -> Gen (LLVM.Operand Ptr)
 generateOperand op = case op of
@@ -111,8 +120,8 @@ storeCon
   -> LLVM.Operand Ptr
   -> Gen ()
 storeCon qc os ret = do
-  qcIndex <- return 123 -- TODO constrIndex qc
-  let os' = Vector.cons (Lit $ fromIntegral qcIndex, Lit 1) os
+  mqcIndex <- constrIndex qc
+  let os' = maybe id (\i -> Vector.cons (Lit $ fromIntegral i, Lit 1)) mqcIndex os
   ptrs <- mapM (generateOperand . snd) os'
   ints <- Traversable.forM ptrs $ \ptr -> mempty =: load ptr
   is <- adds ints
@@ -130,12 +139,29 @@ generateBranches
 generateBranches op branches brCont = do
   expr <- generateOperand op
   case branches of
+    SimpleConBranches [(QConstr _ c, tele, brScope)] -> mdo
+      postLabel <- LLVM.Operand <$> freshenName "after-branch"
+      branchLabel <- LLVM.Operand <$> freshenName c
+
+      emit $ branch branchLabel
+      emitLabel branchLabel
+      let inst = instantiateSimpleTeleVars args
+      argSizes <- forMSimpleTele tele $ \_ sz -> do
+        szPtr <- generateExpr $ inst sz
+        nameHint "size" =: load szPtr
+      is <- adds argSizes
+      args <- Traversable.forM (Vector.zip (Vector.fromList is) $ simpleTeleNames tele) $ \(i, h) ->
+        h =: getElementPtr expr i
+      contResult <- brCont $ inst brScope
+      emit $ branch postLabel
+      emitLabel postLabel
+      return [(contResult, branchLabel)]
     SimpleConBranches cbrs -> do
       postLabel <- LLVM.Operand <$> freshenName "after-branches"
       e0Ptr <- nameHint "tag-pointer" =: getElementPtr expr (LLVM.Operand "0")
       e0 <- nameHint "tag" =: load e0Ptr
       branchLabels <- Traversable.forM cbrs $ \(qc@(QConstr _ c), _, _) -> do
-        qcIndex <- return 123 -- TODO constrIndex qc
+        Just qcIndex <- constrIndex qc
         branchLabel <- LLVM.Operand <$> freshenName c
         return (qcIndex, branchLabel)
 
@@ -157,7 +183,7 @@ generateBranches op branches brCont = do
         return contResult
       emitLabel failLabel
       emit $ exit 1
-      emit $ retVoid
+      emit retVoid
       emitLabel postLabel
       return $ zip contResults $ snd <$> branchLabels
     SimpleLitBranches _ _ -> undefined -- TODO

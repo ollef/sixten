@@ -118,6 +118,7 @@ modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
 
 lookupDefinition :: Name -> TCM s (Maybe (Definition Expr b, Type b'))
 lookupDefinition name = gets $ fmap (bimap vacuous vacuous) . HM.lookup name . tcContext
+
 lookupConstructor :: Ord b => Constr -> TCM s (Set (Name, Type b))
 lookupConstructor name = gets $ maybe mempty (Set.map $ second vacuous) . HM.lookup name . tcConstrs
 
@@ -149,6 +150,15 @@ qconstructor qc@(QConstr n c) = do
       return (vacuous t)
     0 -> throwError $ "Not in scope: constructor " ++ show qc
     _ -> throwError $ "Ambiguous constructor: " ++ show qc
+
+qconstructorIndex :: TCM s (QConstr -> Maybe Int)
+qconstructorIndex = do
+  cxt <- gets tcContext
+  return $ \(QConstr n c) -> do
+    (DataDefinition (DataDef constrDefs), _) <- HM.lookup n cxt
+    if length constrDefs == 1
+    then Nothing
+    else findIndex ((== c) . constrName) constrDefs
 
 relevantDefArity
   :: Name

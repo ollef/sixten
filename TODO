@@ -1,5 +1,4 @@
 LLVM code generation
-  - Constructor index
   - Constant functions should be evaluated in main
   - memcpy & alloca byte size
   - Define builtins
@@ -8,7 +7,6 @@ LLVM code generation
     shouldn't need size to deref
   - Pattern matching on literals
   - Return and pass things of size 1 normally?
-  - Don't store tag in single-constructor data
 Cleanup
 Usage analysis for better erasure
 Add new Int type

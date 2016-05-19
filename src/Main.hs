@@ -22,7 +22,6 @@ import ClosureConvert
 import Erase
 import qualified Generate
 import Infer
-import qualified LLVM
 import TCM
 import Syntax
 import qualified Syntax.Abstract as Abstract
@@ -101,7 +100,8 @@ test inp = do
 
       liftedConverted <- traverse (traverse $ traverse va) $ Restrict.liftProgram converted
 
-      let generated = [(x, fold $ intersperse (fromString "\n") $ snd $ LLVM.runGen $ Generate.generateBody e) | (x, e) <- liftedConverted]
+      qcindex <- qconstructorIndex
+      let generated = [(x, fold $ intersperse (fromString "\n") $ snd $ Generate.runGen qcindex $ Generate.generateBody e) | (x, e) <- liftedConverted]
 
       return (cxt, erased, restricted, converted, generated)
       ) mempty of
@@ -123,7 +123,7 @@ test inp = do
     fe :: Functor f => f Void -> f String
     fe = vacuous
     vf :: a -> TCM s String
-    vf _ = error "inferProgram"
+    vf _ = throwError "inferProgram"
     va :: a -> TCM s b
     va _ = throwError "inferProgram a"
 
