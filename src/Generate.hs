@@ -138,9 +138,9 @@ generateBranches
   -> Gen [(a, LLVM.Operand Label)]
 generateBranches op branches brCont = do
   expr <- generateOperand op
+  postLabel <- LLVM.Operand <$> freshenName "after-branch"
   case branches of
     SimpleConBranches [(QConstr _ c, tele, brScope)] -> mdo
-      postLabel <- LLVM.Operand <$> freshenName "after-branch"
       branchLabel <- LLVM.Operand <$> freshenName c
 
       emit $ branch branchLabel
@@ -157,7 +157,6 @@ generateBranches op branches brCont = do
       emitLabel postLabel
       return [(contResult, branchLabel)]
     SimpleConBranches cbrs -> do
-      postLabel <- LLVM.Operand <$> freshenName "after-branches"
       e0Ptr <- nameHint "tag-pointer" =: getElementPtr expr (LLVM.Operand "0")
       e0 <- nameHint "tag" =: load e0Ptr
       branchLabels <- Traversable.forM cbrs $ \(qc@(QConstr _ c), _, _) -> do
@@ -186,7 +185,29 @@ generateBranches op branches brCont = do
       emit retVoid
       emitLabel postLabel
       return $ zip contResults $ snd <$> branchLabels
-    SimpleLitBranches _ _ -> undefined -- TODO
+    SimpleLitBranches lbrs def -> do
+      e0Ptr <- nameHint "tag-pointer" =: getElementPtr expr (LLVM.Operand "0")
+      e0 <- nameHint "tag" =: load e0Ptr
+
+      branchLabels <- Traversable.forM lbrs $ \(l, _) -> do
+        branchLabel <- LLVM.Operand <$> freshenName (shower l)
+        return (fromIntegral l, branchLabel)
+
+      defaultLabel <- LLVM.Operand <$> freshenName "default"
+      emit $ switch e0 defaultLabel branchLabels
+
+      contResults <- Traversable.forM (zip lbrs branchLabels) $ \((_, br), (_, brLabel)) -> do
+        emitLabel brLabel
+        contResult <- brCont br
+        emit $ branch postLabel
+        return contResult
+
+      emitLabel defaultLabel
+      defaultContResult <- brCont def
+      emit $ branch postLabel
+      emitLabel postLabel
+      return $ (defaultContResult, defaultLabel) : zip contResults (snd <$> branchLabels)
+
 
 generateBody :: BodyG Expr -> Gen ()
 generateBody body = case body of

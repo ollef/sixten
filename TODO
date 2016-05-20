@@ -1,11 +1,10 @@
 LLVM code generation
-  - Constant functions should be evaluated in main
-  - Define builtins
+  - Return and pass things of size 1 normally?
   - Special-case the `Ref` constructor to use gc_alloc
     deref can be a no-op to an indirect var?
     shouldn't need size to deref
-  - Pattern matching on literals
-  - Return and pass things of size 1 normally?
+  - Define builtins
+  - Constant functions should be evaluated in main
 Cleanup
 Usage analysis for better erasure
 Add new Int type
