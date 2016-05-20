@@ -1,6 +1,5 @@
 LLVM code generation
   - Constant functions should be evaluated in main
-  - memcpy & alloca byte size
   - Define builtins
   - Special-case the `Ref` constructor to use gc_alloc
     deref can be a no-op to an indirect var?

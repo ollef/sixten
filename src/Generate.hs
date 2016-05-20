@@ -48,7 +48,7 @@ storeOperand
   -> LLVM.Operand Ptr
   -> Gen ()
 storeOperand op sz ret = case op of
-  Local l -> emit $ memcpy ret l sz
+  Local l -> wordcpy ret l sz
   Global g -> error "storeOperand TODO"
   Lit l -> emit $ store (shower l) ret
 
@@ -60,7 +60,7 @@ generateExpr expr = case expr of
   Sized sz e -> do
     szPtr <- generateOperand sz
     szInt <- nameHint "size" =: load szPtr
-    ret <- nameHint "return" =: alloca szInt
+    ret <- allocaWords (nameHint "return") szInt
     storeInnerExpr e szInt ret
     return ret
   Case (o, _) brs -> do
@@ -74,11 +74,11 @@ generateInnerExpr
 generateInnerExpr expr sz = case expr of
   Operand o -> generateOperand o
   Con qc os -> do
-    ret <- nameHint "cons-cell" =: alloca sz
+    ret <- allocaWords (nameHint "cons-cell") sz
     storeCon qc os ret
     return ret
   Call o os -> do
-    ret <- nameHint "return" =: alloca sz
+    ret <- allocaWords (nameHint "return") sz
     storeCall o os ret
     return ret
 
@@ -129,7 +129,7 @@ storeCon qc os ret = do
     index <- nameHint "index" =: getElementPtr ret i
     szPtr <- generateOperand sz
     szInt <- nameHint "size" =: load szPtr
-    emit $ memcpy index ptr szInt
+    wordcpy index ptr szInt
 
 generateBranches
   :: OperandG

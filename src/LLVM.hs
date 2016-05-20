@@ -109,6 +109,9 @@ label (Operand b) = "label" <+> b
 add :: Operand Int -> Operand Int -> Instr Int
 add x y = Instr $ "add" <+> integer x <> "," <+> unOperand y
 
+mul :: Operand Int -> Operand Int -> Instr Int
+mul x y = Instr $ "mul" <+> integer x <> "," <+> unOperand y
+
 callFun :: (Foldable f, Functor f) => Operand Fun -> f (Operand Ptr) -> Instr ()
 callFun name xs = Instr
   $ "call" <+> "void" <+> unOperand name <> "(" <> Foldable.fold (intersperse ", " $ Foldable.toList $ pointer <$> xs) <> ")"
@@ -138,11 +141,30 @@ memcpy dst src sz = Instr
   <> pointer src <+> "to i8*),"
   <+> integer sz <> ", i64" <+> align <> ", i1 false)"
 
+wordcpy
+  :: MonadState LLVMState m
+  => Operand Ptr
+  -> Operand Ptr
+  -> Operand Int
+  -> m ()
+wordcpy dst src wordSize = do
+  byteSize <- nameHint "byte-size" =: mul wordSize ptrSize
+  emit $ memcpy dst src byteSize
+
 getElementPtr :: Operand Ptr -> Operand Int -> Instr Ptr
 getElementPtr x i = Instr $ "getelementptr" <+> integerT <> "," <+> pointer x <> "," <+> integer i
 
 alloca :: Operand Int -> Instr Ptr
 alloca sz = Instr $ "alloca" <+> integerT <> "," <+> integer sz <> ", align" <+> align
+
+allocaWords
+  :: MonadState LLVMState m
+  => NameHint
+  -> Operand Int
+  -> m (Operand Ptr)
+allocaWords hint wordSize = do
+  byteSize <- nameHint "byte-size" =: mul wordSize ptrSize
+  hint =: alloca byteSize
 
 branch :: Operand Label -> Instr ()
 branch l = Instr $ "br" <+> label l
