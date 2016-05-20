@@ -26,7 +26,7 @@ type LiftedM e s = Lifted e (Meta s)
 
 type InnerExprM s = InnerExpr (Meta s)
 type ExprM s = Expr (Meta s)
-type LBodyM s = Lifted (Body Expr) (Meta s)
+type LBodyM s = Lifted Body (Meta s)
 type OperandM s = Operand (Meta s)
 
 convertInnerExpr :: LiftedM Expr s -> InnerExprM s -> TCM s (LiftedM Expr s)
@@ -131,7 +131,7 @@ convertBranches (SimpleLitBranches lbrs def)
   = litLExprBranches <$> sequence [(,) l <$> convertExpr e | (l, e) <- lbrs]
                      <*> convertExpr def
 
-convertBody :: Body Expr (MetaVar VarInfo s) -> TCM s (LBody (MetaVar VarInfo s))
+convertBody :: Body (MetaVar VarInfo s) -> TCM s (LBody (MetaVar VarInfo s))
 convertBody (Constant e) = mapLifted Constant <$> convertExpr e
 convertBody (Function xs s) = do
   trp "convertBody fun" $ show <$> Simple.fromScope s

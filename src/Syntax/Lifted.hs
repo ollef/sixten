@@ -19,22 +19,15 @@ import Prelude.Extras
 import Syntax
 import Util
 
-data Lifted e v = Lifted (Vector (NameHint, Body Expr Tele)) (Simple.Scope Tele e v)
+data Lifted e v = Lifted (Vector (NameHint, Body Tele)) (Simple.Scope Tele e v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
--- TODO don't parameterise on e since it's always Expr?
-data Body e v
-  = Constant (e v)
-  | Function (Vector NameHint) (Simple.Scope Tele e v)
+data Body v
+  = Constant (Expr v)
+  | Function (Vector NameHint) (Simple.Scope Tele Expr v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
-instance (Show1 e, Functor e) => Show1 (Body e) where
-  showsPrec1 d (Constant e) = showParen (d > 10) $
-    showString "Constant " . showsPrec1 11 e
-  showsPrec1 d (Function xs s) = showParen (d > 10) $
-    showString "Function " . showsPrec 11 xs . showString " " . showsPrec 11 s
-
-type LBody = Lifted (Body Expr)
+type LBody = Lifted Body
 type LExpr = Lifted Expr
 type LBranches = Lifted (SimpleBranches QConstr Expr)
 
@@ -142,7 +135,7 @@ bindLifted' x f = joinLifted $ mapLifted' f x
 singleLifted
   :: Functor e
   => NameHint
-  -> Body Expr Void
+  -> Body Void
   -> Simple.Scope () e v
   -> Lifted e v
 singleLifted h b s = Lifted (pure (h, vacuous b)) $ Simple.mapBound (\() -> Tele 0) s
@@ -319,7 +312,7 @@ callLExpr lsz le les
 -- Bodies
 liftBody
   :: (Eq v, Hashable v)
-  => Body Expr v
+  => Body v
   -> LExpr v
 liftBody (Constant e) = pureLifted e
 liftBody (Function vs s)
@@ -370,7 +363,7 @@ instance BindOperand Expr where
     Let h e s -> Let h (bindOperand f e) (bindOperand f s)
     Case (x, sz) brs -> Case (bindOperand f x, bindOperand f sz) $ bindOperand f brs
 
-instance BindOperand e => BindOperand (Body e) where
+instance BindOperand Body where
   bindOperand f body = case body of
     Constant e -> Constant $ bindOperand f e
     Function hs s -> Function hs $ bindOperand f s
@@ -400,10 +393,6 @@ instance Applicative Operand where
 instance Bound Lifted where
   Lifted ds d >>>= f = Lifted ds (d >>>= f)
 
-instance Bound Body where
-  Function vs s >>>= f = Function vs $ s >>>= f
-  Constant e >>>= f = Constant $ e >>= f
-
 instance Eq1 Expr
 instance Ord1 Expr
 instance Show1 Expr
@@ -417,8 +406,8 @@ instance (Eq v, IsString v, Pretty v, Pretty (e v), Functor e)
           indent 2 (vcat $ Vector.toList $ (\(n, (_, e)) -> prettyM n <+> prettyM "=" <+> prettyM (toName <$> e)) <$> Vector.zip ns ds))
      in addWheres $ prettyM (unvar toName id <$> s)
 
-instance (Eq v, IsString v, Pretty v, Pretty (e v), Functor e)
-      => Pretty (Body e v) where
+instance (Eq v, IsString v, Pretty v)
+      => Pretty (Body v) where
   prettyM body = case body of
     Constant e -> prettyM e
     Function hs s -> withNameHints hs $ \ns ->

@@ -22,7 +22,7 @@ import Util
 type OperandG = Operand (LLVM.Operand Ptr)
 type InnerExprG = InnerExpr (LLVM.Operand Ptr)
 type ExprG = Expr (LLVM.Operand Ptr)
-type BodyG e = Body e (LLVM.Operand Ptr)
+type BodyG = Body (LLVM.Operand Ptr)
 type BranchesG e = Branches QConstr e (LLVM.Operand Ptr)
 
 type Gen = ReaderT (QConstr -> Maybe Int) (State LLVMState)
@@ -209,7 +209,7 @@ generateBranches op branches brCont = do
       return $ (defaultContResult, defaultLabel) : zip contResults (snd <$> branchLabels)
 
 
-generateBody :: BodyG Expr -> Gen ()
+generateBody :: BodyG -> Gen ()
 generateBody body = case body of
   Constant _ -> return () -- TODO
   Function hs e -> do
@@ -217,4 +217,4 @@ generateBody body = case body of
     ret <- LLVM.Operand <$> freshenName "return"
     emit $ Instr $ "(" <> Foldable.fold (intersperse ", " $ pointer <$> Vector.toList vs) <> "," <+> pointer ret <> ")"
     storeExpr (instantiateVar ((vs Vector.!) . unTele) e) ret
-    emit $ retVoid
+    emit retVoid

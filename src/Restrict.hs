@@ -104,10 +104,10 @@ restrictConstantSizeScope
 restrictConstantSizeScope expr sz
   = Simple.toScope <$> restrictConstantSize (Simple.fromScope expr) sz
 
-liftProgram :: [(Name, Lifted.LBody v)] -> [(Name, Lifted.Body Lifted.Expr v)]
+liftProgram :: [(Name, Lifted.LBody v)] -> [(Name, Lifted.Body v)]
 liftProgram xs = xs >>= uncurry liftBody
 
-liftBody :: Name -> Lifted.LBody v -> [(Name, Lifted.Body Lifted.Expr v)]
+liftBody :: Name -> Lifted.LBody v -> [(Name, Lifted.Body v)]
 liftBody x (Lifted.Lifted liftedBodies (Simple.Scope body))
   = (x, inst body)
   : [ (inventName n, inst $ B <$> b)
