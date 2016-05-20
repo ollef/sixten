@@ -2,6 +2,7 @@
 module Restrict where
 
 import qualified Bound.Scope.Simple as Simple
+import Data.Bifunctor
 import Data.Hashable
 import Data.Maybe
 import Data.Monoid
@@ -21,7 +22,7 @@ restrictBody
 restrictBody expr = case expr of
     (simpleBindingsViewM Lambda.lamView -> Just (tele, s)) ->
       Lifted.lamLBody (simpleTeleNames tele) <$> restrictSScope s
-    _ -> Lifted.mapLifted Lifted.Constant <$> restrictSExpr expr
+    _ -> Lifted.mapLifted Lifted.ConstantBody <$> restrictSExpr expr
 
 restrictSExpr
   :: (Eq v, Hashable v, Show v)
@@ -108,12 +109,14 @@ liftProgram :: [(Name, Lifted.LBody v)] -> [(Name, Lifted.Body v)]
 liftProgram xs = xs >>= uncurry liftBody
 
 liftBody :: Name -> Lifted.LBody v -> [(Name, Lifted.Body v)]
-liftBody x (Lifted.Lifted liftedBodies (Simple.Scope body))
+liftBody x (Lifted.Lifted liftedFunctions (Simple.Scope body))
   = (x, inst body)
   : [ (inventName n, inst $ B <$> b)
-    | (n, (_, b)) <- zip [0..] $ Vector.toList liftedBodies
+    | (n, (_, b)) <- zip [0..]
+                   $ Vector.toList
+                   $ second Lifted.FunctionBody <$> liftedFunctions
     ]
   where
     inst = Lifted.bindOperand (unvar (Lifted.Global . inventName) pure)
     inventName (Tele tele) = x <> fromMaybe "" hint <> shower tele
-      where Hint hint = fst $ liftedBodies Vector.! tele
+      where Hint hint = fst $ liftedFunctions Vector.! tele

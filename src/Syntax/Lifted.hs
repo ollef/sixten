@@ -19,15 +19,22 @@ import Prelude.Extras
 import Syntax
 import Util
 
-data Lifted e v = Lifted (Vector (NameHint, Body Tele)) (Simple.Scope Tele e v)
+data Lifted e v = Lifted (Vector (NameHint, Function Tele)) (Simple.Scope Tele e v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
+data Direction = Indirect | Direct
+  deriving (Eq, Ord, Show)
+
 data Body v
-  = Constant (Expr v)
-  | Function (Vector NameHint) (Simple.Scope Tele Expr v)
+  = ConstantBody (Expr v)
+  | FunctionBody (Function v)
+  deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
+
+data Function v = Function (Vector NameHint) (Simple.Scope Tele Expr v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 type LBody = Lifted Body
+type LFunction = Lifted Function
 type LExpr = Lifted Expr
 type LBranches = Lifted (SimpleBranches QConstr Expr)
 
@@ -135,7 +142,7 @@ bindLifted' x f = joinLifted $ mapLifted' f x
 singleLifted
   :: Functor e
   => NameHint
-  -> Body Void
+  -> Function Void
   -> Simple.Scope () e v
   -> Lifted e v
 singleLifted h b s = Lifted (pure (h, vacuous b)) $ Simple.mapBound (\() -> Tele 0) s
@@ -314,8 +321,8 @@ liftBody
   :: (Eq v, Hashable v)
   => Body v
   -> LExpr v
-liftBody (Constant e) = pureLifted e
-liftBody (Function vs s)
+liftBody (ConstantBody e) = pureLifted e
+liftBody (FunctionBody (Function vs s))
   = Lifted (pure (mempty, f))
   $ Simple.Scope $ Sized (Lit 1)
   $ Call (pure $ B 0) $ pure . pure <$> fvs
@@ -339,6 +346,7 @@ lamLBody :: Vector NameHint -> Simple.Scope Tele LExpr v -> LBody v
 lamLBody hs (Simple.Scope (Lifted bs (Simple.Scope s)))
   = Lifted bs
   $ Simple.Scope
+  $ FunctionBody
   $ Function hs
   $ Simple.Scope
   $ commuteVars <$> s
@@ -365,8 +373,11 @@ instance BindOperand Expr where
 
 instance BindOperand Body where
   bindOperand f body = case body of
-    Constant e -> Constant $ bindOperand f e
-    Function hs s -> Function hs $ bindOperand f s
+    ConstantBody e -> ConstantBody $ bindOperand f e
+    FunctionBody fb -> FunctionBody $ bindOperand f fb
+
+instance BindOperand Function where
+  bindOperand f (Function vs s) = Function vs $ bindOperand f s
 
 instance BindOperand e => BindOperand (SimpleBranches c e) where
   bindOperand f (SimpleConBranches cbrs) = SimpleConBranches [(qc, bindOperand f tele, bindOperand f s) | (qc, tele, s) <- cbrs]
@@ -409,10 +420,15 @@ instance (Eq v, IsString v, Pretty v, Pretty (e v), Functor e)
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Body v) where
   prettyM body = case body of
-    Constant e -> prettyM e
-    Function hs s -> withNameHints hs $ \ns ->
-      prettyM "\\" <> hsep (map prettyM $ Vector.toList ns) <> prettyM "." <+>
-        associate absPrec (prettyM $ instantiateVar (fromText . (ns Vector.!) . unTele) s)
+    ConstantBody e -> prettyM e
+    FunctionBody f -> prettyM f
+
+instance (Eq v, IsString v, Pretty v)
+      => Pretty (Function v) where
+  prettyM (Function hs s) = withNameHints hs $ \ns ->
+    prettyM "\\" <> hsep (map prettyM $ Vector.toList ns) <> prettyM "." <+>
+      associate absPrec (prettyM $ instantiateVar (fromText . (ns Vector.!) . unTele) s)
+
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Operand v) where

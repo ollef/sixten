@@ -90,8 +90,8 @@ test inp = do
       restricted <- sequence [(,) x <$> Restrict.restrictBody (Lambda.Sized (Lambda.Lit 1) e) | (x, Definition e) <- erased]
       let liftedRestricted = Restrict.liftProgram restricted
       forM_ liftedRestricted $ \(x, b) -> addArity x $ case b of
-        Lifted.Function xs _ -> V.length xs
-        Lifted.Constant _ -> 0
+        Lifted.FunctionBody (Lifted.Function xs _) -> V.length xs
+        Lifted.ConstantBody _ -> 0
 
       converted' <- sequence [(,) x <$> ClosureConvert.convertBody (vacuous e) | (x, e) <- liftedRestricted]
       -- trs "converted'" $ show converted'

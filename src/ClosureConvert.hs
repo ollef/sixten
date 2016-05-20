@@ -132,15 +132,15 @@ convertBranches (SimpleLitBranches lbrs def)
                      <*> convertExpr def
 
 convertBody :: Body (MetaVar VarInfo s) -> TCM s (LBody (MetaVar VarInfo s))
-convertBody (Constant e) = mapLifted Constant <$> convertExpr e
-convertBody (Function xs s) = do
+convertBody (ConstantBody e) = mapLifted ConstantBody <$> convertExpr e
+convertBody (FunctionBody (Function xs s)) = do
   trp "convertBody fun" $ show <$> Simple.fromScope s
   modifyIndent succ
   vars <- mapM (`forall_` Unknown) xs
   let e = instantiateVar ((vars Vector.!) . unTele) s
       abstr = unvar (const Nothing) (fmap Tele . (`Vector.elemIndex` vars))
   e' <- convertExpr e
-  let result = mapLifted (Function xs . Simple.abstract abstr) e'
+  let result = mapLifted (FunctionBody . Function xs . Simple.abstract abstr) e'
   modifyIndent pred
   trs "convertBody res" vars
   trp "convertBody res" $ show <$> e'

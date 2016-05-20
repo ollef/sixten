@@ -211,8 +211,8 @@ generateBranches op branches brCont = do
 
 generateBody :: BodyG -> Gen ()
 generateBody body = case body of
-  Constant _ -> return () -- TODO
-  Function hs e -> do
+  ConstantBody _ -> return () -- TODO
+  FunctionBody (Function hs e) -> do
     vs <- Traversable.forM hs $ fmap LLVM.Operand . freshWithHint
     ret <- LLVM.Operand <$> freshenName "return"
     emit $ Instr $ "(" <> Foldable.fold (intersperse ", " $ pointer <$> Vector.toList vs) <> "," <+> pointer ret <> ")"
