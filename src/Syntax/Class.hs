@@ -47,11 +47,23 @@ usedPiView
 usedPiView (piView -> Just (n, p, e, s@(unusedScope -> Nothing))) = Just (n, p, e, s)
 usedPiView _ = Nothing
 
+usedPisViewM :: SyntaxPi e => e v -> Maybe (Telescope e v, Scope Tele e v)
+usedPisViewM = bindingsViewM usedPiView
+
 telescope :: SyntaxPi e => e v -> Telescope e v
 telescope (pisView -> (tele, _)) = tele
 
 pisView :: SyntaxPi e => e v -> (Telescope e v, Scope Tele e v)
 pisView = bindingsView piView
+
+pisViewM :: SyntaxPi e => e v -> Maybe (Telescope e v, Scope Tele e v)
+pisViewM = bindingsViewM piView
+
+lamsView :: SyntaxLambda e => e v -> (Telescope e v, Scope Tele e v)
+lamsView = bindingsView lamView
+
+lamsViewM :: SyntaxLambda e => e v -> Maybe (Telescope e v, Scope Tele e v)
+lamsViewM = bindingsViewM lamView
 
 lams :: (SyntaxLambda e, Eq v) => Telescope e v -> Scope Tele e v -> e v
 lams tele s = quantify lam s tele

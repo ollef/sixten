@@ -103,12 +103,12 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
       prettyAnnotation a (prettyM t)
       <+> "->" <+>
       associate arrPrec (prettyM e)
-    (bindingsViewM usedPiView -> Just (tele, s)) -> withTeleHints tele $ \ns ->
+    (usedPisViewM -> Just (tele, s)) -> withTeleHints tele $ \ns ->
       parens `above` absPrec $
       "forall" <+> prettyTeleVarTypes ns tele <> "." <+>
       prettyM (instantiateTele (pure . fromText <$> ns) s)
     Pi {} -> error "impossible prettyPrec pi"
-    (bindingsViewM lamView -> Just (tele, s)) -> withTeleHints tele $ \ns ->
+    (lamsViewM -> Just (tele, s)) -> withTeleHints tele $ \ns ->
       parens `above` absPrec $
       "\\" <> prettyTeleVarTypes ns tele <> "." <+>
       prettyM (instantiateTele (pure . fromText <$> ns) s)

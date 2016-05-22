@@ -99,8 +99,8 @@ addContext prog = modify $ \s -> s
         $ Vector.filter (\(_, a, _) -> relevance a == Relevant)
         $ unTelescope $ fst
         $ case def of
-            Definition e -> bindingsView lamView e
-            DataDefinition _ -> bindingsView piView defType
+            Definition e -> lamsView e
+            DataDefinition _ -> pisView defType
         )
 
     cs = HM.fromList $ do
@@ -172,7 +172,7 @@ relevantDefArity n = do
 constrArity
   :: QConstr
   -> TCM s Int
-constrArity = fmap (teleLength . fst . bindingsView piView) . qconstructor
+constrArity = fmap (teleLength . fst . pisView) . qconstructor
 
 constrIndex
   :: QConstr
@@ -191,5 +191,5 @@ relevantConstrArity
          . Vector.filter (\(_, a, _) -> relevance a == Relevant)
          . unTelescope
          . fst
-         . bindingsView piView)
+         . pisView)
   . qconstructor
