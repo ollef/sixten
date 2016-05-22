@@ -67,7 +67,7 @@ restrictExpr expr sz = do
     Lambda.Lit l -> return $ Lifted.lSizedOperand sz $ Lifted.Lit l
     Lambda.Case e brs -> Lifted.caseLStmt <$> restrictSExprSize e <*> restrictBranches brs
     Lambda.Con qc es -> Lifted.conLStmt sz qc <$> mapM restrictSExprSize es
-    (simpleBindingsViewM Lambda.lamView . Lambda.Sized undefined -> Just (tele, s)) ->
+    (simpleBindingsViewM Lambda.lamView . Lambda.Sized (Lambda.Global "restrictExpr-impossible") -> Just (tele, s)) ->
       fmap Lifted.liftLBody $ Lifted.lamLBody (simpleTeleNames tele) <$> restrictSScope s
     (Lambda.appsView -> (e, es)) ->
       Lifted.callLStmt sz <$> restrictConstantSize e 1 <*> mapM restrictSExpr es

@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, Rank2Types #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, Rank2Types, OverloadedStrings #-}
 module Syntax.Definition where
 
 import Data.Foldable
@@ -25,8 +25,8 @@ prettyTypedDef
   -> expr v
   -> Telescope expr v
   -> PrettyM Doc
-prettyTypedDef (Definition d) t _ = prettyM d <+> prettyM ":" <+> prettyM t
-prettyTypedDef (DataDefinition d) t tele = prettyDataDef tele d <+> prettyM ":" <+> prettyM t
+prettyTypedDef (Definition d) t _ = prettyM d <+> ":" <+> prettyM t
+prettyTypedDef (DataDefinition d) t tele = prettyDataDef tele d <+> ":" <+> prettyM t
 
 abstractDef
   :: Monad expr

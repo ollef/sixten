@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings #-}
 module Syntax.Data where
 
 import Bound
@@ -34,9 +34,9 @@ prettyDataDef
   => Telescope typ v
   -> DataDef typ v
   -> PrettyM Doc
-prettyDataDef ps (DataDef cs) = prettyM "data" <+> prettyM "_" <+> withTeleHints ps (\ns ->
+prettyDataDef ps (DataDef cs) = "data" <+> "_" <+> withTeleHints ps (\ns ->
     let inst = instantiate $ pure . fromText . (ns Vector.!) . unTele in
-        prettyTeleVarTypes ns ps <+> prettyM "where" <$$>
+        prettyTeleVarTypes ns ps <+> "where" <$$>
           indent 2 (vcat (map (prettyM . fmap inst) cs))
     )
 
@@ -46,7 +46,7 @@ data ConstrDef typ = ConstrDef
   } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 instance Pretty typ => Pretty (ConstrDef typ) where
-  prettyM (ConstrDef n t) = prettyM n <+> prettyM ":" <+> prettyM t
+  prettyM (ConstrDef n t) = prettyM n <+> ":" <+> prettyM t
 
 abstractDataDef :: Functor typ
                 => (a -> Maybe b) -> DataDef typ a -> DataDef typ (Var b a)

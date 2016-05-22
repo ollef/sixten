@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs, GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module Syntax.Pretty
   ( module Text.PrettyPrint.ANSI.Leijen
   , Pretty, PrettyM
@@ -47,7 +48,8 @@ infixr 6 <+>
 -------------------------------------------------------------------------------
 -- * The pretty type and class
 -------------------------------------------------------------------------------
-type PrettyM a = PrettyEnv -> a
+newtype PrettyM a = PrettyM (PrettyEnv -> a)
+  deriving (Functor, Applicative, Monad, MonadReader PrettyEnv, Monoid)
 
 data PrettyEnv = PrettyEnv
   { precedence :: !Int -- ^ The precedence of the surrounding expression
@@ -64,7 +66,7 @@ class Pretty a where
   prettyList xs = list <$> mapM (inviolable . prettyM) xs
 
 runPrettyM :: PrettyM a -> a
-runPrettyM p = p PrettyEnv
+runPrettyM (PrettyM p) = p PrettyEnv
   { precedence = -1
   , boundNames = mempty
   , freeNames  = do
@@ -171,6 +173,9 @@ parens = fmap Leijen.parens . inviolable
 -------------------------------------------------------------------------------
 -- * Instances
 -------------------------------------------------------------------------------
+instance a ~ Doc => IsString (PrettyM a) where
+  fromString = PrettyM . const . fromString
+
 instance Pretty Bool    where pretty = text . show
 instance Pretty Char    where
   pretty = text . show
@@ -185,7 +190,7 @@ instance Pretty Text    where pretty = text . Text.unpack
 instance Pretty Void    where pretty = absurd
 
 instance Pretty QConstr where
-  prettyM (QConstr q n) = prettyM q <> prettyM "." <> prettyM n
+  prettyM (QConstr q n) = prettyM q <> "." <> prettyM n
 
 instance Pretty a => Pretty [a] where prettyM = prettyList
 instance Pretty a => Pretty (Vector a) where prettyM = prettyM . Vector.toList

@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GeneralizedNewtypeDeriving, Rank2Types, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GeneralizedNewtypeDeriving, Rank2Types, ViewPatterns, OverloadedStrings #-}
 module Syntax.Telescope where
 
 import Bound
@@ -126,7 +126,7 @@ prettyTeleVarTypes ns (Telescope v) = hcat $ map go grouped
               | (Hint n, (_, a, t)):vlist' <- List.group $ zip (map Hint [(0 :: Int)..]) vlist]
     go (xs, a, t)
       = prettyAnnotationParens a
-      $ hsep (map (prettyM . (ns Vector.!)) xs) <+> prettyM ":" <+> prettyM (inst t)
+      $ hsep (map (prettyM . (ns Vector.!)) xs) <+> ":" <+> prettyM (inst t)
 
 instance (Eq1 expr, Eq v, Pretty (expr v), Monad expr, IsString v)
   => Pretty (Telescope expr v) where
@@ -143,7 +143,7 @@ prettySimpleTeleVarTypes ns (SimpleTelescope v) = hcat $ map go grouped
               | (Hint n, (_, t)):vlist' <- List.group $ zip (map Hint [(0 :: Int)..]) vlist]
     go (xs, t)
       = parens `above` annoPrec
-      $ hsep (map (prettyM . (ns Vector.!)) xs) <+> prettyM ":" <+> prettyM (inst t)
+      $ hsep (map (prettyM . (ns Vector.!)) xs) <+> ":" <+> prettyM (inst t)
 
 forMTele
   :: Monad m
@@ -174,6 +174,9 @@ iforMTele (Telescope t) f = flip Vector.imapM t $ \i (h, d, s) -> f i h d s
 
 instantiateTele :: Monad f => Vector (f a) -> Scope Tele f a -> f a
 instantiateTele vs = instantiate ((vs Vector.!) . unTele)
+
+instantiateTeleVars :: Functor f => Vector a -> Simple.Scope Tele f a -> f a
+instantiateTeleVars vs = instantiateVar ((vs Vector.!) . unTele)
 
 instantiateSimpleTeleVars
   :: Functor f

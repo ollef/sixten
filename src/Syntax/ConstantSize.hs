@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, Rank2Types, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, Rank2Types, ViewPatterns, OverloadedStrings #-}
 module Syntax.ConstantSize where
 
 import Control.Monad
@@ -95,18 +95,18 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
     Lit l     -> prettyM l
     Pi  _ a t (unusedScope -> Just e) -> parens `above` arrPrec $
       prettyAnnotation a (prettyM t)
-      <+> prettyM "->" <+>
+      <+> "->" <+>
       associate arrPrec (prettyM e)
     (bindingsViewM usedPiView -> Just (tele, s)) -> withTeleHints tele $ \ns ->
       parens `above` absPrec $
-      prettyM "forall" <+> prettyTeleVarTypes ns tele <> prettyM "." <+>
+      "forall" <+> prettyTeleVarTypes ns tele <> "." <+>
       prettyM (instantiateTele (pure . fromText <$> ns) s)
     Pi {} -> error "impossible prettyPrec pi"
     (bindingsViewM lamView -> Just (tele, s)) -> withTeleHints tele $ \ns ->
       parens `above` absPrec $
-      prettyM "\\" <> prettyTeleVarTypes ns tele <> prettyM "." <+>
+      "\\" <> prettyTeleVarTypes ns tele <> "." <+>
       prettyM (instantiateTele (pure . fromText <$> ns) s)
     Lam {} -> error "impossible prettyPrec lam"
     App e1 a e2 -> prettyApp (prettyM e1) (prettyAnnotation a $ prettyM e2)
     Case e brs -> parens `above` casePrec $
-      prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> indent 2 (prettyM brs)
+      "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (prettyM brs)

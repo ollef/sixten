@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, Rank2Types, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, OverloadedStrings, Rank2Types, ViewPatterns #-}
 module Syntax.Lambda where
 
 import qualified Bound.Scope.Simple as Simple
@@ -10,7 +10,7 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Prelude.Extras
 
-import Syntax
+import Syntax hiding (lamView)
 import Util
 
 data Sized e v = Sized (e v) (e v)
@@ -63,22 +63,17 @@ instance (Eq v, IsString v, Pretty v)
     Global g -> prettyM g
     Con c es -> prettyApps (prettyM c) $ prettyM <$> es
     Lit l -> prettyM l
-    Lam h sz s -> withNameHint h $ \n ->
-      prettyM "\\(" <> prettyM n <+> prettyM ":" <+> prettyM sz <> prettyM ")." <+>
-        prettyM (instantiateVar (\() -> fromText n) s)
-  {-
-    (bindingsViewM lamView -> Just (tele, s)) -> parens `above` absPrec $
-      withTeleHints tele $ \ns ->
-        prettyM "\\" <> prettyTeleVarTypes ns tele <> prettyM "." <+>
+    (simpleBindingsViewM lamView . Sized (Global "pretty-impossible") -> Just (tele, s)) -> parens `above` absPrec $
+      withSimpleTeleHints tele $ \ns ->
+        "\\" <> prettySimpleTeleVarTypes ns tele <> "." <+>
         associate absPrec (prettyM $ instantiateTeleVars (fromText <$> ns) s)
     Lam {} -> error "impossible prettyPrec lam"
-    -}
     App e1 e2 -> parens `above` annoPrec $
       prettyApp (prettyM e1) (prettyM e2)
     Case e brs -> parens `above` casePrec $
-      prettyM "case" <+> inviolable (prettyM e) <+>
-      prettyM "of" <$$> indent 2 (prettyM brs)
+      "case" <+> inviolable (prettyM e) <+>
+      "of" <$$> indent 2 (prettyM brs)
 
 instance Pretty (e v) => Pretty (Sized e v) where
   prettyM (Sized sz e) = parens `above` annoPrec $
-    prettyM e <+> prettyM ":" <+> prettyM sz
+    prettyM e <+> ":" <+> prettyM sz

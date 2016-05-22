@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Main where
 
 import Control.Monad.Except
@@ -107,7 +108,7 @@ test inp = do
       ) mempty of
       (Left err, t) -> do mapM_ putStrLn t; putStrLn err
       (Right (res, erased, restricted, converted, generated), _) -> do
-        mapM_ print $ (\(x, (d, t)) -> runPrettyM $ prettyM x <+> prettyM "=" <+> prettyTypedDef (fe d) (fe t) (fst $ bindingsView piView $ fe t)) <$> HM.toList res
+        mapM_ print $ (\(x, (d, t)) -> runPrettyM $ prettyM x <+> "=" <+> prettyTypedDef (fe d) (fe t) (fst $ bindingsView piView $ fe t)) <$> HM.toList res
         putStrLn "------------- erased ------------------"
         mapM_ print $ pretty <$> [(x, fe e) | (x, Definition e) <- erased]
         putStrLn "------------- restricted --------------"

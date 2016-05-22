@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveGeneric, DeriveTraversable, FlexibleContexts, Rank2Types, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveGeneric, DeriveTraversable, FlexibleContexts, Rank2Types, ViewPatterns, OverloadedStrings #-}
 module Syntax.Lifted where
 
 import GHC.Generics(Generic)
@@ -413,8 +413,8 @@ instance (Eq v, IsString v, Pretty v, Pretty (e v), Functor e)
   prettyM (Lifted ds (Simple.Scope s)) = withNameHints (fst <$> ds) $ \ns ->
     let toName = fromText . (ns Vector.!) . unTele
         addWheres x | Vector.null ds = x
-        addWheres x = x <$$> indent 2 (prettyM "where" <$$>
-          indent 2 (vcat $ Vector.toList $ (\(n, (_, e)) -> prettyM n <+> prettyM "=" <+> prettyM (toName <$> e)) <$> Vector.zip ns ds))
+        addWheres x = x <$$> indent 2 ("where" <$$>
+          indent 2 (vcat $ Vector.toList $ (\(n, (_, e)) -> prettyM n <+> "=" <+> prettyM (toName <$> e)) <$> Vector.zip ns ds))
      in addWheres $ prettyM (unvar toName id <$> s)
 
 instance (Eq v, IsString v, Pretty v)
@@ -426,7 +426,7 @@ instance (Eq v, IsString v, Pretty v)
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Function v) where
   prettyM (Function hs s) = withNameHints hs $ \ns ->
-    prettyM "\\" <> hsep (map prettyM $ Vector.toList ns) <> prettyM "." <+>
+    "\\" <> hsep (map prettyM $ Vector.toList ns) <> "." <+>
       associate absPrec (prettyM $ instantiateVar (fromText . (ns Vector.!) . unTele) s)
 
 
@@ -442,7 +442,7 @@ instance (Eq v, IsString v, Pretty v)
     Operand o -> prettyM o
     Con c vs -> prettyApps
       (prettyM c)
-      ((\(e, t) -> parens `above` annoPrec $ prettyM e <+> prettyM ":" <+> prettyM t) <$> vs)
+      ((\(e, t) -> parens `above` annoPrec $ prettyM e <+> ":" <+> prettyM t) <$> vs)
     Call v vs -> prettyApps (prettyM v) (prettyM <$> vs)
 
 instance (Eq v, IsString v, Pretty v)
@@ -450,11 +450,11 @@ instance (Eq v, IsString v, Pretty v)
   prettyM expr = case expr of
     Let h e s -> parens `above` letPrec $
       withNameHint h $ \n ->
-        prettyM "let" <+> prettyM n <+> prettyM "=" <+> inviolable (prettyM e) <+> prettyM "in" <$$>
+        "let" <+> prettyM n <+> "=" <+> inviolable (prettyM e) <+> "in" <$$>
           indent 2 (inviolable $ prettyM $ instantiate1Var (fromText n) s)
     Case (v, sz) brs -> parens `above` casePrec $
-      prettyM "case" <+> inviolable (prettyM v) <+>
-      prettyM ":" <+> inviolable (prettyM sz) <+>
-      prettyM "of" <$$> indent 2 (prettyM brs)
+      "case" <+> inviolable (prettyM v) <+>
+      ":" <+> inviolable (prettyM sz) <+>
+      "of" <$$> indent 2 (prettyM brs)
     Sized sz e -> parens `above` annoPrec $
-      prettyM e <+> prettyM ":" <+> prettyM sz
+      prettyM e <+> ":" <+> prettyM sz

@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings #-}
 module Syntax.Concrete where
 
 import Control.Monad
@@ -110,18 +110,18 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
     Con (Left c) -> prettyM c
     Con (Right qc) -> prettyM qc
     Pi  h a Wildcard s -> withNameHint h $ \x -> parens `above` absPrec $
-      prettyM "forall" <+> inviolable (prettyAnnotation a $ prettyM x)
-      <> prettyM "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
+      "forall" <+> inviolable (prettyAnnotation a $ prettyM x)
+      <> "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
     Pi  h a t s -> withNameHint h $ \x -> parens `above` absPrec $
-      prettyM "forall" <+> inviolable (prettyAnnotation a $ prettyM x)
-      <+> prettyM ":" <+> inviolable (prettyM t)
-      <> prettyM "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
+      "forall" <+> inviolable (prettyAnnotation a $ prettyM x)
+      <+> ":" <+> inviolable (prettyM t)
+      <> "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
     Lam h a s -> withNameHint h $ \x -> parens `above` absPrec $
-      prettyM "\\" <+> inviolable (prettyAnnotation a $ prettyM x)
-        <> prettyM "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
+      "\\" <+> inviolable (prettyAnnotation a $ prettyM x)
+        <> "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
     App e1 a e2 -> prettyApp (prettyM e1) (prettyAnnotation a $ prettyM e2)
     Case e brs -> parens `above` casePrec $
-      prettyM "case" <+> inviolable (prettyM e) <+> prettyM "of" <$$> indent 2 (prettyM brs)
+      "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (prettyM brs)
     Anno e t  -> parens `above` annoPrec $
-      prettyM e <+> prettyM ":" <+> associate casePrec (prettyM t)
-    Wildcard -> pure $ text "_"
+      prettyM e <+> ":" <+> associate casePrec (prettyM t)
+    Wildcard -> "_"

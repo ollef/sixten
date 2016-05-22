@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, Rank2Types #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, Rank2Types, OverloadedStrings #-}
 module Syntax.Branches where
 import qualified Bound.Scope.Simple as Simple
 import Bound
@@ -24,12 +24,12 @@ instance (Eq v, Eq1 f, Monad f, Pretty c, Pretty (f v), IsString v)
   prettyM (ConBranches cbrs _) = vcat
     [ withTeleHints tele $ \ns ->
         prettyM c <+> prettyTeleVarTypes ns tele <+>
-        prettyM "->" <+> prettyM (instantiate (pure . fromText . (ns Vector.!) . unTele) s)
+        "->" <+> prettyM (instantiate (pure . fromText . (ns Vector.!) . unTele) s)
     | (c, tele, s) <- cbrs ]
   prettyM (LitBranches lbrs def) = vcat $
-    [ prettyM l <+> prettyM "->" <+> prettyM e
+    [ prettyM l <+> "->" <+> prettyM e
     | (l, e) <- lbrs] ++
-    [prettyM "_" <+> prettyM "->" <+> prettyM def]
+    ["_" <+> "->" <+> prettyM def]
 
 exposeBranches :: Applicative expr
                => (forall v. expr v -> expr (Var e v))
@@ -54,9 +54,9 @@ instance (Eq v, Eq1 f, Functor f, Pretty c, Pretty (f v), IsString v)
   prettyM (SimpleConBranches cbrs) = vcat
     [ withSimpleTeleHints tele $ \ns ->
         prettyM c <+> prettySimpleTeleVarTypes ns tele <+>
-        prettyM "->" <+> prettyM (instantiateVar (fromText . (ns Vector.!) . unTele) s)
+        "->" <+> prettyM (instantiateVar (fromText . (ns Vector.!) . unTele) s)
     | (c, tele, s) <- cbrs ]
   prettyM (SimpleLitBranches lbrs def) = vcat $
-    [ prettyM l <+> prettyM "->" <+> prettyM e
+    [ prettyM l <+> "->" <+> prettyM e
     | (l, e) <- lbrs] ++
-    [prettyM "_" <+> prettyM "->" <+> prettyM def]
+    ["_" <+> "->" <+> prettyM def]
