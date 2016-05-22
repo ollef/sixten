@@ -13,10 +13,8 @@ import Prelude.Extras
 import Syntax hiding (lamView)
 import Util
 
-data Sized e v = Sized (e v) (e v)
+data SExpr v = Sized (Expr v) (Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
-
-type SExpr = Sized Expr
 
 data Expr v
   = Var v
@@ -40,15 +38,12 @@ lamView _ = Nothing
 
 -------------------------------------------------------------------------------
 -- Instances
-instance Bound Sized where
-  Sized s e >>>= f = Sized (s >>= f) (e >>= f)
-
 instance Eq1 Expr
 instance Ord1 Expr
 instance Show1 Expr
-instance Eq1 (Sized Expr)
-instance Ord1 (Sized Expr)
-instance Show1 (Sized Expr)
+instance Eq1 SExpr
+instance Ord1 SExpr
+instance Show1 SExpr
 
 etaLam :: Hint (Maybe Name) -> Expr v -> Simple.Scope () SExpr v -> Expr v
 etaLam _ _ (Simple.Scope (Sized _ (App (Sized _ e) (Sized _ (Var (B ()))))))
@@ -74,6 +69,6 @@ instance (Eq v, IsString v, Pretty v)
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> indent 2 (prettyM brs)
 
-instance Pretty (e v) => Pretty (Sized e v) where
+instance (Eq v, IsString v, Pretty v) => Pretty (SExpr v) where
   prettyM (Sized sz e) = parens `above` annoPrec $
     prettyM e <+> ":" <+> prettyM sz
