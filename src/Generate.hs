@@ -20,8 +20,8 @@ import Syntax.Telescope
 import Util
 
 type OperandG = Operand (LLVM.Operand Ptr)
-type InnerExprG = InnerExpr (LLVM.Operand Ptr)
 type ExprG = Expr (LLVM.Operand Ptr)
+type StmtG = Stmt (LLVM.Operand Ptr)
 type BodyG = Body (LLVM.Operand Ptr)
 type BranchesG e = Branches QConstr e (LLVM.Operand Ptr)
 
@@ -52,26 +52,37 @@ storeOperand op sz ret = case op of
   Global g -> error "storeOperand TODO"
   Lit l -> emit $ store (shower l) ret
 
-generateExpr :: ExprG -> Gen (LLVM.Operand Ptr)
-generateExpr expr = case expr of
+generateStmt :: StmtG -> Gen (LLVM.Operand Ptr)
+generateStmt expr = case expr of
   Let _h e s -> do
-    o <- generateExpr e
-    generateExpr $ instantiate1Var o s
+    o <- generateStmt e
+    generateStmt $ instantiate1Var o s
   Sized sz e -> do
     szPtr <- generateOperand sz
     szInt <- nameHint "size" =: load szPtr
     ret <- allocaWords (nameHint "return") szInt
-    storeInnerExpr e szInt ret
+    storeExpr e szInt ret
     return ret
   Case (o, _) brs -> do
-    rets <- generateBranches o brs generateExpr
+    rets <- generateBranches o brs generateStmt
     nameHint "caseResult" =: phiPtr rets
 
-generateInnerExpr
-  :: InnerExprG
+storeStmt :: StmtG -> LLVM.Operand Ptr -> Gen ()
+storeStmt expr ret = case expr of
+  Case (o, _) brs -> void $ generateBranches o brs $ \br -> storeStmt br ret
+  Let _h e s -> do
+    o <- generateStmt e
+    storeStmt (instantiate1Var o s) ret
+  Sized szOp inner -> do
+    szPtr <- generateOperand szOp
+    szInt <- nameHint "size" =: load szPtr
+    storeExpr inner szInt ret
+
+generateExpr
+  :: ExprG
   -> LLVM.Operand Int
   -> Gen (LLVM.Operand Ptr)
-generateInnerExpr expr sz = case expr of
+generateExpr expr sz = case expr of
   Operand o -> generateOperand o
   Con qc os -> do
     ret <- allocaWords (nameHint "cons-cell") sz
@@ -82,23 +93,12 @@ generateInnerExpr expr sz = case expr of
     storeCall o os ret
     return ret
 
-storeExpr :: ExprG -> LLVM.Operand Ptr -> Gen ()
-storeExpr expr ret = case expr of
-  Case (o, _) brs -> void $ generateBranches o brs $ \br -> storeExpr br ret
-  Let _h e s -> do
-    o <- generateExpr e
-    storeExpr (instantiate1Var o s) ret
-  Sized szOp inner -> do
-    szPtr <- generateOperand szOp
-    szInt <- nameHint "size" =: load szPtr
-    storeInnerExpr inner szInt ret
-
-storeInnerExpr
-  :: InnerExprG
+storeExpr
+  :: ExprG
   -> LLVM.Operand Int
   -> LLVM.Operand Ptr
   -> Gen ()
-storeInnerExpr expr sz ret = case expr of
+storeExpr expr sz ret = case expr of
   Operand o -> storeOperand o sz ret
   Con qc os -> storeCon qc os ret
   Call o os -> storeCall o os ret
@@ -133,8 +133,8 @@ storeCon qc os ret = do
 
 generateBranches
   :: OperandG
-  -> SimpleBranches QConstr Expr (LLVM.Operand Ptr)
-  -> (Expr (LLVM.Operand Ptr) -> Gen a)
+  -> SimpleBranches QConstr Stmt (LLVM.Operand Ptr)
+  -> (Stmt (LLVM.Operand Ptr) -> Gen a)
   -> Gen [(a, LLVM.Operand Label)]
 generateBranches op branches brCont = do
   expr <- generateOperand op
@@ -147,7 +147,7 @@ generateBranches op branches brCont = do
       emitLabel branchLabel
       let inst = instantiateSimpleTeleVars args
       argSizes <- forMSimpleTele tele $ \_ sz -> do
-        szPtr <- generateExpr $ inst sz
+        szPtr <- generateStmt $ inst sz
         nameHint "size" =: load szPtr
       is <- adds argSizes
       args <- Traversable.forM (Vector.zip (Vector.fromList is) $ simpleTeleNames tele) $ \(i, h) ->
@@ -172,7 +172,7 @@ generateBranches op branches brCont = do
         emitLabel branchLabel
         let inst = instantiateSimpleTeleVars args
         argSizes <- forMSimpleTele tele $ \_ sz -> do
-          szPtr <- generateExpr $ inst sz
+          szPtr <- generateStmt $ inst sz
           nameHint "size" =: load szPtr
         is <- adds $ Vector.cons (LLVM.Operand "1") argSizes
         args <- Traversable.forM (Vector.zip (Vector.fromList is) $ simpleTeleNames tele) $ \(i, h) ->
@@ -216,5 +216,5 @@ generateBody body = case body of
     vs <- Traversable.forM hs $ fmap LLVM.Operand . freshWithHint
     ret <- LLVM.Operand <$> freshenName "return"
     emit $ Instr $ "(" <> Foldable.fold (intersperse ", " $ pointer <$> Vector.toList vs) <> "," <+> pointer ret <> ")"
-    storeExpr (instantiateVar ((vs Vector.!) . unTele) e) ret
+    storeStmt (instantiateVar ((vs Vector.!) . unTele) e) ret
     emit retVoid

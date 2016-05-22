@@ -27,7 +27,7 @@ restrictBody expr = case expr of
 restrictSExpr
   :: (Eq v, Hashable v, Show v)
   => Lambda.SExpr v
-  -> TCM s (Lifted.LExpr v)
+  -> TCM s (Lifted.LStmt v)
 restrictSExpr (Lambda.Sized sz expr) = do
   rsz <- restrictExpr sz $ Lifted.pureLifted
                          $ Lifted.Sized (Lifted.Lit 1)
@@ -37,7 +37,7 @@ restrictSExpr (Lambda.Sized sz expr) = do
 restrictSExprSize
   :: (Eq v, Hashable v, Show v)
   => Lambda.SExpr v
-  -> TCM s (Lifted.LExpr v, Lifted.LExpr v)
+  -> TCM s (Lifted.LStmt v, Lifted.LStmt v)
 restrictSExprSize (Lambda.Sized sz expr) = do
   rsz <- restrictConstantSize sz 1
   rexpr <- restrictExpr expr rsz
@@ -47,7 +47,7 @@ restrictConstantSize
   :: (Eq v, Hashable v, Show v)
   => Lambda.Expr v
   -> Literal
-  -> TCM s (Lifted.LExpr v)
+  -> TCM s (Lifted.LStmt v)
 restrictConstantSize expr sz =
   restrictExpr expr $ Lifted.pureLifted
                     $ Lifted.Sized (Lifted.Lit 1)
@@ -56,8 +56,8 @@ restrictConstantSize expr sz =
 restrictExpr
   :: (Eq v, Hashable v, Show v)
   => Lambda.Expr v
-  -> Lifted.LExpr v
-  -> TCM s (Lifted.LExpr v)
+  -> Lifted.LStmt v
+  -> TCM s (Lifted.LStmt v)
 restrictExpr expr sz = do
   trp "restrictExpr" $ show <$> expr
   modifyIndent succ
@@ -65,19 +65,19 @@ restrictExpr expr sz = do
     Lambda.Var v -> return $ Lifted.lSizedOperand sz $ Lifted.Local v
     Lambda.Global g -> return $ Lifted.lSizedOperand sz $ Lifted.Global g
     Lambda.Lit l -> return $ Lifted.lSizedOperand sz $ Lifted.Lit l
-    Lambda.Case e brs -> Lifted.caseLExpr <$> restrictSExprSize e <*> restrictBranches brs
-    Lambda.Con qc es -> Lifted.conLExpr sz qc <$> mapM restrictSExprSize es
+    Lambda.Case e brs -> Lifted.caseLStmt <$> restrictSExprSize e <*> restrictBranches brs
+    Lambda.Con qc es -> Lifted.conLStmt sz qc <$> mapM restrictSExprSize es
     (simpleBindingsViewM Lambda.lamView . Lambda.Sized undefined -> Just (tele, s)) ->
       fmap Lifted.liftLBody $ Lifted.lamLBody (simpleTeleNames tele) <$> restrictSScope s
     (Lambda.appsView -> (e, es)) ->
-      Lifted.callLExpr sz <$> restrictConstantSize e 1 <*> mapM restrictSExpr es
+      Lifted.callLStmt sz <$> restrictConstantSize e 1 <*> mapM restrictSExpr es
   modifyIndent pred
   trp "restrictExpr res: " $ show <$> result
   return result
   where
-    restrictBranches (SimpleConBranches cbrs) = Lifted.conLExprBranches
+    restrictBranches (SimpleConBranches cbrs) = Lifted.conLStmtBranches
       <$> sequence [(,,) c <$> restrictTele tele <*> restrictScope s sz | (c, tele, s) <- cbrs]
-    restrictBranches (SimpleLitBranches lbrs def) = Lifted.litLExprBranches
+    restrictBranches (SimpleLitBranches lbrs def) = Lifted.litLStmtBranches
       <$> sequence [(,) l <$> restrictExpr e sz | (l, e) <- lbrs]
       <*> restrictExpr def sz
     restrictTele = mapM (\(h, s) -> (,) h <$> restrictConstantSizeScope s 1)
@@ -86,22 +86,22 @@ restrictExpr expr sz = do
 restrictScope
   :: (Eq b, Eq v, Show b, Show v, Hashable b, Hashable v)
   => Simple.Scope b Lambda.Expr v
-  -> Lifted.LExpr v
-  -> TCM s (Simple.Scope b Lifted.LExpr v)
+  -> Lifted.LStmt v
+  -> TCM s (Simple.Scope b Lifted.LStmt v)
 restrictScope expr sz
   = Simple.toScope <$> restrictExpr (Simple.fromScope expr) (F <$> sz)
 
 restrictSScope
   :: (Eq b, Eq v, Show b, Show v, Hashable b, Hashable v)
   => Simple.Scope b Lambda.SExpr v
-  -> TCM s (Simple.Scope b Lifted.LExpr v)
+  -> TCM s (Simple.Scope b Lifted.LStmt v)
 restrictSScope s = Simple.toScope <$> restrictSExpr (Simple.fromScope s)
 
 restrictConstantSizeScope
   :: (Eq b, Eq v, Show b, Show v, Hashable b, Hashable v)
   => Simple.Scope b Lambda.Expr v
   -> Literal
-  -> TCM s (Simple.Scope b Lifted.LExpr v)
+  -> TCM s (Simple.Scope b Lifted.LStmt v)
 restrictConstantSizeScope expr sz
   = Simple.toScope <$> restrictConstantSize (Simple.fromScope expr) sz
 

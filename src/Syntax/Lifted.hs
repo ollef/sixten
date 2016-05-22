@@ -26,17 +26,17 @@ data Direction = Indirect | Direct
   deriving (Eq, Ord, Show)
 
 data Body v
-  = ConstantBody (Expr v)
+  = ConstantBody (Stmt v)
   | FunctionBody (Function v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
-data Function v = Function (Vector NameHint) (Simple.Scope Tele Expr v)
+data Function v = Function (Vector NameHint) (Simple.Scope Tele Stmt v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 type LBody = Lifted Body
 type LFunction = Lifted Function
-type LExpr = Lifted Expr
-type LBranches = Lifted (SimpleBranches QConstr Expr)
+type LStmt = Lifted Stmt
+type LBranches = Lifted (SimpleBranches QConstr Stmt)
 
 data Operand v
   = Local v
@@ -55,13 +55,13 @@ instance Hashable v => Hashable (Operand v)
 instance IsString v => IsString (Operand v) where
   fromString = Local . fromString
 
-data Expr v
-  = Sized (Operand v) (InnerExpr v)
-  | Let NameHint (Expr v) (Simple.Scope () Expr v)
-  | Case (Operand v, Operand v) (SimpleBranches QConstr Expr v)
+data Stmt v
+  = Sized (Operand v) (Expr v)
+  | Let NameHint (Stmt v) (Simple.Scope () Stmt v)
+  | Case (Operand v, Operand v) (SimpleBranches QConstr Stmt v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
-data InnerExpr v
+data Expr v
   = Operand (Operand v)
   | Con QConstr (Vector (Operand v, Operand v)) -- ^ fully applied
   | Call (Operand v) (Vector (Operand v))
@@ -148,87 +148,87 @@ singleLifted
 singleLifted h b s = Lifted (pure (h, vacuous b)) $ Simple.mapBound (\() -> Tele 0) s
 
 -------------------------------------------------------------------------------
--- Exprs
-letExpr :: NameHint -> Expr v -> Simple.Scope () Expr v -> Expr v
-letExpr _ e (Simple.Scope (Sized _ (Operand (Local (B ()))))) = e
-letExpr _ (Sized _ (Operand o)) s = instantiateOperand (\() -> o) s
-letExpr h e s = Let h e s
+-- Statements
+letStmt :: NameHint -> Stmt v -> Simple.Scope () Stmt v -> Stmt v
+letStmt _ e (Simple.Scope (Sized _ (Operand (Local (B ()))))) = e
+letStmt _ (Sized _ (Operand o)) s = instantiateOperand (\() -> o) s
+letStmt h e s = Let h e s
 
-letExprs :: Vector (NameHint, Expr v) -> Simple.Scope Int Expr v -> Expr v
-letExprs es s = unvar (error "Lifted.letExprs") id <$> foldr go (Simple.fromScope s) (Vector.indexed es)
+letStmts :: Vector (NameHint, Stmt v) -> Simple.Scope Int Stmt v -> Stmt v
+letStmts es s = unvar (error "Lifted.letExprs") id <$> foldr go (Simple.fromScope s) (Vector.indexed es)
   where
-    go :: (Int, (NameHint, Expr v)) -> Expr (Var Int v) -> Expr (Var Int v)
-    go (n, (h, e)) e' = letExpr h (F <$> e) $ Simple.abstract f e'
+    go :: (Int, (NameHint, Stmt v)) -> Stmt (Var Int v) -> Stmt (Var Int v)
+    go (n, (h, e)) e' = letStmt h (F <$> e) $ Simple.abstract f e'
       where
         f (B n') | n == n' = Just ()
         f _ = Nothing
 
-callExpr :: Expr v -> Expr v -> Vector (Expr v) -> Expr v
-callExpr sz e es
-  = letExprs ((,) mempty <$> Vector.cons sz (Vector.cons e es))
+callStmt :: Stmt v -> Stmt v -> Vector (Stmt v) -> Stmt v
+callStmt sz e es
+  = letStmts ((,) mempty <$> Vector.cons sz (Vector.cons e es))
   $ Simple.Scope
   $ Sized (pure $ B 0)
   $ Call (pure $ B 1) $ pure . B <$> Vector.enumFromN 2 (Vector.length es)
 
-conExpr :: Expr v -> QConstr -> Vector (Expr v, Expr v) -> Expr v
-conExpr sz qc (Vector.unzip -> (es, szs))
-  = letExprs ((,) mempty <$> Vector.cons sz (es <> szs))
+conStmt :: Stmt v -> QConstr -> Vector (Stmt v, Stmt v) -> Stmt v
+conStmt sz qc (Vector.unzip -> (es, szs))
+  = letStmts ((,) mempty <$> Vector.cons sz (es <> szs))
   $ Simple.Scope $ Sized (pure $ B 0)
   $ Con qc $ Vector.zip (pure . B <$> Vector.enumFromN 1 len)
                         (pure . B <$> Vector.enumFromN (len + 1) len)
   where
     len = Vector.length es
 
-caseExpr :: (Expr v, Expr v) -> SimpleBranches QConstr Expr v -> Expr v
-caseExpr (e, esz) brs
-  = letExprs ((,) mempty <$> Vector.fromList [e, esz])
+caseStmt :: (Stmt v, Stmt v) -> SimpleBranches QConstr Stmt v -> Stmt v
+caseStmt (e, esz) brs
+  = letStmts ((,) mempty <$> Vector.fromList [e, esz])
   $ Simple.Scope $ Case (pure $ B 0, pure $ B 1) $ F <$> brs
 
 -------------------------------------------------------------------------------
--- Lifted Exprs
-letLExpr
+-- Lifted statements
+letLStmt
   :: (Eq v, Hashable v)
   => NameHint
-  -> LExpr v
-  -> Simple.Scope () LExpr v
-  -> LExpr v
-letLExpr h lexpr (Simple.Scope lexpr')
-  = bindLifted lexpr
-  $ \expr -> bindLifted lexpr'
+  -> LStmt v
+  -> Simple.Scope () LStmt v
+  -> LStmt v
+letLStmt h lstmt (Simple.Scope lstmt')
+  = bindLifted lstmt
+  $ \expr -> bindLifted lstmt'
   $ \expr' -> pureLifted
-  $ letExpr h (F <$> expr)
+  $ letStmt h (F <$> expr)
   $ Simple.Scope $ fmap (fmap F) . commuteVars <$> expr'
 
 commuteVars :: Var a (Var b c) -> Var b (Var a c)
 commuteVars = unvar (F . B) (unvar B (F . F))
 
-letLExprs
+letLStmts
   :: (Eq v, Hashable v)
-  => Vector (NameHint, LExpr v)
-  -> Simple.Scope Int LExpr v
-  -> LExpr v
-letLExprs es s = unvar (error "Lifted.letLExprs") id <$> foldr go (Simple.fromScope s) (Vector.indexed es)
+  => Vector (NameHint, LStmt v)
+  -> Simple.Scope Int LStmt v
+  -> LStmt v
+letLStmts es s = unvar (error "Lifted.letLStmts") id <$> foldr go (Simple.fromScope s) (Vector.indexed es)
   where
-    go (n, (h, e)) e' = letLExpr h (F <$> e) $ Simple.abstract f e'
+    go (n, (h, e)) e' = letLStmt h (F <$> e) $ Simple.abstract f e'
       where
         f (B n') | n == n' = Just ()
         f _ = Nothing
 
-caseLExpr
+caseLStmt
   :: (Eq v, Hashable v)
-  => (LExpr v, LExpr v)
+  => (LStmt v, LStmt v)
   -> LBranches v
-  -> LExpr v
-caseLExpr (b, bsz) brs
-  = letLExprs ((,) mempty <$> Vector.fromList [b, bsz])
+  -> LStmt v
+caseLStmt (b, bsz) brs
+  = letLStmts ((,) mempty <$> Vector.fromList [b, bsz])
   $ Simple.Scope
   $ mapLifted (Case (pure $ F $ B 0, pure $ F $ B 1) . fmap (fmap F)) brs
 
-conLExprBranches
+conLStmtBranches
   :: (Eq v, Hashable v)
-  => [(QConstr, Vector (NameHint, Simple.Scope Tele LExpr v), Simple.Scope Tele LExpr v)]
+  => [(QConstr, Vector (NameHint, Simple.Scope Tele LStmt v), Simple.Scope Tele LStmt v)]
   -> LBranches v
-conLExprBranches brs
+conLStmtBranches brs
   = bindLiftedVector (Vector.fromList $ do
       (_, les, Simple.Scope le) <- brs
       return $
@@ -241,25 +241,25 @@ conLExprBranches brs
           hes' = Vector.zip (fst <$> hes) es'
       return (qc, SimpleTelescope hes', Simple.Scope e)
 
-litLExprBranches
+litLStmtBranches
   :: (Eq v, Hashable v)
-  => [(Literal, LExpr v)]
-  -> LExpr v
+  => [(Literal, LStmt v)]
+  -> LStmt v
   -> LBranches v
-litLExprBranches lbrs ldef
+litLStmtBranches lbrs ldef
   = bindLifted ldef
   $ \def -> bindLiftedVector (Vector.fromList $ snd <$> lbrs)
   $ \brs -> pureLifted
   $ SimpleLitBranches (zip (fst <$> lbrs) $ Vector.toList $ fmap (fmap F) <$> brs) (F <$> def)
 
-conLExpr
+conLStmt
   :: (Eq v, Hashable v)
-  => LExpr v
+  => LStmt v
   -> QConstr
-  -> Vector (LExpr v, LExpr v)
-  -> LExpr v
-conLExpr sz qc (Vector.unzip -> (es, szs))
-  = letLExprs ((,) mempty <$> Vector.cons sz (es <> szs)) $ Simple.Scope
+  -> Vector (LStmt v, LStmt v)
+  -> LStmt v
+conLStmt sz qc (Vector.unzip -> (es, szs))
+  = letLStmts ((,) mempty <$> Vector.cons sz (es <> szs)) $ Simple.Scope
   $ pureLifted
   $ Sized (pure $ B 0)
   $ Con qc $ Vector.zip (pure . B <$> Vector.enumFromN 1 len)
@@ -267,16 +267,16 @@ conLExpr sz qc (Vector.unzip -> (es, szs))
   where
     len = Vector.length es
 
-lLit :: Literal -> LExpr v
+lLit :: Literal -> LStmt v
 lLit = pureLifted . Sized (Lit 1) . Operand . Lit
 
 lSized
   :: (Eq v, Hashable v)
-  => LExpr v
-  -> LExpr v
-  -> LExpr v
+  => LStmt v
+  -> LStmt v
+  -> LStmt v
 lSized sz e
-  = letLExprs ((,) mempty <$> Vector.fromList [sz, e])
+  = letLStmts ((,) mempty <$> Vector.fromList [sz, e])
   $ Simple.Scope
   $ pureLifted
   $ Sized (pure $ B 0)
@@ -284,30 +284,30 @@ lSized sz e
 
 lSizedOperand
   :: (Eq v, Hashable v)
-  => LExpr v
+  => LStmt v
   -> Operand v
-  -> LExpr v
+  -> LStmt v
 lSizedOperand sz = lSizedInnerExpr sz . Operand
 
 lSizedInnerExpr
   :: (Eq v, Hashable v)
-  => LExpr v
-  -> InnerExpr v
-  -> LExpr v
+  => LStmt v
+  -> Expr v
+  -> LStmt v
 lSizedInnerExpr sz e
-  = letLExpr mempty sz
+  = letLStmt mempty sz
   $ Simple.Scope
   $ pureLifted
   $ Sized (pure $ B ()) $ F <$> e
 
-callLExpr
+callLStmt
   :: (Eq v, Hashable v)
-  => LExpr v
-  -> LExpr v
-  -> Vector (LExpr v)
-  -> LExpr v
-callLExpr lsz le les
-  = letLExprs ((,) mempty <$> Vector.cons lsz (Vector.cons le les))
+  => LStmt v
+  -> LStmt v
+  -> Vector (LStmt v)
+  -> LStmt v
+callLStmt lsz le les
+  = letLStmts ((,) mempty <$> Vector.cons lsz (Vector.cons le les))
   $ Simple.Scope
   $ pureLifted
   $ Sized (pure $ B 0)
@@ -320,7 +320,7 @@ callLExpr lsz le les
 liftBody
   :: (Eq v, Hashable v)
   => Body v
-  -> LExpr v
+  -> LStmt v
 liftBody (ConstantBody e) = pureLifted e
 liftBody (FunctionBody (Function vs s))
   = Lifted (pure (mempty, f))
@@ -339,10 +339,10 @@ liftBody (FunctionBody (Function vs s))
 liftLBody
   :: (Eq v, Hashable v)
   => LBody v
-  -> LExpr v
+  -> LStmt v
 liftLBody lbody = bindLifted' lbody liftBody
 
-lamLBody :: Vector NameHint -> Simple.Scope Tele LExpr v -> LBody v
+lamLBody :: Vector NameHint -> Simple.Scope Tele LStmt v -> LBody v
 lamLBody hs (Simple.Scope (Lifted bs (Simple.Scope s)))
   = Lifted bs
   $ Simple.Scope
@@ -359,13 +359,13 @@ class BindOperand f where
 instance BindOperand Operand where
   bindOperand f o = o >>= f
 
-instance BindOperand InnerExpr where
+instance BindOperand Expr where
   bindOperand f expr = case expr of
     Operand o -> Operand $ bindOperand f o
     Con qc os -> Con qc $ bimap (bindOperand f) (bindOperand f) <$> os
     Call o os -> Call (bindOperand f o) (bindOperand f <$> os)
 
-instance BindOperand Expr where
+instance BindOperand Stmt where
   bindOperand f expr = case expr of
     Sized o i -> Sized (bindOperand f o) (bindOperand f i)
     Let h e s -> Let h (bindOperand f e) (bindOperand f s)
@@ -404,9 +404,9 @@ instance Applicative Operand where
 instance Bound Lifted where
   Lifted ds d >>>= f = Lifted ds (d >>>= f)
 
-instance Eq1 Expr
-instance Ord1 Expr
-instance Show1 Expr
+instance Eq1 Stmt
+instance Ord1 Stmt
+instance Show1 Stmt
 
 instance (Eq v, IsString v, Pretty v, Pretty (e v), Functor e)
       => Pretty (Lifted e v) where
@@ -437,7 +437,7 @@ instance (Eq v, IsString v, Pretty v)
   prettyM (Lit l) = prettyM l
 
 instance (Eq v, IsString v, Pretty v)
-      => Pretty (InnerExpr v) where
+      => Pretty (Expr v) where
   prettyM expr = case expr of
     Operand o -> prettyM o
     Con c vs -> prettyApps
@@ -446,7 +446,7 @@ instance (Eq v, IsString v, Pretty v)
     Call v vs -> prettyApps (prettyM v) (prettyM <$> vs)
 
 instance (Eq v, IsString v, Pretty v)
-      => Pretty (Expr v) where
+      => Pretty (Stmt v) where
   prettyM expr = case expr of
     Let h e s -> parens `above` letPrec $
       withNameHint h $ \n ->

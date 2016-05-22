@@ -24,53 +24,53 @@ instance Show1 VarInfo
 type Meta = MetaVar VarInfo
 type LiftedM e s = Lifted e (Meta s)
 
-type InnerExprM s = InnerExpr (Meta s)
 type ExprM s = Expr (Meta s)
+type StmtM s = Stmt (Meta s)
 type LBodyM s = Lifted Body (Meta s)
 type OperandM s = Operand (Meta s)
 
-convertInnerExpr :: LiftedM Expr s -> InnerExprM s -> TCM s (LiftedM Expr s)
-convertInnerExpr sz expr = do
-  trp "convertInnerExpr" $ show <$> expr
+convertExpr :: LiftedM Stmt s -> ExprM s -> TCM s (LiftedM Stmt s)
+convertExpr sz expr = do
+  trp "convertExpr" $ show <$> expr
   modifyIndent succ
   result <- case expr of
     Operand o -> convertOperand sz o
-    Con qc os -> conLExpr sz qc <$> forM os (\(o, sz') -> do
+    Con qc os -> conLStmt sz qc <$> forM os (\(o, sz') -> do
       sze <- convertOperand (lLit 1) sz'
       oe <- convertOperand sze o
       return (oe, sze)
      )
     Call o os -> convertCall sz o os
   modifyIndent pred
-  trp "convertInnerExpr res" $ show <$> result
+  trp "convertExpr res" $ show <$> result
   return result
 
-convertExpr :: ExprM s -> TCM s (LiftedM Expr s)
-convertExpr expr = case expr of
+convertStmt :: StmtM s -> TCM s (LiftedM Stmt s)
+convertStmt expr = case expr of
   Sized sz e -> do
     liftedSz <- convertOperand (lLit 1) sz
-    convertInnerExpr liftedSz e
+    convertExpr liftedSz e
   Let h e s -> do
     v <- forall_ h Unknown
-    e' <- convertExpr e
-    s' <- convertExpr $ instantiateVar (\() -> v) s
-    return $ letLExpr h e' $ Simple.abstract1 v s'
+    e' <- convertStmt e
+    s' <- convertStmt $ instantiateVar (\() -> v) s
+    return $ letLStmt h e' $ Simple.abstract1 v s'
   Case (o, osz) brs -> do
     liftedSz <- convertOperand (lLit 1) osz
     liftedO <- convertOperand liftedSz o
-    caseLExpr (liftedO, liftedSz) <$> convertBranches brs
+    caseLStmt (liftedO, liftedSz) <$> convertBranches brs
 
-convertOperand :: LiftedM Expr s -> OperandM s -> TCM s (LiftedM Expr s)
+convertOperand :: LiftedM Stmt s -> OperandM s -> TCM s (LiftedM Stmt s)
 convertOperand sz operand = case operand of
   Local v -> return $ lSizedOperand sz $ Local v
   Global _ -> convertCall sz operand mempty
   Lit l -> return $ lLit l
 
 convertCall
-  :: LiftedM Expr s
+  :: LiftedM Stmt s
   -> OperandM s
   -> Vector (OperandM s)
-  -> TCM s (LiftedM Expr s)
+  -> TCM s (LiftedM Stmt s)
 convertCall sz operand args = case operand of
   Local _ -> return
            $ lSizedInnerExpr sz
@@ -105,7 +105,7 @@ convertCall sz operand args = case operand of
         $ (\x -> (fmap F x, Lit 1)) <$> args
       | argsLen > arity = do
         let (args', rest) = Vector.splitAt argsLen args
-        return $ letLExpr mempty (pureLifted $ Sized (Lit 1) $ Call (Global g) args')
+        return $ letLStmt mempty (pureLifted $ Sized (Lit 1) $ Call (Global g) args')
                $ Simple.toScope
                $ lSizedInnerExpr (F <$> sz)
                $ Call (Global $ Builtin.apply $ Vector.length args')
@@ -113,33 +113,33 @@ convertCall sz operand args = case operand of
       | otherwise = return $ lSizedInnerExpr sz $ Call (Global g) args
 
 convertBranches
-  :: SimpleBranches QConstr Expr (Meta s)
+  :: SimpleBranches QConstr Stmt (Meta s)
   -> TCM s (LBranches (Meta s))
 convertBranches (SimpleConBranches cbrs) = do
   cbrs' <- forM cbrs $ \(c, tele, brScope) -> mdo
     tele' <- forMSimpleTele tele $ \h s -> do
       let t = instantiateSimpleTeleVars vs s
-      t' <- convertExpr t
+      t' <- convertStmt t
       v <- forall_ h Unknown
       return (v, (h, Simple.Scope $ abstr <$> t'))
     let vs = fst <$> tele'
         abstr x = maybe (F x) B $ teleAbstraction vs x
-    brScope' <- convertExpr $ instantiateSimpleTeleVars vs brScope
+    brScope' <- convertStmt $ instantiateSimpleTeleVars vs brScope
     return (c, snd <$> tele', Simple.Scope $ abstr <$> brScope')
-  return $ conLExprBranches cbrs'
+  return $ conLStmtBranches cbrs'
 convertBranches (SimpleLitBranches lbrs def)
-  = litLExprBranches <$> sequence [(,) l <$> convertExpr e | (l, e) <- lbrs]
-                     <*> convertExpr def
+  = litLStmtBranches <$> sequence [(,) l <$> convertStmt e | (l, e) <- lbrs]
+                     <*> convertStmt def
 
 convertBody :: Body (MetaVar VarInfo s) -> TCM s (LBody (MetaVar VarInfo s))
-convertBody (ConstantBody e) = mapLifted ConstantBody <$> convertExpr e
+convertBody (ConstantBody e) = mapLifted ConstantBody <$> convertStmt e
 convertBody (FunctionBody (Function xs s)) = do
   trp "convertBody fun" $ show <$> Simple.fromScope s
   modifyIndent succ
   vars <- mapM (`forall_` Unknown) xs
   let e = instantiateVar ((vars Vector.!) . unTele) s
       abstr = unvar (const Nothing) (fmap Tele . (`Vector.elemIndex` vars))
-  e' <- convertExpr e
+  e' <- convertStmt e
   let result = mapLifted (FunctionBody . Function xs . Simple.abstract abstr) e'
   modifyIndent pred
   trs "convertBody res" vars
