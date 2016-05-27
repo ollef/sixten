@@ -22,7 +22,7 @@ import Util
 data Lifted e v = Lifted (Vector (NameHint, Function Tele)) (Simple.Scope Tele e v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
-data Direction = Indirect | Direct
+data Direction = Direct | Indirect
   deriving (Eq, Ord, Show)
 
 data Body v
@@ -30,7 +30,7 @@ data Body v
   | FunctionBody (Function v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
-data Function v = Function (Vector NameHint) (Simple.Scope Tele Stmt v)
+data Function v = Function (Vector (NameHint, Direction)) (Simple.Scope Tele Stmt v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 type LBody = Lifted Body
@@ -327,7 +327,7 @@ liftBody (FunctionBody (Function vs s))
   $ Simple.Scope $ Sized (Lit 1)
   $ Call (pure $ B 0) $ pure . pure <$> fvs
   where
-    f = Function (fmap mempty fvs <> vs)
+    f = Function (fmap (const (mempty, Indirect)) fvs <> vs)
       $ Simple.toScope
       $ unvar (B . (+ Tele fvsLen)) (unvar F $ fromJust err . ix)
      <$> Simple.fromScope (F <$> s)
@@ -342,7 +342,7 @@ liftLBody
   -> LStmt v
 liftLBody lbody = bindLifted' lbody liftBody
 
-lamLBody :: Vector NameHint -> Simple.Scope Tele LStmt v -> LBody v
+lamLBody :: Vector (NameHint, Direction) -> Simple.Scope Tele LStmt v -> LBody v
 lamLBody hs (Simple.Scope (Lifted bs (Simple.Scope s)))
   = Lifted bs
   $ Simple.Scope
@@ -425,7 +425,7 @@ instance (Eq v, IsString v, Pretty v)
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Function v) where
-  prettyM (Function hs s) = withNameHints hs $ \ns ->
+  prettyM (Function hs s) = withNameHints (fst <$> hs) $ \ns ->
     "\\" <> hsep (map prettyM $ Vector.toList ns) <> "." <+>
       associate absPrec (prettyM $ instantiateVar (fromText . (ns Vector.!) . unTele) s)
 

@@ -6,6 +6,8 @@ import Data.Bifunctor
 import Data.Hashable
 import Data.Maybe
 import Data.Monoid
+import Data.Vector(Vector)
+import qualified Data.Vector as Vector
 
 import Syntax
 import qualified Syntax.Lambda as Lambda
@@ -13,16 +15,24 @@ import qualified Syntax.Lifted as Lifted
 import Meta
 import TCM
 import Util
-import qualified Data.Vector as Vector
+
+simpleTeleDirs :: SimpleTelescope Lambda.Expr v -> Vector Lifted.Direction
+simpleTeleDirs (SimpleTelescope xs) = go . snd <$> xs
+  where
+    go (Simple.Scope (Lambda.Lit 1)) = Lifted.Direct
+    go _ = Lifted.Indirect
+
+simpleTeleDirectedNames :: SimpleTelescope Lambda.Expr v -> Vector (NameHint, Lifted.Direction)
+simpleTeleDirectedNames tele = Vector.zip (simpleTeleNames tele) (simpleTeleDirs tele)
 
 restrictBody
   :: (Eq v, Hashable v, Show v)
   => Lambda.SExpr v
   -> TCM s (Lifted.LBody v)
 restrictBody expr = case expr of
-    (simpleBindingsViewM Lambda.lamView -> Just (tele, s)) ->
-      Lifted.lamLBody (simpleTeleNames tele) <$> restrictSScope s
-    _ -> Lifted.mapLifted Lifted.ConstantBody <$> restrictSExpr expr
+  (simpleBindingsViewM Lambda.lamView -> Just (tele, s)) ->
+    Lifted.lamLBody (simpleTeleDirectedNames tele) <$> restrictSScope s
+  _ -> Lifted.mapLifted Lifted.ConstantBody <$> restrictSExpr expr
 
 restrictSExpr
   :: (Eq v, Hashable v, Show v)
@@ -68,7 +78,7 @@ restrictExpr expr sz = do
     Lambda.Case e brs -> Lifted.caseLStmt <$> restrictSExprSize e <*> restrictBranches brs
     Lambda.Con qc es -> Lifted.conLStmt sz qc <$> mapM restrictSExprSize es
     (simpleBindingsViewM Lambda.lamView . Lambda.Sized (Lambda.Global "restrictExpr-impossible") -> Just (tele, s)) ->
-      fmap Lifted.liftLBody $ Lifted.lamLBody (simpleTeleNames tele) <$> restrictSScope s
+      fmap Lifted.liftLBody $ Lifted.lamLBody (simpleTeleDirectedNames tele) <$> restrictSScope s
     (Lambda.appsView -> (e, es)) ->
       Lifted.callLStmt sz <$> restrictConstantSize e 1 <*> mapM restrictSExpr es
   modifyIndent pred

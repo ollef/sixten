@@ -166,13 +166,19 @@ allocaWords hint wordSize = do
   byteSize <- nameHint "byte-size" =: mul wordSize ptrSize
   hint =: alloca byteSize
 
+intToPtr :: Operand Int -> Instr Ptr
+intToPtr i = Instr $ "inttoptr" <+> integer i <+> "to" <+> pointerT
+
+ptrToInt :: Operand Ptr -> Instr Int
+ptrToInt p = Instr $ "ptrtoint" <+> pointer p <+> "to" <+> integerT
+
 branch :: Operand Label -> Instr ()
 branch l = Instr $ "br" <+> label l
 
 load :: Operand Ptr -> Instr Int
 load x = Instr $ "load" <+> integerT <> "," <+> pointer x
 
-store :: Operand Int -> Operand Ptr -> Instr Int
+store :: Operand Int -> Operand Ptr -> Instr ()
 store x p = Instr $ "store" <+> integer x <> "," <+> pointer p
 
 switch :: Operand Int -> Operand Label -> [(Int, Operand Label)] -> Instr ()
