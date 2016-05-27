@@ -102,7 +102,10 @@ test inp = do
       liftedConverted <- traverse (traverse $ traverse va) $ Restrict.liftProgram converted
 
       qcindex <- qconstructorIndex
-      let generated = [(x, fold $ intersperse (fromString "\n") $ snd $ Generate.runGen qcindex $ Generate.generateBody e) | (x, e) <- liftedConverted]
+      let genv = Generate.GenEnv qcindex (`HM.lookup` lconvprog)
+          lconvprog = HM.fromList liftedConverted
+
+      let generated = [(x, fold $ intersperse (fromString "\n") $ snd $ Generate.runGen genv $ Generate.generateBody $ fmap absurd e) | (x, e) <- liftedConverted]
 
       return (cxt, erased, restricted, converted, generated)
       ) mempty of

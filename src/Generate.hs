@@ -5,10 +5,12 @@ import Control.Monad.State
 import Control.Monad.Reader
 import qualified Data.Foldable as Foldable
 import Data.List
+import Data.Maybe
 import Data.Monoid
 import qualified Data.Traversable as Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
+import Data.Void
 
 import LLVM hiding (Operand)
 import qualified LLVM
@@ -29,13 +31,25 @@ type StmtG = Stmt Var
 type BodyG = Body Var
 type BranchesG e = Branches QConstr e Var
 
-type Gen = ReaderT (QConstr -> Maybe Int) (State LLVMState)
+data GenEnv = GenEnv
+  { constrArity :: QConstr -> Maybe Int
+  , definitions :: Name -> Maybe (Body Void)
+  }
 
-runGen :: (QConstr -> Maybe Int) -> Gen a -> (a, [B])
+funParamDirections :: Name -> Gen (Maybe (Vector Direction))
+funParamDirections n = do
+  mbody <- asks (($ n) . definitions)
+  case mbody of
+    Just (FunctionBody (Function xs _)) -> return $ Just $ snd <$> xs
+    _ -> return Nothing
+
+type Gen = ReaderT GenEnv (State LLVMState)
+
+runGen :: GenEnv -> Gen a -> (a, [B])
 runGen f m = runLLVM $ runReaderT m f
 
 constrIndex :: QConstr -> Gen (Maybe Int)
-constrIndex qc = asks ($ qc)
+constrIndex qc = asks $ ($ qc) . constrArity
 
 generateOperand :: OperandG -> Gen Var
 generateOperand op = case op of
@@ -132,17 +146,31 @@ storeExpr expr sz ret = case expr of
   Con qc os -> storeCon qc os ret
   Call o os -> storeCall o os ret
 
+callFunVars
+  :: (Foldable f, Functor f)
+  => LLVM.Operand Fun
+  -> f Var
+  -> Instr ()
+callFunVars name xs = Instr
+  $ "call" <+> "void" <+> unOperand name <> "(" <> Foldable.fold (intersperse ", " $ Foldable.toList $ go <$> xs) <> ")"
+  where
+    go (DirectVar x) = integer x
+    go (IndirectVar x) = pointer x
+
 storeCall
   :: OperandG
   -> Vector OperandG
   -> LLVM.Operand Ptr
   -> Gen ()
-storeCall o os ret = do
-  fVar <- generateOperand o
-  fPtr <- loadVarPtr fVar
-  f <- nameHint "function" =: bitcastToFun fPtr (Vector.length os + 1)
-  args <- mapM (generateOperand >=> indirect) os
-  emit $ callFun f $ Vector.snoc args ret -- TODO get direction from function
+storeCall (Global g) os ret = do
+  ds <- fromMaybe (Vector.replicate (Vector.length os) Direct) <$> funParamDirections g
+  args <- forM (Vector.zip os ds) $ \(o, d) -> do
+    v <- generateOperand o
+    case d of
+      Direct -> DirectVar <$> mempty =: loadVar v
+      Indirect -> IndirectVar <$> indirect v
+  emit $ callFunVars (LLVM.Operand g) $ Vector.snoc args $ IndirectVar ret
+storeCall _ _ _ = error "storeCall unknown function"
 
 storeCon
   :: QConstr
