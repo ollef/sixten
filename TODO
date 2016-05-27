@@ -1,6 +1,5 @@
 LLVM code generation
   - Pass things of size 1 normally?
-    * Use i64 operands for size 1 things to avoid many back-and-forth casts?
     * Make global functions keep track of their parameters' Direction
     * Make the Restrict pass use meta vars to keep track of this info
   - Return things of size 1 normally

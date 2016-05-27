@@ -19,7 +19,9 @@ import Syntax.Name
 import Syntax.Telescope
 import Util
 
-type Var = (LLVM.Operand Ptr, Direction)
+data Var
+  = IndirectVar (LLVM.Operand Ptr)
+  | DirectVar (LLVM.Operand Int)
 
 type OperandG = Operand Var
 type ExprG = Expr Var
@@ -38,40 +40,35 @@ constrIndex qc = asks ($ qc)
 generateOperand :: OperandG -> Gen Var
 generateOperand op = case op of
   Local l -> return l
-  Global g -> return (LLVM.Operand $ "@" <> g, Direct) -- TODO constants?
-  Lit l -> do
-    lptr <- nameHint "lit-ptr" =: intToPtr (shower l)
-    return (lptr, Direct)
+  Global g -> return (DirectVar $ LLVM.Operand $ "@" <> g) -- TODO constants?
+  Lit l -> return $ DirectVar $ shower l
 
 loadVar :: Var -> Instr Int
-loadVar (o, Direct) = ptrToInt o
-loadVar (o, Indirect) = load o
+loadVar (DirectVar o) = Instr $ integer o
+loadVar (IndirectVar o) = load o
 
 loadVarPtr :: Var -> Gen (LLVM.Operand Ptr)
-loadVarPtr (o, Direct) = return o
-loadVarPtr (o, Indirect) = do
+loadVarPtr (DirectVar o) = mempty =: intToPtr o
+loadVarPtr (IndirectVar o) = do
   res <- mempty =: load o
   mempty =: intToPtr res
 
 indirect :: Var -> Gen (LLVM.Operand Ptr)
-indirect (o, Direct) = do
+indirect (DirectVar o) = do
   result <- nameHint "indirection" =: alloca ptrSize
-  i <- mempty =: ptrToInt o
-  emit $ store i result
+  emit $ store o result
   return result
-indirect (o, Indirect) = return o
+indirect (IndirectVar o) = return o
 
 allocaVarWords :: NameHint -> Var -> Gen Var
 allocaVarWords hint v = do
   i <- mempty =: loadVar v
   ptr <- allocaWords hint i
-  return (ptr, Indirect)
+  return $ IndirectVar ptr
 
 varcpy :: LLVM.Operand Ptr -> Var -> LLVM.Operand Int -> Gen ()
-varcpy dst (src, Indirect) sz = wordcpy dst src sz
-varcpy dst (src, Direct) _sz = do
-  srcInt <- mempty =: ptrToInt src
-  emit $ store srcInt dst
+varcpy dst (DirectVar src) _sz = emit $ store src dst
+varcpy dst (IndirectVar src) sz = wordcpy dst src sz
 
 storeOperand
   :: OperandG
@@ -79,10 +76,7 @@ storeOperand
   -> LLVM.Operand Ptr
   -> Gen ()
 storeOperand op sz ret = case op of
-  Local (l, Indirect) -> wordcpy ret l sz
-  Local (lptr, Direct) -> do
-    l <- nameHint "lit" =: ptrToInt lptr
-    emit $ store l ret
+  Local l -> varcpy ret l sz
   Global g -> error "storeOperand TODO"
   Lit l -> emit $ store (shower l) ret
 
@@ -96,11 +90,11 @@ generateStmt expr = case expr of
     szInt <- nameHint "size" =: loadVar szVar
     ret <- allocaWords (nameHint "return") szInt
     storeExpr e szInt ret
-    return (ret, Indirect)
+    return $ IndirectVar ret
   Case (o, _) brs -> do
     rets <- generateBranches o brs $ generateStmt >=> indirect
     res <- nameHint "caseResult" =: phiPtr rets
-    return (res, Indirect)
+    return $ IndirectVar res
 
 storeStmt :: StmtG -> LLVM.Operand Ptr -> Gen ()
 storeStmt expr ret = case expr of
@@ -122,11 +116,11 @@ generateExpr expr sz = case expr of
   Con qc os -> do
     ret <- allocaWords (nameHint "cons-cell") sz
     storeCon qc os ret
-    return (ret, Indirect)
+    return $ IndirectVar ret
   Call o os -> do
     ret <- allocaWords (nameHint "return") sz
     storeCall o os ret
-    return (ret, Indirect)
+    return $ IndirectVar ret
 
 storeExpr
   :: ExprG
@@ -186,7 +180,7 @@ generateBranches op branches brCont = do
       is <- adds argSizes
       args <- Traversable.forM (Vector.zip (Vector.fromList is) $ simpleTeleNames tele) $ \(i, h) -> do
         ptr <- h =: getElementPtr expr i
-        return (ptr, Indirect)
+        return $ IndirectVar ptr
       contResult <- brCont $ inst brScope
       emit $ branch postLabel
       emitLabel postLabel
@@ -212,7 +206,7 @@ generateBranches op branches brCont = do
         is <- adds $ Vector.cons (LLVM.Operand "1") argSizes
         args <- Traversable.forM (Vector.zip (Vector.fromList is) $ simpleTeleNames tele) $ \(i, h) -> do
           ptr <- h =: getElementPtr expr i
-          return (ptr, Indirect)
+          return $ IndirectVar ptr
         contResult <- brCont $ inst brScope
         emit $ branch postLabel
         return contResult
@@ -251,8 +245,13 @@ generateBody body = case body of
   FunctionBody (Function hs e) -> do
     vs <- Traversable.forM hs $ \(h, d) -> do
       n <- freshWithHint h
-      return (LLVM.Operand n, d)
+      return $ case d of
+        Direct -> DirectVar $ LLVM.Operand n
+        Indirect -> IndirectVar $ LLVM.Operand n
     ret <- LLVM.Operand <$> freshenName "return"
-    emit $ Instr $ "(" <> Foldable.fold (intersperse ", " $ pointer . fst <$> Vector.toList vs) <> "," <+> pointer ret <> ")"
+    emit $ Instr $ "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList vs) <> "," <+> pointer ret <> ")"
     storeStmt (instantiateVar ((vs Vector.!) . unTele) e) ret
     emit retVoid
+    where
+      go (DirectVar n) = integer n
+      go (IndirectVar n) = pointer n
