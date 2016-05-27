@@ -57,9 +57,9 @@ generateOperand op = case op of
   Global g -> return (DirectVar $ LLVM.Operand $ "@" <> g) -- TODO constants?
   Lit l -> return $ DirectVar $ shower l
 
-loadVar :: Var -> Instr Int
-loadVar (DirectVar o) = Instr $ integer o
-loadVar (IndirectVar o) = load o
+loadVar :: NameHint -> Var -> Gen (LLVM.Operand Int)
+loadVar _ (DirectVar o) = return o
+loadVar h (IndirectVar o) = h =: load o
 
 loadVarPtr :: Var -> Gen (LLVM.Operand Ptr)
 loadVarPtr (DirectVar o) = mempty =: intToPtr o
@@ -76,7 +76,7 @@ indirect (IndirectVar o) = return o
 
 allocaVarWords :: NameHint -> Var -> Gen Var
 allocaVarWords hint v = do
-  i <- mempty =: loadVar v
+  i <- loadVar mempty v
   ptr <- allocaWords hint i
   return $ IndirectVar ptr
 
@@ -101,7 +101,7 @@ generateStmt expr = case expr of
     generateStmt $ instantiate1Var o s
   Sized sz e -> do
     szVar <- generateOperand sz
-    szInt <- nameHint "size" =: loadVar szVar
+    szInt <- loadVar (nameHint "size") szVar
     ret <- allocaWords (nameHint "return") szInt
     storeExpr e szInt ret
     return $ IndirectVar ret
@@ -118,7 +118,7 @@ storeStmt expr ret = case expr of
     storeStmt (instantiate1Var o s) ret
   Sized szOp inner -> do
     szPtr <- generateOperand szOp
-    szInt <- nameHint "size" =: loadVar szPtr
+    szInt <- loadVar (nameHint "size") szPtr
     storeExpr inner szInt ret
 
 generateExpr
@@ -167,7 +167,7 @@ storeCall (Global g) os ret = do
   args <- forM (Vector.zip os ds) $ \(o, d) -> do
     v <- generateOperand o
     case d of
-      Direct -> DirectVar <$> mempty =: loadVar v
+      Direct -> DirectVar <$> loadVar mempty v
       Indirect -> IndirectVar <$> indirect v
   emit $ callFunVars (LLVM.Operand g) $ Vector.snoc args $ IndirectVar ret
 storeCall _ _ _ = error "storeCall unknown function"
@@ -181,7 +181,7 @@ storeCon qc os ret = do
   mqcIndex <- constrIndex qc
   let os' = maybe id (\i -> Vector.cons (Lit $ fromIntegral i, Lit 1)) mqcIndex os
   sizes <- mapM (generateOperand . snd) os'
-  sizeInts <- Traversable.forM sizes $ \ptr -> mempty =: loadVar ptr
+  sizeInts <- Traversable.forM sizes $ \ptr -> loadVar mempty ptr
   is <- adds sizeInts
   Foldable.forM_ (zip (Vector.toList sizeInts) $ zip is $ Vector.toList os') $ \(sz, (i, (o, _))) -> do
     index <- nameHint "index" =: getElementPtr ret i
@@ -204,7 +204,7 @@ generateBranches op branches brCont = do
       let inst = instantiateSimpleTeleVars args
       argSizes <- forMSimpleTele tele $ \_ sz -> do
         szVar <- generateStmt $ inst sz
-        nameHint "size" =: loadVar szVar
+        loadVar (nameHint "size") szVar
       is <- adds argSizes
       args <- Traversable.forM (Vector.zip (Vector.fromList is) $ simpleTeleNames tele) $ \(i, h) -> do
         ptr <- h =: getElementPtr expr i
@@ -230,7 +230,7 @@ generateBranches op branches brCont = do
         let inst = instantiateSimpleTeleVars args
         argSizes <- forMSimpleTele tele $ \_ sz -> do
           szVar <- generateStmt $ inst sz
-          nameHint "size" =: loadVar szVar
+          loadVar (nameHint "size") szVar
         is <- adds $ Vector.cons (LLVM.Operand "1") argSizes
         args <- Traversable.forM (Vector.zip (Vector.fromList is) $ simpleTeleNames tele) $ \(i, h) -> do
           ptr <- h =: getElementPtr expr i
