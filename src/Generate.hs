@@ -69,15 +69,15 @@ loadVarPtr (IndirectVar o) = do
 
 indirect :: Var -> Gen (LLVM.Operand Ptr)
 indirect (DirectVar o) = do
-  result <- nameHint "indirection" =: alloca ptrSize
+  result <- nameHint "indirection" =: alloca (LLVM.Operand "1")
   emit $ store o result
   return result
 indirect (IndirectVar o) = return o
 
-allocaVarWords :: NameHint -> Var -> Gen Var
-allocaVarWords hint v = do
+allocaVar :: NameHint -> Var -> Gen Var
+allocaVar hint v = do
   i <- loadVar mempty v
-  ptr <- allocaWords hint i
+  ptr <- hint =: alloca i
   return $ IndirectVar ptr
 
 varcpy :: LLVM.Operand Ptr -> Var -> LLVM.Operand Int -> Gen ()
@@ -102,7 +102,7 @@ generateStmt expr = case expr of
   Sized sz e -> do
     szVar <- generateOperand sz
     szInt <- loadVar (nameHint "size") szVar
-    ret <- allocaWords (nameHint "return") szInt
+    ret <- nameHint "return" =: alloca szInt
     storeExpr e szInt ret
     return $ IndirectVar ret
   Case (o, _) brs -> do
@@ -128,11 +128,11 @@ generateExpr
 generateExpr expr sz = case expr of
   Operand o -> generateOperand o
   Con qc os -> do
-    ret <- allocaWords (nameHint "cons-cell") sz
+    ret <- nameHint "cons-cell" =: alloca sz
     storeCon qc os ret
     return $ IndirectVar ret
   Call o os -> do
-    ret <- allocaWords (nameHint "return") sz
+    ret <- nameHint "return" =: alloca sz
     storeCall o os ret
     return $ IndirectVar ret
 

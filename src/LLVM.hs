@@ -157,15 +157,6 @@ getElementPtr x i = Instr $ "getelementptr" <+> integerT <> "," <+> pointer x <>
 alloca :: Operand Int -> Instr Ptr
 alloca sz = Instr $ "alloca" <+> integerT <> "," <+> integer sz <> ", align" <+> align
 
-allocaWords
-  :: MonadState LLVMState m
-  => NameHint
-  -> Operand Int
-  -> m (Operand Ptr)
-allocaWords hint wordSize = do
-  byteSize <- nameHint "byte-size" =: mul wordSize ptrSize
-  hint =: alloca byteSize
-
 intToPtr :: Operand Int -> Instr Ptr
 intToPtr i = Instr $ "inttoptr" <+> integer i <+> "to" <+> pointerT
 
