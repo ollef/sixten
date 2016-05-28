@@ -16,6 +16,10 @@ import Meta
 import TCM
 import Util
 
+scopeDir :: Simple.Scope b Lambda.SExpr v -> Lifted.Direction
+scopeDir (Simple.Scope (Lambda.Sized (Lambda.Lit 1) _)) = Lifted.Direct
+scopeDir _ = Lifted.Indirect
+
 simpleTeleDirs :: SimpleTelescope Lambda.Expr v -> Vector Lifted.Direction
 simpleTeleDirs (SimpleTelescope xs) = go . snd <$> xs
   where
@@ -31,7 +35,7 @@ restrictBody
   -> TCM s (Lifted.LBody v)
 restrictBody expr = case expr of
   (simpleBindingsViewM Lambda.lamView -> Just (tele, s)) ->
-    Lifted.lamLBody (simpleTeleDirectedNames tele) <$> restrictSScope s
+    Lifted.lamLBody (scopeDir s) (simpleTeleDirectedNames tele) <$> restrictSScope s
   _ -> Lifted.mapLifted Lifted.ConstantBody <$> restrictSExpr expr
 
 restrictSExpr
@@ -78,7 +82,7 @@ restrictExpr expr sz = do
     Lambda.Case e brs -> Lifted.caseLStmt <$> restrictSExprSize e <*> restrictBranches brs
     Lambda.Con qc es -> Lifted.conLStmt sz qc <$> mapM restrictSExprSize es
     (simpleBindingsViewM Lambda.lamView . Lambda.Sized (Lambda.Global "restrictExpr-impossible") -> Just (tele, s)) ->
-      fmap Lifted.liftLBody $ Lifted.lamLBody (simpleTeleDirectedNames tele) <$> restrictSScope s
+      fmap Lifted.liftLBody $ Lifted.lamLBody (scopeDir s) (simpleTeleDirectedNames tele) <$> restrictSScope s
     (Lambda.appsView -> (e, es)) ->
       Lifted.callLStmt sz <$> restrictConstantSize e 1 <*> mapM restrictSExpr es
   modifyIndent pred

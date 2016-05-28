@@ -84,7 +84,7 @@ convertCall sz operand args = case operand of
     known g arity
       | argsLen < arity
         = return $ singleLifted mempty
-        ( Function (Vector.replicate (1 + arity - argsLen) (mempty, Indirect)) -- TODO direction
+        ( Function Direct (Vector.replicate (1 + arity - argsLen) (mempty, Indirect)) -- TODO direction
         $ Simple.toScope
         $ Case (Local $ B 0, todo)
         $ SimpleConBranches
@@ -133,14 +133,14 @@ convertBranches (SimpleLitBranches lbrs def)
 
 convertBody :: Body (MetaVar VarInfo s) -> TCM s (LBody (MetaVar VarInfo s))
 convertBody (ConstantBody e) = mapLifted ConstantBody <$> convertStmt e
-convertBody (FunctionBody (Function xs s)) = do
+convertBody (FunctionBody (Function d xs s)) = do
   trp "convertBody fun" $ show <$> Simple.fromScope s
   modifyIndent succ
   vars <- mapM ((`forall_` Unknown) . fst) xs
   let e = instantiateVar ((vars Vector.!) . unTele) s
       abstr = unvar (const Nothing) (fmap Tele . (`Vector.elemIndex` vars))
   e' <- convertStmt e
-  let result = mapLifted (FunctionBody . Function xs . Simple.abstract abstr) e'
+  let result = mapLifted (FunctionBody . Function d xs . Simple.abstract abstr) e'
   modifyIndent pred
   trs "convertBody res" vars
   trp "convertBody res" $ show <$> e'

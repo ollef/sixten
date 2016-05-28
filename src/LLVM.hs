@@ -87,9 +87,10 @@ data Label
 align :: B
 align = "8"
 
-integerT, pointerT :: B
+integerT, pointerT, voidT :: B
 integerT = "i64"
 pointerT = integerT <> "*"
+voidT = "void"
 
 ptrSize :: Operand Int
 ptrSize = "8"
@@ -114,7 +115,7 @@ mul x y = Instr $ "mul" <+> integer x <> "," <+> unOperand y
 
 callFun :: (Foldable f, Functor f) => Operand Fun -> f (Operand Ptr) -> Instr ()
 callFun name xs = Instr
-  $ "call" <+> "void" <+> unOperand name <> "(" <> Foldable.fold (intersperse ", " $ Foldable.toList $ pointer <$> xs) <> ")"
+  $ "call" <+> voidT <+> unOperand name <> "(" <> Foldable.fold (intersperse ", " $ Foldable.toList $ pointer <$> xs) <> ")"
 
 (=:) :: MonadState LLVMState m => NameHint -> Instr a -> m (Operand a)
 h =: i = do
@@ -136,7 +137,7 @@ memcpy
   -> Operand Int
   -> Instr ()
 memcpy dst src sz = Instr
-  $ "call void @llvm.memcpy.p0i8.p0i8.i64(i8* bitcast ("
+  $ "call" <+> voidT <+> "@llvm.memcpy.p0i8.p0i8.i64(i8* bitcast ("
   <> pointer dst <+> "to i8*)," <+> "i8* bitcast ("
   <> pointer src <+> "to i8*),"
   <+> integer sz <> ", i64" <+> align <> ", i1 false)"
@@ -190,10 +191,13 @@ phiInt xs = Instr
 
 bitcastToFun :: Operand Ptr -> Int -> Instr Fun
 bitcastToFun p arity = Instr
-  $ "bitcast" <+> pointer p <+> "to" <+> "void (" <> Foldable.fold (replicate (arity - 1) (pointerT <> ", ")) <> pointerT <> ")"
+  $ "bitcast" <+> pointer p <+> "to" <+> voidT <+> "(" <> Foldable.fold (replicate (arity - 1) (pointerT <> ", ")) <> pointerT <> ")"
 
 exit :: Int -> Instr ()
-exit n = Instr $ "call void @exit(i32" <+> shower n <> ")"
+exit n = Instr $ "call" <+> voidT <+> "@exit(i32" <+> shower n <> ")"
 
-retVoid :: Instr ()
-retVoid = Instr "ret void"
+returnVoid :: Instr ()
+returnVoid = Instr $ "ret" <+> voidT
+
+returnInt :: Operand Int -> Instr ()
+returnInt o = Instr $ "ret" <+> integer o

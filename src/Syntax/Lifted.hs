@@ -30,7 +30,7 @@ data Body v
   | FunctionBody (Function v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
-data Function v = Function (Vector (NameHint, Direction)) (Simple.Scope Tele Stmt v)
+data Function v = Function Direction (Vector (NameHint, Direction)) (Simple.Scope Tele Stmt v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 type LBody = Lifted Body
@@ -322,12 +322,12 @@ liftBody
   => Body v
   -> LStmt v
 liftBody (ConstantBody e) = pureLifted e
-liftBody (FunctionBody (Function vs s))
+liftBody (FunctionBody (Function d vs s))
   = Lifted (pure (mempty, f))
   $ Simple.Scope $ Sized (Lit 1)
   $ Call (pure $ B 0) $ pure . pure <$> fvs
   where
-    f = Function (fmap (const (mempty, Indirect)) fvs <> vs)
+    f = Function d (fmap (const (mempty, Indirect)) fvs <> vs)
       $ Simple.toScope
       $ unvar (B . (+ Tele fvsLen)) (unvar F $ fromJust err . ix)
      <$> Simple.fromScope (F <$> s)
@@ -342,12 +342,16 @@ liftLBody
   -> LStmt v
 liftLBody lbody = bindLifted' lbody liftBody
 
-lamLBody :: Vector (NameHint, Direction) -> Simple.Scope Tele LStmt v -> LBody v
-lamLBody hs (Simple.Scope (Lifted bs (Simple.Scope s)))
+lamLBody
+  :: Direction
+  -> Vector (NameHint, Direction)
+  -> Simple.Scope Tele LStmt v
+  -> LBody v
+lamLBody d hs (Simple.Scope (Lifted bs (Simple.Scope s)))
   = Lifted bs
   $ Simple.Scope
   $ FunctionBody
-  $ Function hs
+  $ Function d hs
   $ Simple.Scope
   $ commuteVars <$> s
 
@@ -377,7 +381,7 @@ instance BindOperand Body where
     FunctionBody fb -> FunctionBody $ bindOperand f fb
 
 instance BindOperand Function where
-  bindOperand f (Function vs s) = Function vs $ bindOperand f s
+  bindOperand f (Function d vs s) = Function d vs $ bindOperand f s
 
 instance BindOperand e => BindOperand (SimpleBranches c e) where
   bindOperand f (SimpleConBranches cbrs) = SimpleConBranches [(qc, bindOperand f tele, bindOperand f s) | (qc, tele, s) <- cbrs]
@@ -425,7 +429,7 @@ instance (Eq v, IsString v, Pretty v)
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Function v) where
-  prettyM (Function hs s) = withNameHints (fst <$> hs) $ \ns ->
+  prettyM (Function _ hs s) = withNameHints (fst <$> hs) $ \ns ->
     "\\" <> hsep (map prettyM $ Vector.toList ns) <> "." <+>
       associate absPrec (prettyM $ instantiateVar (fromText . (ns Vector.!) . unTele) s)
 
