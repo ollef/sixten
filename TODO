@@ -1,9 +1,6 @@
 LLVM code generation
   - Pass things of size 1 normally?
     * Make the Restrict pass use meta vars to keep track of this info
-  - Special-case the `Ref` constructor to use gc_alloc
-    deref can be a no-op to an indirect var?
-    shouldn't need size to deref
   - Define builtins & apply_n functions
   - Constant functions should be evaluated in main
 Do closure conversion earlier and allow by-value variable capture

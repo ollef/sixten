@@ -12,6 +12,7 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 
+import Builtin
 import LLVM hiding (Operand)
 import qualified LLVM
 import Syntax.Branches
@@ -99,6 +100,7 @@ generateStmt expr = case expr of
   Let _h e s -> do
     o <- generateStmt e
     generateStmt $ instantiate1Var o s
+  Sized (Lit n) e -> generateExpr e $ shower n
   Sized sz e -> do
     szVar <- generateOperand sz
     szInt <- loadVar (nameHint "size") szVar
@@ -143,24 +145,14 @@ storeExpr expr sz ret = case expr of
   Con qc os -> storeCon qc os ret
   Call o os -> storeCall o os ret
 
-voidVarCall
+varCall
   :: (Foldable f, Functor f)
-  => LLVM.Operand Fun
+  => B
+  -> LLVM.Operand Fun
   -> f Var
-  -> Instr ()
-voidVarCall name xs = Instr
-  $ "call" <+> voidT <+> unOperand name <> "(" <> Foldable.fold (intersperse ", " $ Foldable.toList $ go <$> xs) <> ")"
-  where
-    go (DirectVar x) = integer x
-    go (IndirectVar x) = pointer x
-
-intVarCall
-  :: (Foldable f, Functor f)
-  => LLVM.Operand Fun
-  -> f Var
-  -> Instr Int
-intVarCall name xs = Instr
-  $ "call" <+> integerT <+> unOperand name <> "(" <> Foldable.fold (intersperse ", " $ Foldable.toList $ go <$> xs) <> ")"
+  -> Instr a
+varCall retType name xs = Instr
+  $ "call" <+> retType <+> unOperand name <> "(" <> Foldable.fold (intersperse ", " $ Foldable.toList $ go <$> xs) <> ")"
   where
     go (DirectVar x) = integer x
     go (IndirectVar x) = pointer x
@@ -180,10 +172,10 @@ generateCall (Global g) os sz = do
   case retDir of
     Indirect -> do
       ret <- nameHint "return" =: alloca sz
-      emit $ voidVarCall (LLVM.Operand g) $ Vector.snoc args $ IndirectVar ret
+      emit $ varCall voidT (LLVM.Operand g) $ Vector.snoc args $ IndirectVar ret
       return $ IndirectVar ret
     Direct -> do
-      ret <- nameHint "call-return" =: intVarCall (LLVM.Operand g) args
+      ret <- nameHint "call-return" =: varCall integerT (LLVM.Operand g) args
       return $ DirectVar ret
 generateCall _ _ _ = error "generateCall unknown function"
 
@@ -200,9 +192,9 @@ storeCall (Global g) os ret = do
       Direct -> DirectVar <$> loadVar mempty v
       Indirect -> IndirectVar <$> indirect v
   case retDir of
-    Indirect -> emit $ voidVarCall (LLVM.Operand g) $ Vector.snoc args $ IndirectVar ret
+    Indirect -> emit $ varCall voidT (LLVM.Operand g) $ Vector.snoc args $ IndirectVar ret
     Direct -> do
-      res <- nameHint "call-return" =: intVarCall (LLVM.Operand g) args
+      res <- nameHint "call-return" =: varCall integerT (LLVM.Operand g) args
       emit $ store res ret
 storeCall _ _ _ = error "storeCall unknown function"
 
@@ -211,12 +203,22 @@ storeCon
   -> Vector (OperandG, OperandG)
   -> LLVM.Operand Ptr
   -> Gen ()
+storeCon (QConstr PtrName RefName) os ret = do
+  sizes <- mapM (generateOperand . snd) os
+  sizeInts <- Traversable.forM sizes $ \ptr -> loadVar mempty ptr
+  (is, fullSize) <- adds sizeInts
+  ref <- nameHint "ref" =: varCall pointerT "gc_alloc" [DirectVar fullSize]
+  Foldable.forM_ (zip (Vector.toList sizeInts) $ zip is $ Vector.toList os) $ \(sz, (i, (o, _))) -> do
+    index <- nameHint "index" =: getElementPtr ref i
+    storeOperand o sz index
+  refInt <- nameHint "ref-int" =: ptrToInt ref
+  emit $ store refInt ret
 storeCon qc os ret = do
   mqcIndex <- constrIndex qc
   let os' = maybe id (\i -> Vector.cons (Lit $ fromIntegral i, Lit 1)) mqcIndex os
   sizes <- mapM (generateOperand . snd) os'
   sizeInts <- Traversable.forM sizes $ \ptr -> loadVar mempty ptr
-  is <- adds sizeInts
+  (is, _) <- adds sizeInts
   Foldable.forM_ (zip (Vector.toList sizeInts) $ zip is $ Vector.toList os') $ \(sz, (i, (o, _))) -> do
     index <- nameHint "index" =: getElementPtr ret i
     storeOperand o sz index
@@ -230,6 +232,26 @@ generateBranches op branches brCont = do
   expr <- (indirect <=< generateOperand) op
   postLabel <- LLVM.Operand <$> freshenName "after-branch"
   case branches of
+    SimpleConBranches [(QConstr PtrName RefName, tele, brScope)] -> mdo
+      branchLabel <- LLVM.Operand <$> freshenName RefName
+
+      emit $ branch branchLabel
+      emitLabel branchLabel
+      let inst = instantiateSimpleTeleVars args
+      argSizes <- forMSimpleTele tele $ \_ sz -> do
+        szVar <- generateStmt $ inst sz
+        loadVar (nameHint "size") szVar
+      (is, _) <- adds argSizes
+      args <- Traversable.forM (Vector.zip (Vector.fromList is) $ simpleTeleNames tele) $ \(i, h) -> do
+        outerPtr <- h =: getElementPtr expr i
+        innerInt <- mempty =: load outerPtr
+        innerPtr <- mempty =: intToPtr innerInt
+        return $ IndirectVar innerPtr
+      contResult <- brCont $ inst brScope
+      emit $ branch postLabel
+      emitLabel postLabel
+      return [(contResult, branchLabel)]
+
     SimpleConBranches [(QConstr _ c, tele, brScope)] -> mdo
       branchLabel <- LLVM.Operand <$> freshenName c
 
@@ -239,7 +261,7 @@ generateBranches op branches brCont = do
       argSizes <- forMSimpleTele tele $ \_ sz -> do
         szVar <- generateStmt $ inst sz
         loadVar (nameHint "size") szVar
-      is <- adds argSizes
+      (is, _) <- adds argSizes
       args <- Traversable.forM (Vector.zip (Vector.fromList is) $ simpleTeleNames tele) $ \(i, h) -> do
         ptr <- h =: getElementPtr expr i
         return $ IndirectVar ptr
@@ -265,7 +287,7 @@ generateBranches op branches brCont = do
         argSizes <- forMSimpleTele tele $ \_ sz -> do
           szVar <- generateStmt $ inst sz
           loadVar (nameHint "size") szVar
-        is <- adds $ Vector.cons (LLVM.Operand "1") argSizes
+        (is, _) <- adds $ Vector.cons (LLVM.Operand "1") argSizes
         args <- Traversable.forM (Vector.zip (Vector.fromList is) $ simpleTeleNames tele) $ \(i, h) -> do
           ptr <- h =: getElementPtr expr i
           return $ IndirectVar ptr

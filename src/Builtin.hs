@@ -33,17 +33,14 @@ pattern IndArg sz t a = App (App (App (Global IndArgName) ReIm sz) IrIm t) ReEx 
 pattern IndRetName <- ((==) "indRet" -> True) where IndRetName = "indRet"
 pattern IndRet sz t a = App (App (App (Global IndRetName) ReIm sz) IrIm t) ReEx a
 
+pattern RefName <- ((==) "Ref" -> True) where RefName = "Ref"
+pattern PtrName <- ((==) "Ptr" -> True) where PtrName = "Ptr"
+
 apply :: Int -> Name
 apply n = "apply_" `mappend` fromString (show n)
 
 closure :: QConstr
 closure = QConstr "Builtin" "CL"
-
-pointer :: Name
-pointer = "Ptr"
-
-ref :: Constr
-ref = "Ref"
 
 context :: Program Expr Void
 context = HM.fromList
@@ -51,11 +48,11 @@ context = HM.fromList
   , (AddSizeName, opaque $ arrow ReEx Size $ arrow ReEx Size Size)
   , (MaxSizeName, opaque $ arrow ReEx Size $ arrow ReEx Size Size)
   , (TypeName, opaque $ arrow IrIm Size $ Type $ Lit 0)
-  , (pointer, dataType (Abstract.pi_ "size" IrIm Size
+  , (PtrName, dataType (Abstract.pi_ "size" IrIm Size
                        $ arrow IrEx (Type $ pure "size")
                        $ Type $ Lit 1)
-                       [ ConstrDef ref $ toScope $ fmap B $ arrow ReEx (pure 1)
-                                       $ apps (Global pointer) [(IrIm, pure 0), (IrEx, pure 1)]
+                       [ ConstrDef RefName $ toScope $ fmap B $ arrow ReEx (pure 1)
+                                           $ apps (Global PtrName) [(IrIm, pure 0), (IrEx, pure 1)]
                        ])
   -- , (IndArgTypeName, opaque $ Abstract.pi_ "size" IrIm Size
   --                           $ arrow IrEx (Type $ pure "size")
