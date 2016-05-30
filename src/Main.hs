@@ -88,18 +88,21 @@ test inp = do
       inferProgram constrs p
       cxt <- gets tcContext
       erased <- sequence [(,) x <$> eraseDef e | (x, (e, _)) <- HM.toList cxt]
-      restricted <- sequence [(,) x <$> Restrict.restrictBody (Lambda.Sized (Lambda.Lit 1) e) | (x, Definition e) <- erased]
+      restricted <- sequence [(,) x <$> Restrict.restrictBody (Lambda.Sized (Lambda.Lit 1) $ vacuous e) | (x, Definition e) <- erased]
+      restricted' <- traverse (traverse (traverse vf)) restricted
       let liftedRestricted = Restrict.liftProgram restricted
       forM_ liftedRestricted $ \(x, b) -> addArity x $ case b of
         Lifted.FunctionBody (Lifted.Function _ xs _) -> V.length xs
         Lifted.ConstantBody _ -> 0
 
-      converted' <- sequence [(,) x <$> ClosureConvert.convertBody (vacuous e) | (x, e) <- liftedRestricted]
+      converted' <- sequence [(,) x <$> ClosureConvert.convertBody (undefined <$> e) | (x, e) <- liftedRestricted]
       -- trs "converted'" $ show converted'
       converted <- traverse (traverse (traverse vf)) converted'
       -- trs "converted" $ show converted
 
-      liftedConverted <- traverse (traverse $ traverse va) $ Restrict.liftProgram converted
+      converted'' <- traverse (traverse (traverse va)) converted'
+
+      liftedConverted <- traverse (traverse $ traverse va) $ Restrict.liftProgram converted''
 
       qcindex <- qconstructorIndex
       let genv = Generate.GenEnv qcindex (`HM.lookup` lconvprog)
@@ -107,7 +110,7 @@ test inp = do
 
       let generated = [(x, fold $ intersperse (fromString "\n") $ snd $ Generate.runGen genv $ Generate.generateBody $ fmap absurd e) | (x, e) <- liftedConverted]
 
-      return (cxt, erased, restricted, converted, generated)
+      return (cxt, erased, restricted', converted, generated)
       ) mempty of
       (Left err, t) -> do mapM_ putStrLn t; putStrLn err
       (Right (res, erased, restricted, converted, generated), _) -> do

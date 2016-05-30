@@ -1,10 +1,9 @@
 LLVM code generation
-  - Pass things of size 1 normally?
-    * Make the Restrict pass use meta vars to keep track of this info
   - Define builtins & apply_n functions
   - Constant functions should be evaluated in main
 Do closure conversion earlier and allow by-value variable capture
 Cleanup
+  Main, make more well-defined passes
 Usage analysis for better erasure
 Add new Int type
 instantiate implicits at variable use sites?

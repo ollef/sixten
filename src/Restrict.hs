@@ -1,9 +1,8 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings, ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings, RecursiveDo, ViewPatterns #-}
 module Restrict where
 
 import qualified Bound.Scope.Simple as Simple
 import Data.Bifunctor
-import Data.Hashable
 import Data.Maybe
 import Data.Monoid
 import Data.Vector(Vector)
@@ -16,32 +15,50 @@ import Meta
 import TCM
 import Util
 
-scopeDir :: Simple.Scope b Lambda.SExpr v -> Lifted.Direction
-scopeDir (Simple.Scope (Lambda.Sized (Lambda.Lit 1) _)) = Lifted.Direct
-scopeDir _ = Lifted.Indirect
+type Meta = MetaVar Lambda.Expr
+
+varDir :: Meta s -> (NameHint, Lifted.Direction)
+varDir m = (metaHint m, dir)
+  where
+    dir = case metaType m of
+      Lambda.Lit 1 -> Lifted.Direct
+      _ -> Lifted.Indirect
+
+type BodyM s = Lifted.Body (Meta s)
+type ExprM s = Lambda.Expr (Meta s)
+type LBodyM s = Lifted.LBody (Meta s)
+type LStmtM s = Lifted.LStmt (Meta s)
+type SExprM s = Lambda.SExpr (Meta s)
+
+sizeDir :: Lambda.Expr v -> Lifted.Direction
+sizeDir (Lambda.Lit 1) = Lifted.Direct
+sizeDir _ = Lifted.Indirect
+
+sExprDir :: Lambda.SExpr v -> Lifted.Direction
+sExprDir (Lambda.Sized sz _) = sizeDir sz
 
 simpleTeleDirs :: SimpleTelescope Lambda.Expr v -> Vector Lifted.Direction
-simpleTeleDirs (SimpleTelescope xs) = go . snd <$> xs
-  where
-    go (Simple.Scope (Lambda.Lit 1)) = Lifted.Direct
-    go _ = Lifted.Indirect
+simpleTeleDirs (SimpleTelescope xs) = sizeDir . Simple.unscope . snd <$> xs
 
 simpleTeleDirectedNames :: SimpleTelescope Lambda.Expr v -> Vector (NameHint, Lifted.Direction)
 simpleTeleDirectedNames tele = Vector.zip (simpleTeleNames tele) (simpleTeleDirs tele)
 
 restrictBody
-  :: (Eq v, Hashable v, Show v)
-  => Lambda.SExpr v
-  -> TCM s (Lifted.LBody v)
+  :: SExprM s
+  -> TCM s (LBodyM s)
 restrictBody expr = case expr of
-  (simpleBindingsViewM Lambda.lamView -> Just (tele, s)) ->
-    Lifted.lamLBody (scopeDir s) (simpleTeleDirectedNames tele) <$> restrictSScope s
+  (simpleBindingsViewM Lambda.lamView -> Just (tele, lamScope)) -> mdo
+    vs <- forMSimpleTele tele $ \h s ->
+      forall_ h $ instantiateVar ((vs Vector.!) . unTele) s
+    let lamExpr = instantiateVar ((vs Vector.!) . unTele) lamScope
+    lamExpr' <- restrictSExpr lamExpr
+    let lamScope' = Simple.abstract (teleAbstraction vs) lamExpr'
+    return $ Lifted.lamLBody (sExprDir lamExpr) (simpleTeleDirectedNames tele) lamScope'
   _ -> Lifted.mapLifted Lifted.ConstantBody <$> restrictSExpr expr
 
 restrictSExpr
-  :: (Eq v, Hashable v, Show v)
-  => Lambda.SExpr v
-  -> TCM s (Lifted.LStmt v)
+  :: SExprM s
+  -> TCM s (LStmtM s)
 restrictSExpr (Lambda.Sized sz expr) = do
   rsz <- restrictExpr sz $ Lifted.pureLifted
                          $ Lifted.Sized (Lifted.Lit 1)
@@ -49,29 +66,26 @@ restrictSExpr (Lambda.Sized sz expr) = do
   restrictExpr expr rsz
 
 restrictSExprSize
-  :: (Eq v, Hashable v, Show v)
-  => Lambda.SExpr v
-  -> TCM s (Lifted.LStmt v, Lifted.LStmt v)
+  :: SExprM s
+  -> TCM s (LStmtM s, LStmtM s)
 restrictSExprSize (Lambda.Sized sz expr) = do
   rsz <- restrictConstantSize sz 1
   rexpr <- restrictExpr expr rsz
   return (rexpr, rsz)
 
 restrictConstantSize
-  :: (Eq v, Hashable v, Show v)
-  => Lambda.Expr v
+  :: ExprM s
   -> Literal
-  -> TCM s (Lifted.LStmt v)
+  -> TCM s (LStmtM s)
 restrictConstantSize expr sz =
   restrictExpr expr $ Lifted.pureLifted
                     $ Lifted.Sized (Lifted.Lit 1)
                     $ Lifted.Operand $ Lifted.Lit sz
 
 restrictExpr
-  :: (Eq v, Hashable v, Show v)
-  => Lambda.Expr v
-  -> Lifted.LStmt v
-  -> TCM s (Lifted.LStmt v)
+  :: ExprM s
+  -> LStmtM s
+  -> TCM s (LStmtM s)
 restrictExpr expr sz = do
   trp "restrictExpr" $ show <$> expr
   modifyIndent succ
@@ -81,8 +95,14 @@ restrictExpr expr sz = do
     Lambda.Lit l -> return $ Lifted.lSizedOperand sz $ Lifted.Lit l
     Lambda.Case e brs -> Lifted.caseLStmt <$> restrictSExprSize e <*> restrictBranches brs
     Lambda.Con qc es -> Lifted.conLStmt sz qc <$> mapM restrictSExprSize es
-    (simpleBindingsViewM Lambda.lamView . Lambda.Sized (Lambda.Global "restrictExpr-impossible") -> Just (tele, s)) ->
-      fmap Lifted.liftLBody $ Lifted.lamLBody (scopeDir s) (simpleTeleDirectedNames tele) <$> restrictSScope s
+    (simpleBindingsViewM Lambda.lamView . Lambda.Sized (Lambda.Global "restrictExpr-impossible") -> Just (tele, lamScope)) -> mdo
+      vs <- forMSimpleTele tele $ \h s ->
+        forall_ h $ instantiateVar ((vs Vector.!) . unTele) s
+      let lamExpr = instantiateVar ((vs Vector.!) . unTele) lamScope
+      lamExpr' <- restrictSExpr lamExpr
+      let lamScope' = Simple.abstract (teleAbstraction vs) lamExpr'
+      return $ Lifted.liftLBody varDir
+             $ Lifted.lamLBody (sExprDir lamExpr) (simpleTeleDirectedNames tele) lamScope'
     (Lambda.appsView -> (e, es)) ->
       Lifted.callLStmt sz <$> restrictConstantSize e 1 <*> mapM restrictSExpr es
   modifyIndent pred
@@ -90,39 +110,40 @@ restrictExpr expr sz = do
   return result
   where
     restrictBranches (SimpleConBranches cbrs) = Lifted.conLStmtBranches
-      <$> sequence [(,,) c <$> restrictTele tele <*> restrictScope s sz | (c, tele, s) <- cbrs]
+      <$> mapM (restrictConBranch sz) cbrs
     restrictBranches (SimpleLitBranches lbrs def) = Lifted.litLStmtBranches
       <$> sequence [(,) l <$> restrictExpr e sz | (l, e) <- lbrs]
       <*> restrictExpr def sz
-    restrictTele = mapM (\(h, s) -> (,) h <$> restrictConstantSizeScope s 1)
-                 . unSimpleTelescope
 
-restrictScope
-  :: (Eq b, Eq v, Show b, Show v, Hashable b, Hashable v)
-  => Simple.Scope b Lambda.Expr v
-  -> Lifted.LStmt v
-  -> TCM s (Simple.Scope b Lifted.LStmt v)
-restrictScope expr sz
-  = Simple.toScope <$> restrictExpr (Simple.fromScope expr) (F <$> sz)
+restrictConBranch
+  :: LStmtM s
+  -> ( QConstr
+     , SimpleTelescope Lambda.Expr (Meta s)
+     , Simple.Scope Tele Lambda.Expr (Meta s)
+     )
+  -> TCM s
+     ( QConstr
+     , Vector (NameHint, Simple.Scope Tele Lifted.LStmt (Meta s))
+     , Simple.Scope Tele Lifted.LStmt (Meta s)
+     )
+restrictConBranch sz (qc, tele, brScope) = mdo
+  tele' <- forMSimpleTele tele $ \h s -> do
+    let e = instantiateVar ((vs Vector.!) . unTele) s
+    v <- forall_ h e
+    e' <- restrictConstantSize e 1
+    return (v, e')
+  let vs = fst <$> tele'
+      brExpr = instantiateVar ((vs Vector.!) . unTele) brScope
+      abstr = teleAbstraction vs
+      tele'' = bimap metaHint (Simple.abstract abstr) <$> tele'
+  brExpr' <- restrictExpr brExpr sz
+  let brScope' = Simple.abstract abstr brExpr'
+  return (qc, tele'', brScope')
 
-restrictSScope
-  :: (Eq b, Eq v, Show b, Show v, Hashable b, Hashable v)
-  => Simple.Scope b Lambda.SExpr v
-  -> TCM s (Simple.Scope b Lifted.LStmt v)
-restrictSScope s = Simple.toScope <$> restrictSExpr (Simple.fromScope s)
-
-restrictConstantSizeScope
-  :: (Eq b, Eq v, Show b, Show v, Hashable b, Hashable v)
-  => Simple.Scope b Lambda.Expr v
-  -> Literal
-  -> TCM s (Simple.Scope b Lifted.LStmt v)
-restrictConstantSizeScope expr sz
-  = Simple.toScope <$> restrictConstantSize (Simple.fromScope expr) sz
-
-liftProgram :: [(Name, Lifted.LBody v)] -> [(Name, Lifted.Body v)]
+liftProgram :: [(Name, LBodyM s)] -> [(Name, BodyM s)]
 liftProgram xs = xs >>= uncurry liftBody
 
-liftBody :: Name -> Lifted.LBody v -> [(Name, Lifted.Body v)]
+liftBody :: Name -> LBodyM s -> [(Name, BodyM s)]
 liftBody x (Lifted.Lifted liftedFunctions (Simple.Scope body))
   = (x, inst body)
   : [ (inventName n, inst $ B <$> b)

@@ -319,15 +319,16 @@ callLStmt lsz le les
 -- Bodies
 liftBody
   :: (Eq v, Hashable v)
-  => Body v
+  => (v -> (NameHint, Direction))
+  -> Body v
   -> LStmt v
-liftBody (ConstantBody e) = pureLifted e
-liftBody (FunctionBody (Function d vs s))
+liftBody _ (ConstantBody e) = pureLifted e
+liftBody varDir (FunctionBody (Function d vs s))
   = Lifted (pure (mempty, f))
   $ Simple.Scope $ Sized (Lit 1)
   $ Call (pure $ B 0) $ pure . pure <$> fvs
   where
-    f = Function d (fmap (const (mempty, Indirect)) fvs <> vs)
+    f = Function d (fmap varDir fvs <> vs)
       $ Simple.toScope
       $ unvar (B . (+ Tele fvsLen)) (unvar F $ fromJust err . ix)
      <$> Simple.fromScope (F <$> s)
@@ -338,9 +339,13 @@ liftBody (FunctionBody (Function d vs s))
 
 liftLBody
   :: (Eq v, Hashable v)
-  => LBody v
+  => (v -> (NameHint, Direction))
+  -> LBody v
   -> LStmt v
-liftLBody lbody = bindLifted' lbody liftBody
+liftLBody varDir lbody
+  = bindLifted' lbody
+  $ liftBody
+  $ unvar (const (mempty, Direct)) varDir
 
 lamLBody
   :: Direction
