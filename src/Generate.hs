@@ -322,7 +322,6 @@ generateBranches op branches brCont = do
       emitLabel postLabel
       return $ (defaultContResult, defaultLabel) : zip contResults (snd <$> branchLabels)
 
-
 generateBody :: BodyG -> Gen ()
 generateBody body = case body of
   ConstantBody _ -> return () -- TODO
@@ -343,7 +342,6 @@ generateBody body = case body of
         res <- generateStmt $ instantiateVar ((vs Vector.!) . unTele) e
         resInt <- loadVar mempty res
         emit $ returnInt resInt
-
     where
       go (DirectVar n) = integer n
       go (IndirectVar n) = pointer n

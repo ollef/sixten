@@ -88,7 +88,7 @@ convertCall sz operand args = case operand of
         $ Simple.toScope
         $ Case (Local $ B 0, todo)
         $ SimpleConBranches
-          [( Builtin.closure
+          [( Builtin.Closure
           , SimpleTelescope $ Vector.replicate (arity + 2)
           (mempty, Simple.Scope $ Sized todo $ Operand $ Lit 0)
           -- TODO lift the size?
@@ -99,7 +99,7 @@ convertCall sz operand args = case operand of
           )]
         )
         $ Simple.Scope $ Sized todo
-        $ Con Builtin.closure
+        $ Con Builtin.Closure
         $ Vector.cons (Local $ B (), Lit 1)
         $ Vector.cons (Lit $ fromIntegral $ arity - argsLen, Lit 1)
         $ (\x -> (fmap F x, Lit 1)) <$> args
