@@ -12,10 +12,10 @@ import Syntax.Abstract as Abstract
 pattern SizeName <- ((==) "Size" -> True) where SizeName = "Size"
 pattern Size = Global SizeName
 
-pattern AddSizeName <- ((==) "+" -> True) where AddSizeName = "+"
+pattern AddSizeName <- ((==) "addSize" -> True) where AddSizeName = "addSize"
 pattern AddSize e1 e2 = App (App (Global AddSizeName) ReEx e1) ReEx e2
 
-pattern MaxSizeName <- ((==) "max" -> True) where MaxSizeName = "max"
+pattern MaxSizeName <- ((==) "maxSize" -> True) where MaxSizeName = "maxSize"
 pattern MaxSize e1 e2 = App (App (Global MaxSizeName) ReEx e1) ReEx e2
 
 pattern TypeName <- ((==) "Type" -> True) where TypeName = "Type"
