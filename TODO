@@ -1,11 +1,12 @@
+Constant defs should be evaluated in main
 LLVM code generation
   - Define builtins & apply_n functions
-  - Constant functions should be evaluated in main
+  - Use boehm (for now)
 Do closure conversion earlier and allow by-value variable capture
 Cleanup
   Main, make more well-defined passes
 Usage analysis for better erasure
-Add new Int type
+Add new Int type -- overloaded literals
 instantiate implicits at variable use sites?
 Size types
   How to cleanly make `(a -> b) : Type 0` when `b : Type 0`?
@@ -18,65 +19,20 @@ Cases
   Normalisation
 Let(rec) definitions
 Laziness
+Optimisations
+  Inlining
+  Common subexpressions
+  Case of known
+Do real GC with LLVM gcroots etc
+Type classes
 Specialisation pragma
-  data Strategy = Eager | Lazy
-
-  @ : Type -> Strategy -> Type
-  t @ Eager = t
-  t @ Lazy = Ref (Lazy t)
-
-  data Lazy a = Thunk (() -> a) | Blackhole | Forced a
-
-  force : {s : Strategy} -> t @ s -> t
-  force {Eager} t = t
-  force {Lazy} t = run do
-    x <- readRef t
-    case x of
-      Thunk f -> do
-        writeRef t Blackhole
-        let result = f ()
-        writeRef t (Forced result)
-        return result
-      Blackhole -> error "<loop>"
-      Forced result -> return result
-
-  delay : {s : Strategy} -> (() -> t) -> t @ s
-  delay {Eager} f = f ()
-  delay {Lazy} f = newRef (Left f)
-
-  data List s a = Nil | Cons a (List s a @ s)
-
-  map : {s} -> (a -> b) -> List s a -> List s b
-  map {s} = case s in \f xs. case xs of
-    Nil -> Nil
-    Cons x xs' -> Cons (f x) (map f xs')
-
-  map s = case s of
-    Eager -> mapEager
-    Lazy  -> mapLazy
-
-  mapEager f Nil = Nil
-  mapEager f (Cons x xs) = Cons (f x) (mapEager f xs)
-
-  mapLazy f Nil = Nil
-  mapLazy f (Cons x xs) = Cons (f x) (newRef (Left (mapLazy f xs)))
 Row polymorphism
   r : Row : Type
   {l = A} : {l : A} : Type
-
-  Exists {X} (P : X -> Type) = {witness : x, proof : P witness}
-
-  record {l : A | {l : B | r}} ?= record {l : A intersect B | r}
-  intersection A B = {intersect : a, intersect : b}
-    or not allowed?
-  Parse
-  Type-check
-  Should make lenses?
-  Codegen
-Arity inference
-Type classes
 Test suite
-Mixfix definitions and noncompounds?
 Better error messages
 Modules
+Arity inference
+Mixfix definitions and noncompounds?
 Inductive families
+FFI & More general way to define builtins (extern LLVM, C?)
