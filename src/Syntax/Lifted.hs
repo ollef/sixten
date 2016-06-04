@@ -22,15 +22,18 @@ import Util
 data Lifted e v = Lifted (Vector (NameHint, Function Tele)) (Simple.Scope Tele e v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
-data Direction = Direct | Indirect
-  deriving (Eq, Ord, Show)
-
 data Body v
-  = ConstantBody (Stmt v)
+  = ConstantBody (Constant v)
   | FunctionBody (Function v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
+data Direction = Direct | Indirect
+  deriving (Eq, Ord, Show)
+
 data Function v = Function Direction (Vector (NameHint, Direction)) (Simple.Scope Tele Stmt v)
+  deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
+
+data Constant v = Constant Direction (Stmt v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 type LBody = Lifted Body
@@ -322,7 +325,7 @@ liftBody
   => (v -> (NameHint, Direction))
   -> Body v
   -> LStmt v
-liftBody _ (ConstantBody e) = pureLifted e
+liftBody _ (ConstantBody (Constant _ e)) = pureLifted e
 liftBody varDir (FunctionBody (Function d vs s))
   = Lifted (pure (mempty, f))
   $ Simple.Scope $ Sized (Lit 1)
@@ -388,6 +391,9 @@ instance BindOperand Body where
 instance BindOperand Function where
   bindOperand f (Function d vs s) = Function d vs $ bindOperand f s
 
+instance BindOperand Constant where
+  bindOperand f (Constant d s) = Constant d $ bindOperand f s
+
 instance BindOperand e => BindOperand (SimpleBranches c e) where
   bindOperand f (SimpleConBranches cbrs) = SimpleConBranches [(qc, bindOperand f tele, bindOperand f s) | (qc, tele, s) <- cbrs]
   bindOperand f (SimpleLitBranches lbrs def) = SimpleLitBranches (second (bindOperand f) <$> lbrs) (bindOperand f def)
@@ -426,6 +432,10 @@ instance (Eq v, IsString v, Pretty v, Pretty (e v), Functor e)
           indent 2 (vcat $ Vector.toList $ (\(n, (_, e)) -> prettyM n <+> "=" <+> prettyM (toName <$> e)) <$> Vector.zip ns ds))
      in addWheres $ prettyM (unvar toName id <$> s)
 
+instance Pretty Direction where
+  prettyM Direct = "direct"
+  prettyM Indirect = "indirect"
+
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Body v) where
   prettyM body = case body of
@@ -434,10 +444,13 @@ instance (Eq v, IsString v, Pretty v)
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Function v) where
-  prettyM (Function _ hs s) = withNameHints (fst <$> hs) $ \ns ->
-    "\\" <> hsep (map prettyM $ Vector.toList ns) <> "." <+>
+  prettyM (Function d hs s) = withNameHints (fst <$> hs) $ \ns ->
+    prettyM d <+> "\\" <> hsep (map prettyM $ Vector.toList ns) <> "." <+>
       associate absPrec (prettyM $ instantiateVar (fromText . (ns Vector.!) . unTele) s)
 
+instance (Eq v, IsString v, Pretty v)
+      => Pretty (Constant v) where
+  prettyM (Constant d s) = prettyM d <+> prettyM s
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Operand v) where

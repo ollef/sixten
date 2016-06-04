@@ -3,6 +3,7 @@ module LLVM where
 
 import Control.Monad.State
 import Data.Bifunctor
+import Data.Char
 import qualified Data.Foldable as Foldable
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
@@ -39,31 +40,55 @@ runLLVM = second (reverse . instructions) . flip runState LLVMState
   , freeNames = do
     n <- [(0 :: Int)..]
     c <- ['a'..'z']
-    return $ "%" <> fromString (c : if n == 0 then "" else show n)
+    return $ fromString (c : if n == 0 then "" else show n)
   , instructions = mempty
   }
 
+emitRaw :: MonadState LLVMState m => Instr a -> m ()
+emitRaw b = modify $ \s -> s { instructions = unInstr b : instructions s }
+
 emit :: MonadState LLVMState m => Instr a -> m ()
-emit b = modify $ \s -> s { instructions = unInstr ("  " <> b) : instructions s }
+emit b = emitRaw ("  " <> b)
 
 emitLabel :: MonadState LLVMState m => Operand Label -> m ()
-emitLabel l = modify $ \s -> s { instructions = (unOperand l <> ":") : instructions s }
+emitLabel l
+  = modify
+  -- Hackish way to remove the "%"
+  $ \s -> s { instructions = (Text.drop 1 (unOperand l) <> ":") : instructions s }
 
 -------------------------------------------------------------------------------
 -- * Working with names
 -------------------------------------------------------------------------------
-percent :: B -> B
-percent b | Text.head b == '%' = b
-percent b = "%" <> b
+escape :: B -> B
+escape b
+  | validIdent b = b
+  | otherwise = "\"" <> escapeQuotes b <> "\""
+
+escapeQuotes :: B -> B
+escapeQuotes = Text.concatMap go
+  where
+    go '"' = "\\22"
+    go c = Text.singleton c
+
+validIdent :: B -> Bool
+validIdent str1 = case Text.uncons str1 of
+  Nothing -> False
+  Just (b, str2) -> startChar b && Text.all contChar str2
+  where
+    startChar c = 'a' <= c && c <= 'z'
+               || 'A' <= c && c <= 'Z'
+               || c `elem` ("-$._" :: String)
+    contChar c = startChar c || isDigit c
+
 
 freshenName :: MonadState LLVMState m => B -> m B
-freshenName (percent -> name) = do
+freshenName name = do
   bnames <- gets boundNames
   let candidates = name : [name <> shower n | n <- [(1 :: Int)..]]
       actualName = head $ filter (not . (`HashSet.member` bnames)) candidates
       bnames' = HashSet.insert actualName bnames
   modify $ \s -> s { boundNames = bnames' }
-  return actualName
+  return $ "%" <> escape actualName
 
 freshName :: MonadState LLVMState m => m B
 freshName = do
@@ -94,6 +119,9 @@ voidT = "void"
 
 ptrSize :: Operand Int
 ptrSize = "8"
+
+global :: B -> Operand a
+global b = Operand $ "@" <> b
 
 integer :: Operand Int -> B
 integer (Operand b) = integerT <+> b
@@ -135,15 +163,18 @@ adds = fmap (first reverse) . Foldable.foldlM go ([], "0")
       return (v : ys, name)
 
 memcpy
-  :: Operand Ptr
+  :: MonadState LLVMState m
+  => Operand Ptr
   -> Operand Ptr
   -> Operand Int
-  -> Instr ()
-memcpy dst src sz = Instr
-  $ "call" <+> voidT <+> "@llvm.memcpy.p0i8.p0i8.i64(i8* bitcast ("
-  <> pointer dst <+> "to i8*)," <+> "i8* bitcast ("
-  <> pointer src <+> "to i8*),"
-  <+> integer sz <> ", i64" <+> align <> ", i1 false)"
+  -> m ()
+memcpy dst src sz = do
+  src' <- nameHint "src" =: Instr ("bitcast" <+> pointer src <+> "to i8*")
+  dst' <- nameHint "dst" =: Instr ("bitcast" <+> pointer dst <+> "to i8*")
+  emit $ Instr
+       $ "call" <+> voidT <+> "@llvm.memcpy.p0i8.p0i8.i64(i8*"
+       <+> unOperand dst' <> ", i8*" <+> unOperand src' <> ","
+       <+> integer sz <> ", i32" <+> align <> ", i1 false)"
 
 wordcpy
   :: MonadState LLVMState m
@@ -153,7 +184,7 @@ wordcpy
   -> m ()
 wordcpy dst src wordSize = do
   byteSize <- nameHint "byte-size" =: mul wordSize ptrSize
-  emit $ memcpy dst src byteSize
+  memcpy dst src byteSize
 
 getElementPtr :: Operand Ptr -> Operand Int -> Instr Ptr
 getElementPtr x i = Instr $ "getelementptr" <+> integerT <> "," <+> pointer x <> "," <+> integer i
@@ -179,18 +210,18 @@ store x p = Instr $ "store" <+> integer x <> "," <+> pointer p
 switch :: Operand Int -> Operand Label -> [(Int, Operand Label)] -> Instr ()
 switch e def brs = Instr
   $ "switch" <+> integer e <> "," <+> label def
-  <+> "[" <> Foldable.fold (intersperse ", " $ (\(i, l) -> integer (shower i) <> "," <+> label l) <$> brs)
+  <+> "[" <> Foldable.fold (intersperse " " $ (\(i, l) -> integer (shower i) <> "," <+> label l) <$> brs)
   <> "]"
 
 phiPtr :: [(Operand Ptr, Operand Label)] -> Instr Ptr
 phiPtr xs = Instr
   $ "phi" <+> pointerT
-  <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> pointer v <> "," <+> label l <> "]") <$> xs)
+  <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> unOperand v <> "," <+> unOperand l <> "]") <$> xs)
 
 phiInt :: [(Operand Int, Operand Label)] -> Instr Int
 phiInt xs = Instr
   $ "phi" <+> integerT
-  <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> integer v <> "," <+> label l <> "]") <$> xs)
+  <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> unOperand v <> "," <+> unOperand l <> "]") <$> xs)
 
 bitcastToFun :: Operand Ptr -> Int -> Instr Fun
 bitcastToFun p arity = Instr
@@ -204,3 +235,6 @@ returnVoid = Instr $ "ret" <+> voidT
 
 returnInt :: Operand Int -> Instr ()
 returnInt o = Instr $ "ret" <+> integer o
+
+unreachable :: Instr ()
+unreachable = Instr "unreachable"

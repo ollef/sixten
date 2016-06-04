@@ -103,7 +103,7 @@ eraseBranches (LitBranches lbrs d)
 
 eraseDef
   :: Definition Abstract.Expr Void
-  -> TCM s (Definition Lambda.Expr Void)
-eraseDef (Definition e) = fmap (error . show) . Definition <$> erase (vacuous e)
+  -> TCM s (Definition Lambda.SExpr Void)
+eraseDef (Definition e) = fmap (error . show) . Definition <$> eraseS (vacuous e)
 eraseDef (DataDefinition DataDef {})
   = return $ DataDefinition $ DataDef mempty

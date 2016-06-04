@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings, RecursiveDo #-}
 module Generate where
 
+import qualified Bound
+import qualified Bound.Scope.Simple as Simple
 import Control.Monad.State
 import Control.Monad.Reader
 import qualified Data.Foldable as Foldable
@@ -30,6 +32,8 @@ type OperandG = Operand Var
 type ExprG = Expr Var
 type StmtG = Stmt Var
 type BodyG = Body Var
+type ConstantG = Constant Var
+type FunctionG = Function Var
 type BranchesG e = Branches QConstr e Var
 
 data GenEnv = GenEnv
@@ -52,10 +56,17 @@ runGen f m = runLLVM $ runReaderT m f
 constrIndex :: QConstr -> Gen (Maybe Int)
 constrIndex qc = asks $ ($ qc) . constrArity
 
+generateGlobal :: Name -> Gen Var
+generateGlobal g = do
+  mbody <- asks (($ g) . definitions)
+  case mbody of
+    Just (ConstantBody _) -> return $ IndirectVar $ global g
+    _ -> return $ DirectVar $ global g
+
 generateOperand :: OperandG -> Gen Var
 generateOperand op = case op of
   Local l -> return l
-  Global g -> return (DirectVar $ LLVM.Operand $ "@" <> g) -- TODO constants?
+  Global g -> generateGlobal g
   Lit l -> return $ DirectVar $ shower l
 
 loadVar :: NameHint -> Var -> Gen (LLVM.Operand Int)
@@ -92,7 +103,7 @@ storeOperand
   -> Gen ()
 storeOperand op sz ret = case op of
   Local l -> varcpy ret l sz
-  Global g -> error "storeOperand TODO"
+  Global g -> varcpy ret (IndirectVar $ global g) sz
   Lit l -> emit $ store (shower l) ret
 
 generateStmt :: StmtG -> Gen Var
@@ -172,10 +183,10 @@ generateCall (Global g) os sz = do
   case retDir of
     Indirect -> do
       ret <- nameHint "return" =: alloca sz
-      emit $ varCall voidT (LLVM.Operand g) $ Vector.snoc args $ IndirectVar ret
+      emit $ varCall voidT (global g) $ Vector.snoc args $ IndirectVar ret
       return $ IndirectVar ret
     Direct -> do
-      ret <- nameHint "call-return" =: varCall integerT (LLVM.Operand g) args
+      ret <- nameHint "call-return" =: varCall integerT (global g) args
       return $ DirectVar ret
 generateCall _ _ _ = error "generateCall unknown function"
 
@@ -192,9 +203,9 @@ storeCall (Global g) os ret = do
       Direct -> DirectVar <$> loadVar mempty v
       Indirect -> IndirectVar <$> indirect v
   case retDir of
-    Indirect -> emit $ varCall voidT (LLVM.Operand g) $ Vector.snoc args $ IndirectVar ret
+    Indirect -> emit $ varCall voidT (global g) $ Vector.snoc args $ IndirectVar ret
     Direct -> do
-      res <- nameHint "call-return" =: varCall integerT (LLVM.Operand g) args
+      res <- nameHint "call-return" =: varCall integerT (global g) args
       emit $ store res ret
 storeCall _ _ _ = error "storeCall unknown function"
 
@@ -278,7 +289,6 @@ generateBranches op branches brCont = do
         return (qcIndex, branchLabel)
 
       failLabel <- LLVM.Operand <$> freshenName "pattern-match-failed"
-
       emit $ switch e0 failLabel branchLabels
 
       contResults <- Traversable.forM (zip cbrs branchLabels) $ \((_, tele, brScope), (_, branchLabel)) -> mdo
@@ -296,7 +306,7 @@ generateBranches op branches brCont = do
         return contResult
       emitLabel failLabel
       emit $ exit 1
-      emit returnVoid
+      emit unreachable
       emitLabel postLabel
       return $ zip contResults $ snd <$> branchLabels
     SimpleLitBranches lbrs def -> do
@@ -322,26 +332,37 @@ generateBranches op branches brCont = do
       emitLabel postLabel
       return $ (defaultContResult, defaultLabel) : zip contResults (snd <$> branchLabels)
 
-generateBody :: BodyG -> Gen ()
-generateBody body = case body of
-  ConstantBody _ -> return () -- TODO
-  FunctionBody (Function retDir hs e) -> do
-    vs <- Traversable.forM hs $ \(h, d) -> do
-      n <- freshWithHint h
-      return $ case d of
-        Direct -> DirectVar $ LLVM.Operand n
-        Indirect -> IndirectVar $ LLVM.Operand n
-    case retDir of
-      Indirect -> do
-        ret <- LLVM.Operand <$> freshenName "return"
-        emit $ Instr $ voidT <+> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList vs) <> "," <+> pointer ret <> ")"
-        storeStmt (instantiateVar ((vs Vector.!) . unTele) e) ret
-        emit returnVoid
-      Direct -> do
-        emit $ Instr $ integerT <+> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList vs) <> ")"
-        res <- generateStmt $ instantiateVar ((vs Vector.!) . unTele) e
-        resInt <- loadVar mempty res
-        emit $ returnInt resInt
-    where
-      go (DirectVar n) = integer n
-      go (IndirectVar n) = pointer n
+generateFunction :: Name -> FunctionG -> Gen ()
+generateFunction name (Function retDir hs e) = do
+  vs <- Traversable.forM hs $ \(h, d) -> do
+    n <- freshWithHint h
+    return $ case d of
+      Direct -> DirectVar $ LLVM.Operand n
+      Indirect -> IndirectVar $ LLVM.Operand n
+  case retDir of
+    Indirect -> do
+      ret <- LLVM.Operand <$> freshenName "return"
+      emitRaw $ Instr $ "define" <+> voidT <+> "@" <> name <> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList vs <> pure (IndirectVar ret)) <> ") {"
+      storeStmt (instantiateVar ((vs Vector.!) . unTele) e) ret
+      emit returnVoid
+      emitRaw "}"
+    Direct -> do
+      emitRaw $ Instr $ "define" <+> integerT <+> "@" <> name <> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList vs) <> ") {"
+      res <- generateStmt $ instantiateVar ((vs Vector.!) . unTele) e
+      resInt <- loadVar mempty res
+      emit $ returnInt resInt
+      emitRaw "}"
+  where
+    go (DirectVar n) = integer n
+    go (IndirectVar n) = pointer n
+
+generateConstant :: Name -> ConstantG -> Gen ()
+generateConstant name (Constant retDir s)
+  = generateFunction
+    (name <> "-init")
+    (Function retDir mempty $ Simple.Scope $ Bound.F <$> s)
+
+generateBody :: Name -> BodyG -> Gen ()
+generateBody name body = case body of
+  ConstantBody b -> generateConstant name b
+  FunctionBody f -> generateFunction name f

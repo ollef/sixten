@@ -27,7 +27,6 @@ import TCM
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete as Concrete
-import qualified Syntax.Lambda as Lambda
 import qualified Syntax.Lifted as Lifted
 import qualified Syntax.Parse
 import qualified Syntax.Resolve
@@ -88,7 +87,7 @@ test inp = do
       inferProgram constrs p
       cxt <- gets tcContext
       erased <- sequence [(,) x <$> eraseDef e | (x, (e, _)) <- HM.toList cxt]
-      restricted <- sequence [(,) x <$> Restrict.restrictBody (Lambda.Sized (Lambda.Lit 1) $ vacuous e) | (x, Definition e) <- erased]
+      restricted <- sequence [(,) x <$> Restrict.restrictBody (vacuous e) | (x, Definition e) <- erased]
       restricted' <- traverse (traverse (traverse vf)) restricted
       let liftedRestricted = Restrict.liftProgram restricted
       forM_ liftedRestricted $ \(x, b) -> addArity x $ case b of
@@ -108,7 +107,7 @@ test inp = do
       let genv = Generate.GenEnv qcindex (`HM.lookup` lconvprog)
           lconvprog = HM.fromList liftedConverted
 
-      let generated = [(x, fold $ intersperse (fromString "\n") $ snd $ Generate.runGen genv $ Generate.generateBody $ fmap absurd e) | (x, e) <- liftedConverted]
+      let generated = [(x, fold $ intersperse (fromString "\n") $ snd $ Generate.runGen genv $ Generate.generateBody x $ fmap absurd e) | (x, e) <- liftedConverted]
 
       return (cxt, erased, restricted', converted, generated)
       ) mempty of
@@ -122,8 +121,8 @@ test inp = do
         putStrLn "------------- closure-converted --------------"
         mapM_ print $ pretty <$> converted
         putStrLn "------------- generated --------------"
-        forM_ generated $ \(n, b) -> do
-          Text.putStrLn (n <> fromString " ------------------- ")
+        forM_ generated $ \(_, b) -> do
+          Text.putStrLn ""
           Text.putStrLn b
         -- mapM_ print $ fmap Builder.toLazyText <$> (generated :: [(Name, Builder.Builder)])
   where
