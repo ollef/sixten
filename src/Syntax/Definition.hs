@@ -1,10 +1,14 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, Rank2Types, OverloadedStrings #-}
 module Syntax.Definition where
 
+import Data.Bifoldable
 import Data.Foldable
 import Data.Hashable
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HM
+import Data.HashSet(HashSet)
+import qualified Data.HashSet as HS
+import Data.Monoid
 import Data.String
 import Bound
 import Prelude.Extras
@@ -13,6 +17,8 @@ import Syntax.Data
 import Syntax.Name
 import Syntax.Pretty
 import Syntax.Telescope
+import TopoSort
+import Util
 
 data Definition expr v
   = Definition (expr v)
@@ -54,3 +60,34 @@ recursiveAbstractDefs es = (abstractDef (`HM.lookup` vs) . snd) <$> es
     vs = HM.fromList $ zip (toList $ fst <$> es) [(0 :: Int)..]
 
 type Program expr v = HashMap Name (Definition expr v, expr v)
+
+dependencies
+  :: Foldable e
+  => Program e Name
+  -> HashMap Name (HashSet Name)
+dependencies prog
+  = HM.map (bifoldMap defNames toHashSet) prog
+  <> HM.fromList constrMappings
+  where
+    defNames (DataDefinition d) = toHashSet (constrNames d) <> toHashSet d
+    defNames x = toHashSet x
+    constrMappings
+      = [ (c, HS.singleton n)
+        | (n, (DataDefinition d, _)) <- HM.toList prog
+        , c <- constrNames d
+        ]
+
+programConstrNames :: Program e v -> [Constr]
+programConstrNames prog
+  = [ c
+    | (_, (DataDefinition d, _)) <- HM.toList prog
+    , c <- constrNames d
+    ]
+
+dependencyOrder
+  :: Foldable e
+  => Program e Name
+  -> [[(Name, (Definition e Name, e Name))]]
+dependencyOrder prog
+  = fmap (\n -> (n, prog HM.! n)) . filter (`HM.member` prog)
+  <$> topoSort (HM.toList $ dependencies prog)

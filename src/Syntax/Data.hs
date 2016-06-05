@@ -23,8 +23,8 @@ quantifiedConstrTypes
   -> [ConstrDef (typ v)]
 quantifiedConstrTypes (DataDef cs) ps = map (fmap $ \s -> pis ps s) cs
 
-constructorNames :: DataDef typ v -> [Constr]
-constructorNames = map constrName . dataConstructors
+constrNames :: DataDef typ v -> [Constr]
+constrNames = map constrName . dataConstructors
 
 instance Bound DataDef where
   DataDef cs >>>= f = DataDef (fmap (>>>= f) <$> cs)

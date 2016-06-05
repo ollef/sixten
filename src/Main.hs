@@ -3,8 +3,6 @@ module Main where
 
 import Control.Monad.Except
 import Control.Monad.State
-import Data.Bifoldable
-import Data.Bifunctor
 import Data.Bitraversable
 import Data.Foldable
 import qualified Data.HashMap.Lazy as HM
@@ -31,23 +29,13 @@ import qualified Syntax.Lifted as Lifted
 import qualified Syntax.Parse
 import qualified Syntax.Resolve
 import Restrict
-import TopoSort
 import Util
 
 inferProgram :: HashSet Constr -> Program Concrete.Expr Name -> TCM s ()
 inferProgram constrs p = mapM_ tcGroup sorted
   where
-    deps  = HM.map (bifoldMap defNames toHashSet) p <> HM.fromList constructorMappings
-    defNames (DataDefinition d) = toHashSet (constructorNames d) <> toHashSet d
-    defNames x = toHashSet x
-    sorted = fmap (\n -> (n, bimap (>>>= instCon) (>>= instCon) $ p HM.! n))
-           . filter (`HM.member` p) <$> topoSort (HM.toList deps)
-    -- TODO check for duplicate constructors
-    constructorMappings = [ (c, HS.singleton n)
-                          | (n, (DataDefinition d, _)) <- HM.toList p
-                          , c <- constructorNames d
-                          ]
-    constructors = constrs <> HS.fromList (map fst constructorMappings)
+    sorted = fmap (\(n, (d, t)) -> (n, (d >>>= instCon, t >>= instCon))) <$> dependencyOrder p
+    constructors = constrs <> HS.fromList (programConstrNames p)
     instCon v
       | v `HS.member` constructors = Concrete.Con $ Left v
       | otherwise = pure v
