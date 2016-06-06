@@ -446,7 +446,7 @@ generaliseDefs xs = do
     impure _ = error "generaliseDefs"
 
 checkRecursiveDefs
-  :: Vector ( NameHint
+  :: Vector ( Name
             , Definition Concrete.Expr (Var Int (MetaVar Abstract.Expr s))
             , ScopeM Int Concrete.Expr s
             )
@@ -457,8 +457,8 @@ checkRecursiveDefs
 checkRecursiveDefs ds =
   generaliseDefs <=< enterLevel $ do
     evs <- V.forM ds $ \(v, _, _) -> do
-      t <- existsType v
-      forall_ v t
+      t <- existsType $ nameHint v
+      forall_ (nameHint v) t
     let instantiatedDs = flip V.map ds $ \(_, e, t) ->
           ( instantiateDef (pure . (evs V.!)) e
           , instantiate (pure . (evs V.!)) t

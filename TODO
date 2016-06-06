@@ -1,19 +1,15 @@
+Make printing of passes optional
 Constant defs should be evaluated in main
 LLVM code generation
   - Define builtins & apply_n functions
   - Use boehm (for now)
 Do closure conversion earlier and allow by-value variable capture
-Cleanup
-  Main, make more well-defined passes
 Usage analysis for better erasure
 Add new Int type -- overloaded literals
-instantiate implicits at variable use sites?
+Instantiate implicits at variable use sites
 Size types
   How to cleanly make `(a -> b) : Type 0` when `b : Type 0`?
     Maybe just make the usage analysis pass aware of this
-  Reorder data to pass fewer sizes
-    (Depends on relevance analysis and/or removal of unused args)
-    Reorder data to enable tagged pointers?
 Cases
   Make Concrete syntax have deep patterns and desugar them
   Normalisation
@@ -23,6 +19,8 @@ Optimisations
   Inlining
   Common subexpressions
   Case of known
+  Tagged pointers
+    Reorder data to enable more?
 Do real GC with LLVM gcroots etc
 Type classes
 Specialisation pragma

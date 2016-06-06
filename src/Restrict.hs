@@ -140,11 +140,11 @@ restrictConBranch sz (qc, tele, brScope) = mdo
   let brScope' = Simple.abstract abstr brExpr'
   return (qc, tele'', brScope')
 
-liftProgram :: [(Name, LBodyM s)] -> [(Name, BodyM s)]
-liftProgram xs = xs >>= uncurry liftBody
+liftProgram :: Name -> [(Name, LBodyM s)] -> [(Name, BodyM s)]
+liftProgram passName xs = xs >>= uncurry (liftBody passName)
 
-liftBody :: Name -> LBodyM s -> [(Name, BodyM s)]
-liftBody x (Lifted.Lifted liftedFunctions (Simple.Scope body))
+liftBody :: Name -> Name -> LBodyM s -> [(Name, BodyM s)]
+liftBody passName x (Lifted.Lifted liftedFunctions (Simple.Scope body))
   = (x, inst body)
   : [ (inventName n, inst $ B <$> b)
     | (n, (_, b)) <- zip [0..]
@@ -153,5 +153,5 @@ liftBody x (Lifted.Lifted liftedFunctions (Simple.Scope body))
     ]
   where
     inst = Lifted.bindOperand (unvar (Lifted.Global . inventName) pure)
-    inventName (Tele tele) = x <> fromMaybe "" hint <> shower tele
+    inventName (Tele tele) = x <> fromMaybe "" hint <> passName <> shower tele
       where Hint hint = fst $ liftedFunctions Vector.! tele

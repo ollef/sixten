@@ -2,15 +2,13 @@
 module Main where
 
 import Control.Monad.Except
-import Control.Monad.State
+import Data.Bifunctor
 import Data.Bitraversable
 import Data.Foldable
 import qualified Data.HashMap.Lazy as HM
-import Data.HashSet(HashSet)
 import qualified Data.HashSet as HS
 import Data.List
 import Data.Monoid
-import Data.String
 import qualified Data.Text.IO as Text
 import qualified Data.Vector as V
 import Data.Void
@@ -21,107 +19,156 @@ import ClosureConvert
 import Erase
 import qualified Generate
 import Infer
+import qualified LLVM
+import Meta
 import TCM
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete as Concrete
+import qualified Syntax.Lambda as Lambda
 import qualified Syntax.Lifted as Lifted
-import qualified Syntax.Parse
-import qualified Syntax.Resolve
+import qualified Syntax.Parse as Parse
+import qualified Syntax.Resolve as Resolve
 import Restrict
 import Util
 
-inferProgram :: HashSet Constr -> Program Concrete.Expr Name -> TCM s ()
-inferProgram constrs p = mapM_ tcGroup sorted
+processGroup
+  :: [(Name, Definition Concrete.Expr Name, Concrete.Expr Name)]
+  -> TCM s [(Name, LLVM.B)]
+processGroup
+  = exposeGroup
+  >=> typeCheckGroup
+  >=> addGroupToContext
+  >=> eraseGroup
+  >=> restrictGroup
+  >=> liftGroup "-restrict"
+  >=> addGroupAritiesToContext
+  >=> closureConvertGroup
+  >=> liftGroup "-convert"
+  >=> generateGroup
+
+exposeGroup
+  :: [(Name, Definition Concrete.Expr Name, Concrete.Expr Name)]
+  -> TCM s [(Name, Definition Concrete.Expr (Var Int v), Scope Int Concrete.Expr v)]
+exposeGroup defs = return
+  [ ( n
+    , s >>>= unvar (pure . B) Concrete.Global
+    , t >>>= Concrete.Global
+    )
+  | ((s, t), (n, _, _)) <- zip (zip abstractedScopes abstractedTypes) defs]
   where
-    sorted = fmap (\(n, (d, t)) -> (n, (d >>>= instCon, t >>= instCon))) <$> dependencyOrder p
-    constructors = constrs <> HS.fromList (programConstrNames p)
-    instCon v
-      | v `HS.member` constructors = Concrete.Con $ Left v
-      | otherwise = pure v
+    abstractedScopes = recursiveAbstractDefs [(n, d) | (n, d, _) <- defs]
+    abstractedTypes = recursiveAbstract [(n, t) | (n, _, t) <- defs]
 
-    tcGroup tls = do
-      let abstractedScopes = recursiveAbstractDefs [(n, d) | (n, (d, _)) <- tls]
-          abstractedTypes = recursiveAbstract [(n, t) | (n, (_, t)) <- tls]
-          abstractedTls = [ ( Hint $ Just n
-                            , s >>>= unvar (pure . B) Concrete.Global
-                            , t >>>= Concrete.Global
-                            )
-                          | ((s, t), (n, _))
-                            <- zip (zip abstractedScopes abstractedTypes) tls]
-      checkedTls <- checkRecursiveDefs $ V.fromList abstractedTls
+typeCheckGroup
+  :: [(Name, Definition Concrete.Expr (Var Int (MetaVar Abstract.Expr s)), ScopeM Int Concrete.Expr s)]
+  -> TCM s [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
+typeCheckGroup defs = do
+  checkedDefs <- checkRecursiveDefs $ V.fromList defs
 
-      let vf :: a -> TCM s b
-          vf _ = throwError "inferProgram"
-      checkedTls' <- traverse (bitraverse (traverse $ traverse vf) (traverse vf)) checkedTls
-      let names = V.fromList [n | (n, (_, _)) <- tls]
-          instTls = HM.fromList
-            [(names V.! i, ( instantiateDef (Abstract.Global . (names V.!)) d
-                           , instantiate (Abstract.Global . (names V.!)) t
-                           ))
-            | (i, (d, t)) <- zip [0..] $ V.toList checkedTls'
-            ]
-      addContext instTls
+  let vf :: a -> TCM s b
+      vf _ = throwError "typeCheckGroup"
+  checkedDefs' <- traverse (bitraverse (traverse $ traverse vf) (traverse vf)) checkedDefs
+  let names = V.fromList [n | (n, _, _) <- defs]
+      instDefs =
+        [ ( names V.! i
+          , instantiateDef (Abstract.Global . (names V.!)) d
+          , instantiate (Abstract.Global . (names V.!)) t
+          )
+        | (i, (d, t)) <- zip [0..] $ V.toList checkedDefs'
+        ]
+  return instDefs
 
-test :: FilePath -> IO ()
-test inp = do
-  mp <- fmap Syntax.Resolve.program <$> Syntax.Parse.parseFromFile Syntax.Parse.program inp
-  case mp of
-    Nothing         -> return ()
+addGroupToContext
+  :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  -> TCM s [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
+addGroupToContext defs = do
+  addContext $ HM.fromList $ (\(n, d, t) -> (n, (d, t))) <$> defs
+  return defs
+
+eraseGroup
+  :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)] 
+  -> TCM s [(Name, Definition Lambda.SExpr Void)]
+eraseGroup defs = forM defs $ \(x, e, _) -> (,) x <$> eraseDef e
+
+restrictGroup
+  :: [(Name, Definition Lambda.SExpr Void)]
+  -> TCM s [(Name, Lifted.LBody Void)]
+restrictGroup defs = sequence
+  [ do
+      e' <- Restrict.restrictBody (vacuous e)
+      e'' <- traverse (throwError . ("restrictGroup " ++) . show) e'
+      return (x, e'')
+  | (x, Definition e) <- defs
+  ]
+
+liftGroup
+  :: Name
+  -> [(Name, Lifted.LBody Void)]
+  -> TCM s [(Name, Lifted.Body Void)]
+liftGroup name defs = do
+  let defs' = Restrict.liftProgram name $ fmap vacuous <$> defs
+  traverse (traverse (traverse (throwError . ("liftGroup " ++) . show))) defs'
+
+addGroupAritiesToContext
+  :: [(Name, Lifted.Body Void)]
+  -> TCM s [(Name, Lifted.Body Void)]
+addGroupAritiesToContext defs = do
+  forM_ defs $ \(x, b) -> addArity x $ case b of
+    Lifted.FunctionBody (Lifted.Function _ xs _) -> V.length xs
+    Lifted.ConstantBody _ -> 0
+  return defs
+
+closureConvertGroup
+  :: [(Name, Lifted.Body Void)]
+  -> TCM s [(Name, Lifted.LBody Void)]
+closureConvertGroup defs = do
+  defs' <- forM defs $ \(x, e) -> (,) x <$> ClosureConvert.convertBody (vacuous e)
+  traverse (traverse (traverse (throwError . ("closureConvertGroup " ++) . show))) defs'
+
+generateGroup
+  :: [(Name, Lifted.Body Void)]
+  -> TCM s [(Name, LLVM.B)]
+generateGroup defs = do
+  qcindex <- qconstructorIndex
+  let defMap = HM.fromList defs
+      env = Generate.GenEnv qcindex (`HM.lookup` defMap)
+  return $ flip map defs $ \(x, e) ->
+    ( x
+    , fold $ intersperse "\n"
+           $ snd $ Generate.runGen env
+           $ Generate.generateBody x $ vacuous e
+    )
+
+processFile :: FilePath -> IO ()
+processFile file = do
+  parseResult <- Parse.parseFromFile Parse.program file
+  let resolveResult = Resolve.program <$> parseResult
+  case resolveResult of
+    Nothing -> return ()
     Just (Left err) -> Text.putStrLn err
-    Just (Right p)  -> case runTCM (do
-      addContext Builtin.context
-      constrs <- HS.fromList . HM.keys <$> gets tcConstrs
-      inferProgram constrs p
-      cxt <- gets tcContext
-      erased <- sequence [(,) x <$> eraseDef e | (x, (e, _)) <- HM.toList cxt]
-      restricted <- sequence [(,) x <$> Restrict.restrictBody (vacuous e) | (x, Definition e) <- erased]
-      restricted' <- traverse (traverse (traverse vf)) restricted
-      let liftedRestricted = Restrict.liftProgram restricted
-      forM_ liftedRestricted $ \(x, b) -> addArity x $ case b of
-        Lifted.FunctionBody (Lifted.Function _ xs _) -> V.length xs
-        Lifted.ConstantBody _ -> 0
-
-      converted' <- sequence [(,) x <$> ClosureConvert.convertBody (undefined <$> e) | (x, e) <- liftedRestricted]
-      -- trs "converted'" $ show converted'
-      converted <- traverse (traverse (traverse vf)) converted'
-      -- trs "converted" $ show converted
-
-      converted'' <- traverse (traverse (traverse va)) converted'
-
-      liftedConverted <- traverse (traverse $ traverse va) $ Restrict.liftProgram converted''
-
-      qcindex <- qconstructorIndex
-      let genv = Generate.GenEnv qcindex (`HM.lookup` lconvprog)
-          lconvprog = HM.fromList liftedConverted
-
-      let generated = [(x, fold $ intersperse (fromString "\n") $ snd $ Generate.runGen genv $ Generate.generateBody x $ fmap absurd e) | (x, e) <- liftedConverted]
-
-      return (cxt, erased, restricted', converted, generated)
-      ) mempty of
-      (Left err, t) -> do mapM_ putStrLn t; putStrLn err
-      (Right (res, erased, restricted, converted, generated), _) -> do
-        mapM_ print $ (\(x, (d, t)) -> runPrettyM $ prettyM x <+> "=" <+> prettyTypedDef (fe d) (fe t) (fst $ pisView $ fe t)) <$> HM.toList res
-        putStrLn "------------- erased ------------------"
-        mapM_ print $ pretty <$> [(x, fe e) | (x, Definition e) <- erased]
-        putStrLn "------------- restricted --------------"
-        mapM_ print $ pretty . fmap (fmap show) <$> restricted
-        putStrLn "------------- closure-converted --------------"
-        mapM_ print $ pretty <$> converted
-        putStrLn "------------- generated --------------"
-        forM_ generated $ \(_, b) -> do
+    Just (Right resolved) -> do
+      let constrs = HS.fromList
+                  $ programConstrNames Builtin.context
+                  <> programConstrNames resolved
+          instCon v
+            | v `HS.member` constrs = Concrete.Con $ Left v
+            | otherwise = pure v
+          resolved' = bimap (>>>= instCon) (>>= instCon) <$> resolved
+          groups = dependencyOrder resolved'
+      case runTCM (process groups) mempty of
+        (Left err, t) -> do
+          mapM_ putStrLn t
+          putStrLn err
+        (Right res, _) -> forM_ (concat res) $ \(_, b) -> do
           Text.putStrLn ""
           Text.putStrLn b
-        -- mapM_ print $ fmap Builder.toLazyText <$> (generated :: [(Name, Builder.Builder)])
   where
-    fe :: Functor f => f Void -> f String
-    fe = vacuous
-    vf :: a -> TCM s String
-    vf _ = throwError "inferProgram"
-    va :: a -> TCM s b
-    va _ = throwError "inferProgram a"
+    process groups = do
+      addContext Builtin.context
+      mapM (processGroup . fmap (\(n, (d, t)) -> (n, d, t))) groups
 
 main :: IO ()
 main = do
   x:_ <- getArgs
-  test x
+  processFile x
