@@ -165,7 +165,7 @@ processFile file = do
             Text.putStrLn b
           Text.putStrLn "\ninit:"
           forM_ (concat res) $ \(i, _) ->
-            when (not $ Text.null i) $ Text.putStrLn i
+            unless (Text.null i) $ Text.putStrLn i
   where
     process groups = do
       addContext Builtin.context

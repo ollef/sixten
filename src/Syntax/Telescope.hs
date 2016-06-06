@@ -68,7 +68,7 @@ teleNames :: Telescope expr v -> Vector NameHint
 teleNames (Telescope t) = (\(h, _, _) -> h) <$> t
 
 simpleTeleNames :: SimpleTelescope expr v -> Vector NameHint
-simpleTeleNames (SimpleTelescope t) = (\(h, _) -> h) <$> t
+simpleTeleNames (SimpleTelescope t) = fst <$> t
 
 teleAnnotations :: Telescope expr v -> Vector Annotation
 teleAnnotations (Telescope t) = (\(_, a, _) -> a) <$> t
