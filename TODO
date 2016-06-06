@@ -1,5 +1,4 @@
-Make printing of passes optional
-Constant defs should be evaluated in main
+Make printing of passes optional and configurable
 LLVM code generation
   - Define builtins & apply_n functions
   - Use boehm (for now)

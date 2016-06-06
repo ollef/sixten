@@ -9,6 +9,7 @@ import qualified Data.HashMap.Lazy as HM
 import qualified Data.HashSet as HS
 import Data.List
 import Data.Monoid
+import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import qualified Data.Vector as V
 import Data.Void
@@ -128,17 +129,15 @@ closureConvertGroup defs = do
 
 generateGroup
   :: [(Name, Lifted.Body Void)]
-  -> TCM s [(Name, LLVM.B)]
+  -> TCM s [(LLVM.B, LLVM.B)]
 generateGroup defs = do
   qcindex <- qconstructorIndex
   let defMap = HM.fromList defs
       env = Generate.GenEnv qcindex (`HM.lookup` defMap)
   return $ flip map defs $ \(x, e) ->
-    ( x
-    , fold $ intersperse "\n"
-           $ snd $ Generate.runGen env
-           $ Generate.generateBody x $ vacuous e
-    )
+    second (fold . intersperse "\n")
+      $ Generate.runGen env
+      $ Generate.generateBody x $ vacuous e
 
 processFile :: FilePath -> IO ()
 processFile file = do
@@ -160,9 +159,13 @@ processFile file = do
         (Left err, t) -> do
           mapM_ putStrLn t
           putStrLn err
-        (Right res, _) -> forM_ (concat res) $ \(_, b) -> do
-          Text.putStrLn ""
-          Text.putStrLn b
+        (Right res, _) -> do
+          forM_ (concat res) $ \(_, b) -> do
+            Text.putStrLn ""
+            Text.putStrLn b
+          Text.putStrLn "\ninit:"
+          forM_ (concat res) $ \(i, _) ->
+            when (not $ Text.null i) $ Text.putStrLn i
   where
     process groups = do
       addContext Builtin.context

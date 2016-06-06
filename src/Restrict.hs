@@ -54,7 +54,7 @@ restrictBody expr = case expr of
     lamExpr' <- restrictSExpr lamExpr
     let lamScope' = Simple.abstract (teleAbstraction vs) lamExpr'
     return $ Lifted.lamLBody (sExprDir lamExpr) (simpleTeleDirectedNames tele) lamScope'
-  _ -> Lifted.mapLifted (Lifted.ConstantBody . Lifted.Constant (sExprDir expr)) <$> restrictSExpr expr
+  _ -> Lifted.mapLifted (Lifted.ConstantBody . Lifted.Constant) <$> restrictSExpr expr
 
 restrictSExpr
   :: SExprM s

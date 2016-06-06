@@ -132,8 +132,8 @@ convertBranches (SimpleLitBranches lbrs def)
                      <*> convertStmt def
 
 convertBody :: Body (MetaVar VarInfo s) -> TCM s (LBody (MetaVar VarInfo s))
-convertBody (ConstantBody (Constant d e))
-  = mapLifted (ConstantBody . Constant d) <$> convertStmt e
+convertBody (ConstantBody (Constant e))
+  = mapLifted (ConstantBody . Constant) <$> convertStmt e
 convertBody (FunctionBody (Function d xs s)) = do
   trp "convertBody fun" $ show <$> Simple.fromScope s
   modifyIndent succ

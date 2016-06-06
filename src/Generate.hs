@@ -1,8 +1,6 @@
 {-# LANGUAGE OverloadedStrings, RecursiveDo #-}
 module Generate where
 
-import qualified Bound
-import qualified Bound.Scope.Simple as Simple
 import Control.Monad.State
 import Control.Monad.Reader
 import qualified Data.Foldable as Foldable
@@ -356,13 +354,20 @@ generateFunction name (Function retDir hs e) = do
     go (DirectVar n) = integer n
     go (IndirectVar n) = pointer n
 
-generateConstant :: Name -> ConstantG -> Gen ()
-generateConstant name (Constant retDir s)
-  = generateFunction
-    (name <> "-init")
-    (Function retDir mempty $ Simple.Scope $ Bound.F <$> s)
+generateConstant :: Name -> ConstantG -> Gen B
+generateConstant name (Constant s) = do
+  let gname = unOperand $ global name
+      initName = gname <> "-init"
+  emitRaw $ Instr $ gname <+> "= external global" <+> pointerT
+  emitRaw $ Instr ""
+  emitRaw $ Instr $ "define" <+> voidT <+> initName <> "() {"
+  storeStmt s $ global name
+  emitRaw "}"
+  return $ "call" <+> voidT <+> initName <> "()"
 
-generateBody :: Name -> BodyG -> Gen ()
+generateBody :: Name -> BodyG -> Gen B
 generateBody name body = case body of
   ConstantBody b -> generateConstant name b
-  FunctionBody f -> generateFunction name f
+  FunctionBody f -> do
+    generateFunction name f
+    return mempty
