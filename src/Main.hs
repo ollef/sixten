@@ -157,7 +157,7 @@ processFile file = do
           groups = dependencyOrder resolved'
       case runTCM (process groups) mempty of
         (Left err, t) -> do
-          mapM_ putStrLn t
+          mapM_ (putDoc . (<> "\n")) t
           putStrLn err
         (Right res, _) -> do
           forM_ (concat res) $ \(_, b) -> do

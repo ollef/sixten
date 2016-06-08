@@ -12,6 +12,7 @@ import Data.List as List
 import Data.Monoid
 import Data.Set(Set)
 import qualified Data.Set as Set
+import qualified Data.Text.Lazy as Lazy
 import qualified Data.Vector as Vector
 import Data.Void
 
@@ -33,7 +34,7 @@ data State = State
   , tcIndent  :: !Int -- This has no place here, but is useful for debugging
   , tcFresh   :: !Int
   , tcLevel   :: !Level
-  , tcLog     :: ![String]
+  , tcLog     :: ![Doc]
   }
 
 instance Monoid State where
@@ -62,7 +63,7 @@ unTCM (TCM x) = x
 evalTCM :: (forall s. TCM s a) -> Program Expr Void -> Either String a
 evalTCM tcm cxt = runST $ evalStateT (runExceptT $ unTCM tcm) mempty { tcContext = cxt }
 
-runTCM :: (forall s. TCM s a) -> Program Expr Void -> (Either String a, [String])
+runTCM :: (forall s. TCM s a) -> Program Expr Void -> (Either String a, [Doc])
 runTCM tcm cxt = second (reverse . tcLog) $ runST $ runStateT (runExceptT $ unTCM tcm) mempty { tcContext = cxt }
 
 fresh :: TCM s Int
@@ -82,8 +83,8 @@ enterLevel x = do
   modify $ \s -> s {tcLevel = l}
   return r
 
-log :: String -> TCM s ()
-log l = trace l $ modify $ \s -> s {tcLog = l : tcLog s}
+log :: Lazy.Text -> TCM s ()
+log l = trace (show l) $ modify $ \s -> s {tcLog = text l : tcLog s}
 
 addContext :: Program Expr Void -> TCM s ()
 addContext prog = modify $ \s -> s

@@ -1,6 +1,6 @@
 {-# LANGUAGE GADTs, GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module Syntax.Pretty
-  ( module Text.PrettyPrint.ANSI.Leijen
+  ( module Text.PrettyPrint.Leijen.Text
   , Pretty, PrettyM
   , runPrettyM
   , (<+>), (<$$>)
@@ -27,18 +27,19 @@ import qualified Data.HashSet as HashSet
 import Data.Monoid
 import Data.Text(Text)
 import qualified Data.Text as Text
+import qualified Data.Text.Lazy as Lazy
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 import Data.String
-import Text.PrettyPrint.ANSI.Leijen
+import Text.PrettyPrint.Leijen.Text
   ( Doc
   , list
   , putDoc
   , text
   , tupled
   )
-import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
+import qualified Text.PrettyPrint.Leijen.Text as Leijen
 
 import Syntax.Hint
 import Syntax.Name
@@ -97,8 +98,8 @@ indent n = fmap $ Leijen.indent n
 tilde :: Doc
 tilde = Leijen.text "~"
 
-showWide :: Doc -> String
-showWide d = Leijen.displayS (Leijen.renderPretty 1.0 10000 d) ""
+showWide :: Doc -> Lazy.Text
+showWide d = Leijen.displayT (Leijen.renderPretty 1.0 10000 d)
 
 -------------------------------------------------------------------------------
 -- * Working with names
@@ -176,17 +177,17 @@ parens = fmap Leijen.parens . inviolable
 instance a ~ Doc => IsString (PrettyM a) where
   fromString = PrettyM . const . fromString
 
-instance Pretty Bool    where pretty = text . show
+instance Pretty Bool    where pretty = fromString . show
 instance Pretty Char    where
-  pretty = text . show
-  prettyList = pure . text
-instance Pretty Int     where pretty = text . show
-instance Pretty ()      where pretty = text . show
-instance Pretty Integer where pretty = text . show
-instance Pretty Float   where pretty = text . show
-instance Pretty Double  where pretty = text . show
+  pretty = fromString . show
+  prettyList = pure . fromString
+instance Pretty Int     where pretty = fromString . show
+instance Pretty ()      where pretty = fromString . show
+instance Pretty Integer where pretty = fromString . show
+instance Pretty Float   where pretty = fromString . show
+instance Pretty Double  where pretty = fromString . show
 instance Pretty Doc     where pretty = id
-instance Pretty Text    where pretty = text . Text.unpack
+instance Pretty Text    where pretty = fromString . Text.unpack
 instance Pretty Void    where pretty = absurd
 
 instance Pretty QConstr where

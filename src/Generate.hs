@@ -358,9 +358,9 @@ generateConstant :: Name -> ConstantG -> Gen B
 generateConstant name (Constant s) = do
   let gname = unOperand $ global name
       initName = gname <> "-init"
-  emitRaw $ Instr $ gname <+> "= external global" <+> pointerT
+  emitRaw $ Instr $ gname <+> "= external global" <+> integerT
   emitRaw $ Instr ""
-  emitRaw $ Instr $ "define" <+> voidT <+> initName <> "() {"
+  emitRaw $ Instr $ "define private" <+> voidT <+> initName <> "() {"
   storeStmt s $ global name
   emitRaw "}"
   return $ "call" <+> voidT <+> initName <> "()"

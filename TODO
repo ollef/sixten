@@ -1,6 +1,33 @@
 Make printing of passes optional and configurable
 LLVM code generation
+  Globals
+    - Heap-alloc globals not of constant size
+    - Make globals of constant size arrays?
+    - Make literals llvm `constant`s
   - Define builtins & apply_n functions
+
+    cc f = CL f0 n
+    cc (f e1 .. em)
+      | m == n = f e1 .. em
+      | m < n = CL fm (n - m) e1 .. em
+      | m > n = apply (m - n) (f e1 .. en) en+1 .. em
+    cc (x e1 .. em) = applym x e1 .. em
+
+    fm xthis xm+1 .. xn = case xthis of
+      CL _ _ y1 .. ym -> f y1 .. ym xm+1 .. xn
+
+    applym xthis x1 .. xm = case xthis of
+      CL funknown n
+        | m == n -> funknown xthis x1 .. xm
+        | m < n -> CL pap(n-m),m (n - m) xthis x1 .. xm
+        | m > n -> apply(m-n) (funknown xthis x1 .. xn) xn+1 .. xm
+
+    papk,m xthis x1 .. xk = case xthis of
+      CL _ _ ythat y1 .. ym -> apply(m+k) ythat y1 .. ym x1 .. xk
+
+    option 1 (indirect): copy all args not known to be of size 1 to the heap
+    option 2 (size passing): add extra size arguments to applym, CL, and pap
+
   - Use boehm (for now)
 Do closure conversion earlier and allow by-value variable capture
 Usage analysis for better erasure

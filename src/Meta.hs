@@ -1,4 +1,4 @@
-{-# LANGUAGE RecursiveDo, ViewPatterns #-}
+{-# LANGUAGE RecursiveDo, ViewPatterns, OverloadedStrings #-}
 module Meta where
 
 import Control.Applicative
@@ -12,6 +12,7 @@ import Data.Maybe
 import Data.Monoid
 import qualified Data.Set as S
 import Data.STRef
+import Data.String
 import qualified Data.Traversable as T
 import qualified Data.Vector as V
 import Prelude.Extras
@@ -78,23 +79,23 @@ tr :: (Functor e, Foldable e, Functor f, Foldable f, Pretty (f String), Pretty (
 tr s x = do
   i <- gets tcIndent
   r <- showMeta x
-  TCM.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ showWide r
+  TCM.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide r
 
 trp :: Pretty a => String -> a -> TCM s ()
 trp s x = do
   i <- gets tcIndent
-  TCM.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ showWide (pretty x)
+  TCM.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide (pretty x)
 
 trs :: Show a => String -> a -> TCM s ()
 trs s x = do
   i <- gets tcIndent
-  TCM.log $ mconcat (replicate i "| ") ++ "--" ++ s ++ ": " ++ show x
+  TCM.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> fromString (show x)
 
 existsAtLevel :: NameHint -> e (MetaVar e s) -> Level -> TCM s (MetaVar e s)
 existsAtLevel hint typ l = do
   i   <- fresh
   ref <- liftST $ newSTRef $ Left l
-  TCM.log $ "exists: " ++ show i
+  TCM.log $ "exists: " <> fromString (show i)
   return $ MetaVar i typ hint (Just ref)
 
 exists :: NameHint -> e (MetaVar e s) -> TCM s (MetaVar e s)
@@ -118,7 +119,7 @@ existsVarAtLevel hint typ l = pure <$> existsAtLevel hint typ l
 forall_ :: NameHint -> e (MetaVar e s) -> TCM s (MetaVar e s)
 forall_ hint typ = do
   i <- fresh
-  TCM.log $ "forall: " ++ show i
+  TCM.log $ "forall: " <> fromString (show i)
   return $ MetaVar i typ hint Nothing
 
 forallVar
@@ -155,7 +156,7 @@ letMeta
   -> TCM s (MetaVar e s)
 letMeta hint expr typ = do
   i   <- fresh
-  TCM.log $ "let: " ++ show i
+  TCM.log $ "let: " <> fromString (show i)
   ref <- liftST $ newSTRef $ Right expr
   return $ MetaVar i typ hint (Just ref)
 
@@ -213,7 +214,7 @@ abstract1M :: MetaVar Abstract.Expr s
            -> AbstractM s
            -> TCM s (ScopeM () Abstract.Expr s)
 abstract1M v e = do
-  TCM.log $ "abstracting " ++ show (metaId v)
+  TCM.log $ "abstracting " <> fromString (show $ metaId v)
   abstractM (\v' -> if v == v' then Just () else Nothing) e
 
 abstractDefM

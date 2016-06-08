@@ -15,7 +15,7 @@ cabal-version:       >=1.10
 executable funbox
   ghc-options:         -Wall -funbox-strict-fields
   main-is:             Main.hs
-  build-depends:       ansi-wl-pprint,
+  build-depends:       wl-pprint-text,
                        base >=4.8 && <4.9,
                        bifunctors,
                        bound,
