@@ -16,8 +16,9 @@ import Builtin
 import LLVM hiding (Operand)
 import qualified LLVM
 import Syntax.Branches
+import Syntax.Direction
 import Syntax.Hint
-import Syntax.Lifted
+import Syntax.Restricted
 import Syntax.Name
 import Syntax.Telescope
 import Util
@@ -116,14 +117,14 @@ generateStmt expr = case expr of
     ret <- nameHint "return" =: alloca szInt
     storeExpr e szInt ret
     return $ IndirectVar ret
-  Case (o, _) brs -> do
+  Case o brs -> do
     rets <- generateBranches o brs $ generateStmt >=> indirect
     res <- nameHint "caseResult" =: phiPtr rets
     return $ IndirectVar res
 
 storeStmt :: StmtG -> LLVM.Operand Ptr -> Gen ()
 storeStmt expr ret = case expr of
-  Case (o, _) brs -> void $ generateBranches o brs $ \br -> storeStmt br ret
+  Case o brs -> void $ generateBranches o brs $ \br -> storeStmt br ret
   Let _h e s -> do
     o <- generateStmt e
     storeStmt (instantiate1Var o s) ret
@@ -212,7 +213,7 @@ storeCon
   -> Vector (OperandG, OperandG)
   -> LLVM.Operand Ptr
   -> Gen ()
-storeCon (QConstr PtrName RefName) os ret = do
+storeCon Builtin.Ref os ret = do
   sizes <- mapM (generateOperand . snd) os
   sizeInts <- Traversable.forM sizes $ \ptr -> loadVar mempty ptr
   (is, fullSize) <- adds sizeInts
@@ -241,7 +242,7 @@ generateBranches op branches brCont = do
   expr <- (indirect <=< generateOperand) op
   postLabel <- LLVM.Operand <$> freshenName "after-branch"
   case branches of
-    SimpleConBranches [(QConstr PtrName RefName, tele, brScope)] -> mdo
+    SimpleConBranches [(Builtin.Ref, tele, brScope)] -> mdo
       branchLabel <- LLVM.Operand <$> freshenName RefName
 
       emit $ branch branchLabel

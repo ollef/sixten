@@ -7,68 +7,69 @@ import Data.Maybe
 import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
+import Data.Void
 
 import Syntax
-import qualified Syntax.Lambda as Lambda
 import qualified Syntax.Lifted as Lifted
+import qualified Syntax.Restricted as Restricted
 import Meta
 import TCM
 import Util
 
-type Meta = MetaVar Lambda.Expr
+type Meta = MetaVar Lifted.Expr
 
-varDir :: Meta s -> (NameHint, Lifted.Direction)
+varDir :: Meta s -> (NameHint, Direction)
 varDir m = (metaHint m, dir)
   where
     dir = case metaType m of
-      Lambda.Lit 1 -> Lifted.Direct
-      _ -> Lifted.Indirect
+      Lifted.Lit 1 -> Direct
+      _ -> Indirect
 
-type BodyM s = Lifted.Body (Meta s)
-type ExprM s = Lambda.Expr (Meta s)
-type LBodyM s = Lifted.LBody (Meta s)
-type LStmtM s = Lifted.LStmt (Meta s)
-type SExprM s = Lambda.SExpr (Meta s)
+type BodyM s = Restricted.Body (Meta s)
+type ExprM s = Lifted.Expr (Meta s)
+type LBodyM s = Restricted.LBody (Meta s)
+type LStmtM s = Restricted.LStmt (Meta s)
+type SExprM s = Lifted.SExpr (Meta s)
 
-sizeDir :: Lambda.Expr v -> Lifted.Direction
-sizeDir (Lambda.Lit 1) = Lifted.Direct
-sizeDir _ = Lifted.Indirect
+sizeDir :: Lifted.Expr v -> Direction
+sizeDir (Lifted.Lit 1) = Direct
+sizeDir _ = Indirect
 
-sExprDir :: Lambda.SExpr v -> Lifted.Direction
-sExprDir (Lambda.Sized sz _) = sizeDir sz
+sExprDir :: Lifted.SExpr v -> Direction
+sExprDir (Lifted.Sized sz _) = sizeDir sz
 
-simpleTeleDirs :: SimpleTelescope Lambda.Expr v -> Vector Lifted.Direction
+simpleTeleDirs :: SimpleTelescope Lifted.Expr v -> Vector Direction
 simpleTeleDirs (SimpleTelescope xs) = sizeDir . Simple.unscope . snd <$> xs
 
-simpleTeleDirectedNames :: SimpleTelescope Lambda.Expr v -> Vector (NameHint, Lifted.Direction)
+simpleTeleDirectedNames :: SimpleTelescope Lifted.Expr v -> Vector (NameHint, Direction)
 simpleTeleDirectedNames tele = Vector.zip (simpleTeleNames tele) (simpleTeleDirs tele)
 
 restrictBody
   :: SExprM s
   -> TCM s (LBodyM s)
 restrictBody expr = case expr of
-  (simpleBindingsViewM Lambda.lamView -> Just (tele, lamScope)) -> mdo
+  Lifted.Sized _ (Lifted.Lams tele lamScope) -> mdo
     vs <- forMSimpleTele tele $ \h s ->
-      forall_ h $ instantiateVar ((vs Vector.!) . unTele) s
-    let lamExpr = instantiateVar ((vs Vector.!) . unTele) lamScope
+      forall_ h $ instantiateVar ((vs Vector.!) . unTele) $ vacuous s
+    let lamExpr = instantiateVar ((vs Vector.!) . unTele) $ vacuous lamScope
     lamExpr' <- restrictSExpr lamExpr
     let lamScope' = Simple.abstract (teleAbstraction vs) lamExpr'
-    return $ Lifted.lamLBody (sExprDir lamExpr) (simpleTeleDirectedNames tele) lamScope'
-  _ -> Lifted.mapLifted (Lifted.ConstantBody . Lifted.Constant) <$> restrictSExpr expr
+    return $ Restricted.lamLBody (sExprDir lamExpr) (simpleTeleDirectedNames tele) lamScope'
+  _ -> Restricted.mapLifted (Restricted.ConstantBody . Restricted.Constant) <$> restrictSExpr expr
 
 restrictSExpr
   :: SExprM s
   -> TCM s (LStmtM s)
-restrictSExpr (Lambda.Sized sz expr) = do
-  rsz <- restrictExpr sz $ Lifted.pureLifted
-                         $ Lifted.Sized (Lifted.Lit 1)
-                         $ Lifted.Operand $ Lifted.Lit 1
+restrictSExpr (Lifted.Sized sz expr) = do
+  rsz <- restrictExpr sz $ Restricted.pureLifted
+                         $ Restricted.Sized (Restricted.Lit 1)
+                         $ Restricted.Operand $ Restricted.Lit 1
   restrictExpr expr rsz
 
 restrictSExprSize
   :: SExprM s
   -> TCM s (LStmtM s, LStmtM s)
-restrictSExprSize (Lambda.Sized sz expr) = do
+restrictSExprSize (Lifted.Sized sz expr) = do
   rsz <- restrictConstantSize sz 1
   rexpr <- restrictExpr expr rsz
   return (rexpr, rsz)
@@ -78,9 +79,9 @@ restrictConstantSize
   -> Literal
   -> TCM s (LStmtM s)
 restrictConstantSize expr sz =
-  restrictExpr expr $ Lifted.pureLifted
-                    $ Lifted.Sized (Lifted.Lit 1)
-                    $ Lifted.Operand $ Lifted.Lit sz
+  restrictExpr expr $ Restricted.pureLifted
+                    $ Restricted.Sized (Restricted.Lit 1)
+                    $ Restricted.Operand $ Restricted.Lit sz
 
 restrictExpr
   :: ExprM s
@@ -90,41 +91,41 @@ restrictExpr expr sz = do
   trp "restrictExpr" $ show <$> expr
   modifyIndent succ
   result <- case expr of
-    Lambda.Var v -> return $ Lifted.lSizedOperand sz $ Lifted.Local v
-    Lambda.Global g -> return $ Lifted.lSizedOperand sz $ Lifted.Global g
-    Lambda.Lit l -> return $ Lifted.lSizedOperand sz $ Lifted.Lit l
-    Lambda.Case e brs -> Lifted.caseLStmt <$> restrictSExprSize e <*> restrictBranches brs
-    Lambda.Con qc es -> Lifted.conLStmt sz qc <$> mapM restrictSExprSize es
-    (simpleBindingsViewM Lambda.lamView . Lambda.Sized (Lambda.Global "restrictExpr-impossible") -> Just (tele, lamScope)) -> mdo
+    Lifted.Var v -> return $ Restricted.lSizedOperand sz $ Restricted.Local v
+    Lifted.Global g -> return $ Restricted.lSizedOperand sz $ Restricted.Global g
+    Lifted.Lit l -> return $ Restricted.lSizedOperand sz $ Restricted.Lit l
+    Lifted.Case e brs -> Restricted.caseLStmt <$> restrictExpr e undefined <*> restrictBranches brs
+    Lifted.Con qc es -> Restricted.conLStmt sz qc <$> mapM restrictSExprSize es
+    Lifted.Lams tele lamScope -> mdo
       vs <- forMSimpleTele tele $ \h s ->
-        forall_ h $ instantiateVar ((vs Vector.!) . unTele) s
-      let lamExpr = instantiateVar ((vs Vector.!) . unTele) lamScope
+        forall_ h $ instantiateVar ((vs Vector.!) . unTele) $ vacuous s
+      let lamExpr = instantiateVar ((vs Vector.!) . unTele) $ vacuous lamScope
       lamExpr' <- restrictSExpr lamExpr
       let lamScope' = Simple.abstract (teleAbstraction vs) lamExpr'
-      return $ Lifted.liftLBody varDir
-             $ Lifted.lamLBody (sExprDir lamExpr) (simpleTeleDirectedNames tele) lamScope'
-    (Lambda.appsView -> (e, es)) ->
-      Lifted.callLStmt sz <$> restrictConstantSize e 1 <*> mapM restrictSExpr es
+      return $ Restricted.liftLBody varDir undefined
+             $ Restricted.lamLBody (sExprDir lamExpr) (simpleTeleDirectedNames tele) lamScope'
+    Lifted.Call e es ->
+      Restricted.callLStmt sz <$> restrictConstantSize e 1 <*> mapM restrictSExpr es
   modifyIndent pred
   trp "restrictExpr res: " $ show <$> result
   return result
   where
-    restrictBranches (SimpleConBranches cbrs) = Lifted.conLStmtBranches
+    restrictBranches (SimpleConBranches cbrs) = Restricted.conLStmtBranches
       <$> mapM (restrictConBranch sz) cbrs
-    restrictBranches (SimpleLitBranches lbrs def) = Lifted.litLStmtBranches
+    restrictBranches (SimpleLitBranches lbrs def) = Restricted.litLStmtBranches
       <$> sequence [(,) l <$> restrictExpr e sz | (l, e) <- lbrs]
       <*> restrictExpr def sz
 
 restrictConBranch
   :: LStmtM s
   -> ( QConstr
-     , SimpleTelescope Lambda.Expr (Meta s)
-     , Simple.Scope Tele Lambda.Expr (Meta s)
+     , SimpleTelescope Lifted.Expr (Meta s)
+     , Simple.Scope Tele Lifted.Expr (Meta s)
      )
   -> TCM s
      ( QConstr
-     , Vector (NameHint, Simple.Scope Tele Lifted.LStmt (Meta s))
-     , Simple.Scope Tele Lifted.LStmt (Meta s)
+     , Vector (NameHint, Simple.Scope Tele Restricted.LStmt (Meta s))
+     , Simple.Scope Tele Restricted.LStmt (Meta s)
      )
 restrictConBranch sz (qc, tele, brScope) = mdo
   tele' <- forMSimpleTele tele $ \h s -> do
@@ -144,14 +145,14 @@ liftProgram :: Name -> [(Name, LBodyM s)] -> [(Name, BodyM s)]
 liftProgram passName xs = xs >>= uncurry (liftBody passName)
 
 liftBody :: Name -> Name -> LBodyM s -> [(Name, BodyM s)]
-liftBody passName x (Lifted.Lifted liftedFunctions (Simple.Scope body))
+liftBody passName x (Restricted.Lifted liftedFunctions (Simple.Scope body))
   = (x, inst body)
   : [ (inventName n, inst $ B <$> b)
     | (n, (_, b)) <- zip [0..]
                    $ Vector.toList
-                   $ second Lifted.FunctionBody <$> liftedFunctions
+                   $ second Restricted.FunctionBody <$> liftedFunctions
     ]
   where
-    inst = Lifted.bindOperand (unvar (Lifted.Global . inventName) pure)
+    inst = Restricted.bindOperand (unvar (Restricted.Global . inventName) pure)
     inventName (Tele tele) = x <> fromMaybe "" hint <> passName <> shower tele
       where Hint hint = fst $ liftedFunctions Vector.! tele

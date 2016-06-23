@@ -1,148 +1,146 @@
-{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE OverloadedStrings, RecursiveDo #-}
 module ClosureConvert where
 
 import qualified Bound.Scope.Simple as Simple
 import Control.Applicative
 import Control.Monad.Except
-import Data.String
+import Data.Bifunctor
+import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
-import Prelude.Extras
+import Data.Void
 
-import qualified Builtin
+import Builtin
 import Meta
 import Syntax
 import Syntax.Lifted
 import TCM
 import Util
 
-data VarInfo a = Unknown
-  deriving Show
-
-instance Show1 VarInfo
-
-type Meta = MetaVar VarInfo
-type LiftedM e s = Lifted e (Meta s)
-
+type Meta = MetaVar Expr
 type ExprM s = Expr (Meta s)
-type StmtM s = Stmt (Meta s)
-type LBodyM s = Lifted Body (Meta s)
-type OperandM s = Operand (Meta s)
+type SExprM s = SExpr (Meta s)
+type BrsM s = SimpleBranches QConstr Expr (Meta s)
 
-convertExpr :: LiftedM Stmt s -> ExprM s -> TCM s (LiftedM Stmt s)
-convertExpr sz expr = do
-  trp "convertExpr" $ show <$> expr
-  modifyIndent succ
-  result <- case expr of
-    Operand o -> convertOperand sz o
-    Con qc os -> conLStmt sz qc <$> forM os (\(o, sz') -> do
-      sze <- convertOperand (lLit 1) sz'
-      oe <- convertOperand sze o
-      return (oe, sze)
-     )
-    Call o os -> convertCall sz o os
-  modifyIndent pred
-  trp "convertExpr res" $ show <$> result
-  return result
+convertExpr :: ExprM s -> TCM s (ExprM s)
+convertExpr expr = case expr of
+  Var v -> return $ Var v
+  Global g -> do
+    def <- liftedDefinition g
+    case def of
+      Sized _ (Lams tele s) -> knownCall (Global g) tele s mempty
+      _ -> return $ Global g
+  Lit l -> return $ Lit l
+  Con qc es -> Con qc <$> mapM convertSExpr es
+  Lams tele s -> knownCall (Lams tele s) tele s mempty
+  Call (Global g) es -> do
+    def <- liftedDefinition g
+    case def of
+      Sized _ (Lams tele s) -> knownCall (Global g) tele s es
+      _ -> throwError "convertExpr Call Global"
+  Call (Lams tele s) es -> knownCall (Lams tele s) tele s es
+  Call e es -> unknownCall e es
+  Case e brs -> Case <$> convertExpr e <*> convertBranches brs
 
-convertStmt :: StmtM s -> TCM s (LiftedM Stmt s)
-convertStmt expr = case expr of
-  Sized sz e -> do
-    liftedSz <- convertOperand (lLit 1) sz
-    convertExpr liftedSz e
-  Let h e s -> do
-    v <- forall_ h Unknown
-    e' <- convertStmt e
-    s' <- convertStmt $ instantiateVar (\() -> v) s
-    return $ letLStmt h e' $ Simple.abstract1 v s'
-  Case (o, osz) brs -> do
-    liftedSz <- convertOperand (lLit 1) osz
-    liftedO <- convertOperand liftedSz o
-    caseLStmt (liftedO, liftedSz) <$> convertBranches brs
+unknownCall
+  :: ExprM s
+  -> Vector (SExprM s)
+  -> TCM s (ExprM s)
+unknownCall e es
+  = return
+  $ Call (Global $ Builtin.apply $ Vector.length es)
+  $ Vector.cons (sized 1 e) $ sizedSizesOf es <> es
 
-convertOperand :: LiftedM Stmt s -> OperandM s -> TCM s (LiftedM Stmt s)
-convertOperand sz operand = case operand of
-  Local v -> return $ lSizedOperand sz $ Local v
-  Global _ -> convertCall sz operand mempty
-  Lit l -> return $ lLit l
-
-convertCall
-  :: LiftedM Stmt s
-  -> OperandM s
-  -> Vector (OperandM s)
-  -> TCM s (LiftedM Stmt s)
-convertCall sz operand args = case operand of
-  Local _ -> return
-           $ lSizedInnerExpr sz
-           $ Call (Global $ Builtin.apply argsLen)
-                  (Vector.cons operand args)
-  Global g -> known g =<< relevantDefArity g
-  Lit _ -> throwError "convertCall: Lit"
+knownCall
+  :: Expr Void
+  -> SimpleTelescope Expr Void
+  -> Simple.Scope Tele SExpr Void
+  -> Vector (SExprM s)
+  -> TCM s (ExprM s)
+knownCall f tele (Simple.Scope functionBody) args
+  | numArgs < arity
+    = return
+    $ Con Builtin.Ref
+    $ pure
+    $ Sized (addSizes $ Vector.cons (Lit 2) $ sizeOf <$> args)
+    $ Con Builtin.Closure
+    $ Vector.cons (sized 1 fNumArgs)
+    $ Vector.cons (sized 1 $ Lit $ fromIntegral $ arity - numArgs) args
+  | numArgs == arity
+    = return
+    $ Call (vacuous f) args
+  | otherwise = do
+    let (xs, ys) = Vector.splitAt arity args
+    unknownCall (Call (vacuous f) xs) ys
   where
-    argsLen = Vector.length args
-    todo = Global $ fromString "convertCall-TODO"
-    known g arity
-      | argsLen < arity
-        = return $ singleLifted mempty
-        ( Function Direct (Vector.replicate (1 + arity - argsLen) (mempty, Indirect)) -- TODO direction
-        $ Simple.toScope
-        $ Case (Local $ B 0, todo)
-        $ SimpleConBranches
-          [( Builtin.Closure
-          , SimpleTelescope $ Vector.replicate (arity + 2)
-          (mempty, Simple.Scope $ Sized todo $ Operand $ Lit 0)
-          -- TODO lift the size?
-          , Simple.toScope $ Sized todo
-                    $ Call (Global g)
-                    $ Local . B <$> Vector.enumFromN 2 argsLen
-                   <|> Local . F . B <$> Vector.enumFromN 1 (arity - argsLen)
-          )]
-        )
-        $ Simple.Scope $ Sized todo
-        $ Con Builtin.Closure
-        $ Vector.cons (Local $ B (), Lit 1)
-        $ Vector.cons (Lit $ fromIntegral $ arity - argsLen, Lit 1)
-        $ (\x -> (fmap F x, Lit 1)) <$> args
-      | argsLen > arity = do
-        let (args', rest) = Vector.splitAt argsLen args
-        return $ letLStmt mempty (pureLifted $ Sized (Lit 1) $ Call (Global g) args')
-               $ Simple.toScope
-               $ lSizedInnerExpr (F <$> sz)
-               $ Call (Global $ Builtin.apply $ Vector.length args')
-                      (Vector.cons (Local $ B ()) $ fmap F <$> rest)
-      | otherwise = return $ lSizedInnerExpr sz $ Call (Global g) args
+    numArgs = Vector.length args
+    arity = simpleTeleLength tele
+    fNumArgs
+      = Lams tele'
+      $ Simple.Scope
+      $ fmap B
+      $ Sized returnSize
+      $ Case (Call (Global Builtin.DerefName) $ pure $ sized 1 $ Var 0)
+      $ SimpleConBranches
+      $ pure
+      ( Builtin.Closure
+      , SimpleTelescope $ Vector.cons (mempty, Simple.Scope $ Lit 1)
+                        $ Vector.cons (mempty, Simple.Scope $ Lit 1) clArgs
+      , Simple.Scope $ Call (vacuous f) (fArgs1 <> fArgs2)
+      )
+      where
+        clArgs = fmap (vacuous . Simple.mapBound (+ 2)) <$> Vector.take numArgs (unSimpleTelescope tele)
+        fArgs1 = Vector.zipWith
+          Sized (Var . B <$> Vector.enumFromN 2 (Vector.length clArgs))
+                (fmap (unvar F absurd) . Simple.unscope . snd <$> clArgs)
+        fArgs2 = Vector.zipWith Sized
+          (Var . F <$> Vector.enumFromN 1 numXs)
+          (Var . F <$> Vector.enumFromN (fromIntegral $ 1 + numXs) numXs)
+        xs = Vector.drop numArgs $ simpleTeleNames tele
+        numXs = Vector.length xs
+        tele'
+          = SimpleTelescope
+          $ Vector.cons (nameHint "x_this", Simple.Scope $ Lit 1)
+          $ (\h -> (h, Simple.Scope $ Lit 1)) <$> xs
+          <|> (\(n, h) -> (h, Simple.Scope $ Var $ B $ Tele $ 1 + numXs + n)) <$> Vector.indexed xs
+        fReturnSize = unvar id absurd <$> sizeOf functionBody
+        returnSize
+          = Case (Call (Global Builtin.DerefName) $ pure $ sized 1 $ Var 0)
+          $ SimpleConBranches
+          $ pure
+          ( Builtin.Closure
+          , SimpleTelescope $ Vector.cons (mempty, Simple.Scope $ Lit 1)
+                            $ Vector.cons (mempty, Simple.Scope $ Lit 1) clArgs
+          , Simple.Scope $ fmap go fReturnSize
+          )
+        go n | unTele n < numArgs = B $ n + 2 -- from closure
+             | otherwise = F $ n + fromIntegral (arity - numArgs) + 1 -- From function args
 
-convertBranches
-  :: SimpleBranches QConstr Stmt (Meta s)
-  -> TCM s (LBranches (Meta s))
-convertBranches (SimpleConBranches cbrs) = do
-  cbrs' <- forM cbrs $ \(c, tele, brScope) -> mdo
+addSizes :: Vector (Expr v) -> Expr v
+addSizes = Vector.foldr1 go
+  where
+    go x y
+      = Call (Global Builtin.AddSizeName)
+      $ Vector.cons (Sized (Lit 1) x)
+      $ pure $ Sized (Lit 1) y
+
+convertSExpr :: SExprM s -> TCM s (SExprM s)
+convertSExpr (Sized sz e) = Sized <$> convertExpr sz <*> convertExpr e
+
+convertBranches :: BrsM s -> TCM s (BrsM s)
+convertBranches (SimpleConBranches cbrs) = fmap SimpleConBranches $
+  forM cbrs $ \(qc, tele, brScope) -> mdo
     tele' <- forMSimpleTele tele $ \h s -> do
-      let t = instantiateSimpleTeleVars vs s
-      t' <- convertStmt t
-      v <- forall_ h Unknown
-      return (v, (h, Simple.Scope $ abstr <$> t'))
+      let e = instantiateVar ((vs Vector.!) . unTele) s
+      v <- forall_ h e
+      e' <- convertExpr e
+      return (v, e')
     let vs = fst <$> tele'
-        abstr x = maybe (F x) B $ teleAbstraction vs x
-    brScope' <- convertStmt $ instantiateSimpleTeleVars vs brScope
-    return (c, snd <$> tele', Simple.Scope $ abstr <$> brScope')
-  return $ conLStmtBranches cbrs'
-convertBranches (SimpleLitBranches lbrs def)
-  = litLStmtBranches <$> sequence [(,) l <$> convertStmt e | (l, e) <- lbrs]
-                     <*> convertStmt def
-
-convertBody :: Body (MetaVar VarInfo s) -> TCM s (LBody (MetaVar VarInfo s))
-convertBody (ConstantBody (Constant e))
-  = mapLifted (ConstantBody . Constant) <$> convertStmt e
-convertBody (FunctionBody (Function d xs s)) = do
-  trp "convertBody fun" $ show <$> Simple.fromScope s
-  modifyIndent succ
-  vars <- mapM ((`forall_` Unknown) . fst) xs
-  let e = instantiateVar ((vars Vector.!) . unTele) s
-      abstr = unvar (const Nothing) (fmap Tele . (`Vector.elemIndex` vars))
-  e' <- convertStmt e
-  let result = mapLifted (FunctionBody . Function d xs . Simple.abstract abstr) e'
-  modifyIndent pred
-  trs "convertBody res" vars
-  trp "convertBody res" $ show <$> e'
-  return result
+        brExpr = instantiateVar ((vs Vector.!) . unTele) brScope
+        abstr = teleAbstraction vs
+        tele'' = SimpleTelescope $ bimap metaHint (Simple.abstract abstr) <$> tele'
+    brExpr' <- convertExpr brExpr
+    let brScope' = Simple.abstract abstr brExpr'
+    return (qc, tele'', brScope')
+convertBranches (SimpleLitBranches lbrs def) = SimpleLitBranches
+  <$> mapM (\(l, e) -> (,) l <$> convertExpr e) lbrs <*> convertExpr def

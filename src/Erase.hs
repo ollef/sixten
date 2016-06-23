@@ -10,29 +10,29 @@ import Data.Void
 
 import Syntax
 import qualified Syntax.Abstract as Abstract
-import qualified Syntax.Lambda as Lambda
+import qualified Syntax.SLambda as SLambda
 import Meta
 import TCM
 import Unify
 
 eraseS :: AbstractM s -> TCM s (SLambdaM s)
-eraseS e = Lambda.Sized <$> (erase =<< sizeOf e) <*> erase e
+eraseS e = SLambda.Sized <$> (erase =<< sizeOf e) <*> erase e
 
 erase :: AbstractM s -> TCM s (LambdaM s)
 erase expr = do
   tr "erase expr" expr
   modifyIndent succ
   res <- case expr of
-    Abstract.Var v -> return $ Lambda.Var v
-    Abstract.Global g -> return $ Lambda.Global g
-    Abstract.Lit l -> return $ Lambda.Lit l
-    Abstract.Pi {} -> return $ Lambda.Global "__unit"
+    Abstract.Var v -> return $ SLambda.Var v
+    Abstract.Global g -> return $ SLambda.Global g
+    Abstract.Lit l -> return $ SLambda.Lit l
+    Abstract.Pi {} -> return $ SLambda.Global "__unit"
     Abstract.Lam h a t s
       | relevance a == Relevant -> do
         v <- forall_ h t
         e <- eraseS $ instantiate1 (pure v) s
         sz <- erase =<< sizeOfType t
-        return $ Lambda.Lam h sz $ Simple.abstract1 v e
+        return $ SLambda.Lam h sz $ Simple.abstract1 v e
       | otherwise -> do
         v <- forall_ h t
         erase $ instantiate1 (pure v) s
@@ -40,7 +40,7 @@ erase expr = do
       n <- constrArity qc
       case compare argsLen n of
         GT -> throwError $ "erase: too many args for constructor: " ++ show qc
-        EQ -> Lambda.Con qc <$> mapM eraseS es'
+        EQ -> SLambda.Con qc <$> mapM eraseS es'
         LT -> do
           conType <- qconstructor qc
           let Just appliedConType = typeApps conType $ snd <$> es
@@ -55,9 +55,9 @@ erase expr = do
         argsLen = length es
     Abstract.Con _qc -> throwError "erase impossible"
     Abstract.App e1 a e2
-      | relevance a == Relevant -> Lambda.App <$> eraseS e1 <*> eraseS e2
+      | relevance a == Relevant -> SLambda.App <$> erase e1 <*> eraseS e2
       | otherwise -> erase e1
-    Abstract.Case e brs -> Lambda.Case <$> eraseS e <*> eraseBranches brs
+    Abstract.Case e brs -> SLambda.Case <$> erase e <*> eraseBranches brs
   modifyIndent pred
   tr "erase res" res
   return res
@@ -74,7 +74,7 @@ relevantAbstraction tele (Tele n) = Tele <$> perm Vector.! n
 eraseBranches
   :: Pretty c
   => BranchesM c Abstract.Expr s
-  -> TCM s (SimpleBranchesM c Lambda.Expr s)
+  -> TCM s (SimpleBranchesM c SLambda.Expr s)
 eraseBranches (ConBranches cbrs typ) = do
   tr "eraseBranches brs" $ ConBranches cbrs typ
   modifyIndent succ
@@ -103,7 +103,7 @@ eraseBranches (LitBranches lbrs d)
 
 eraseDef
   :: Definition Abstract.Expr Void
-  -> TCM s (Definition Lambda.SExpr Void)
+  -> TCM s (Definition SLambda.SExpr Void)
 eraseDef (Definition e) = fmap (error . show) . Definition <$> eraseS (vacuous e)
 eraseDef (DataDefinition DataDef {})
   = return $ DataDefinition $ DataDef mempty

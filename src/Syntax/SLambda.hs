@@ -1,5 +1,5 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, OverloadedStrings, Rank2Types, ViewPatterns #-}
-module Syntax.Lambda where
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, OverloadedStrings, ViewPatterns #-}
+module Syntax.SLambda where
 
 import qualified Bound.Scope.Simple as Simple
 import Data.Bifunctor
@@ -19,17 +19,17 @@ data SExpr v = Sized (Expr v) (Expr v)
 data Expr v
   = Var v
   | Global Name
-  | Con QConstr (Vector (SExpr v)) -- ^ Fully applied
   | Lit Literal
+  | Con QConstr (Vector (SExpr v)) -- ^ Fully applied
   | Lam !NameHint (Expr v) (Simple.Scope () SExpr v)
-  | App (SExpr v) (SExpr v)
-  | Case (SExpr v) (SimpleBranches QConstr Expr v)
+  | App (Expr v) (SExpr v)
+  | Case (Expr v) (SimpleBranches QConstr Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 appsView :: Expr v -> (Expr v, Vector (SExpr v))
 appsView = go []
   where
-    go args (App (Sized _ e1) se2) = go (se2:args) e1
+    go args (App e1 se2) = go (se2:args) e1
     go args e = (e, Vector.reverse $ Vector.fromList args)
 
 lamView :: SExpr v -> Maybe (NameHint, Expr v, Simple.Scope () SExpr v)
@@ -46,7 +46,7 @@ instance Ord1 SExpr
 instance Show1 SExpr
 
 etaLam :: Hint (Maybe Name) -> Expr v -> Simple.Scope () SExpr v -> Expr v
-etaLam _ _ (Simple.Scope (Sized _ (App (Sized _ e) (Sized _ (Var (B ()))))))
+etaLam _ _ (Simple.Scope (Sized _ (App e (Sized _ (Var (B ()))))))
   | B () `S.notMember` toSet (second (const ()) <$> e)
     = unvar (error "etaLam") id <$> e
 etaLam n e s = Lam n e s

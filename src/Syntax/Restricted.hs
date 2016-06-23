@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveGeneric, DeriveTraversable, FlexibleContexts, Rank2Types, ViewPatterns, OverloadedStrings #-}
-module Syntax.Lifted where
+module Syntax.Restricted where
 
 import GHC.Generics(Generic)
 import qualified Bound.Scope.Simple as Simple
@@ -27,9 +27,6 @@ data Body v
   | FunctionBody (Function v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
-data Direction = Direct | Indirect
-  deriving (Eq, Ord, Show)
-
 data Function v = Function Direction (Vector (NameHint, Direction)) (Simple.Scope Tele Stmt v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
@@ -47,21 +44,10 @@ data Operand v
   | Lit Literal
   deriving (Eq, Ord, Show, Functor, Foldable, Generic, Traversable)
 
-instantiateOperand
-  :: BindOperand f
-  => (b -> Operand a)
-  -> Simple.Scope b f a -> f a
-instantiateOperand f (Simple.Scope s) = bindOperand (unvar f pure) s
-
-instance Hashable v => Hashable (Operand v)
-
-instance IsString v => IsString (Operand v) where
-  fromString = Local . fromString
-
 data Stmt v
   = Sized (Operand v) (Expr v)
   | Let NameHint (Stmt v) (Simple.Scope () Stmt v)
-  | Case (Operand v, Operand v) (SimpleBranches QConstr Stmt v)
+  | Case (Operand v) (SimpleBranches QConstr Stmt v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 data Expr v
@@ -171,7 +157,9 @@ callStmt sz e es
   = letStmts ((,) mempty <$> Vector.cons sz (Vector.cons e es))
   $ Simple.Scope
   $ Sized (pure $ B 0)
-  $ Call (pure $ B 1) $ pure . B <$> Vector.enumFromN 2 (Vector.length es)
+  $ Call (pure $ B 1) $ pure . B <$> Vector.enumFromN 2 len
+  where
+    len = Vector.length es
 
 conStmt :: Stmt v -> QConstr -> Vector (Stmt v, Stmt v) -> Stmt v
 conStmt sz qc (Vector.unzip -> (es, szs))
@@ -182,10 +170,10 @@ conStmt sz qc (Vector.unzip -> (es, szs))
   where
     len = Vector.length es
 
-caseStmt :: (Stmt v, Stmt v) -> SimpleBranches QConstr Stmt v -> Stmt v
-caseStmt (e, esz) brs
-  = letStmts ((,) mempty <$> Vector.fromList [e, esz])
-  $ Simple.Scope $ Case (pure $ B 0, pure $ B 1) $ F <$> brs
+caseStmt :: Stmt v -> SimpleBranches QConstr Stmt v -> Stmt v
+caseStmt e brs
+  = letStmts (pure (mempty, e))
+  $ Simple.Scope $ Case (pure $ B 0) $ F <$> brs
 
 -------------------------------------------------------------------------------
 -- Lifted statements
@@ -219,13 +207,13 @@ letLStmts es s = unvar (error "Lifted.letLStmts") id <$> foldr go (Simple.fromSc
 
 caseLStmt
   :: (Eq v, Hashable v)
-  => (LStmt v, LStmt v)
+  => LStmt v
   -> LBranches v
   -> LStmt v
-caseLStmt (b, bsz) brs
-  = letLStmts ((,) mempty <$> Vector.fromList [b, bsz])
+caseLStmt b brs
+  = letLStmts (pure (mempty, b))
   $ Simple.Scope
-  $ mapLifted (Case (pure $ F $ B 0, pure $ F $ B 1) . fmap (fmap F)) brs
+  $ mapLifted (Case (pure $ F $ B 0) . fmap (fmap F)) brs
 
 conLStmtBranches
   :: (Eq v, Hashable v)
@@ -290,14 +278,14 @@ lSizedOperand
   => LStmt v
   -> Operand v
   -> LStmt v
-lSizedOperand sz = lSizedInnerExpr sz . Operand
+lSizedOperand sz = lSizedExpr sz . Operand
 
-lSizedInnerExpr
+lSizedExpr
   :: (Eq v, Hashable v)
   => LStmt v
   -> Expr v
   -> LStmt v
-lSizedInnerExpr sz e
+lSizedExpr sz e
   = letLStmt mempty sz
   $ Simple.Scope
   $ pureLifted
@@ -314,7 +302,7 @@ callLStmt lsz le les
   $ Simple.Scope
   $ pureLifted
   $ Sized (pure $ B 0)
-  $ Call (pure $ B 1) (pure . B <$> Vector.enumFromN 2 len)
+  $ Call (pure $ B 1) $ pure . B <$> Vector.enumFromN 2 len
     where
       len = Vector.length les
 
@@ -323,13 +311,16 @@ callLStmt lsz le les
 liftBody
   :: (Eq v, Hashable v)
   => (v -> (NameHint, Direction))
+  -> (v -> (NameHint, LStmt v))
   -> Body v
   -> LStmt v
-liftBody _ (ConstantBody (Constant e)) = pureLifted e
-liftBody varDir (FunctionBody (Function d vs s))
-  = Lifted (pure (mempty, f))
+liftBody _ _ (ConstantBody (Constant e)) = pureLifted e
+liftBody varDir varSize (FunctionBody (Function d vs s))
+  = letLStmts (varSize <$> fvs)
+  $ Simple.Scope
+  $ Lifted (pure (mempty, f))
   $ Simple.Scope $ Sized (Lit 1)
-  $ Call (pure $ B 0) $ pure . pure <$> fvs
+  $ Call (pure $ B 0) $ pure . F . F <$> fvs
   where
     f = Function d (fmap varDir fvs <> vs)
       $ Simple.toScope
@@ -343,12 +334,13 @@ liftBody varDir (FunctionBody (Function d vs s))
 liftLBody
   :: (Eq v, Hashable v)
   => (v -> (NameHint, Direction))
+  -> (v -> (NameHint, LStmt v))
   -> LBody v
   -> LStmt v
-liftLBody varDir lbody
+liftLBody varDir varSize lbody
   = bindLifted' lbody
-  $ liftBody
-  $ unvar (const (mempty, Direct)) varDir
+  $ liftBody (unvar (const (mempty, Direct)) varDir)
+             (second (fmap F) . unvar (const (mempty, lLit 1)) varSize)
 
 lamLBody
   :: Direction
@@ -375,13 +367,13 @@ instance BindOperand Expr where
   bindOperand f expr = case expr of
     Operand o -> Operand $ bindOperand f o
     Con qc os -> Con qc $ bimap (bindOperand f) (bindOperand f) <$> os
-    Call o os -> Call (bindOperand f o) (bindOperand f <$> os)
+    Call o os -> Call (bindOperand f o) $ bindOperand f <$> os
 
 instance BindOperand Stmt where
   bindOperand f expr = case expr of
     Sized o i -> Sized (bindOperand f o) (bindOperand f i)
     Let h e s -> Let h (bindOperand f e) (bindOperand f s)
-    Case (x, sz) brs -> Case (bindOperand f x, bindOperand f sz) $ bindOperand f brs
+    Case x brs -> Case (bindOperand f x) $ bindOperand f brs
 
 instance BindOperand Body where
   bindOperand f body = case body of
@@ -416,6 +408,17 @@ instance Applicative Operand where
   pure = Local
   (<*>) = ap
 
+instantiateOperand
+  :: BindOperand f
+  => (b -> Operand a)
+  -> Simple.Scope b f a -> f a
+instantiateOperand f (Simple.Scope s) = bindOperand (unvar f pure) s
+
+instance Hashable v => Hashable (Operand v)
+
+instance IsString v => IsString (Operand v) where
+  fromString = Local . fromString
+
 instance Bound Lifted where
   Lifted ds d >>>= f = Lifted ds (d >>>= f)
 
@@ -431,10 +434,6 @@ instance (Eq v, IsString v, Pretty v, Pretty (e v), Functor e)
         addWheres x = x <$$> indent 2 ("where" <$$>
           indent 2 (vcat $ Vector.toList $ (\(n, (_, e)) -> prettyM n <+> "=" <+> prettyM (toName <$> e)) <$> Vector.zip ns ds))
      in addWheres $ prettyM (unvar toName id <$> s)
-
-instance Pretty Direction where
-  prettyM Direct = "direct"
-  prettyM Indirect = "indirect"
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Body v) where
@@ -474,9 +473,8 @@ instance (Eq v, IsString v, Pretty v)
       withNameHint h $ \n ->
         "let" <+> prettyM n <+> "=" <+> inviolable (prettyM e) <+> "in" <$$>
           indent 2 (inviolable $ prettyM $ instantiate1Var (fromText n) s)
-    Case (v, sz) brs -> parens `above` casePrec $
+    Case v brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM v) <+>
-      ":" <+> inviolable (prettyM sz) <+>
       "of" <$$> indent 2 (prettyM brs)
     Sized sz e -> parens `above` annoPrec $
       prettyM e <+> ":" <+> prettyM sz

@@ -13,11 +13,13 @@ import Data.Monoid
 import Data.Set(Set)
 import qualified Data.Set as Set
 import qualified Data.Text.Lazy as Lazy
+import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 
 import Syntax
 import Syntax.Abstract
+import qualified Syntax.Lifted as Lifted
 
 import Debug.Trace
 
@@ -29,26 +31,26 @@ instance Pretty Level where
 
 data State = State
   { tcContext :: Program Expr Void
-  , tcArities :: HashMap Name Int
   , tcConstrs :: HashMap Constr (Set (Name, Type Void))
-  , tcIndent  :: !Int -- This has no place here, but is useful for debugging
-  , tcFresh   :: !Int
-  , tcLevel   :: !Level
-  , tcLog     :: ![Doc]
+  , tcDirections :: HashMap Name (Direction, Vector Direction)
+  , tcLiftedContext :: HashMap Name (Lifted.SExpr Void)
+  , tcIndent :: !Int -- This has no place here, but is useful for debugging
+  , tcFresh :: !Int
+  , tcLevel :: !Level
+  , tcLog :: ![Doc]
   }
 
-instance Monoid State where
-  mempty = State
-    { tcContext = mempty
-    , tcConstrs = mempty
-    , tcArities = mempty
-    , tcIndent  = 0
-    , tcFresh   = 0
-    , tcLevel   = Level 1
-    , tcLog     = mempty
-    }
-  mappend (State cxt1 cs1 as1 x1 y1 z1 l1) (State cxt2 cs2 as2 x2 y2 z2 l2)
-    = State (cxt1 <> cxt2) (cs1 <> cs2) (as1 <> as2) (x1 + x2) (y1 + y2) (z1 + z2) (l1 <> l2)
+emptyState :: State
+emptyState = State
+  { tcContext = mempty
+  , tcConstrs = mempty
+  , tcDirections = mempty
+  , tcLiftedContext = mempty
+  , tcIndent = 0
+  , tcFresh = 0
+  , tcLevel = Level 1
+  , tcLog = mempty
+  }
 
 newtype TCM s a = TCM (ExceptT String (StateT State (ST s)) a)
   deriving (Functor, Applicative, Monad, MonadFix, MonadError String, MonadState State)
@@ -57,14 +59,29 @@ instance MonadST (TCM s) where
   type World (TCM s) = s
   liftST = TCM . liftST
 
-unTCM :: (forall s. TCM s a) -> forall s. ExceptT String (StateT State (ST s)) a
+unTCM
+  :: (forall s. TCM s a)
+  -> forall s. ExceptT String (StateT State (ST s)) a
 unTCM (TCM x) = x
 
-evalTCM :: (forall s. TCM s a) -> Program Expr Void -> Either String a
-evalTCM tcm cxt = runST $ evalStateT (runExceptT $ unTCM tcm) mempty { tcContext = cxt }
+evalTCM
+  :: (forall s. TCM s a)
+  -> Program Expr Void
+  -> Either String a
+evalTCM tcm cxt
+  = runST
+  $ evalStateT (runExceptT $ unTCM tcm)
+               emptyState { tcContext = cxt }
 
-runTCM :: (forall s. TCM s a) -> Program Expr Void -> (Either String a, [Doc])
-runTCM tcm cxt = second (reverse . tcLog) $ runST $ runStateT (runExceptT $ unTCM tcm) mempty { tcContext = cxt }
+runTCM
+  :: (forall s. TCM s a)
+  -> Program Expr Void
+  -> (Either String a, [Doc])
+runTCM tcm cxt
+  = second (reverse . tcLog)
+  $ runST
+  $ runStateT (runExceptT $ unTCM tcm)
+              emptyState { tcContext = cxt }
 
 fresh :: TCM s Int
 fresh = do
@@ -90,20 +107,8 @@ addContext :: Program Expr Void -> TCM s ()
 addContext prog = modify $ \s -> s
   { tcContext = prog <> tcContext s
   , tcConstrs = HM.unionWith (<>) cs $ tcConstrs s
-  , tcArities = arities <> tcArities s
-  } where
-    arities = HM.fromList $ do
-      (n, (def, defType)) <- HM.toList prog
-      return
-        ( n
-        , Vector.length
-        $ Vector.filter (\(_, a, _) -> relevance a == Relevant)
-        $ unTelescope $ fst
-        $ case def of
-            Definition e -> lamsView e
-            DataDefinition _ -> pisView defType
-        )
-
+  }
+  where
     cs = HM.fromList $ do
       (n, (DataDefinition d, defType)) <- HM.toList prog
       ConstrDef c t <- quantifiedConstrTypes
@@ -111,17 +116,42 @@ addContext prog = modify $ \s -> s
                          (mapAnnotations (const IrIm) $ telescope defType)
       return (c, Set.fromList [(n, t)])
 
-addArity :: Name -> Int -> TCM s ()
-addArity n arity = modify $ \s -> s { tcArities = HM.insert n arity $ tcArities s }
+addDirections :: Name -> (Direction, Vector Direction) -> TCM s ()
+addDirections n dirs = modify $ \s -> s { tcDirections = HM.insert n dirs $ tcDirections s }
+
+addLiftedContext :: HashMap Name (Lifted.SExpr Void) -> TCM s ()
+addLiftedContext p = modify $ \s -> s { tcLiftedContext = p <> tcLiftedContext s }
 
 modifyIndent :: (Int -> Int) -> TCM s ()
 modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
 
-lookupDefinition :: Name -> TCM s (Maybe (Definition Expr b, Type b'))
-lookupDefinition name = gets $ fmap (bimap vacuous vacuous) . HM.lookup name . tcContext
+lookupDefinition
+  :: Name
+  -> TCM s (Maybe (Definition Expr b, Type b'))
+lookupDefinition name
+  = gets
+  $ fmap (bimap vacuous vacuous)
+  . HM.lookup name
+  . tcContext
 
-lookupConstructor :: Ord b => Constr -> TCM s (Set (Name, Type b))
-lookupConstructor name = gets $ maybe mempty (Set.map $ second vacuous) . HM.lookup name . tcConstrs
+lookupConstructor
+  :: Ord b
+  => Constr
+  -> TCM s (Set (Name, Type b))
+lookupConstructor name
+  = gets
+  $ maybe mempty (Set.map $ second vacuous)
+  . HM.lookup name
+  . tcConstrs
+
+lookupLiftedDefinition
+  :: Name
+  -> TCM s (Maybe (Lifted.SExpr b))
+lookupLiftedDefinition name
+  = gets
+  $ fmap vacuous
+  . HM.lookup name
+  . tcLiftedContext
 
 definition
   :: Name
@@ -129,7 +159,16 @@ definition
 definition v = do
   mres <- lookupDefinition v
   maybe (throwError $ "Not in scope: " ++ show v)
-        (return . bimap vacuous vacuous)
+        return
+        mres
+
+liftedDefinition
+  :: Name
+  -> TCM s (Lifted.SExpr v)
+liftedDefinition v = do
+  mres <- lookupLiftedDefinition v
+  maybe (throwError $ "Not in scope: " ++ show v)
+        return
         mres
 
 constructor
@@ -137,7 +176,7 @@ constructor
   => Either Constr QConstr
   -> TCM s (Set (Name, Type v))
 constructor (Right qc@(QConstr n _)) = Set.singleton . (,) n <$> qconstructor qc
-constructor (Left c) = Set.map (second vacuous) <$> lookupConstructor c
+constructor (Left c) = lookupConstructor c
 
 qconstructor
   :: QConstr
@@ -161,11 +200,11 @@ qconstructorIndex = do
     then Nothing
     else findIndex ((== c) . constrName) constrDefs
 
-relevantDefArity
+defDirections
   :: Name
-  -> TCM s Int
-relevantDefArity n = do
-  mres <- gets (HM.lookup n . tcArities)
+  -> TCM s (Direction, Vector Direction)
+defDirections n = do
+  mres <- gets (HM.lookup n . tcDirections)
   maybe (throwError $ "Not in scope: " ++ show n)
         return
         mres

@@ -20,16 +20,18 @@ import ClosureConvert
 import Erase
 import qualified Generate
 import Infer
+import Lift
 import qualified LLVM
 import Meta
 import TCM
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete as Concrete
-import qualified Syntax.Lambda as Lambda
 import qualified Syntax.Lifted as Lifted
 import qualified Syntax.Parse as Parse
 import qualified Syntax.Resolve as Resolve
+import qualified Syntax.Restricted as Restricted
+import qualified Syntax.SLambda as SLambda
 import Restrict
 import Util
 
@@ -41,11 +43,12 @@ processGroup
   >=> typeCheckGroup
   >=> addGroupToContext
   >=> eraseGroup
-  >=> restrictGroup
-  >=> liftGroup "-restrict"
-  >=> addGroupAritiesToContext
+  >=> liftGroup
   >=> closureConvertGroup
-  >=> liftGroup "-convert"
+  >=> addLiftedGroupToContext
+  >=> restrictGroup
+  >=> liftRestrictedGroup "-lifted"
+  >=> addGroupDirectionsToContext
   >=> generateGroup
 
 exposeGroup
@@ -89,46 +92,69 @@ addGroupToContext defs = do
 
 eraseGroup
   :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)] 
-  -> TCM s [(Name, Definition Lambda.SExpr Void)]
+  -> TCM s [(Name, Definition SLambda.SExpr Void)]
 eraseGroup defs = forM defs $ \(x, e, _) -> (,) x <$> eraseDef e
 
-restrictGroup
-  :: [(Name, Definition Lambda.SExpr Void)]
-  -> TCM s [(Name, Lifted.LBody Void)]
-restrictGroup defs = sequence
+liftGroup
+  :: [(Name, Definition SLambda.SExpr Void)]
+  -> TCM s [(Name, Lifted.SExpr Void)]
+liftGroup defs = sequence
   [ do
-      e' <- Restrict.restrictBody (vacuous e)
-      e'' <- traverse (throwError . ("restrictGroup " ++) . show) e'
+      e' <- liftSExpr $ vacuous e
+      e'' <- traverse (throwError . ("liftGroup " ++) . show) e'
       return (x, e'')
   | (x, Definition e) <- defs
   ]
 
-liftGroup
+closureConvertGroup
+  :: [(Name, Lifted.SExpr Void)]
+  -> TCM s [(Name, Lifted.SExpr Void)]
+closureConvertGroup defs = forM defs $ \(x, e) -> do
+  e' <- convertSExpr $ vacuous e
+  e'' <- traverse (throwError . ("closureConvertGroup " ++) . show) e'
+  return (x, e'')
+
+addLiftedGroupToContext
+  :: [(Name, Lifted.SExpr Void)]
+  -> TCM s [(Name, Lifted.SExpr Void)]
+addLiftedGroupToContext defs = do
+  addLiftedContext $ HM.fromList defs
+  return defs
+
+restrictGroup
+  :: [(Name, Lifted.SExpr Void)]
+  -> TCM s [(Name, Restricted.LBody Void)]
+restrictGroup defs = forM defs $ \(x, e) -> do
+  e' <- Restrict.restrictBody $ vacuous e
+  e'' <- traverse (throwError . ("restrictGroup " ++) . show) e'
+  return (x, e'')
+
+liftRestrictedGroup
   :: Name
-  -> [(Name, Lifted.LBody Void)]
-  -> TCM s [(Name, Lifted.Body Void)]
-liftGroup name defs = do
+  -> [(Name, Restricted.LBody Void)]
+  -> TCM s [(Name, Restricted.Body Void)]
+liftRestrictedGroup name defs = do
   let defs' = Restrict.liftProgram name $ fmap vacuous <$> defs
   traverse (traverse (traverse (throwError . ("liftGroup " ++) . show))) defs'
 
-addGroupAritiesToContext
-  :: [(Name, Lifted.Body Void)]
-  -> TCM s [(Name, Lifted.Body Void)]
-addGroupAritiesToContext defs = do
-  forM_ defs $ \(x, b) -> addArity x $ case b of
-    Lifted.FunctionBody (Lifted.Function _ xs _) -> V.length xs
-    Lifted.ConstantBody _ -> 0
+addGroupDirectionsToContext
+  :: [(Name, Restricted.Body Void)]
+  -> TCM s [(Name, Restricted.Body Void)]
+addGroupDirectionsToContext defs = do
+  forM_ defs $ \(x, b) -> case b of
+    Restricted.FunctionBody (Restricted.Function retDir xs _) -> addDirections x (retDir, snd <$> xs)
+    Restricted.ConstantBody _ -> return ()
   return defs
 
-closureConvertGroup
-  :: [(Name, Lifted.Body Void)]
-  -> TCM s [(Name, Lifted.LBody Void)]
-closureConvertGroup defs = do
-  defs' <- forM defs $ \(x, e) -> (,) x <$> ClosureConvert.convertBody (vacuous e)
-  traverse (traverse (traverse (throwError . ("closureConvertGroup " ++) . show))) defs'
+-- closureConvertGroup
+--   :: [(Name, Restricted.Body Void)]
+--   -> TCM s [(Name, Restricted.LBody Void)]
+-- closureConvertGroup defs = do
+--   defs' <- forM defs $ \(x, e) -> (,) x <$> ClosureConvert.convertBody (vacuous e)
+--   traverse (traverse (traverse (throwError . ("closureConvertGroup " ++) . show))) defs'
 
 generateGroup
-  :: [(Name, Lifted.Body Void)]
+  :: [(Name, Restricted.Body Void)]
   -> TCM s [(LLVM.B, LLVM.B)]
 generateGroup defs = do
   qcindex <- qconstructorIndex

@@ -273,10 +273,10 @@ generalise expr typ = do
       p _                   = return False
   fvs' <- HS.fromList <$> filterM p fvs
 
-  deps <- forM (HS.toList fvs') (\x -> do
+  deps <- forM (HS.toList fvs') $ \x -> do
     ds <- foldMapM HS.singleton $ metaType x
     return (x, ds)
-   )
+
   let sorted = map go $ topoSort deps
   genexpr <- F.foldrM ($ etaLamM) expr sorted
   gentype <- F.foldrM ($ (\h a t s -> pure $ Abstract.Pi h a t s)) typ sorted
@@ -412,10 +412,10 @@ generaliseDefs xs = do
   trs "generaliseDefs fvs" fvs
   trs "generaliseDefs fvs'" fvs'
 
-  deps <- forM (HS.toList fvs') (\x -> do
+  deps <- forM (HS.toList fvs') $ \x -> do
     ds <- foldMapM HS.singleton $ metaType x
     return (x, ds)
-   )
+
   let sortedFvs = map impure $ topoSort deps
       appl x = apps x [(ReIm, pure fv) | fv <- sortedFvs]
       instVars = appl . pure <$> vars

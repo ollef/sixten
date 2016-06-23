@@ -9,6 +9,7 @@ import Syntax.Branches as X
 import Syntax.Class as X
 import Syntax.Data as X
 import Syntax.Definition as X
+import Syntax.Direction as X
 import Syntax.Hint as X
 import Syntax.Name as X
 import Syntax.Pretty as X

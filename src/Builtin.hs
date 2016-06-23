@@ -24,7 +24,11 @@ pattern Type sz = App (Global TypeName) IrIm sz
 pattern RefName <- ((==) "Ref" -> True) where RefName = "Ref"
 pattern PtrName <- ((==) "Ptr" -> True) where PtrName = "Ptr"
 
+pattern DerefName <- ((==) "deref" -> True) where DerefName = "deref"
+
 pattern Closure <- ((== QConstr "Builtin" "CL") -> True) where Closure = QConstr "Builtin" "CL"
+
+pattern Ref <- ((== QConstr PtrName RefName) -> True) where Ref = QConstr PtrName RefName
 
 apply :: Int -> Name
 apply n = "apply_" `mappend` fromString (show n)

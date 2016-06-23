@@ -41,6 +41,9 @@ mapAnnotations f (Telescope xs) = Telescope $ (\(h, a, s) -> (h, f a, s)) <$> xs
 teleLength :: Telescope expr v -> Int
 teleLength = Vector.length . unTelescope
 
+simpleTeleLength :: SimpleTelescope expr v -> Int
+simpleTeleLength = Vector.length . unSimpleTelescope
+
 dropTele :: Functor expr => Int -> Telescope expr v -> Telescope expr v
 dropTele n
   = Telescope

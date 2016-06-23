@@ -20,7 +20,7 @@ import Prelude.Extras
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete as Concrete
-import qualified Syntax.Lambda as Lambda
+import qualified Syntax.SLambda as SLambda
 import TCM
 import Util
 
@@ -35,8 +35,8 @@ data MetaVar e s = MetaVar
 
 type ConcreteM s = Concrete.Expr (MetaVar Abstract.Expr s)
 type AbstractM s = Abstract.Expr (MetaVar Abstract.Expr s)
-type LambdaM s = Lambda.Expr (MetaVar Abstract.Expr s)
-type SLambdaM s = Lambda.SExpr (MetaVar Abstract.Expr s)
+type LambdaM s = SLambda.Expr (MetaVar Abstract.Expr s)
+type SLambdaM s = SLambda.SExpr (MetaVar Abstract.Expr s)
 type ScopeM b f s = Scope b f (MetaVar Abstract.Expr s)
 type BranchesM c f s = Branches c f (MetaVar Abstract.Expr s)
 type SimpleBranchesM c f s = SimpleBranches c f (MetaVar Abstract.Expr s)
