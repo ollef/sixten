@@ -21,7 +21,7 @@ data Expr v
   | Con QConstr (Vector (SExpr v)) -- ^ Fully applied
   | Lams (SimpleTelescope Expr Void) (Simple.Scope Tele SExpr Void)
   | Call (Expr v) (Vector (SExpr v))
-  | Case (Expr v) (SimpleBranches QConstr Expr v)
+  | Case (SExpr v) (SimpleBranches QConstr Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 -------------------------------------------------------------------------------

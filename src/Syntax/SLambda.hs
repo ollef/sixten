@@ -23,7 +23,7 @@ data Expr v
   | Con QConstr (Vector (SExpr v)) -- ^ Fully applied
   | Lam !NameHint (Expr v) (Simple.Scope () SExpr v)
   | App (Expr v) (SExpr v)
-  | Case (Expr v) (SimpleBranches QConstr Expr v)
+  | Case (SExpr v) (SimpleBranches QConstr Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 appsView :: Expr v -> (Expr v, Vector (SExpr v))

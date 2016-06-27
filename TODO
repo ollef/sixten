@@ -1,9 +1,9 @@
 LLVM code generation
+  - Define builtins & apply_n functions
   Globals
     - Heap-alloc globals not of constant size
     - Make globals of constant size arrays?
     - Make literals llvm `constant`s
-  - Define builtins & apply_n functions
   - Use boehm (for now)
   - Support existential sizes in constructors when pattern-matching
 Make printing of passes optional and configurable

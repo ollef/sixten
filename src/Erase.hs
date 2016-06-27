@@ -57,7 +57,7 @@ erase expr = do
     Abstract.App e1 a e2
       | relevance a == Relevant -> SLambda.App <$> erase e1 <*> eraseS e2
       | otherwise -> erase e1
-    Abstract.Case e brs -> SLambda.Case <$> erase e <*> eraseBranches brs
+    Abstract.Case e brs -> SLambda.Case <$> eraseS e <*> eraseBranches brs
   modifyIndent pred
   tr "erase res" res
   return res

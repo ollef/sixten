@@ -22,6 +22,23 @@ type ExprM s = Expr (Meta s)
 type SExprM s = SExpr (Meta s)
 type BrsM s = SimpleBranches QConstr Expr (Meta s)
 
+convertBody :: ExprM s -> TCM s (ExprM s)
+convertBody expr = case expr of
+  Lams tele lamScope -> mdo
+    tele' <- forMSimpleTele tele $ \h s -> do
+      let e = instantiateVar ((vs Vector.!) . unTele) $ vacuous s
+      v <- forall_ h e
+      e' <- convertExpr e
+      return (v, e')
+    let vs = fst <$> tele'
+        lamExpr = instantiateVar ((vs Vector.!) . unTele) $ vacuous lamScope
+        abstr = teleAbstraction vs
+        tele'' = SimpleTelescope $ bimap metaHint (Simple.abstract abstr) <$> tele'
+    lamExpr' <- convertSExpr lamExpr
+    let lamScope' = Simple.abstract abstr lamExpr'
+    return $ Lams (error "convertBody" <$> tele'') (error "convertBody" <$> lamScope')
+  _ -> convertExpr expr
+
 convertExpr :: ExprM s -> TCM s (ExprM s)
 convertExpr expr = case expr of
   Var v -> return $ Var v
@@ -37,10 +54,10 @@ convertExpr expr = case expr of
     def <- liftedDefinition g
     case def of
       Sized _ (Lams tele s) -> knownCall (Global g) tele s es
-      _ -> throwError "convertExpr Call Global"
+      _ -> throwError $ "convertExpr Call Global " <> show (pretty $ show <$> expr)
   Call (Lams tele s) es -> knownCall (Lams tele s) tele s es
   Call e es -> unknownCall e es
-  Case e brs -> Case <$> convertExpr e <*> convertBranches brs
+  Case e brs -> Case <$> convertSExpr e <*> convertBranches brs
 
 unknownCall
   :: ExprM s
@@ -80,7 +97,7 @@ knownCall f tele (Simple.Scope functionBody) args
       $ Simple.Scope
       $ fmap B
       $ Sized returnSize
-      $ Case (Call (Global Builtin.DerefName) $ pure $ sized 1 $ Var 0)
+      $ Case (unknownSize $ Call (Global Builtin.DerefName) $ pure $ sized 1 $ Var 0)
       $ SimpleConBranches
       $ pure
       ( Builtin.Closure
@@ -89,6 +106,7 @@ knownCall f tele (Simple.Scope functionBody) args
       , Simple.Scope $ Call (vacuous f) (fArgs1 <> fArgs2)
       )
       where
+        unknownSize = Sized $ Global "ClosureConvert.UnknownSize"
         clArgs = fmap (vacuous . Simple.mapBound (+ 2)) <$> Vector.take numArgs (unSimpleTelescope tele)
         fArgs1 = Vector.zipWith
           Sized (Var . B <$> Vector.enumFromN 2 (Vector.length clArgs))
@@ -102,10 +120,10 @@ knownCall f tele (Simple.Scope functionBody) args
           = SimpleTelescope
           $ Vector.cons (nameHint "x_this", Simple.Scope $ Lit 1)
           $ (\h -> (h, Simple.Scope $ Lit 1)) <$> xs
-          <|> (\(n, h) -> (h, Simple.Scope $ Var $ B $ Tele $ 1 + numXs + n)) <$> Vector.indexed xs
+          <|> (\(n, h) -> (h, Simple.Scope $ Var $ B $ Tele $ 1 + n)) <$> Vector.indexed xs
         fReturnSize = unvar id absurd <$> sizeOf functionBody
         returnSize
-          = Case (Call (Global Builtin.DerefName) $ pure $ sized 1 $ Var 0)
+          = Case (unknownSize $ Call (Global Builtin.DerefName) $ pure $ sized 1 $ Var 0)
           $ SimpleConBranches
           $ pure
           ( Builtin.Closure
@@ -123,6 +141,9 @@ addSizes = Vector.foldr1 go
       = Call (Global Builtin.AddSizeName)
       $ Vector.cons (Sized (Lit 1) x)
       $ pure $ Sized (Lit 1) y
+
+convertSBody :: SExprM s -> TCM s (SExprM s)
+convertSBody (Sized sz e) = Sized <$> convertExpr sz <*> convertBody e
 
 convertSExpr :: SExprM s -> TCM s (SExprM s)
 convertSExpr (Sized sz e) = Sized <$> convertExpr sz <*> convertExpr e

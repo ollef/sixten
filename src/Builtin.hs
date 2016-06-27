@@ -1,13 +1,17 @@
 {-# LANGUAGE OverloadedStrings, ViewPatterns, PatternSynonyms #-}
 module Builtin where
 
+import qualified Bound.Scope.Simple as Simple
+import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HM
 import Data.Maybe
 import Data.String
+import qualified Data.Vector as Vector
 import Data.Void
 
 import Syntax
 import Syntax.Abstract as Abstract
+import qualified Syntax.Lifted as Lifted
 
 pattern SizeName <- ((==) "Size" -> True) where SizeName = "Size"
 pattern Size = Global SizeName
@@ -50,3 +54,9 @@ context = HM.fromList
     cl = fromMaybe (error "Builtin not closed") . closed
     opaque t = (DataDefinition $ DataDef mempty, cl t)
     dataType t xs = (DataDefinition $ DataDef xs, cl t)
+
+liftedContext :: HashMap Name (Lifted.SExpr Void)
+liftedContext = HM.fromList
+  [ (AddSizeName, Lifted.Sized (Lifted.Lit 1) (Lifted.Lams (SimpleTelescope $ Vector.fromList [(mempty, Simple.Scope $ Lifted.Lit 1), (mempty, Simple.Scope $ Lifted.Lit 1)]) $ Simple.Scope $ Lifted.Sized (Lifted.Lit 1) $ Lifted.Lit 1)) -- TODO
+  , (MaxSizeName, Lifted.Sized (Lifted.Lit 1) (Lifted.Lams (SimpleTelescope $ Vector.fromList [(mempty, Simple.Scope $ Lifted.Lit 1), (mempty, Simple.Scope $ Lifted.Lit 1)]) $ Simple.Scope $ Lifted.Sized (Lifted.Lit 1) $ Lifted.Lit 1)) -- TODO
+  ]

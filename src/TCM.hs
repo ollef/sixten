@@ -101,7 +101,7 @@ enterLevel x = do
   return r
 
 log :: Lazy.Text -> TCM s ()
-log l = trace (show l) $ modify $ \s -> s {tcLog = text l : tcLog s}
+log l = trace (Lazy.unpack l) $ modify $ \s -> s {tcLog = text l : tcLog s}
 
 addContext :: Program Expr Void -> TCM s ()
 addContext prog = modify $ \s -> s
@@ -167,7 +167,7 @@ liftedDefinition
   -> TCM s (Lifted.SExpr v)
 liftedDefinition v = do
   mres <- lookupLiftedDefinition v
-  maybe (throwError $ "Not in scope: " ++ show v)
+  maybe (throwError $ "Not in scope: lifted " ++ show v)
         return
         mres
 

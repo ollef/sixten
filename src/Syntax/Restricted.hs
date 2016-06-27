@@ -5,11 +5,9 @@ import GHC.Generics(Generic)
 import qualified Bound.Scope.Simple as Simple
 import Control.Monad
 import Data.Bifunctor
-import Data.Maybe
 import Data.String
 import Data.Foldable
 import Data.Hashable
-import qualified Data.HashSet as HashSet
 import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
@@ -309,38 +307,22 @@ callLStmt lsz le les
 -------------------------------------------------------------------------------
 -- Bodies
 liftBody
-  :: (Eq v, Hashable v)
-  => (v -> (NameHint, Direction))
-  -> (v -> (NameHint, LStmt v))
-  -> Body v
-  -> LStmt v
-liftBody _ _ (ConstantBody (Constant e)) = pureLifted e
-liftBody varDir varSize (FunctionBody (Function d vs s))
-  = letLStmts (varSize <$> fvs)
-  $ Simple.Scope
-  $ Lifted (pure (mempty, f))
+  :: Body Tele
+  -> LStmt Tele
+liftBody (ConstantBody (Constant e)) = pureLifted e
+liftBody (FunctionBody (Function d vs s))
+  = Lifted (pure (mempty, Function d vs s))
   $ Simple.Scope $ Sized (Lit 1)
-  $ Call (pure $ B 0) $ pure . F . F <$> fvs
-  where
-    f = Function d (fmap varDir fvs <> vs)
-      $ Simple.toScope
-      $ unvar (B . (+ Tele fvsLen)) (unvar F $ fromJust err . ix)
-     <$> Simple.fromScope (F <$> s)
-    ix = Tele . fromJust err . (`Vector.elemIndex` fvs)
-    err = error "liftFunction"
-    fvs = Vector.fromList $ HashSet.toList $ toHashSet s
-    fvsLen = Vector.length fvs
+  $ Operand $ Local $ B 0
 
 liftLBody
-  :: (Eq v, Hashable v)
-  => (v -> (NameHint, Direction))
-  -> (v -> (NameHint, LStmt v))
-  -> LBody v
-  -> LStmt v
-liftLBody varDir varSize lbody
+  :: LBody Void
+  -> LStmt Void
+liftLBody lbody
   = bindLifted' lbody
-  $ liftBody (unvar (const (mempty, Direct)) varDir)
-             (second (fmap F) . unvar (const (mempty, lLit 1)) varSize)
+  $ fmap B
+  . liftBody
+  . fmap (unvar id absurd)
 
 lamLBody
   :: Direction

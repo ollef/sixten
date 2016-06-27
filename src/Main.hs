@@ -44,8 +44,8 @@ processGroup
   >=> addGroupToContext
   >=> eraseGroup
   >=> liftGroup
-  >=> closureConvertGroup
   >=> addLiftedGroupToContext
+  >=> closureConvertGroup
   >=> restrictGroup
   >=> liftRestrictedGroup "-lifted"
   >=> addGroupDirectionsToContext
@@ -110,7 +110,7 @@ closureConvertGroup
   :: [(Name, Lifted.SExpr Void)]
   -> TCM s [(Name, Lifted.SExpr Void)]
 closureConvertGroup defs = forM defs $ \(x, e) -> do
-  e' <- convertSExpr $ vacuous e
+  e' <- convertSBody $ vacuous e
   e'' <- traverse (throwError . ("closureConvertGroup " ++) . show) e'
   return (x, e'')
 
@@ -145,13 +145,6 @@ addGroupDirectionsToContext defs = do
     Restricted.FunctionBody (Restricted.Function retDir xs _) -> addDirections x (retDir, snd <$> xs)
     Restricted.ConstantBody _ -> return ()
   return defs
-
--- closureConvertGroup
---   :: [(Name, Restricted.Body Void)]
---   -> TCM s [(Name, Restricted.LBody Void)]
--- closureConvertGroup defs = do
---   defs' <- forM defs $ \(x, e) -> (,) x <$> ClosureConvert.convertBody (vacuous e)
---   traverse (traverse (traverse (throwError . ("closureConvertGroup " ++) . show))) defs'
 
 generateGroup
   :: [(Name, Restricted.Body Void)]
@@ -195,6 +188,7 @@ processFile file = do
   where
     process groups = do
       addContext Builtin.context
+      addLiftedContext Builtin.liftedContext
       mapM (processGroup . fmap (\(n, (d, t)) -> (n, d, t))) groups
 
 main :: IO ()

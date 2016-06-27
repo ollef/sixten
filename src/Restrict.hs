@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings, RecursiveDo, ViewPatterns #-}
 module Restrict where
 
+import Control.Monad.Except
 import qualified Bound.Scope.Simple as Simple
 import Data.Bifunctor
 import Data.Maybe
@@ -47,15 +48,21 @@ simpleTeleDirectedNames tele = Vector.zip (simpleTeleNames tele) (simpleTeleDirs
 restrictBody
   :: SExprM s
   -> TCM s (LBodyM s)
-restrictBody expr = case expr of
-  Lifted.Sized _ (Lifted.Lams tele lamScope) -> mdo
-    vs <- forMSimpleTele tele $ \h s ->
-      forall_ h $ instantiateVar ((vs Vector.!) . unTele) $ vacuous s
-    let lamExpr = instantiateVar ((vs Vector.!) . unTele) $ vacuous lamScope
-    lamExpr' <- restrictSExpr lamExpr
-    let lamScope' = Simple.abstract (teleAbstraction vs) lamExpr'
-    return $ Restricted.lamLBody (sExprDir lamExpr) (simpleTeleDirectedNames tele) lamScope'
-  _ -> Restricted.mapLifted (Restricted.ConstantBody . Restricted.Constant) <$> restrictSExpr expr
+restrictBody expr = do
+  trp "restrictBody" $ show <$> expr
+  modifyIndent succ
+  result <- case expr of
+    Lifted.Sized _ (Lifted.Lams tele lamScope) -> mdo
+      vs <- forMSimpleTele tele $ \h s ->
+        forall_ h $ instantiateVar ((vs Vector.!) . unTele) $ vacuous s
+      let lamExpr = instantiateVar ((vs Vector.!) . unTele) $ vacuous lamScope
+      lamExpr' <- restrictSExpr lamExpr
+      let lamScope' = Simple.abstract (teleAbstraction vs) lamExpr'
+      return $ Restricted.lamLBody (sExprDir lamExpr) (simpleTeleDirectedNames tele) lamScope'
+    _ -> Restricted.mapLifted (Restricted.ConstantBody . Restricted.Constant) <$> restrictSExpr expr
+  modifyIndent pred
+  trp "restrictBody res" $ show <$> result
+  return result
 
 restrictSExpr
   :: SExprM s
@@ -94,7 +101,9 @@ restrictExpr expr sz = do
     Lifted.Var v -> return $ Restricted.lSizedOperand sz $ Restricted.Local v
     Lifted.Global g -> return $ Restricted.lSizedOperand sz $ Restricted.Global g
     Lifted.Lit l -> return $ Restricted.lSizedOperand sz $ Restricted.Lit l
-    Lifted.Case e brs -> Restricted.caseLStmt <$> restrictExpr e undefined <*> restrictBranches brs
+    Lifted.Case e brs -> Restricted.caseLStmt
+                     <$> restrictSExpr e
+                     <*> restrictBranches brs
     Lifted.Con qc es -> Restricted.conLStmt sz qc <$> mapM restrictSExprSize es
     Lifted.Lams tele lamScope -> mdo
       vs <- forMSimpleTele tele $ \h s ->
@@ -102,8 +111,10 @@ restrictExpr expr sz = do
       let lamExpr = instantiateVar ((vs Vector.!) . unTele) $ vacuous lamScope
       lamExpr' <- restrictSExpr lamExpr
       let lamScope' = Simple.abstract (teleAbstraction vs) lamExpr'
-      return $ Restricted.liftLBody varDir undefined
-             $ Restricted.lamLBody (sExprDir lamExpr) (simpleTeleDirectedNames tele) lamScope'
+      lamScope'' <- traverse (const $ throwError "liftBody") lamScope'
+      return $ vacuous
+             $ Restricted.liftLBody
+             $ Restricted.lamLBody (sExprDir lamExpr) (simpleTeleDirectedNames tele) lamScope''
     Lifted.Call e es ->
       Restricted.callLStmt sz <$> restrictConstantSize e 1 <*> mapM restrictSExpr es
   modifyIndent pred

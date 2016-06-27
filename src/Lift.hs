@@ -33,7 +33,7 @@ liftExpr expr = case expr of
   SLambda.Con qc es -> Lifted.Con qc <$> mapM liftSExpr es
   (simpleBindingsViewM SLambda.lamView . SLambda.Sized (SLambda.Global "impossible") -> Just (tele, s)) -> liftLambda tele s
   SLambda.Lam {} -> throwError "Lambda2Lambda Lam"
-  SLambda.Case e brs -> Lifted.Case <$> liftExpr e <*> liftBranches brs
+  SLambda.Case e brs -> Lifted.Case <$> liftSExpr e <*> liftBranches brs
   (SLambda.appsView -> (e, es)) -> Lifted.apps <$> liftExpr e <*> mapM liftSExpr es
 
 liftLambda
@@ -75,7 +75,9 @@ liftLambda tele lamScope = mdo
     sz <- liftExpr $ metaType m
     return $ Lifted.Sized sz $ Lifted.Var m
 
-  return $ Lifted.Call (Lifted.Lams voidedTele voidedLamScope) args
+  return $ if null args
+    then Lifted.Lams voidedTele voidedLamScope
+    else Lifted.Call (Lifted.Lams voidedTele voidedLamScope) args
   where
     impure [a] = a
     impure _ = error "liftLambda"
