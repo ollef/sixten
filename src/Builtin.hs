@@ -5,13 +5,14 @@ import qualified Bound.Scope.Simple as Simple
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HM
 import Data.Maybe
-import Data.String
+import Data.Monoid
 import qualified Data.Vector as Vector
 import Data.Void
 
 import Syntax
 import Syntax.Abstract as Abstract
 import qualified Syntax.Lifted as Lifted
+import Util
 
 pattern SizeName <- ((==) "Size" -> True) where SizeName = "Size"
 pattern Size = Global SizeName
@@ -35,7 +36,7 @@ pattern Closure <- ((== QConstr "Builtin" "CL") -> True) where Closure = QConstr
 pattern Ref <- ((== QConstr PtrName RefName) -> True) where Ref = QConstr PtrName RefName
 
 apply :: Int -> Name
-apply n = "apply_" `mappend` fromString (show n)
+apply n = "apply_" <> shower n
 
 context :: Program Expr Void
 context = HM.fromList
@@ -57,6 +58,29 @@ context = HM.fromList
 
 liftedContext :: HashMap Name (Lifted.SExpr Void)
 liftedContext = HM.fromList
-  [ (AddSizeName, Lifted.Sized (Lifted.Lit 1) (Lifted.Lams (SimpleTelescope $ Vector.fromList [(mempty, Simple.Scope $ Lifted.Lit 1), (mempty, Simple.Scope $ Lifted.Lit 1)]) $ Simple.Scope $ Lifted.Sized (Lifted.Lit 1) $ Lifted.Lit 1)) -- TODO
-  , (MaxSizeName, Lifted.Sized (Lifted.Lit 1) (Lifted.Lams (SimpleTelescope $ Vector.fromList [(mempty, Simple.Scope $ Lifted.Lit 1), (mempty, Simple.Scope $ Lifted.Lit 1)]) $ Simple.Scope $ Lifted.Sized (Lifted.Lit 1) $ Lifted.Lit 1)) -- TODO
+  [ ( AddSizeName
+    , Lifted.sized 1
+      $ Lifted.Lams (SimpleTelescope
+                    $ Vector.fromList [(mempty, Simple.Scope $ Lifted.Lit 1), (mempty, Simple.Scope $ Lifted.Lit 1)])
+                    $ Simple.Scope
+                    $ Lifted.sized 1
+                    $ Lifted.Prim
+                    $ "add i64 " <> pure (Lifted.Var $ B 0) <> ", " <> pure (Lifted.Var $ B 1)
+    )
+  , ( MaxSizeName
+    , Lifted.sized 1
+      $ Lifted.Lams (SimpleTelescope
+                    $ Vector.fromList [(mempty, Simple.Scope $ Lifted.Lit 1), (mempty, Simple.Scope $ Lifted.Lit 1)])
+                    $ Simple.Scope
+                    $ Lifted.sized 1
+                    $ Lifted.Let (nameHint "lt")
+                      (Lifted.sized 1
+                        $ Lifted.Prim
+                        $ "add i64 " <> pure (Lifted.Var $ B 0) <> ", " <> pure (Lifted.Var $ B 1))
+                    $ Simple.Scope
+                    $ Lifted.Prim
+                    $ "select i1 " <> pure (Lifted.Var $ B ())
+                    <> ", i64 " <> pure (Lifted.Var $ F $ B 0) <> ", "
+                    <> pure (Lifted.Var $ F $ B 1)
+    )
   ]

@@ -15,6 +15,7 @@ import Data.Void
 import Prelude.Extras
 
 import Syntax
+import Syntax.Primitive
 import Util
 
 data Lifted e v = Lifted (Vector (NameHint, Function Tele)) (Simple.Scope Tele e v)
@@ -52,6 +53,7 @@ data Expr v
   = Operand (Operand v)
   | Con QConstr (Vector (Operand v, Operand v)) -- ^ fully applied
   | Call (Operand v) (Vector (Operand v))
+  | Prim (Primitive (Operand v))
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 pureLifted :: Functor e => e v -> Lifted e v
@@ -149,29 +151,6 @@ letStmts es s = unvar (error "Lifted.letExprs") id <$> foldr go (Simple.fromScop
       where
         f (B n') | n == n' = Just ()
         f _ = Nothing
-
-callStmt :: Stmt v -> Stmt v -> Vector (Stmt v) -> Stmt v
-callStmt sz e es
-  = letStmts ((,) mempty <$> Vector.cons sz (Vector.cons e es))
-  $ Simple.Scope
-  $ Sized (pure $ B 0)
-  $ Call (pure $ B 1) $ pure . B <$> Vector.enumFromN 2 len
-  where
-    len = Vector.length es
-
-conStmt :: Stmt v -> QConstr -> Vector (Stmt v, Stmt v) -> Stmt v
-conStmt sz qc (Vector.unzip -> (es, szs))
-  = letStmts ((,) mempty <$> Vector.cons sz (es <> szs))
-  $ Simple.Scope $ Sized (pure $ B 0)
-  $ Con qc $ Vector.zip (pure . B <$> Vector.enumFromN 1 len)
-                        (pure . B <$> Vector.enumFromN (len + 1) len)
-  where
-    len = Vector.length es
-
-caseStmt :: Stmt v -> SimpleBranches QConstr Stmt v -> Stmt v
-caseStmt e brs
-  = letStmts (pure (mempty, e))
-  $ Simple.Scope $ Case (pure $ B 0) $ F <$> brs
 
 -------------------------------------------------------------------------------
 -- Lifted statements
@@ -301,8 +280,22 @@ callLStmt lsz le les
   $ pureLifted
   $ Sized (pure $ B 0)
   $ Call (pure $ B 1) $ pure . B <$> Vector.enumFromN 2 len
-    where
-      len = Vector.length les
+  where
+    len = Vector.length les
+
+primLStmt
+  :: (Eq v, Hashable v)
+  => LStmt v
+  -> Primitive (LStmt v)
+  -> LStmt v
+primLStmt lsz p
+  = letLStmts ((,) mempty <$> Vector.cons lsz les)
+  $ Simple.Scope
+  $ pureLifted
+  $ Sized (pure $ B 0)
+  $ Prim $ (\(i, _) -> Local $ B $ i + 1) <$> indexed p
+  where
+    les = toMonoid p
 
 -------------------------------------------------------------------------------
 -- Bodies
@@ -350,6 +343,7 @@ instance BindOperand Expr where
     Operand o -> Operand $ bindOperand f o
     Con qc os -> Con qc $ bimap (bindOperand f) (bindOperand f) <$> os
     Call o os -> Call (bindOperand f o) $ bindOperand f <$> os
+    Prim p -> Prim $ bindOperand f <$> p
 
 instance BindOperand Stmt where
   bindOperand f expr = case expr of
@@ -447,6 +441,7 @@ instance (Eq v, IsString v, Pretty v)
       (prettyM c)
       ((\(e, t) -> parens `above` annoPrec $ prettyM e <+> ":" <+> prettyM t) <$> vs)
     Call v vs -> prettyApps (prettyM v) (prettyM <$> vs)
+    Prim p -> prettyM $ pretty <$> p
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Stmt v) where

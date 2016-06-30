@@ -57,7 +57,15 @@ convertExpr expr = case expr of
       _ -> throwError $ "convertExpr Call Global " <> show (pretty $ show <$> expr)
   Call (Lams tele s) es -> knownCall (Lams tele s) tele s es
   Call e es -> unknownCall e es
+  Let h e bodyScope -> do
+    e' <- convertSExpr e
+    v <- forall_ h $ sizeOf e'
+    let bodyExpr = instantiateVar (\() -> v) bodyScope
+    bodyExpr' <- convertExpr bodyExpr
+    let bodyScope' = Simple.abstract1 v bodyExpr'
+    return $ Let h e' bodyScope'
   Case e brs -> Case <$> convertSExpr e <*> convertBranches brs
+  Prim p -> Prim <$> mapM convertExpr p
 
 unknownCall
   :: ExprM s

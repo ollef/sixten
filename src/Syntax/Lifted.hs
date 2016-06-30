@@ -9,6 +9,7 @@ import Data.Void
 import Prelude.Extras
 
 import Syntax hiding (lamView)
+import Syntax.Primitive
 import Util
 
 data SExpr v = Sized (Expr v) (Expr v)
@@ -21,7 +22,9 @@ data Expr v
   | Con QConstr (Vector (SExpr v)) -- ^ Fully applied
   | Lams (SimpleTelescope Expr Void) (Simple.Scope Tele SExpr Void)
   | Call (Expr v) (Vector (SExpr v))
+  | Let NameHint (SExpr v) (Simple.Scope () Expr v)
   | Case (SExpr v) (SimpleBranches QConstr Expr v)
+  | Prim (Primitive (Expr v))
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 -------------------------------------------------------------------------------
@@ -32,7 +35,6 @@ apps e es = Call e es
 
 -------------------------------------------------------------------------------
 -- Helpers
-
 sized :: Literal -> Expr v -> SExpr v
 sized = Sized . Lit
 
@@ -64,9 +66,13 @@ instance (Eq v, IsString v, Pretty v)
         associate absPrec (prettyM $ instantiateTeleVars (show <$> ns) $ show <$> s)
     Call e es -> parens `above` annoPrec $
       prettyApps (prettyM e) (prettyM <$> es)
+    Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
+      "let" <+> prettyM n <+> "=" <+> prettyM e <+> "in" <+>
+        prettyM (instantiate1Var (fromText n) s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> indent 2 (prettyM brs)
+    Prim p -> prettyM $ pretty <$> p
 
 instance (Eq v, IsString v, Pretty v) => Pretty (SExpr v) where
   prettyM (Sized sz e) = parens `above` annoPrec $

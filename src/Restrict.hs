@@ -77,15 +77,15 @@ restrictSExprSize
   :: SExprM s
   -> TCM s (LStmtM s, LStmtM s)
 restrictSExprSize (Lifted.Sized sz expr) = do
-  rsz <- restrictConstantSize sz 1
+  rsz <- restrictConstantSize 1 sz
   rexpr <- restrictExpr expr rsz
   return (rexpr, rsz)
 
 restrictConstantSize
-  :: ExprM s
-  -> Literal
+  :: Literal
+  -> ExprM s
   -> TCM s (LStmtM s)
-restrictConstantSize expr sz =
+restrictConstantSize sz expr =
   restrictExpr expr $ Restricted.pureLifted
                     $ Restricted.Sized (Restricted.Lit 1)
                     $ Restricted.Operand $ Restricted.Lit sz
@@ -101,9 +101,6 @@ restrictExpr expr sz = do
     Lifted.Var v -> return $ Restricted.lSizedOperand sz $ Restricted.Local v
     Lifted.Global g -> return $ Restricted.lSizedOperand sz $ Restricted.Global g
     Lifted.Lit l -> return $ Restricted.lSizedOperand sz $ Restricted.Lit l
-    Lifted.Case e brs -> Restricted.caseLStmt
-                     <$> restrictSExpr e
-                     <*> restrictBranches brs
     Lifted.Con qc es -> Restricted.conLStmt sz qc <$> mapM restrictSExprSize es
     Lifted.Lams tele lamScope -> mdo
       vs <- forMSimpleTele tele $ \h s ->
@@ -116,7 +113,18 @@ restrictExpr expr sz = do
              $ Restricted.liftLBody
              $ Restricted.lamLBody (sExprDir lamExpr) (simpleTeleDirectedNames tele) lamScope''
     Lifted.Call e es ->
-      Restricted.callLStmt sz <$> restrictConstantSize e 1 <*> mapM restrictSExpr es
+      Restricted.callLStmt sz <$> restrictConstantSize 1 e <*> mapM restrictSExpr es
+    Lifted.Let h e bodyScope -> do
+      e' <- restrictSExpr e
+      v <- forall_ h $ Lifted.sizeOf e
+      let bodyExpr = instantiateVar (\() -> v) bodyScope
+      bodyExpr' <- restrictExpr bodyExpr sz
+      let bodyScope' = Simple.abstract1 v bodyExpr'
+      return $ Restricted.letLStmt h e' bodyScope'
+    Lifted.Case e brs -> Restricted.caseLStmt
+                     <$> restrictSExpr e
+                     <*> restrictBranches brs
+    Lifted.Prim p -> Restricted.primLStmt sz <$> mapM (restrictConstantSize 1) p
   modifyIndent pred
   trp "restrictExpr res: " $ show <$> result
   return result
@@ -142,7 +150,7 @@ restrictConBranch sz (qc, tele, brScope) = mdo
   tele' <- forMSimpleTele tele $ \h s -> do
     let e = instantiateVar ((vs Vector.!) . unTele) s
     v <- forall_ h e
-    e' <- restrictConstantSize e 1
+    e' <- restrictConstantSize 1 e
     return (v, e')
   let vs = fst <$> tele'
       brExpr = instantiateVar ((vs Vector.!) . unTele) brScope

@@ -4,6 +4,7 @@ module Util where
 import Bound
 import Bound.Var
 import qualified Bound.Scope.Simple as Simple
+import Control.Monad.State
 import Data.Bifoldable
 import Data.Bifunctor
 import Data.Foldable
@@ -47,6 +48,9 @@ boundJoin = (>>>= id)
 toSet ::  (Ord a, Foldable f) => f a -> Set a
 toSet = foldMap S.singleton
 
+toMonoid ::  (Foldable f, Monoid (g a), Applicative g) => f a -> g a
+toMonoid = foldMap pure
+
 toHashSet ::  (Eq a, Foldable f, Hashable a) => f a -> HashSet a
 toHashSet = foldMap HS.singleton
 
@@ -76,3 +80,11 @@ fromText = fromString . Text.unpack
 
 shower :: (Show a, IsString b) => a -> b
 shower = fromString . show
+
+indexed :: Traversable f => f a -> f (Int, a)
+indexed x = evalState (traverse go x) 0
+  where
+    go a = do
+      i <- get
+      put $! i + 1
+      return (i, a)

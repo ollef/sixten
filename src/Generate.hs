@@ -18,8 +18,9 @@ import qualified LLVM
 import Syntax.Branches
 import Syntax.Direction
 import Syntax.Hint
-import Syntax.Restricted
 import Syntax.Name
+import Syntax.Primitive
+import Syntax.Restricted
 import Syntax.Telescope
 import Util
 
@@ -144,6 +145,7 @@ generateExpr expr sz = case expr of
     storeCon qc os ret
     return $ IndirectVar ret
   Call o os -> generateCall o os sz
+  Prim p -> generatePrim p sz
 
 storeExpr
   :: ExprG
@@ -154,6 +156,7 @@ storeExpr expr sz ret = case expr of
   Operand o -> storeOperand o sz ret
   Con qc os -> storeCon qc os ret
   Call o os -> storeCall o os ret
+  Prim p -> storePrim p ret
 
 varCall
   :: (Foldable f, Functor f)
@@ -188,6 +191,15 @@ generateCall (Global g) os sz = do
       ret <- nameHint "call-return" =: varCall integerT (global g) args
       return $ DirectVar ret
 generateCall _ _ _ = error "generateCall unknown function"
+
+generatePrim
+  :: Primitive OperandG
+  -> LLVM.Operand Int
+  -> Gen Var
+generatePrim p sz = do
+  ret <- nameHint "prim" =: alloca sz
+  storePrim p ret
+  return $ IndirectVar ret
 
 storeCall
   :: OperandG
@@ -232,6 +244,19 @@ storeCon qc os ret = do
   Foldable.forM_ (zip (Vector.toList sizeInts) $ zip is $ Vector.toList os') $ \(sz, (i, (o, _))) -> do
     index <- nameHint "index" =: getElementPtr ret i
     storeOperand o sz index
+
+storePrim
+  :: Primitive OperandG
+  -> LLVM.Operand Ptr
+  -> Gen ()
+storePrim (Primitive xs) ret = do
+  strs <- forM xs $ \x -> case x of
+    TextPart t -> return t
+    VarPart o -> do
+      v <- generateOperand o
+      unOperand <$> loadVar mempty v
+  res <- nameHint "prim" =: Instr (Foldable.fold strs)
+  emit $ store res ret
 
 generateBranches
   :: OperandG
