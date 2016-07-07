@@ -13,13 +13,12 @@ import Data.Monoid
 import Data.Set(Set)
 import qualified Data.Set as Set
 import qualified Data.Text.Lazy as Lazy
-import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 
 import Syntax
 import Syntax.Abstract
-import qualified Syntax.Lifted as Lifted
+import qualified Syntax.Converted as Converted
 
 import Debug.Trace
 
@@ -32,8 +31,7 @@ instance Pretty Level where
 data State = State
   { tcContext :: Program Expr Void
   , tcConstrs :: HashMap Constr (Set (Name, Type Void))
-  , tcDirections :: HashMap Name (Direction, Vector Direction)
-  , tcLiftedContext :: HashMap Name (Lifted.SExpr Void)
+  , tcConvertedContext :: HashMap Name (Converted.SExpr Void)
   , tcIndent :: !Int -- This has no place here, but is useful for debugging
   , tcFresh :: !Int
   , tcLevel :: !Level
@@ -44,8 +42,7 @@ emptyState :: State
 emptyState = State
   { tcContext = mempty
   , tcConstrs = mempty
-  , tcDirections = mempty
-  , tcLiftedContext = mempty
+  , tcConvertedContext = mempty
   , tcIndent = 0
   , tcFresh = 0
   , tcLevel = Level 1
@@ -116,11 +113,8 @@ addContext prog = modify $ \s -> s
                          (mapAnnotations (const IrIm) $ telescope defType)
       return (c, Set.fromList [(n, t)])
 
-addDirections :: Name -> (Direction, Vector Direction) -> TCM s ()
-addDirections n dirs = modify $ \s -> s { tcDirections = HM.insert n dirs $ tcDirections s }
-
-addLiftedContext :: HashMap Name (Lifted.SExpr Void) -> TCM s ()
-addLiftedContext p = modify $ \s -> s { tcLiftedContext = p <> tcLiftedContext s }
+addConvertedContext :: HashMap Name (Converted.SExpr Void) -> TCM s ()
+addConvertedContext p = modify $ \s -> s { tcConvertedContext = p <> tcConvertedContext s }
 
 modifyIndent :: (Int -> Int) -> TCM s ()
 modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
@@ -144,14 +138,14 @@ lookupConstructor name
   . HM.lookup name
   . tcConstrs
 
-lookupLiftedDefinition
+lookupConvertedDefinition
   :: Name
-  -> TCM s (Maybe (Lifted.SExpr b))
-lookupLiftedDefinition name
+  -> TCM s (Maybe (Converted.SExpr b))
+lookupConvertedDefinition name
   = gets
   $ fmap vacuous
   . HM.lookup name
-  . tcLiftedContext
+  . tcConvertedContext
 
 definition
   :: Name
@@ -162,12 +156,12 @@ definition v = do
         return
         mres
 
-liftedDefinition
+convertedDefinition
   :: Name
-  -> TCM s (Lifted.SExpr v)
-liftedDefinition v = do
-  mres <- lookupLiftedDefinition v
-  maybe (throwError $ "Not in scope: lifted " ++ show v)
+  -> TCM s (Converted.SExpr v)
+convertedDefinition v = do
+  mres <- lookupConvertedDefinition v
+  maybe (throwError $ "Not in scope: converted " ++ show v)
         return
         mres
 
@@ -199,15 +193,6 @@ qconstructorIndex = do
     if length constrDefs == 1
     then Nothing
     else findIndex ((== c) . constrName) constrDefs
-
-defDirections
-  :: Name
-  -> TCM s (Direction, Vector Direction)
-defDirections n = do
-  mres <- gets (HM.lookup n . tcDirections)
-  maybe (throwError $ "Not in scope: " ++ show n)
-        return
-        mres
 
 constrArity
   :: QConstr

@@ -1,14 +1,15 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, OverloadedStrings #-}
-module Syntax.Lifted where
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings #-}
+module Syntax.Converted where
 
 import qualified Bound.Scope.Simple as Simple
 import Data.Monoid
 import Data.String
 import Data.Vector(Vector)
+import qualified Data.Vector as Vector
 import Data.Void
 import Prelude.Extras
 
-import Syntax hiding (lamView)
+import Syntax
 import Syntax.Primitive
 import Util
 
@@ -20,18 +21,12 @@ data Expr v
   | Global Name
   | Lit Literal
   | Con QConstr (Vector (SExpr v)) -- ^ Fully applied
-  | Lams (Telescope Simple.Scope () Expr Void) (Simple.Scope Tele SExpr Void)
-  | Call (Expr v) (Vector (SExpr v))
+  | Lams Direction (Telescope Simple.Scope Direction Expr Void) (Simple.Scope Tele SExpr Void)
+  | Call Direction (Expr v) (Vector (SExpr v, Direction))
   | Let NameHint (SExpr v) (Simple.Scope () Expr v)
   | Case (SExpr v) (SimpleBranches QConstr Expr v)
   | Prim (Primitive (Expr v))
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
-
--------------------------------------------------------------------------------
--- Smart constructors
-apps :: Expr v -> Vector (SExpr v) -> Expr v
-apps (Call e es1) es2 = Call e $ es1 <> es2
-apps e es = Call e es
 
 -------------------------------------------------------------------------------
 -- Helpers
@@ -60,11 +55,11 @@ instance (Eq v, IsString v, Pretty v)
     Global g -> prettyM g
     Con c es -> prettyApps (prettyM c) $ prettyM <$> es
     Lit l -> prettyM l
-    Lams tele s -> parens `above` absPrec $
+    Lams d tele s -> parens `above` absPrec $
       withTeleHints tele $ \ns ->
-        "\\" <> prettySimpleTeleVarTypes ns (show <$> tele) <> "." <+>
-        associate absPrec (prettyM $ instantiateTeleVars (fromText <$> ns) $ show <$> s)
-    Call e es -> parens `above` annoPrec $
+        prettyM d <+> "\\" <> hsep (map prettyM $ Vector.toList ns) <> "." <+>
+          associate absPrec (prettyM $ instantiateVar (fromText . (ns Vector.!) . unTele) $ show <$> s)
+    Call _retDir e es -> parens `above` annoPrec $ -- TODO dir
       prettyApps (prettyM e) (prettyM <$> es)
     Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
       "let" <+> prettyM n <+> "=" <+> prettyM e <+> "in" <+>

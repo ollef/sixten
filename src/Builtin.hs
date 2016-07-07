@@ -2,16 +2,18 @@
 module Builtin where
 
 import qualified Bound.Scope.Simple as Simple
+import Control.Applicative
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HM
 import Data.Maybe
 import Data.Monoid
+import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 
 import Syntax
 import Syntax.Abstract as Abstract
-import qualified Syntax.Lifted as Lifted
+import qualified Syntax.Converted as Converted
 import Util
 
 pattern SizeName <- ((==) "Size" -> True) where SizeName = "Size"
@@ -35,8 +37,11 @@ pattern Closure <- ((== QConstr "Builtin" "CL") -> True) where Closure = QConstr
 
 pattern Ref <- ((== QConstr PtrName RefName) -> True) where Ref = QConstr PtrName RefName
 
-apply :: Int -> Name
-apply n = "apply_" <> shower n
+applyName :: Int -> Name
+applyName n = "apply_" <> shower n
+
+papName :: Int -> Int -> Name
+papName k m = "pap_" <> shower k <> "_" <> shower m
 
 context :: Program Expr Void
 context = HM.fromList
@@ -56,31 +61,149 @@ context = HM.fromList
     opaque t = (DataDefinition $ DataDef mempty, cl t)
     dataType t xs = (DataDefinition $ DataDef xs, cl t)
 
-liftedContext :: HashMap Name (Lifted.SExpr Void)
-liftedContext = HM.fromList
-  [ ( AddSizeName
-    , Lifted.sized 1
-      $ Lifted.Lams (SimpleTelescope
-                    $ Vector.fromList [(mempty, Simple.Scope $ Lifted.Lit 1), (mempty, Simple.Scope $ Lifted.Lit 1)])
-                    $ Simple.Scope
-                    $ Lifted.sized 1
-                    $ Lifted.Prim
-                    $ "add i64 " <> pure (Lifted.Var $ B 0) <> ", " <> pure (Lifted.Var $ B 1)
+convertedContext :: HashMap Name (Converted.SExpr Void)
+convertedContext = HM.fromList $ concat
+  [[ ( AddSizeName
+    , Converted.sized 1
+      $ Converted.Lams
+        Direct
+        (Telescope
+        $ Vector.fromList [ (mempty, Direct, slit 1)
+                          , (mempty, Direct, slit 1)
+                          ])
+      $ Simple.Scope
+      $ Converted.sized 1
+      $ Converted.Prim
+      $ "add i64 " <> pure (Converted.Var $ B 0) <> ", " <> pure (Converted.Var $ B 1)
     )
   , ( MaxSizeName
-    , Lifted.sized 1
-      $ Lifted.Lams (SimpleTelescope
-                    $ Vector.fromList [(mempty, Simple.Scope $ Lifted.Lit 1), (mempty, Simple.Scope $ Lifted.Lit 1)])
-                    $ Simple.Scope
-                    $ Lifted.sized 1
-                    $ Lifted.Let (nameHint "lt")
-                      (Lifted.sized 1
-                        $ Lifted.Prim
-                        $ "add i64 " <> pure (Lifted.Var $ B 0) <> ", " <> pure (Lifted.Var $ B 1))
-                    $ Simple.Scope
-                    $ Lifted.Prim
-                    $ "select i1 " <> pure (Lifted.Var $ B ())
-                    <> ", i64 " <> pure (Lifted.Var $ F $ B 0) <> ", "
-                    <> pure (Lifted.Var $ F $ B 1)
+    , Converted.sized 1
+      $ Converted.Lams
+        Direct
+        (Telescope
+        $ Vector.fromList [ (mempty, Direct, slit 1)
+                          , (mempty, Direct, slit 1)
+                          ])
+      $ Simple.Scope
+      $ Converted.sized 1
+      $ Converted.Let (nameHint "lt")
+      (Converted.sized 1
+      $ Converted.Prim
+      $ "add i64 " <> pure (Converted.Var $ B 0) <> ", " <> pure (Converted.Var $ B 1))
+      $ Simple.Scope
+      $ Converted.Prim
+      $ "select i1 " <> pure (Converted.Var $ B ())
+      <> ", i64 " <> pure (Converted.Var $ F $ B 0) <> ", "
+      <> pure (Converted.Var $ F $ B 1)
     )
   ]
+  , [(papName left given, pap left given) | given <- [1..maxArity - 1], left <- [1..maxArity - given]]
+  , [(applyName arity, apply arity) | arity <- [1..maxArity]]
+  ]
+
+-- TODO move these
+slit :: Literal -> Simple.Scope b Converted.Expr v
+slit n = Simple.Scope $ Converted.Lit n
+
+svarb :: b -> Simple.Scope b Converted.Expr a
+svarb = Simple.Scope . Converted.Var . B
+
+maxArity :: Num n => n
+maxArity = 2
+
+apply :: Int -> Converted.SExpr Void
+apply numArgs
+  = Converted.sized 1 -- TODO
+  $ Converted.Lams
+    Indirect
+    (Telescope
+    $ Vector.cons (nameHint "this", Direct, slit 1)
+    $ (\n -> (nameHint $ "size" <> shower (unTele n), Direct, slit 1)) <$> Vector.enumFromN 0 numArgs
+    <|> (\n -> (nameHint $ "x" <> shower (unTele n), Indirect, svarb $ 1 + n)) <$> Vector.enumFromN 0 numArgs)
+  $ Simple.Scope
+  $ Converted.sized 1 -- TODO
+  $ Converted.Case
+    (Converted.sized 2 -- TODO
+    $ Converted.Call Indirect (Converted.Global DerefName)
+    $ pure (Converted.sized 1 $ Converted.Var $ B 0, Direct)
+    )
+  $ SimpleConBranches
+  [ ( Closure
+    , Telescope
+      $ Vector.fromList [(nameHint "f_unknown", (), slit 1), (nameHint "n", (), slit 1)]
+    , Simple.Scope
+      $ Converted.Case (Converted.sized 1 $ Converted.Var $ B 1)
+      $ SimpleLitBranches
+        [(fromIntegral arity, br arity) | arity <- [1..maxArity]]
+        $ Converted.Lit 1 -- TODO fail
+    )
+  ]
+  where
+    br :: Int -> Converted.Expr (Var Tele (Var Tele Void))
+    br arity
+      | numArgs < arity
+        = Converted.Con Ref
+        $ pure
+        $ Converted.Sized
+          (addSizes
+          $ Vector.cons (Converted.Lit $ fromIntegral $ 3 + numArgs)
+          $ (\n -> Converted.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs)
+        $ Converted.Con Closure
+        $ Vector.cons (Converted.sized 1 $ Converted.Global $ papName (arity - numArgs) numArgs)
+        $ Vector.cons (Converted.sized 1 $ Converted.Lit $ fromIntegral $ arity - numArgs)
+        $ (\n -> Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + Tele numArgs + n) <$> Vector.enumFromN 0 numArgs
+      | numArgs == arity
+        = Converted.Call Indirect (Converted.Var $ B 0)
+        $ (\n -> (Converted.sized 1 $ Converted.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN 0 numArgs
+        <|> (\n -> (Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + Tele numArgs + n, Indirect)) <$> Vector.enumFromN 0 numArgs
+      | otherwise
+        = Converted.Call Indirect (Converted.Global $ applyName $ numArgs - arity)
+        $ Vector.cons
+          (Converted.sized 1
+          $ Converted.Call Indirect (Converted.Var $ B 0)
+          $ Vector.cons (Converted.sized 1 $ Converted.Var $ F $ B 0, Direct)
+          $ (\n -> (Converted.sized 1 $ Converted.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN 0 arity
+          <|> (\n -> (Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + fromIntegral numArgs + n, Indirect)) <$> Vector.enumFromN 0 arity, Direct)
+        $ (\n -> (Converted.sized 1 $ Converted.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
+        <|> (\n -> (Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + fromIntegral numArgs + n, Indirect)) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
+
+addSizes :: Vector (Converted.Expr v) -> Converted.Expr v
+addSizes = Vector.foldr1 go
+  where
+    go x y
+      = Converted.Call Direct (Converted.Global AddSizeName)
+      $ Vector.cons (Converted.Sized (Converted.Lit 1) x, Direct)
+      $ pure (Converted.Sized (Converted.Lit 1) y, Direct)
+
+pap :: Int -> Int -> Converted.SExpr Void
+pap k m
+  = Converted.sized 1 -- TODO
+  $ Converted.Lams
+    Indirect
+    (Telescope
+    $ Vector.cons (nameHint "this", Direct, slit 1)
+    $ (\n -> (nameHint $ "size" <> shower (unTele n), Direct, slit 1)) <$> Vector.enumFromN 0 k
+    <|> (\n -> (nameHint $ "x" <> shower (unTele n), Indirect, svarb $ 1 + n)) <$> Vector.enumFromN 0 k)
+  $ Simple.Scope
+  $ Converted.sized 1 -- TODO
+  $ Converted.Case
+    (Converted.sized 1 -- TODO
+    $ Converted.Call Indirect (Converted.Global DerefName)
+    $ pure (Converted.sized 1 $ Converted.Var $ B 0, Direct))
+  $ SimpleConBranches
+    [ ( Closure
+      , Telescope
+        $ Vector.cons (nameHint "_", (), slit 1)
+        $ Vector.cons (nameHint "_", (), slit 1)
+        $ Vector.cons (nameHint "that", (), slit 1)
+        $ (\n -> (nameHint $ "size" <> shower (unTele n), (), slit 1)) <$> Vector.enumFromN 0 m
+        <|> (\n -> (nameHint $ "y" <> shower (unTele n), (), svarb $ 3 + n)) <$> Vector.enumFromN 0 m
+      , Simple.Scope
+        $ Converted.Call Indirect (Converted.Global $ applyName $ m + k)
+        $ Vector.cons (Converted.sized 1 $ Converted.Var $ B 2, Direct)
+        $ (\n -> (Converted.sized 1 $ Converted.Var $ B $ 3 + n, Direct)) <$> Vector.enumFromN 0 m
+        <|> (\n -> (Converted.sized 1 $ Converted.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN 0 k
+        <|> (\n -> (Converted.Sized (Converted.Var $ B $ 3 + n) $ Converted.Var $ B $ 3 + Tele m + n, Indirect)) <$> Vector.enumFromN 0 m
+        <|> (\n -> (Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + Tele k + n, Indirect)) <$> Vector.enumFromN 0 k
+      )
+    ]

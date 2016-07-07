@@ -6,13 +6,14 @@ import Data.String
 import qualified Data.Vector as Vector
 import Prelude.Extras
 
+import Syntax.Annotation
 import Syntax.Pretty
 import Syntax.Telescope
 import Util
 
-data Branches c expr a
-  = ConBranches [(c, Telescope expr a, Scope Tele expr a)] (expr a) -- ^ Return type
-  | LitBranches [(Literal, expr a)] (expr a)
+data Branches c expr v
+  = ConBranches [(c, Telescope Scope Annotation expr v, Scope Tele expr v)] (expr v) -- ^ Return type
+  | LitBranches [(Literal, expr v)] (expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 instance Bound (Branches c) where
@@ -40,9 +41,9 @@ exposeBranches f (ConBranches cbrs typ) =
 exposeBranches f (LitBranches lbrs def) =
   LitBranches [(l, f e) | (l, e) <- lbrs] (f def)
 
-data SimpleBranches c expr a
-  = SimpleConBranches [(c, SimpleTelescope expr a, Simple.Scope Tele expr a)]
-  | SimpleLitBranches [(Literal, expr a)] (expr a)
+data SimpleBranches c expr v
+  = SimpleConBranches [(c, Telescope Simple.Scope () expr v, Simple.Scope Tele expr v)]
+  | SimpleLitBranches [(Literal, expr v)] (expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 instance Bound (SimpleBranches c) where
@@ -52,7 +53,7 @@ instance Bound (SimpleBranches c) where
 instance (Eq v, Eq1 f, Functor f, Pretty c, Pretty (f v), IsString v)
   => Pretty (SimpleBranches c f v) where
   prettyM (SimpleConBranches cbrs) = vcat
-    [ withSimpleTeleHints tele $ \ns ->
+    [ withTeleHints tele $ \ns ->
         prettyM c <+> prettySimpleTeleVarTypes ns tele <+>
         "->" <+> prettyM (instantiateVar (fromText . (ns Vector.!) . unTele) s)
     | (c, tele, s) <- cbrs ]

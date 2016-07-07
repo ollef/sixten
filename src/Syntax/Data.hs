@@ -7,6 +7,7 @@ import Data.String
 import qualified Data.Vector as Vector
 import Prelude.Extras
 
+import Syntax.Annotation
 import Syntax.Class
 import Syntax.Name
 import Syntax.Pretty
@@ -19,7 +20,7 @@ newtype DataDef typ v = DataDef { dataConstructors :: [ConstrDef (Scope Tele typ
 quantifiedConstrTypes
   :: (Eq v, Syntax typ)
   => DataDef typ v
-  -> Telescope typ v
+  -> Telescope Scope Annotation typ v
   -> [ConstrDef (typ v)]
 quantifiedConstrTypes (DataDef cs) ps = map (fmap $ \s -> pis ps s) cs
 
@@ -31,7 +32,7 @@ instance Bound DataDef where
 
 prettyDataDef
   :: (Eq1 typ, Eq v, IsString v, Monad typ, Pretty (typ v))
-  => Telescope typ v
+  => Telescope Scope Annotation typ v
   -> DataDef typ v
   -> PrettyM Doc
 prettyDataDef ps (DataDef cs) = "data" <+> "_" <+> withTeleHints ps (\ns ->

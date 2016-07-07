@@ -3,7 +3,6 @@ module Lift where
 
 import qualified Bound.Scope.Simple as Simple
 import Control.Monad.Except
-import Data.Bifunctor
 import qualified Data.HashSet as HS
 import Data.Monoid
 import qualified Data.Vector as Vector
@@ -37,7 +36,7 @@ liftExpr expr = case expr of
   (SLambda.appsView -> (e, es)) -> Lifted.apps <$> liftExpr e <*> mapM liftSExpr es
 
 liftLambda
-  :: SimpleTelescope SLambda.Expr (Meta s)
+  :: Telescope Simple.Scope () SLambda.Expr (Meta s)
   -> Simple.Scope Tele SLambda.SExpr (Meta s)
   -> TCM s (LExprM s)
 liftLambda tele lamScope = mdo
@@ -53,7 +52,7 @@ liftLambda tele lamScope = mdo
 
     return $ Vector.fromList $ impure <$> topoSort deps
 
-  tele' <- forMSimpleTele tele $ \h s -> do
+  tele' <- forMTele tele $ \h () s -> do
     let e = instantiateVar ((vs Vector.!) . unTele) s
     v <- forall_ h e
     e' <- liftExpr e
@@ -63,7 +62,7 @@ liftLambda tele lamScope = mdo
       lamExpr = instantiateVar ((vs Vector.!) . unTele) lamScope
       vs' = sortedFvs <> vs
       abstr = teleAbstraction vs'
-      tele'' = SimpleTelescope $ bimap metaHint (Simple.abstract abstr) <$> tele'
+      tele'' = Telescope $ (\(v, e) -> (metaHint v, (), Simple.abstract abstr e)) <$> tele'
 
   lamExpr' <- liftSExpr lamExpr
   let lamScope' = Simple.abstract abstr lamExpr'
@@ -89,7 +88,7 @@ liftSExpr (SLambda.Sized sz e) = Lifted.Sized <$> liftExpr sz <*> liftExpr e
 liftBranches :: BrsM SLambda.Expr s -> TCM s (BrsM Lifted.Expr s)
 liftBranches (SimpleConBranches cbrs) = fmap SimpleConBranches $
   forM cbrs $ \(qc, tele, brScope) -> mdo
-    tele' <- forMSimpleTele tele $ \h s -> do
+    tele' <- forMTele tele $ \h () s -> do
       let e = instantiateVar ((vs Vector.!) . unTele) s
       v <- forall_ h e
       e' <- liftExpr e
@@ -97,7 +96,7 @@ liftBranches (SimpleConBranches cbrs) = fmap SimpleConBranches $
     let vs = fst <$> tele'
         brExpr = instantiateVar ((vs Vector.!) . unTele) brScope
         abstr = teleAbstraction vs
-        tele'' = SimpleTelescope $ bimap metaHint (Simple.abstract abstr) <$> tele'
+        tele'' = Telescope $ (\(v, e) -> (metaHint v, (), Simple.abstract abstr e)) <$> tele'
     brExpr' <- liftExpr brExpr
     let brScope' = Simple.abstract abstr brExpr'
     return (qc, tele'', brScope')

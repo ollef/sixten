@@ -1,4 +1,16 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GeneralizedNewtypeDeriving, Rank2Types, ViewPatterns, OverloadedStrings #-}
+{-# LANGUAGE
+  DeriveFoldable,
+  DeriveFunctor,
+  DeriveTraversable,
+  FlexibleContexts,
+  GADTs,
+  GeneralizedNewtypeDeriving,
+  KindSignatures,
+  OverloadedStrings,
+  Rank2Types,
+  StandaloneDeriving,
+  ViewPatterns
+ #-}
 module Syntax.Telescope where
 
 import Bound
@@ -27,24 +39,28 @@ newtype Tele = Tele Int
 unTele :: Tele -> Int
 unTele (Tele i) = i
 
-newtype Telescope expr v = Telescope
-  { unTelescope :: Vector (NameHint, Annotation, Scope Tele expr v)
-  } deriving (Eq, Foldable, Functor, Monoid, Ord, Show, Traversable)
+newtype Telescope scope anno (expr :: * -> *) v = Telescope
+  { unTelescope :: Vector (NameHint, anno, scope Tele expr v)
+  } deriving (Monoid)
 
-newtype SimpleTelescope expr v = SimpleTelescope
-  { unSimpleTelescope :: Vector (NameHint, Simple.Scope Tele expr v)
-  } deriving (Eq, Foldable, Functor, Monoid, Ord, Show, Traversable)
+deriving instance (Eq anno, Eq (scope Tele expr v)) => Eq (Telescope scope anno expr v)
+deriving instance (Ord anno, Ord (scope Tele expr v)) => Ord (Telescope scope anno expr v)
+deriving instance (Show anno, Show (scope Tele expr v)) => Show (Telescope scope anno expr v)
+deriving instance Foldable (scope Tele expr) => Foldable (Telescope scope anno expr)
+deriving instance Functor (scope Tele expr) => Functor (Telescope scope anno expr)
+deriving instance Traversable (scope Tele expr) => Traversable (Telescope scope anno expr)
 
-mapAnnotations :: (Annotation -> Annotation) -> Telescope e v -> Telescope e v
+mapAnnotations :: (a -> a') -> Telescope s a e v -> Telescope s a' e v
 mapAnnotations f (Telescope xs) = Telescope $ (\(h, a, s) -> (h, f a, s)) <$> xs
 
-teleLength :: Telescope expr v -> Int
+teleLength :: Telescope s a e v -> Int
 teleLength = Vector.length . unTelescope
 
-simpleTeleLength :: SimpleTelescope expr v -> Int
-simpleTeleLength = Vector.length . unSimpleTelescope
-
-dropTele :: Functor expr => Int -> Telescope expr v -> Telescope expr v
+dropTele
+  :: Functor expr
+  => Int
+  -> Telescope Scope a expr v
+  -> Telescope Scope a expr v
 dropTele n
   = Telescope
   . fmap (\(h, p, s) -> (h, p, mapBound (subtract $ Tele n) s))
@@ -54,8 +70,8 @@ dropTele n
 instantiatePrefix
   :: Monad expr
   => Vector (expr v)
-  -> Telescope expr v
-  -> Telescope expr v
+  -> Telescope Scope a expr v
+  -> Telescope Scope a expr v
 instantiatePrefix es (Telescope tele)
   = Telescope
   $ (\(h, p, s) -> (h, p, toScope $ instantiate f $ F <$> s))
@@ -67,26 +83,24 @@ instantiatePrefix es (Telescope tele)
       | i < len = es' Vector.! i
       | otherwise = pure $ B $ Tele $! i - len
 
-teleNames :: Telescope expr v -> Vector NameHint
+teleNames :: Telescope s a expr v -> Vector NameHint
 teleNames (Telescope t) = (\(h, _, _) -> h) <$> t
 
-simpleTeleNames :: SimpleTelescope expr v -> Vector NameHint
-simpleTeleNames (SimpleTelescope t) = fst <$> t
-
-teleAnnotations :: Telescope expr v -> Vector Annotation
+teleAnnotations :: Telescope s a expr v -> Vector a
 teleAnnotations (Telescope t) = (\(_, a, _) -> a) <$> t
 
-teleTypes :: Telescope expr v -> Vector (Scope Tele expr v)
+teleTypes :: Telescope s a expr v -> Vector (s Tele expr v)
 teleTypes (Telescope t) = (\(_, _, x) -> x) <$> t
 
-quantify :: (Eq b, Monad expr)
-         => (NameHint -> Annotation
-                      -> expr (Var Tele a)
-                      -> Scope () expr (Var Tele b)
-                      -> expr (Var Tele b))
-         -> Scope Tele expr b
-         -> Telescope expr a
-         -> expr b
+quantify
+  :: (Eq v', Monad expr)
+  => (NameHint -> a
+               -> expr (Var Tele v)
+               -> Scope () expr (Var Tele v')
+               -> expr (Var Tele v'))
+  -> Scope Tele expr v'
+  -> Telescope Scope a expr v
+  -> expr v'
 quantify pifun s (Telescope ps) =
    unvar err id <$> Vector.ifoldr
      (\i (h, p, s') -> pifun h p (fromScope s') . abstract1 (B $ Tele i))
@@ -95,32 +109,36 @@ quantify pifun s (Telescope ps) =
   where
     err = error "quantify Telescope"
 
-instance Bound Telescope where
+instance Bound (s Tele) => Bound (Telescope s a) where
   Telescope t >>>= f = Telescope $ second (>>>= f) <$> t
 
-instance Bound SimpleTelescope where
-  SimpleTelescope t >>>= f = SimpleTelescope $ second (>>>= f) <$> t
-
-exposeTelescope :: Applicative expr
-                => (forall v. expr v -> expr (Var e v))
-                -> Telescope expr a
-                -> Telescope expr (Var e a)
+exposeTelescope
+  :: Applicative expr
+  => (forall w. expr w -> expr (Var e w))
+  -> Telescope Scope a expr v
+  -> Telescope Scope a expr (Var e v)
 exposeTelescope f (Telescope t) = Telescope $ second (exposeScope f) <$> t
 
-withTeleHints :: Telescope expr v -> (Vector Name -> PrettyM a) -> PrettyM a
+withTeleHints
+  :: Telescope s a expr v
+  -> (Vector Name -> PrettyM p)
+  -> PrettyM p
 withTeleHints = withNameHints . teleNames
 
-withSimpleTeleHints :: SimpleTelescope expr v -> (Vector Name -> PrettyM a) -> PrettyM a
-withSimpleTeleHints = withNameHints . simpleTeleNames
-
-prettyTeleVars :: Vector Name -> Telescope expr v -> PrettyM Doc
+prettyTeleVars
+  :: Vector Name
+  -> Telescope s Annotation expr v
+  -> PrettyM Doc
 prettyTeleVars ns t = hsep
   [ prettyAnnotation a $ prettyM $ ns Vector.! i
   | (i, a) <- zip [0..] $ Vector.toList $ teleAnnotations t
   ]
 
-prettyTeleVarTypes :: (Eq1 expr, Eq v, Pretty (expr v), Monad expr, IsString v)
-                   => Vector Name -> Telescope expr v -> PrettyM Doc
+prettyTeleVarTypes
+  :: (Eq1 expr, Eq v, Pretty (expr v), Monad expr, IsString v)
+  => Vector Name
+  -> Telescope Scope Annotation expr v
+  -> PrettyM Doc
 prettyTeleVarTypes ns (Telescope v) = hcat $ map go grouped
   where
     inst = instantiate $ pure . fromText . (ns Vector.!) . unTele
@@ -131,51 +149,50 @@ prettyTeleVarTypes ns (Telescope v) = hcat $ map go grouped
       = prettyAnnotationParens a
       $ hsep (map (prettyM . (ns Vector.!)) xs) <+> ":" <+> prettyM (inst t)
 
-instance (Eq1 expr, Eq v, Pretty (expr v), Monad expr, IsString v)
-  => Pretty (Telescope expr v) where
+instance (a ~ Annotation, s ~ Scope, Eq1 expr, Eq v, Pretty (expr v), Monad expr, IsString v)
+  => Pretty (Telescope s a expr v) where
   prettyM tele = withTeleHints tele $ \ns -> prettyTeleVarTypes ns tele
 
 prettySimpleTeleVarTypes
-  :: (Eq1 expr, Eq v, Pretty (expr v), Functor expr, IsString v)
-  => Vector Name -> SimpleTelescope expr v -> PrettyM Doc
-prettySimpleTeleVarTypes ns (SimpleTelescope v) = hcat $ map go grouped
+  :: (Eq1 expr, Eq v, Pretty (expr v), Functor expr, IsString v, Eq a)
+  => Vector Name
+  -> Telescope Simple.Scope a expr v
+  -> PrettyM Doc
+prettySimpleTeleVarTypes ns (Telescope v) = hcat $ map go grouped
   where
     inst = instantiateVar $ fromText . (ns Vector.!) . unTele
     vlist = Vector.toList v
-    grouped = [ (n : [n' | (Hint n', _) <- vlist'], t)
-              | (Hint n, (_, t)):vlist' <- List.group $ zip (map Hint [(0 :: Int)..]) vlist]
-    go (xs, t)
+    grouped = [ (n : [n' | (Hint n', _) <- vlist'], a, t)
+              | (Hint n, (_, a, t)):vlist' <- List.group $ zip (map Hint [(0 :: Int)..]) vlist]
+    go (xs, _, t)
       = parens `above` annoPrec
       $ hsep (map (prettyM . (ns Vector.!)) xs) <+> ":" <+> prettyM (inst t)
 
 forMTele
   :: Monad m
-  => Telescope expr a
-  -> (NameHint -> Annotation -> Scope Tele expr a -> m b)
-  -> m (Vector b)
+  => Telescope s a expr v
+  -> (NameHint -> a -> s Tele expr v -> m v')
+  -> m (Vector v')
 forMTele (Telescope t) f = forM t $ \(h, d, s) -> f h d s
 
-forMSimpleTele
-  :: Monad m
-  => SimpleTelescope expr a
-  -> (NameHint -> Simple.Scope Tele expr a -> m b)
-  -> m (Vector b)
-forMSimpleTele (SimpleTelescope t) f = forM t $ uncurry f
-
-
 forTele
-  :: Telescope expr a
-  -> (NameHint -> Annotation -> Scope Tele expr a -> b)
-  -> Vector b
+  :: Telescope s a expr v
+  -> (NameHint -> a -> s Tele expr v -> v')
+  -> Vector v'
 forTele (Telescope t) f = (\(h, d, s) -> f h d s) <$> t
 
-iforMTele :: Monad m
-         => Telescope expr a
-         -> (Int -> NameHint -> Annotation -> Scope Tele expr a -> m b)
-         -> m (Vector b)
+iforMTele
+  :: Monad m
+  => Telescope s a expr v
+  -> (Int -> NameHint -> a -> s Tele expr v -> m v')
+  -> m (Vector v')
 iforMTele (Telescope t) f = flip Vector.imapM t $ \i (h, d, s) -> f i h d s
 
-instantiateTele :: Monad f => Vector (f a) -> Scope Tele f a -> f a
+instantiateTele
+  :: Monad f
+  => Vector (f a)
+  -> Scope Tele f a
+  -> f a
 instantiateTele vs = instantiate ((vs Vector.!) . unTele)
 
 instantiateTeleVars :: Functor f => Vector a -> Simple.Scope Tele f a -> f a
@@ -194,18 +211,18 @@ teleAbstraction vs = fmap Tele . (`Vector.elemIndex` vs)
 -- | View consecutive bindings at the same time
 bindingsViewM
   :: (Monad expr, Monad expr')
-  => (forall v'. expr' v' -> Maybe (NameHint, Annotation, expr v', Scope1 expr' v'))
+  => (forall v'. expr' v' -> Maybe (NameHint, a, expr v', Scope1 expr' v'))
   -> expr' v
-  -> Maybe (Telescope expr v, Scope Tele expr' v)
+  -> Maybe (Telescope Scope a expr v, Scope Tele expr' v)
 bindingsViewM f expr@(f -> Just _) = Just $ bindingsView f expr
 bindingsViewM _ _ = Nothing
 
 -- | View consecutive bindings at the same time
 bindingsView
   :: (Monad expr, Monad expr')
-  => (forall v'. expr' v' -> Maybe (NameHint, Annotation, expr v', Scope1 expr' v'))
+  => (forall v'. expr' v' -> Maybe (NameHint, a, expr v', Scope1 expr' v'))
   -> expr' v
-  -> (Telescope expr v, Scope Tele expr' v)
+  -> (Telescope Scope a expr v, Scope Tele expr' v)
 bindingsView f expr = go 0 $ F <$> expr
   where
     go x (f -> Just (n, p, e, s)) = (Telescope $ pure (n, p, toScope e) <> ns, s')
@@ -216,21 +233,21 @@ bindingsView f expr = go 0 $ F <$> expr
 -- | View consecutive bindings at the same time
 simpleBindingsViewM
   :: (Functor expr, Functor expr')
-  => (forall v'. expr' v' -> Maybe (NameHint, expr v', Simple.Scope () expr' v'))
+  => (forall v'. expr' v' -> Maybe (NameHint, a, expr v', Simple.Scope () expr' v'))
   -> expr' v
-  -> Maybe (SimpleTelescope expr v, Simple.Scope Tele expr' v)
+  -> Maybe (Telescope Simple.Scope a expr v, Simple.Scope Tele expr' v)
 simpleBindingsViewM f expr@(f -> Just _) = Just $ simpleBindingsView f expr
 simpleBindingsViewM _ _ = Nothing
 
 -- | View consecutive bindings at the same time
 simpleBindingsView
   :: (Functor expr, Functor expr')
-  => (forall v'. expr' v' -> Maybe (NameHint, expr v', Simple.Scope () expr' v'))
+  => (forall v'. expr' v' -> Maybe (NameHint, a, expr v', Simple.Scope () expr' v'))
   -> expr' v
-  -> (SimpleTelescope expr v, Simple.Scope Tele expr' v)
+  -> (Telescope Simple.Scope a expr v, Simple.Scope Tele expr' v)
 simpleBindingsView f expr = go 0 $ F <$> expr
   where
-    go x (f -> Just (n, e, s)) = (SimpleTelescope $ pure (n, Simple.toScope e) <> ns, s')
+    go x (f -> Just (n, p, e, s)) = (Telescope $ pure (n, p, Simple.toScope e) <> ns, s')
       where
-        (SimpleTelescope ns, s') = (go $! x + 1) $ instantiate1Var (B x) s
+        (Telescope ns, s') = (go $! x + 1) $ instantiate1Var (B x) s
     go _ e = (mempty, Simple.toScope e)

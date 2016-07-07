@@ -190,7 +190,7 @@ bindingHints bs = Vector.fromList $ bs >>= flatten
     flatten (Plain p names) = [(Hint n, p) | n <- names]
     flatten (Typed p names _type) = [(Hint n, p) | n <- names]
 
-bindingsTelescope :: [Binding] -> Telescope Expr Name
+bindingsTelescope :: [Binding] -> Telescope Scope Annotation Expr Name
 bindingsTelescope bs = Telescope $
   Vector.imap (\i (n, p, t) -> (Hint n, p, abstract (abstr i) t)) unabstracted
   where
@@ -278,9 +278,9 @@ expr
             --
 -- | A definition or type declaration on the top-level
 data TopLevelParsed v
-  = ParsedDefLine  (Maybe v) (Expr v) -- ^ Maybe v means that we can use wildcard names that refer e.g. to the previous top-level thing
-  | ParsedTypeDecl v         (Type v)
-  | ParsedData  v (Telescope Type v) (DataDef Type v)
+  = ParsedDefLine (Maybe v) (Expr v) -- ^ Maybe v means that we can use wildcard names that refer e.g. to the previous top-level thing
+  | ParsedTypeDecl v (Type v)
+  | ParsedData  v (Telescope Scope Annotation Type v) (DataDef Type v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 topLevel :: Parser (TopLevelParsed Name)

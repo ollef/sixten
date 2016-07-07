@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts, GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module LLVM where
 
+import Control.Applicative
 import Control.Monad.State
 import Data.Bifunctor
 import Data.Char
@@ -12,8 +13,11 @@ import Data.Monoid
 import Data.String
 import qualified Data.Text as Text
 import Data.Text(Text)
+import Data.Vector(Vector)
+import qualified Data.Vector as Vector
 
 import Util
+import Syntax.Direction
 import Syntax.Hint
 
 type B = Text
@@ -103,8 +107,12 @@ freshWithHint (Hint Nothing) = freshName
 -------------------------------------------------------------------------------
 -- * Operands
 -------------------------------------------------------------------------------
-newtype Operand a = Operand { unOperand :: B } deriving (IsString, Monoid)
-newtype Instr a = Instr { unInstr :: B } deriving (IsString, Monoid)
+newtype Operand a = Operand B deriving (Show, IsString, Monoid)
+unOperand :: Operand a -> B
+unOperand (Operand b) = b
+newtype Instr a = Instr B deriving (Show, IsString, Monoid)
+unInstr :: Instr a -> B
+unInstr (Instr b) = b
 data Ptr
 data Fun
 data Label
@@ -223,9 +231,17 @@ phiInt xs = Instr
   $ "phi" <+> integerT
   <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> unOperand v <> "," <+> unOperand l <> "]") <$> xs)
 
-bitcastToFun :: Operand Ptr -> Int -> Instr Fun
-bitcastToFun p arity = Instr
-  $ "bitcast" <+> pointer p <+> "to" <+> voidT <+> "(" <> Foldable.fold (replicate (arity - 1) (pointerT <> ", ")) <> pointerT <> ")"
+bitcastToFun :: Operand Int -> Direction -> Vector Direction -> Instr Fun
+bitcastToFun i retDir ds = Instr
+  $ "bitcast" <+> integer i <+> "to"
+  <+> retType <+> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList ds <|> retArg) <> ")"
+  where
+    (retType, retArg) = case retDir of
+      Direct -> (pointerT, mempty)
+      Indirect -> (voidT, pure pointerT)
+    go Direct = integerT
+    go Indirect = pointerT
+
 
 exit :: Int -> Instr ()
 exit n = Instr $ "call" <+> voidT <+> "@exit(i32" <+> shower n <> ")"

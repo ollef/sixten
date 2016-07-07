@@ -52,7 +52,7 @@ data Stmt v
 data Expr v
   = Operand (Operand v)
   | Con QConstr (Vector (Operand v, Operand v)) -- ^ fully applied
-  | Call (Operand v) (Vector (Operand v))
+  | Call Direction (Operand v) (Vector (Operand v, Direction))
   | Prim (Primitive (Operand v))
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
@@ -206,8 +206,8 @@ conLStmtBranches brs
     pureLifted $ SimpleConBranches $ do
       ((qc, hes, _), TupleT e es) <- zip brs $ Vector.toList $ fmap commuteVars <$> ess
       let es' = Simple.Scope <$> unVectorT es
-          hes' = Vector.zip (fst <$> hes) es'
-      return (qc, SimpleTelescope hes', Simple.Scope e)
+          hes' = (\(h, s) -> (h, (), s)) <$> Vector.zip (fst <$> hes) es'
+      return (qc, Telescope hes', Simple.Scope e)
 
 litLStmtBranches
   :: (Eq v, Hashable v)
@@ -270,16 +270,17 @@ lSizedExpr sz e
 
 callLStmt
   :: (Eq v, Hashable v)
-  => LStmt v
+  => Direction
   -> LStmt v
-  -> Vector (LStmt v)
   -> LStmt v
-callLStmt lsz le les
+  -> Vector (LStmt v, Direction)
+  -> LStmt v
+callLStmt retDir lsz le (Vector.unzip -> (les, dirs))
   = letLStmts ((,) mempty <$> Vector.cons lsz (Vector.cons le les))
   $ Simple.Scope
   $ pureLifted
   $ Sized (pure $ B 0)
-  $ Call (pure $ B 1) $ pure . B <$> Vector.enumFromN 2 len
+  $ Call retDir (pure $ B 1) $ Vector.zip (pure . B <$> Vector.enumFromN 2 len) dirs
   where
     len = Vector.length les
 
@@ -342,7 +343,7 @@ instance BindOperand Expr where
   bindOperand f expr = case expr of
     Operand o -> Operand $ bindOperand f o
     Con qc os -> Con qc $ bimap (bindOperand f) (bindOperand f) <$> os
-    Call o os -> Call (bindOperand f o) $ bindOperand f <$> os
+    Call retDir o os -> Call retDir (bindOperand f o) $ first (bindOperand f) <$> os
     Prim p -> Prim $ bindOperand f <$> p
 
 instance BindOperand Stmt where
@@ -366,8 +367,9 @@ instance BindOperand e => BindOperand (SimpleBranches c e) where
   bindOperand f (SimpleConBranches cbrs) = SimpleConBranches [(qc, bindOperand f tele, bindOperand f s) | (qc, tele, s) <- cbrs]
   bindOperand f (SimpleLitBranches lbrs def) = SimpleLitBranches (second (bindOperand f) <$> lbrs) (bindOperand f def)
 
-instance BindOperand e => BindOperand (SimpleTelescope e) where
-  bindOperand f (SimpleTelescope xs) = SimpleTelescope $ second (bindOperand f) <$> xs
+instance (BindOperand (s Tele e), BindOperand e)
+  => BindOperand (Telescope s a e) where
+  bindOperand f (Telescope xs) = Telescope $ second (bindOperand f) <$> xs
 
 instance BindOperand e => BindOperand (Simple.Scope b e) where
   bindOperand f (Simple.Scope s)
@@ -440,7 +442,7 @@ instance (Eq v, IsString v, Pretty v)
     Con c vs -> prettyApps
       (prettyM c)
       ((\(e, t) -> parens `above` annoPrec $ prettyM e <+> ":" <+> prettyM t) <$> vs)
-    Call v vs -> prettyApps (prettyM v) (prettyM <$> vs)
+    Call _retDir v vs -> prettyApps (prettyM v) (prettyM . fst <$> vs) -- TODO dirs
     Prim p -> prettyM $ pretty <$> p
 
 instance (Eq v, IsString v, Pretty v)

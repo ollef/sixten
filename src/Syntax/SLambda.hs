@@ -32,8 +32,8 @@ appsView = go []
     go args (App e1 se2) = go (se2:args) e1
     go args e = (e, Vector.reverse $ Vector.fromList args)
 
-lamView :: SExpr v -> Maybe (NameHint, Expr v, Simple.Scope () SExpr v)
-lamView (Sized _ (Lam h e s)) = Just (h, e, s)
+lamView :: SExpr v -> Maybe (NameHint, (), Expr v, Simple.Scope () SExpr v)
+lamView (Sized _ (Lam h e s)) = Just (h, (), e, s)
 lamView _ = Nothing
 
 -------------------------------------------------------------------------------
@@ -59,7 +59,7 @@ instance (Eq v, IsString v, Pretty v)
     Con c es -> prettyApps (prettyM c) $ prettyM <$> es
     Lit l -> prettyM l
     (simpleBindingsViewM lamView . Sized (Global "pretty-impossible") -> Just (tele, s)) -> parens `above` absPrec $
-      withSimpleTeleHints tele $ \ns ->
+      withTeleHints tele $ \ns ->
         "\\" <> prettySimpleTeleVarTypes ns tele <> "." <+>
         associate absPrec (prettyM $ instantiateTeleVars (fromText <$> ns) s)
     Lam {} -> error "impossible prettyPrec lam"

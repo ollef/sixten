@@ -13,6 +13,7 @@ import Data.String
 import Bound
 import Prelude.Extras
 
+import Syntax.Annotation
 import Syntax.Data
 import Syntax.Name
 import Syntax.Pretty
@@ -29,7 +30,7 @@ prettyTypedDef
   :: (Eq1 expr, Eq v, IsString v, Monad expr, Pretty (expr v))
   => Definition expr v
   -> expr v
-  -> Telescope expr v
+  -> Telescope Scope Annotation expr v
   -> PrettyM Doc
 prettyTypedDef (Definition d) t _ = prettyM d <+> ":" <+> prettyM t
 prettyTypedDef (DataDefinition d) t tele = prettyDataDef tele d <+> ":" <+> prettyM t

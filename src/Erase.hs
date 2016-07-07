@@ -62,7 +62,7 @@ erase expr = do
   tr "erase res" res
   return res
 
-relevantAbstraction :: Telescope expr v -> Tele -> Maybe Tele
+relevantAbstraction :: Telescope Scope Annotation expr v -> Tele -> Maybe Tele
 relevantAbstraction tele (Tele n) = Tele <$> perm Vector.! n
   where
     perm = Vector.fromList $ reverse $ fst $
@@ -87,8 +87,8 @@ eraseBranches (ConBranches cbrs typ) = do
     let vs = fst <$> tele'
         abstr v = relevantAbstraction tele =<< teleAbstraction vs v
         pureVs = pure <$> vs
-        tele'' = SimpleTelescope
-               $ fmap (\(h, _, t) -> (h, t))
+        tele'' = Telescope
+               $ fmap (\(h, _, t) -> (h, (), t))
                $ Vector.filter (\(_, a, _) -> relevance a == Relevant)
                $ snd <$> tele'
     brScope' <- erase $ instantiateTele pureVs brScope

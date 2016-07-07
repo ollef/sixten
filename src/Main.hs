@@ -27,6 +27,7 @@ import TCM
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete as Concrete
+import qualified Syntax.Converted as Converted
 import qualified Syntax.Lifted as Lifted
 import qualified Syntax.Parse as Parse
 import qualified Syntax.Resolve as Resolve
@@ -44,11 +45,16 @@ processGroup
   >=> addGroupToContext
   >=> eraseGroup
   >=> liftGroup
-  >=> addLiftedGroupToContext
   >=> closureConvertGroup
-  >=> restrictGroup
+  >=> addConvertedGroupToContext
+  >=> processConvertedGroup
+
+processConvertedGroup
+  :: [(Name, Converted.SExpr Void)]
+  -> TCM s [(Name, LLVM.B)]
+processConvertedGroup
+  = restrictGroup
   >=> liftRestrictedGroup "-lifted"
-  >=> addGroupDirectionsToContext
   >=> generateGroup
 
 exposeGroup
@@ -108,21 +114,21 @@ liftGroup defs = sequence
 
 closureConvertGroup
   :: [(Name, Lifted.SExpr Void)]
-  -> TCM s [(Name, Lifted.SExpr Void)]
+  -> TCM s [(Name, Converted.SExpr Void)]
 closureConvertGroup defs = forM defs $ \(x, e) -> do
   e' <- convertSBody $ vacuous e
   e'' <- traverse (throwError . ("closureConvertGroup " ++) . show) e'
   return (x, e'')
 
-addLiftedGroupToContext
-  :: [(Name, Lifted.SExpr Void)]
-  -> TCM s [(Name, Lifted.SExpr Void)]
-addLiftedGroupToContext defs = do
-  addLiftedContext $ HM.fromList defs
+addConvertedGroupToContext
+  :: [(Name, Converted.SExpr Void)]
+  -> TCM s [(Name, Converted.SExpr Void)]
+addConvertedGroupToContext defs = do
+  addConvertedContext $ HM.fromList defs
   return defs
 
 restrictGroup
-  :: [(Name, Lifted.SExpr Void)]
+  :: [(Name, Converted.SExpr Void)]
   -> TCM s [(Name, Restricted.LBody Void)]
 restrictGroup defs = forM defs $ \(x, e) -> do
   e' <- Restrict.restrictBody $ vacuous e
@@ -136,15 +142,6 @@ liftRestrictedGroup
 liftRestrictedGroup name defs = do
   let defs' = Restrict.liftProgram name $ fmap vacuous <$> defs
   traverse (traverse (traverse (throwError . ("liftGroup " ++) . show))) defs'
-
-addGroupDirectionsToContext
-  :: [(Name, Restricted.Body Void)]
-  -> TCM s [(Name, Restricted.Body Void)]
-addGroupDirectionsToContext defs = do
-  forM_ defs $ \(x, b) -> case b of
-    Restricted.FunctionBody (Restricted.Function retDir xs _) -> addDirections x (retDir, snd <$> xs)
-    Restricted.ConstantBody _ -> return ()
-  return defs
 
 generateGroup
   :: [(Name, Restricted.Body Void)]
@@ -188,8 +185,10 @@ processFile file = do
   where
     process groups = do
       addContext Builtin.context
-      addLiftedContext Builtin.liftedContext
-      mapM (processGroup . fmap (\(n, (d, t)) -> (n, d, t))) groups
+      addConvertedContext Builtin.convertedContext
+      builtins <- processConvertedGroup $ HM.toList Builtin.convertedContext
+      results <- mapM (processGroup . fmap (\(n, (d, t)) -> (n, d, t))) groups
+      return $ builtins : results
 
 main :: IO ()
 main = do
