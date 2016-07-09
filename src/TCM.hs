@@ -19,6 +19,7 @@ import Data.Void
 import Syntax
 import Syntax.Abstract
 import qualified Syntax.Converted as Converted
+import qualified Syntax.Restricted as Restricted
 import Util
 
 import Debug.Trace
@@ -32,7 +33,8 @@ instance Pretty Level where
 data State = State
   { tcContext :: Program Expr Void
   , tcConstrs :: HashMap Constr (Set (Name, Type Void))
-  , tcConvertedContext :: HashMap Name (Converted.Signature Unit Void)
+  , tcConvertedSignatures :: HashMap Name (Converted.Signature Unit Void)
+  , tcRestrictedContext :: HashMap Name (Restricted.Body Void)
   , tcIndent :: !Int -- This has no place here, but is useful for debugging
   , tcFresh :: !Int
   , tcLevel :: !Level
@@ -43,7 +45,8 @@ emptyState :: State
 emptyState = State
   { tcContext = mempty
   , tcConstrs = mempty
-  , tcConvertedContext = mempty
+  , tcConvertedSignatures = mempty
+  , tcRestrictedContext = mempty
   , tcIndent = 0
   , tcFresh = 0
   , tcLevel = Level 1
@@ -117,10 +120,15 @@ addContext prog = modify $ \s -> s
 addConvertedSignatures
   :: HashMap Name (Converted.Signature a b)
   -> TCM s ()
-addConvertedSignatures p = modify $ \s -> s { tcConvertedContext = p' <> tcConvertedContext s }
+addConvertedSignatures p = modify $ \s -> s { tcConvertedSignatures = p' <> tcConvertedSignatures s }
   where
     p' = fmap (const $ error "addConvertedSignatures")
        . Converted.mapSignature (const Unit) <$> p
+
+addRestrictedContext
+  :: HashMap Name (Restricted.Body Void)
+  -> TCM s ()
+addRestrictedContext p = modify $ \s -> s { tcRestrictedContext = p <> tcRestrictedContext s}
 
 modifyIndent :: (Int -> Int) -> TCM s ()
 modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
@@ -150,7 +158,7 @@ lookupConvertedSignature
 lookupConvertedSignature name
   = gets
   $ HM.lookup name
-  . tcConvertedContext
+  . tcConvertedSignatures
 
 definition
   :: Name

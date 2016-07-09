@@ -206,6 +206,9 @@ intToPtr i = Instr $ "inttoptr" <+> integer i <+> "to" <+> pointerT
 ptrToInt :: Operand Ptr -> Instr Int
 ptrToInt p = Instr $ "ptrtoint" <+> pointer p <+> "to" <+> integerT
 
+ptrToIntExpr :: Operand Ptr -> Operand Int
+ptrToIntExpr p = Operand $ "ptrtoint" <+> "(" <> pointer p <+> "to" <+> integerT <> ")"
+
 branch :: Operand Label -> Instr ()
 branch l = Instr $ "br" <+> label l
 
@@ -242,6 +245,15 @@ bitcastToFun i retDir ds = Instr
     go Direct = integerT
     go Indirect = pointerT
 
+bitcastFunToPtrExpr :: Operand Fun -> Direction -> Vector Direction -> Operand Ptr
+bitcastFunToPtrExpr i retDir ds = Operand
+  $ "bitcast" <+> "(" <> retType <+> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList ds <|> retArg) <> ")*" <+> unOperand i <+> "to" <+> pointerT <> ")"
+  where
+    (retType, retArg) = case retDir of
+      Direct -> (integerT, mempty)
+      Indirect -> (voidT, pure pointerT)
+    go Direct = integerT
+    go Indirect = pointerT
 
 exit :: Int -> Instr ()
 exit n = Instr $ "call" <+> voidT <+> "@exit(i32" <+> shower n <> ")"

@@ -2,6 +2,7 @@
 module Main where
 
 import Control.Monad.Except
+import Control.Monad.State
 import Data.Bifunctor
 import Data.Bitraversable
 import Data.Foldable
@@ -54,6 +55,7 @@ processConvertedGroup
 processConvertedGroup
   = restrictGroup
   >=> liftRestrictedGroup "-lifted"
+  >=> addRestrictedGroupToContext
   >=> generateGroup
 
 exposeGroup
@@ -136,13 +138,20 @@ liftRestrictedGroup name defs = do
   let defs' = Restrict.liftProgram name $ fmap vacuous <$> defs
   traverse (traverse (traverse (throwError . ("liftGroup " ++) . show))) defs'
 
+addRestrictedGroupToContext
+  :: [(Name, Restricted.Body Void)]
+  -> TCM s [(Name, Restricted.Body Void)]
+addRestrictedGroupToContext defs = do
+  addRestrictedContext $ HM.fromList defs
+  return defs
+
 generateGroup
   :: [(Name, Restricted.Body Void)]
   -> TCM s [(LLVM.B, LLVM.B)]
 generateGroup defs = do
   qcindex <- qconstructorIndex
-  let defMap = HM.fromList defs
-      env = Generate.GenEnv qcindex (`HM.lookup` defMap)
+  cxt <- gets tcRestrictedContext
+  let env = Generate.GenEnv qcindex (`HM.lookup` cxt)
   return $ flip map defs $ \(x, e) ->
     second (fold . intersperse "\n")
       $ Generate.runGen env

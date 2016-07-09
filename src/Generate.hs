@@ -45,13 +45,6 @@ data GenEnv = GenEnv
   , definitions :: Name -> Maybe (Body Void)
   }
 
-funParamDirections :: Name -> Gen (Maybe (Direction, Vector Direction))
-funParamDirections n = do
-  mbody <- asks (($ n) . definitions)
-  case mbody of
-    Just (FunctionBody (Function d xs _)) -> return $ Just (d, snd <$> xs)
-    _ -> return Nothing
-
 type Gen = ReaderT GenEnv (State LLVMState)
 
 runGen :: GenEnv -> Gen a -> (a, [B])
@@ -65,6 +58,10 @@ generateGlobal g = do
   mbody <- asks (($ g) . definitions)
   case mbody of
     Just (ConstantBody _) -> return $ IndirectVar $ global g
+    Just (FunctionBody (Function retDir args _)) -> return
+      $ DirectVar
+      $ ptrToIntExpr
+      $ bitcastFunToPtrExpr (global g) retDir $ snd <$> args
     _ -> return $ DirectVar $ global g
 
 generateOperand :: OperandG -> Gen Var
@@ -111,7 +108,9 @@ storeOperand
   -> Gen ()
 storeOperand op sz ret = case op of
   Local l -> varcpy ret l sz
-  Global g -> varcpy ret (IndirectVar $ global g) sz
+  Global g -> do
+    v <- generateGlobal g
+    varcpy ret v sz
   Lit l -> emit $ store (shower l) ret
 
 generateStmt :: StmtG -> Gen Var
@@ -249,7 +248,7 @@ storeCon Builtin.Ref os ret = do
   sizes <- mapM (generateOperand . snd) os
   sizeInts <- Traversable.forM sizes $ \ptr -> loadVar mempty ptr
   (is, fullSize) <- adds sizeInts
-  ref <- nameHint "ref" =: varCall pointerT "gc_alloc" [DirectVar fullSize]
+  ref <- nameHint "ref" =: varCall pointerT "@gc_alloc" [DirectVar fullSize]
   Foldable.forM_ (zip (Vector.toList sizeInts) $ zip is $ Vector.toList os) $ \(sz, (i, (o, _))) -> do
     index <- nameHint "index" =: getElementPtr ref i
     storeOperand o sz index
