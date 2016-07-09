@@ -115,13 +115,10 @@ generateStmt expr = case expr of
   Let _h e s -> do
     o <- generateStmt e
     generateStmt $ instantiate1Var o s
-  Sized (Lit n) e -> generateExpr e $ shower n
   Sized sz e -> do
     szVar <- generateOperand sz
     szInt <- loadVar (nameHint "size") szVar
-    ret <- nameHint "return" =: alloca szInt
-    storeExpr e szInt ret
-    return $ IndirectVar ret
+    generateExpr e szInt
   Case o brs -> do
     rets <- generateBranches o brs $ generateStmt >=> indirect
     res <- nameHint "caseResult" =: phiPtr rets
