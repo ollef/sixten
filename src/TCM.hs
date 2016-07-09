@@ -19,6 +19,7 @@ import Data.Void
 import Syntax
 import Syntax.Abstract
 import qualified Syntax.Converted as Converted
+import Util
 
 import Debug.Trace
 
@@ -31,7 +32,7 @@ instance Pretty Level where
 data State = State
   { tcContext :: Program Expr Void
   , tcConstrs :: HashMap Constr (Set (Name, Type Void))
-  , tcConvertedContext :: HashMap Name (Converted.SExpr Void)
+  , tcConvertedContext :: HashMap Name (Converted.Signature Unit Void)
   , tcIndent :: !Int -- This has no place here, but is useful for debugging
   , tcFresh :: !Int
   , tcLevel :: !Level
@@ -113,8 +114,13 @@ addContext prog = modify $ \s -> s
                          (mapAnnotations (const IrIm) $ telescope defType)
       return (c, Set.fromList [(n, t)])
 
-addConvertedContext :: HashMap Name (Converted.SExpr Void) -> TCM s ()
-addConvertedContext p = modify $ \s -> s { tcConvertedContext = p <> tcConvertedContext s }
+addConvertedSignatures
+  :: HashMap Name (Converted.Signature a b)
+  -> TCM s ()
+addConvertedSignatures p = modify $ \s -> s { tcConvertedContext = p' <> tcConvertedContext s }
+  where
+    p' = fmap (const $ error "addConvertedSignatures")
+       . Converted.mapSignature (const Unit) <$> p
 
 modifyIndent :: (Int -> Int) -> TCM s ()
 modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
@@ -138,13 +144,12 @@ lookupConstructor name
   . HM.lookup name
   . tcConstrs
 
-lookupConvertedDefinition
+lookupConvertedSignature
   :: Name
-  -> TCM s (Maybe (Converted.SExpr b))
-lookupConvertedDefinition name
+  -> TCM s (Maybe (Converted.Signature Unit Void))
+lookupConvertedSignature name
   = gets
-  $ fmap vacuous
-  . HM.lookup name
+  $ HM.lookup name
   . tcConvertedContext
 
 definition
@@ -156,11 +161,11 @@ definition v = do
         return
         mres
 
-convertedDefinition
+convertedSignature
   :: Name
-  -> TCM s (Converted.SExpr v)
-convertedDefinition v = do
-  mres <- lookupConvertedDefinition v
+  -> TCM s (Converted.Signature Unit Void)
+convertedSignature v = do
+  mres <- lookupConvertedSignature v
   maybe (throwError $ "Not in scope: converted " ++ show v)
         return
         mres

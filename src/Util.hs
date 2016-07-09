@@ -1,4 +1,4 @@
-{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE DeriveFunctor, Rank2Types #-}
 module Util where
 
 import Bound
@@ -88,3 +88,6 @@ indexed x = evalState (traverse go x) 0
       i <- get
       put $! i + 1
       return (i, a)
+
+data Unit a = Unit
+  deriving (Functor)

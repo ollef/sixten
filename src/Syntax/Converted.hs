@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings, RankNTypes #-}
 module Syntax.Converted where
 
 import qualified Bound.Scope.Simple as Simple
@@ -27,6 +27,22 @@ data Expr v
   | Case (SExpr v) (SimpleBranches QConstr Expr v)
   | Prim (Primitive (Expr v))
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+data Signature expr v
+  = Function Direction (Telescope Simple.Scope Direction Expr Void) (Simple.Scope Tele expr Void)
+  | Constant (expr v)
+  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+signature :: SExpr v -> Signature SExpr v
+signature (Sized _ (Lams retDir tele s)) = Function retDir tele s
+signature e = Constant e
+
+mapSignature
+  :: (forall v'. expr v' -> expr' v')
+  -> Signature expr v
+  -> Signature expr' v
+mapSignature f (Function d tele (Simple.Scope e)) = Function d tele $ Simple.Scope $ f e
+mapSignature f (Constant e) = Constant $ f e
 
 -------------------------------------------------------------------------------
 -- Helpers

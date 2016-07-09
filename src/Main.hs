@@ -46,7 +46,6 @@ processGroup
   >=> eraseGroup
   >=> liftGroup
   >=> closureConvertGroup
-  >=> addConvertedGroupToContext
   >=> processConvertedGroup
 
 processConvertedGroup
@@ -115,17 +114,11 @@ liftGroup defs = sequence
 closureConvertGroup
   :: [(Name, Lifted.SExpr Void)]
   -> TCM s [(Name, Converted.SExpr Void)]
-closureConvertGroup defs = forM defs $ \(x, e) -> do
-  e' <- convertSBody $ vacuous e
-  e'' <- traverse (throwError . ("closureConvertGroup " ++) . show) e'
-  return (x, e'')
-
-addConvertedGroupToContext
-  :: [(Name, Converted.SExpr Void)]
-  -> TCM s [(Name, Converted.SExpr Void)]
-addConvertedGroupToContext defs = do
-  addConvertedContext $ HM.fromList defs
-  return defs
+closureConvertGroup defs = do
+  sigs <- forM defs $ \(x, e) -> (,) x <$> ClosureConvert.convertSignature (vacuous e)
+  addConvertedSignatures $ HM.fromList sigs
+  forM sigs $ \(x, sig) ->
+    (,) x . fmap (error "closureConvertGroup conv") <$> ClosureConvert.convertBody (error "closureConvertGroup sig" <$> sig)
 
 restrictGroup
   :: [(Name, Converted.SExpr Void)]
@@ -185,7 +178,7 @@ processFile file = do
   where
     process groups = do
       addContext Builtin.context
-      addConvertedContext Builtin.convertedContext
+      addConvertedSignatures $ Converted.signature <$> Builtin.convertedContext
       builtins <- processConvertedGroup $ HM.toList Builtin.convertedContext
       results <- mapM (processGroup . fmap (\(n, (d, t)) -> (n, d, t))) groups
       return $ builtins : results

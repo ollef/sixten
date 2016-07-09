@@ -89,7 +89,7 @@ convertedContext = HM.fromList $ concat
       $ Converted.Let (nameHint "lt")
       (Converted.sized 1
       $ Converted.Prim
-      $ "add i64 " <> pure (Converted.Var $ B 0) <> ", " <> pure (Converted.Var $ B 1))
+      $ "icmp ult i64 " <> pure (Converted.Var $ B 0) <> ", " <> pure (Converted.Var $ B 1))
       $ Simple.Scope
       $ Converted.Prim
       $ "select i1 " <> pure (Converted.Var $ B ())
@@ -113,7 +113,7 @@ maxArity = 2
 
 apply :: Int -> Converted.SExpr Void
 apply numArgs
-  = Converted.sized 1 -- TODO
+  = unknownSize
   $ Converted.Lams
     Indirect
     (Telescope
@@ -121,9 +121,9 @@ apply numArgs
     $ (\n -> (nameHint $ "size" <> shower (unTele n), Direct, slit 1)) <$> Vector.enumFromN 0 numArgs
     <|> (\n -> (nameHint $ "x" <> shower (unTele n), Indirect, svarb $ 1 + n)) <$> Vector.enumFromN 0 numArgs)
   $ Simple.Scope
-  $ Converted.sized 1 -- TODO
+  $ unknownSize
   $ Converted.Case
-    (Converted.sized 2 -- TODO
+    (unknownSize
     $ Converted.Call Indirect (Converted.Global DerefName)
     $ pure (Converted.sized 1 $ Converted.Var $ B 0, Direct)
     )
@@ -139,6 +139,7 @@ apply numArgs
     )
   ]
   where
+    unknownSize = Converted.Sized $ Converted.Global "Builtin.apply.UnknownSize"
     br :: Int -> Converted.Expr (Var Tele (Var Tele Void))
     br arity
       | numArgs < arity
@@ -177,7 +178,7 @@ addSizes = Vector.foldr1 go
 
 pap :: Int -> Int -> Converted.SExpr Void
 pap k m
-  = Converted.sized 1 -- TODO
+  = unknownSize
   $ Converted.Lams
     Indirect
     (Telescope
@@ -185,9 +186,9 @@ pap k m
     $ (\n -> (nameHint $ "size" <> shower (unTele n), Direct, slit 1)) <$> Vector.enumFromN 0 k
     <|> (\n -> (nameHint $ "x" <> shower (unTele n), Indirect, svarb $ 1 + n)) <$> Vector.enumFromN 0 k)
   $ Simple.Scope
-  $ Converted.sized 1 -- TODO
+  $ unknownSize
   $ Converted.Case
-    (Converted.sized 1 -- TODO
+    (unknownSize
     $ Converted.Call Indirect (Converted.Global DerefName)
     $ pure (Converted.sized 1 $ Converted.Var $ B 0, Direct))
   $ SimpleConBranches
@@ -207,3 +208,5 @@ pap k m
         <|> (\n -> (Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + Tele k + n, Indirect)) <$> Vector.enumFromN 0 k
       )
     ]
+  where
+    unknownSize = Converted.Sized $ Converted.Global "Builtin.pap.UnknownSize"
