@@ -179,7 +179,7 @@ knownCall f retDir tele {- (Simple.Scope functionBody) -} args
       $ fmap B
       -- $ Converted.Sized returnSize
       $ unknownSize
-      $ Converted.Case (unknownSize $ Converted.Call Indirect (Converted.Global Builtin.DerefName) $ pure (Converted.sized 1 $ Converted.Var 0, Direct))
+      $ Converted.Case (unknownSize $ Builtin.deref $ Converted.Var 0)
       $ SimpleConBranches
       $ pure
       ( Builtin.Closure

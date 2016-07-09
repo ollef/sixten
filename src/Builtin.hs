@@ -31,8 +31,6 @@ pattern Type sz = App (Global TypeName) IrIm sz
 pattern RefName <- ((==) "Ref" -> True) where RefName = "Ref"
 pattern PtrName <- ((==) "Ptr" -> True) where PtrName = "Ptr"
 
-pattern DerefName <- ((==) "deref" -> True) where DerefName = "deref"
-
 pattern Closure <- ((== QConstr "Builtin" "CL") -> True) where Closure = QConstr "Builtin" "CL"
 
 pattern Ref <- ((== QConstr PtrName RefName) -> True) where Ref = QConstr PtrName RefName
@@ -111,6 +109,18 @@ svarb = Simple.Scope . Converted.Var . B
 maxArity :: Num n => n
 maxArity = 2
 
+deref :: Converted.Expr v -> Converted.Expr v
+deref e
+  = Converted.Case (Converted.sized 1 e)
+  $ SimpleConBranches
+  [ ( Ref
+    , Telescope
+      $ pure (nameHint "dereferenced", (), Simple.Scope $ Converted.Global "Builtin.deref.UnknownSize")
+    , Simple.Scope
+    $ Converted.Var $ B 0
+    )
+  ]
+
 apply :: Int -> Converted.SExpr Void
 apply numArgs
   = unknownSize
@@ -122,11 +132,7 @@ apply numArgs
     <|> (\n -> (nameHint $ "x" <> shower (unTele n), Indirect, svarb $ 1 + n)) <$> Vector.enumFromN 0 numArgs)
   $ Simple.Scope
   $ unknownSize
-  $ Converted.Case
-    (unknownSize
-    $ Converted.Call Indirect (Converted.Global DerefName)
-    $ pure (Converted.sized 1 $ Converted.Var $ B 0, Direct)
-    )
+  $ Converted.Case (unknownSize $ deref $ Converted.Var $ B 0)
   $ SimpleConBranches
   [ ( Closure
     , Telescope
@@ -187,10 +193,7 @@ pap k m
     <|> (\n -> (nameHint $ "x" <> shower (unTele n), Indirect, svarb $ 1 + n)) <$> Vector.enumFromN 0 k)
   $ Simple.Scope
   $ unknownSize
-  $ Converted.Case
-    (unknownSize
-    $ Converted.Call Indirect (Converted.Global DerefName)
-    $ pure (Converted.sized 1 $ Converted.Var $ B 0, Direct))
+  $ Converted.Case (unknownSize $ deref $ Converted.Var $ B 0)
   $ SimpleConBranches
     [ ( Closure
       , Telescope
