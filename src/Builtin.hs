@@ -91,7 +91,7 @@ convertedContext = HM.fromList $ concat
       $ Simple.Scope
       $ Converted.Prim
       $ "select i1 " <> pure (Converted.Var $ B ())
-      <> ", i64 " <> pure (Converted.Var $ F $ B 0) <> ", "
+      <> ", i64 " <> pure (Converted.Var $ F $ B 0) <> ", i64 "
       <> pure (Converted.Var $ F $ B 1)
     )
   ]

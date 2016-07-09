@@ -85,10 +85,14 @@ loadVarPtr (IndirectVar o) = do
 
 indirect :: Var -> Gen (LLVM.Operand Ptr)
 indirect (DirectVar o) = do
-  result <- nameHint "indirection" =: alloca (LLVM.Operand "1")
+  result <- nameHint "indirection" =: alloca "1"
   emit $ store o result
   return result
 indirect (IndirectVar o) = return o
+
+varToPtr :: Var -> Gen (LLVM.Operand Ptr)
+varToPtr (DirectVar o) = nameHint "ptr" =: intToPtr o
+varToPtr (IndirectVar o) = return o
 
 allocaVar :: NameHint -> Var -> Gen Var
 allocaVar hint v = do
@@ -179,8 +183,8 @@ generateFunOperand
 generateFunOperand (Global g) _ _ = return $ global g
 generateFunOperand op retDir argDirs = do
   funVar <- generateOperand op
-  funInt <- loadVar mempty funVar
-  nameHint "fun" =: bitcastToFun funInt retDir argDirs
+  funPtr <- loadVarPtr funVar
+  nameHint "fun" =: bitcastToFun funPtr retDir argDirs
 
 generateCall
   :: Direction
@@ -276,24 +280,29 @@ generateBranches
   -> (Stmt Var -> Gen a)
   -> Gen [(a, LLVM.Operand Label)]
 generateBranches op branches brCont = do
-  expr <- (indirect <=< generateOperand) op
+  expr <- (varToPtr <=< generateOperand) op
   postLabel <- LLVM.Operand <$> freshenName "after-branch"
   case branches of
     SimpleConBranches [(Builtin.Ref, tele, brScope)] -> mdo
-      branchLabel <- LLVM.Operand <$> freshenName RefName
+      branchLabel <- LLVM.Operand <$> freshenName Builtin.RefName
 
       emit $ branch branchLabel
       emitLabel branchLabel
-      let inst = instantiateSimpleTeleVars args
-      argSizes <- forMTele tele $ \_ _ sz -> do
-        szVar <- generateStmt $ inst sz
-        loadVar (nameHint "size") szVar
-      (is, _) <- adds argSizes
-      args <- Traversable.forM (Vector.zip (Vector.fromList is) $ teleNames tele) $ \(i, h) -> do
-        outerPtr <- h =: getElementPtr expr i
-        innerInt <- mempty =: load outerPtr
-        innerPtr <- mempty =: intToPtr innerInt
-        return $ IndirectVar innerPtr
+      let teleVector = Vector.indexed $ unTelescope tele
+          inst = instantiateSimpleTeleVars $ Vector.fromList $ reverse revArgs
+          go (vs, index) (i, (h, (), s)) = do
+            outerPtr <- h =: getElementPtr expr index
+            innerInt <- mempty =: load outerPtr
+            innerPtr <- mempty =: intToPtr innerInt
+            nextIndex <- if i == Vector.length teleVector - 1
+              then return index
+              else do
+                sz <- generateStmt $ inst s
+                szInt <- loadVar (nameHint "size") sz
+                nameHint "index" =: add index szInt
+            return (IndirectVar innerPtr : vs, nextIndex)
+
+      (revArgs, _) <- Foldable.foldlM go (mempty, "0") teleVector
       contResult <- brCont $ inst brScope
       emit $ branch postLabel
       emitLabel postLabel
@@ -304,21 +313,28 @@ generateBranches op branches brCont = do
 
       emit $ branch branchLabel
       emitLabel branchLabel
-      let inst = instantiateSimpleTeleVars args
-      argSizes <- forMTele tele $ \_ _ sz -> do
-        szVar <- generateStmt $ inst sz
-        loadVar (nameHint "size") szVar
-      (is, _) <- adds argSizes
-      args <- Traversable.forM (Vector.zip (Vector.fromList is) $ teleNames tele) $ \(i, h) -> do
-        ptr <- h =: getElementPtr expr i
-        return $ IndirectVar ptr
+      let teleVector = Vector.indexed $ unTelescope tele
+          inst = instantiateSimpleTeleVars $ Vector.fromList $ reverse revArgs
+          go (vs, index) (i, (h, (), s)) = do
+            ptr <- h =: getElementPtr expr index
+            nextIndex <- if i == Vector.length teleVector - 1
+              then return index
+              else do
+                sz <- generateStmt $ inst s
+                szInt <- loadVar (nameHint "size") sz
+                nameHint "index" =: add index szInt
+            return (IndirectVar ptr : vs, nextIndex)
+
+      (revArgs, _) <- Foldable.foldlM go (mempty, "0") teleVector
       contResult <- brCont $ inst brScope
       emit $ branch postLabel
       emitLabel postLabel
       return [(contResult, branchLabel)]
+
     SimpleConBranches cbrs -> do
-      e0Ptr <- nameHint "tag-pointer" =: getElementPtr expr (LLVM.Operand "0")
+      e0Ptr <- nameHint "tag-pointer" =: getElementPtr expr "0"
       e0 <- nameHint "tag" =: load e0Ptr
+
       branchLabels <- Traversable.forM cbrs $ \(qc@(QConstr _ c), _, _) -> do
         Just qcIndex <- constrIndex qc
         branchLabel <- LLVM.Operand <$> freshenName c
@@ -329,25 +345,33 @@ generateBranches op branches brCont = do
 
       contResults <- Traversable.forM (zip cbrs branchLabels) $ \((_, tele, brScope), (_, branchLabel)) -> mdo
         emitLabel branchLabel
-        let inst = instantiateSimpleTeleVars args
-        argSizes <- forMTele tele $ \_ _ sz -> do
-          szVar <- generateStmt $ inst sz
-          loadVar (nameHint "size") szVar
-        (is, _) <- adds $ Vector.cons (LLVM.Operand "1") argSizes
-        args <- Traversable.forM (Vector.zip (Vector.fromList is) $ teleNames tele) $ \(i, h) -> do
-          ptr <- h =: getElementPtr expr i
-          return $ IndirectVar ptr
+
+        let teleVector = Vector.indexed $ unTelescope tele
+            inst = instantiateSimpleTeleVars $ Vector.fromList $ reverse revArgs
+            go (i, (h, (), s)) (vs, index) = do
+              ptr <- h =: getElementPtr expr index
+              nextIndex <- if i == Vector.length teleVector - 1
+                then return index
+                else do
+                  sz <- generateStmt $ inst s
+                  szInt <- loadVar (nameHint "size") sz
+                  nameHint "index" =: add index szInt
+              return (IndirectVar ptr : vs, nextIndex)
+
+        (revArgs, _) <- Foldable.foldrM go (mempty, "1") teleVector
         contResult <- brCont $ inst brScope
         emit $ branch postLabel
         return contResult
+
       emitLabel failLabel
       emit $ exit 1
       emit unreachable
       emitLabel postLabel
       return $ zip contResults $ snd <$> branchLabels
+
     SimpleLitBranches lbrs def -> do
-      e0Ptr <- nameHint "tag-pointer" =: getElementPtr expr (LLVM.Operand "0")
-      e0 <- nameHint "tag" =: load e0Ptr
+      e0Ptr <- nameHint "lit-pointer" =: getElementPtr expr "0"
+      e0 <- nameHint "lit" =: load e0Ptr
 
       branchLabels <- Traversable.forM lbrs $ \(l, _) -> do
         branchLabel <- LLVM.Operand <$> freshenName (shower l)
@@ -400,6 +424,7 @@ generateConstant name (Constant s) = do
   emitRaw $ Instr ""
   emitRaw $ Instr $ "define private" <+> voidT <+> initName <> "() {"
   storeStmt s $ global name
+  emit returnVoid
   emitRaw "}"
   return $ "call" <+> voidT <+> initName <> "()"
 

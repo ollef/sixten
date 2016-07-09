@@ -231,10 +231,10 @@ phiInt xs = Instr
   $ "phi" <+> integerT
   <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> unOperand v <> "," <+> unOperand l <> "]") <$> xs)
 
-bitcastToFun :: Operand Int -> Direction -> Vector Direction -> Instr Fun
+bitcastToFun :: Operand Ptr -> Direction -> Vector Direction -> Instr Fun
 bitcastToFun i retDir ds = Instr
-  $ "bitcast" <+> integer i <+> "to"
-  <+> retType <+> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList ds <|> retArg) <> ")"
+  $ "bitcast" <+> pointer i <+> "to"
+  <+> retType <+> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList ds <|> retArg) <> ")*"
   where
     (retType, retArg) = case retDir of
       Direct -> (integerT, mempty)
