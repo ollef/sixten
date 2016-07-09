@@ -174,6 +174,17 @@ varCall retType name xs = Instr
     go (DirectVar x) = integer x
     go (IndirectVar x) = pointer x
 
+generateFunOperand
+  :: OperandG
+  -> Direction
+  -> Vector Direction
+  -> Gen (LLVM.Operand Fun)
+generateFunOperand (Global g) _ _ = return $ global g
+generateFunOperand op retDir argDirs = do
+  funVar <- generateOperand op
+  funInt <- loadVar mempty funVar
+  nameHint "fun" =: bitcastToFun funInt retDir argDirs
+
 generateCall
   :: Direction
   -> OperandG
@@ -181,9 +192,7 @@ generateCall
   -> LLVM.Operand Int
   -> Gen Var
 generateCall retDir funOperand os sz = do
-  funVar <- generateOperand funOperand
-  funInt <- loadVar mempty funVar
-  fun <- nameHint "fun" =: bitcastToFun funInt retDir (snd <$> os)
+  fun <- generateFunOperand funOperand retDir $ snd <$> os
   args <- forM os $ \(o, d) -> do
     v <- generateOperand o
     case d of
@@ -214,9 +223,7 @@ storeCall
   -> LLVM.Operand Ptr
   -> Gen ()
 storeCall retDir funOperand os ret = do
-  funVar <- generateOperand funOperand
-  funInt <- loadVar mempty funVar
-  fun <- nameHint "fun" =: bitcastToFun funInt retDir (snd <$> os)
+  fun <- generateFunOperand funOperand retDir $ snd <$> os
   args <- forM os $ \(o, d) -> do
     v <- generateOperand o
     case d of

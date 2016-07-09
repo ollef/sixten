@@ -237,7 +237,7 @@ bitcastToFun i retDir ds = Instr
   <+> retType <+> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList ds <|> retArg) <> ")"
   where
     (retType, retArg) = case retDir of
-      Direct -> (pointerT, mempty)
+      Direct -> (integerT, mempty)
       Indirect -> (voidT, pure pointerT)
     go Direct = integerT
     go Indirect = pointerT
