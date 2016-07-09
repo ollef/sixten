@@ -211,10 +211,14 @@ generatePrim
   :: Primitive OperandG
   -> LLVM.Operand Int
   -> Gen Var
-generatePrim p sz = do
-  ret <- nameHint "prim" =: alloca sz
-  storePrim p ret
-  return $ IndirectVar ret
+generatePrim (Primitive xs) _ = do
+  strs <- forM xs $ \x -> case x of
+    TextPart t -> return t
+    VarPart o -> do
+      v <- generateOperand o
+      unOperand <$> loadVar mempty v
+  ret <- nameHint "prim" =: Instr (Foldable.fold strs)
+  return $ DirectVar ret
 
 storeCall
   :: Direction
@@ -264,14 +268,10 @@ storePrim
   :: Primitive OperandG
   -> LLVM.Operand Ptr
   -> Gen ()
-storePrim (Primitive xs) ret = do
-  strs <- forM xs $ \x -> case x of
-    TextPart t -> return t
-    VarPart o -> do
-      v <- generateOperand o
-      unOperand <$> loadVar mempty v
-  res <- nameHint "prim" =: Instr (Foldable.fold strs)
-  emit $ store res ret
+storePrim p ret = do
+  res <- generatePrim p $ LLVM.Operand "1"
+  intRes <- loadVar (nameHint "loaded-prim") res
+  emit $ store intRes ret
 
 generateBranches
   :: OperandG
