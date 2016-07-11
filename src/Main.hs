@@ -15,6 +15,7 @@ import qualified Data.Text.IO as Text
 import qualified Data.Vector as V
 import Data.Void
 import System.Environment
+import System.IO
 
 import Builtin
 import ClosureConvert
@@ -157,8 +158,8 @@ generateGroup defs = do
       $ Generate.runGen env
       $ Generate.generateBody x $ vacuous e
 
-processFile :: FilePath -> IO ()
-processFile file = do
+processFile :: FilePath -> FilePath -> IO ()
+processFile file output = do
   parseResult <- Parse.parseFromFile Parse.program file
   let resolveResult = Resolve.program <$> parseResult
   case resolveResult of
@@ -177,13 +178,20 @@ processFile file = do
         (Left err, t) -> do
           mapM_ (putDoc . (<> "\n")) t
           putStrLn err
-        (Right res, _) -> do
+        (Right res, _) -> withFile output WriteMode $ \handle -> do
+          let outputStrLn s = do
+                Text.hPutStrLn handle s
+                Text.putStrLn s
           forM_ (concat res) $ \(_, b) -> do
-            Text.putStrLn ""
-            Text.putStrLn b
-          Text.putStrLn "\ninit:"
+            outputStrLn ""
+            outputStrLn b
+          outputStrLn ""
+          outputStrLn "define i32 @main() {"
+          outputStrLn "  call void @GC_init()"
           forM_ (concat res) $ \(i, _) ->
-            unless (Text.null i) $ Text.putStrLn i
+            unless (Text.null i) $ outputStrLn i
+          outputStrLn "  ret i32 0"
+          outputStrLn "}"
   where
     process groups = do
       addContext Builtin.context
@@ -194,5 +202,5 @@ processFile file = do
 
 main :: IO ()
 main = do
-  x:_ <- getArgs
-  processFile x
+  x:y:_ <- getArgs
+  processFile x y

@@ -15,8 +15,11 @@ map f xs = Ref (case deref xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (map f xs'))
 
-test : Ptr (List Size)
-test = map (addSize 1) (Ref (Cons 1 (Ref (Cons 2 (Ref (Cons 3 (Ref Nil)))))))
+testList : Ptr (List Size)
+testList = Ref Nil
 
--- test2 : List Size
--- test2 = deref test
+mappedList : Ptr (List Size)
+mappedList = map (addSize 1) testList
+
+testList2 : List Size
+testList2 = deref testList

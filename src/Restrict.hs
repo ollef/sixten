@@ -33,16 +33,6 @@ type LBodyM s = Restricted.LBody (Meta s)
 type LStmtM s = Restricted.LStmt (Meta s)
 type SExprM s = Converted.SExpr (Meta s)
 
-sizeDir :: Converted.Expr v -> Direction
-sizeDir (Converted.Lit 1) = Direct
-sizeDir _ = Indirect
-
-sExprDir :: Converted.SExpr v -> Direction
-sExprDir (Converted.Sized sz _) = sizeDir sz
-
-teleDirs :: Telescope Simple.Scope () Converted.Expr v -> Vector Direction
-teleDirs xs = sizeDir . Simple.unscope <$> teleTypes xs
-
 teleDirectedNames :: Telescope Simple.Scope Direction Converted.Expr v -> Vector (NameHint, Direction)
 teleDirectedNames tele = Vector.zip (teleNames tele) (teleAnnotations tele)
 
@@ -60,7 +50,7 @@ restrictBody expr = do
       lamExpr' <- restrictSExpr lamExpr
       let lamScope' = Simple.abstract (teleAbstraction vs) lamExpr'
       return $ Restricted.lamLBody retDir (teleDirectedNames tele) lamScope'
-    _ -> Restricted.mapLifted (Restricted.ConstantBody . Restricted.Constant) <$> restrictSExpr expr
+    _ -> Restricted.mapLifted (Restricted.ConstantBody . Restricted.Constant (Converted.sExprDir expr)) <$> restrictSExpr expr
   modifyIndent pred
   trp "restrictBody res" $ show <$> result
   return result

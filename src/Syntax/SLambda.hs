@@ -30,7 +30,7 @@ appsView :: Expr v -> (Expr v, Vector (SExpr v))
 appsView = go []
   where
     go args (App e1 se2) = go (se2:args) e1
-    go args e = (e, Vector.reverse $ Vector.fromList args)
+    go args e = (e, Vector.fromList args)
 
 lamView :: SExpr v -> Maybe (NameHint, (), Expr v, Simple.Scope () SExpr v)
 lamView (Sized _ (Lam h e s)) = Just (h, (), e, s)

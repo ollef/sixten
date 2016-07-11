@@ -30,19 +30,19 @@ data Expr v
 
 data Signature expr v
   = Function Direction (Telescope Simple.Scope Direction Expr Void) (Simple.Scope Tele expr Void)
-  | Constant (expr v)
+  | Constant Direction (expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 signature :: SExpr v -> Signature SExpr v
 signature (Sized _ (Lams retDir tele s)) = Function retDir tele s
-signature e = Constant e
+signature e = Constant (sExprDir e) e
 
 mapSignature
   :: (forall v'. expr v' -> expr' v')
   -> Signature expr v
   -> Signature expr' v
 mapSignature f (Function d tele (Simple.Scope e)) = Function d tele $ Simple.Scope $ f e
-mapSignature f (Constant e) = Constant $ f e
+mapSignature f (Constant d e) = Constant d $ f e
 
 -------------------------------------------------------------------------------
 -- Helpers
@@ -54,6 +54,13 @@ sizeOf (Sized sz _) = sz
 
 sizedSizesOf :: Functor f => f (SExpr v) -> f (SExpr v)
 sizedSizesOf = fmap (sized 1 . sizeOf)
+
+sizeDir :: Expr v -> Direction
+sizeDir (Lit 1) = Direct
+sizeDir _ = Indirect
+
+sExprDir :: SExpr v -> Direction
+sExprDir (Sized sz _) = sizeDir sz
 
 -------------------------------------------------------------------------------
 -- Instances

@@ -107,7 +107,7 @@ svarb :: b -> Simple.Scope b Converted.Expr a
 svarb = Simple.Scope . Converted.Var . B
 
 maxArity :: Num n => n
-maxArity = 2
+maxArity = 3
 
 deref :: Converted.Expr v -> Converted.Expr v
 deref e
@@ -123,7 +123,7 @@ deref e
 
 apply :: Int -> Converted.SExpr Void
 apply numArgs
-  = unknownSize
+  = Converted.sized 1
   $ Converted.Lams
     Indirect
     (Telescope

@@ -1,10 +1,5 @@
-LLVM code generation
-  Globals
-    - Heap-alloc globals not of constant size
-    - Make globals of constant size arrays?
-    - Make literals llvm `constant`s
-  - Use boehm (for now)
-  - Can case scrutinees and tail calls explicitly be of unspecified size?
+Add printf or something
+Can case scrutinees and tail calls explicitly be of unspecified size?
 Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
 Make printing of passes optional and configurable
 Usage analysis for better erasure
@@ -27,6 +22,9 @@ Optimisations
   Tagged pointers
     Reorder data to enable more?
   App of lambda -> let
+Globals
+  Make literals llvm `constant`s
+  Add error message for circular globals
 Do real GC with LLVM gcroots etc
 Type classes
 Specialisation pragma

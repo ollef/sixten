@@ -30,14 +30,6 @@ type CExprM s = Converted.Expr (Meta s)
 type CSExprM s = Converted.SExpr (Meta s)
 type CBrsM s = SimpleBranches QConstr Converted.Expr (Meta s)
 
-sizeDir :: Converted.Expr v -> Direction
-sizeDir (Converted.Lit 1) = Direct
-sizeDir _ = Indirect
-
-sExprDir :: Lifted.SExpr v -> Direction
-sExprDir (Lifted.Sized (Lifted.Lit 1) _) = Direct
-sExprDir _ = Indirect
-
 convertSignature
   :: LSExprM s
   -> TCM s (Converted.Signature Lifted.SExpr (Meta s))
@@ -45,7 +37,7 @@ convertSignature expr = case expr of
   Lifted.Sized _ (Lifted.Lams tele lamScope) -> do
     (retDir, tele') <- convertLambdaSignature tele lamScope
     return $ Converted.Function retDir tele' lamScope
-  _ -> return $ Converted.Constant expr
+  _ -> return $ Converted.Constant (Lifted.sExprDir expr) expr
 
 convertLambdaSignature
   :: Telescope Simple.Scope () Lifted.Expr Void
@@ -62,8 +54,8 @@ convertLambdaSignature tele (Simple.Scope lamExpr) = mdo
     return (v, e')
   let vs = fst <$> tele'
       abstr = teleAbstraction vs
-      tele'' = error "convertLambda" <$> Telescope ((\(v, e) -> (metaHint v, sizeDir e, Simple.abstract abstr e)) <$> tele')
-  return (sExprDir lamExpr, tele'')
+      tele'' = error "convertLambda" <$> Telescope ((\(v, e) -> (metaHint v, Converted.sizeDir e, Simple.abstract abstr e)) <$> tele')
+  return (Lifted.sExprDir lamExpr, tele'')
 
 convertBody
   :: Converted.Signature Lifted.SExpr Void
@@ -79,7 +71,7 @@ convertBody sig = case sig of
       $ Converted.sized 1
       $ Converted.Lams retDir tele
       $ error "convertBody" <$> lamScope'
-  Converted.Constant e -> convertSExpr $ error "convertBody" <$> e
+  Converted.Constant _ e -> convertSExpr $ error "convertBody" <$> e
 
 convertLambda
   :: Telescope Simple.Scope () Lifted.Expr Void
@@ -98,10 +90,10 @@ convertLambda tele lamScope = mdo
   let vs = fst <$> tele'
       lamExpr = instantiateVar ((vs Vector.!) . unTele) $ vacuous lamScope
       abstr = teleAbstraction vs
-      tele'' = error "convertLambda" <$> Telescope ((\(v, e) -> (metaHint v, sizeDir e, Simple.abstract abstr e)) <$> tele')
+      tele'' = error "convertLambda" <$> Telescope ((\(v, e) -> (metaHint v, Converted.sizeDir e, Simple.abstract abstr e)) <$> tele')
   lamExpr' <- convertSExpr lamExpr
   let lamScope' = Simple.abstract abstr lamExpr'
-  return (sExprDir lamExpr, tele'', error "convertLambda" <$> lamScope')
+  return (Converted.sExprDir lamExpr', tele'', error "convertLambda" <$> lamScope')
 
 convertExpr :: LExprM s -> TCM s (CExprM s)
 convertExpr expr = case expr of
@@ -152,10 +144,9 @@ knownCall
   :: Converted.Expr Void
   -> Direction
   -> Telescope Simple.Scope Direction Converted.Expr Void
-  -- -> Simple.Scope Tele Converted.SExpr Void
   -> Vector (CSExprM s)
   -> TCM s (CExprM s)
-knownCall f retDir tele {- (Simple.Scope functionBody) -} args
+knownCall f retDir tele args
   | numArgs < arity
     = return
     $ Converted.Con Builtin.Ref
@@ -204,20 +195,6 @@ knownCall f retDir tele {- (Simple.Scope functionBody) -} args
           $ Vector.cons (nameHint "x_this", Direct, Builtin.slit 1)
           $ (\h -> (h, Direct, Builtin.slit 1)) <$> xs
           <|> (\(n, h) -> (h, Indirect, Builtin.svarb $ 1 + Tele n)) <$> Vector.indexed xs
-        {-
-        fReturnSize = unvar id absurd <$> Converted.sizeOf functionBody
-        returnSize
-          = Converted.Case (unknownSize $ Converted.Call Indirect (Converted.Global Builtin.DerefName) $ pure (Converted.sized 1 $ Converted.Var 0, Direct))
-          $ SimpleConBranches
-          $ pure
-          ( Builtin.Closure
-          , Telescope $ Vector.cons (mempty, (), Builtin.slit 1)
-                      $ Vector.cons (mempty, (), Builtin.slit 1) clArgs'
-          , Simple.Scope $ fmap go fReturnSize
-          )
-        go n | unTele n < numArgs = B $ n + 2 -- from closure
-             | otherwise = F $ n + fromIntegral (arity - numArgs) + 1 -- From function args
-          -}
 
 convertSExpr :: LSExprM s -> TCM s (CSExprM s)
 convertSExpr (Lifted.Sized sz e) = Converted.Sized <$> convertExpr sz <*> convertExpr e

@@ -57,7 +57,12 @@ generateGlobal :: Name -> Gen Var
 generateGlobal g = do
   mbody <- asks (($ g) . definitions)
   case mbody of
-    Just (ConstantBody _) -> return $ IndirectVar $ global g
+    Just (ConstantBody (Constant Direct _)) -> do
+      intGlobal <- nameHint "int-global" =: ptrToInt (global g)
+      return $ DirectVar intGlobal
+    Just (ConstantBody (Constant Indirect _)) -> do
+      -- ptr <- nameHint "global" =: loadPtr (global g)
+      return $ IndirectVar $ global g
     Just (FunctionBody (Function retDir args _)) -> return
       $ DirectVar
       $ ptrToIntExpr
@@ -114,29 +119,44 @@ storeOperand op sz ret = case op of
   Lit l -> emit $ store (shower l) ret
 
 generateStmt :: StmtG -> Gen Var
-generateStmt expr = case expr of
-  Let _h e s -> do
-    o <- generateStmt e
-    generateStmt $ instantiate1Var o s
+generateStmt stmt = case stmt of
   Sized sz e -> do
     szVar <- generateOperand sz
     szInt <- loadVar (nameHint "size") szVar
     generateExpr e szInt
+  Let _h e s -> do
+    o <- generateStmt e
+    generateStmt $ instantiate1Var o s
   Case o brs -> do
     rets <- generateBranches o brs $ generateStmt >=> indirect
     res <- nameHint "caseResult" =: phiPtr rets
     return $ IndirectVar res
 
 storeStmt :: StmtG -> LLVM.Operand Ptr -> Gen ()
-storeStmt expr ret = case expr of
+storeStmt stmt ret = case stmt of
   Case o brs -> void $ generateBranches o brs $ \br -> storeStmt br ret
   Let _h e s -> do
     o <- generateStmt e
     storeStmt (instantiate1Var o s) ret
   Sized szOp inner -> do
-    szPtr <- generateOperand szOp
-    szInt <- loadVar (nameHint "size") szPtr
+    szVar <- generateOperand szOp
+    szInt <- loadVar (nameHint "size") szVar
     storeExpr inner szInt ret
+
+gcAllocStmt :: StmtG -> Gen (LLVM.Operand Ptr)
+gcAllocStmt stmt = case stmt of
+  Sized sz e -> do
+    szVar <- generateOperand sz
+    szInt <- loadVar (nameHint "size") szVar
+    res <- gcAlloc szInt
+    storeExpr e szInt res
+    return res
+  Let _h e s -> do
+    o <- generateStmt e
+    gcAllocStmt $ instantiate1Var o s
+  Case o brs -> do
+    results <- generateBranches o brs gcAllocStmt
+    nameHint "case-result" =: phiPtr results
 
 generateExpr
   :: ExprG
@@ -248,7 +268,7 @@ storeCon Builtin.Ref os ret = do
   sizes <- mapM (generateOperand . snd) os
   sizeInts <- Traversable.forM sizes $ \ptr -> loadVar mempty ptr
   (is, fullSize) <- adds sizeInts
-  ref <- nameHint "ref" =: varCall pointerT "@gc_alloc" [DirectVar fullSize]
+  ref <- gcAlloc fullSize
   Foldable.forM_ (zip (Vector.toList sizeInts) $ zip is $ Vector.toList os) $ \(sz, (i, (o, _))) -> do
     index <- nameHint "index" =: getElementPtr ref i
     storeOperand o sz index
@@ -416,16 +436,24 @@ generateFunction name (Function retDir hs e) = do
     go (IndirectVar n) = pointer n
 
 generateConstant :: Name -> ConstantG -> Gen B
-generateConstant name (Constant s) = do
+generateConstant name (Constant dir s) = do
   let gname = unOperand $ global name
       initName = gname <> "-init"
-  emitRaw $ Instr $ gname <+> "= external global" <+> integerT
+  emitRaw $ Instr $ gname <+> "= global" <+> typVal <> ", align" <+> align
   emitRaw $ Instr ""
   emitRaw $ Instr $ "define private" <+> voidT <+> initName <> "() {"
-  storeStmt s $ global name
+  case dir of
+    Direct -> storeStmt s $ global name
+    Indirect -> do
+      ptr <- gcAllocStmt s
+      emit $ storePtr ptr $ global name
   emit returnVoid
   emitRaw "}"
-  return $ "call" <+> voidT <+> initName <> "()"
+  return $ "  call" <+> voidT <+> initName <> "()"
+  where
+    typVal = case dir of
+      Direct -> integer "0"
+      Indirect -> pointer "null"
 
 generateBody :: Name -> BodyG -> Gen B
 generateBody name body = case body of

@@ -29,7 +29,7 @@ data Body v
 data Function v = Function Direction (Vector (NameHint, Direction)) (Simple.Scope Tele Stmt v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
-data Constant v = Constant (Stmt v)
+data Constant v = Constant Direction (Stmt v)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 type LBody = Lifted Body
@@ -303,7 +303,7 @@ primLStmt lsz p
 liftBody
   :: Body Tele
   -> LStmt Tele
-liftBody (ConstantBody (Constant e)) = pureLifted e
+liftBody (ConstantBody (Constant _ e)) = pureLifted e
 liftBody (FunctionBody (Function d vs s))
   = Lifted (pure (mempty, Function d vs s))
   $ Simple.Scope $ Sized (Lit 1)
@@ -361,7 +361,7 @@ instance BindOperand Function where
   bindOperand f (Function d vs s) = Function d vs $ bindOperand f s
 
 instance BindOperand Constant where
-  bindOperand f (Constant s) = Constant $ bindOperand f s
+  bindOperand f (Constant d s) = Constant d $ bindOperand f s
 
 instance BindOperand e => BindOperand (SimpleBranches c e) where
   bindOperand f (SimpleConBranches cbrs) = SimpleConBranches [(qc, bindOperand f tele, bindOperand f s) | (qc, tele, s) <- cbrs]
@@ -427,7 +427,7 @@ instance (Eq v, IsString v, Pretty v)
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Constant v) where
-  prettyM (Constant s) = prettyM s
+  prettyM (Constant d s) = prettyM d <+> prettyM s
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Operand v) where

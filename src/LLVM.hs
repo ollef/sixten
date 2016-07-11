@@ -114,15 +114,17 @@ newtype Instr a = Instr B deriving (Show, IsString, Monoid)
 unInstr :: Instr a -> B
 unInstr (Instr b) = b
 data Ptr
+data PtrPtr
 data Fun
 data Label
 
 align :: B
 align = "8"
 
-integerT, pointerT, voidT :: B
+integerT, pointerT, pointerPointerT, voidT :: B
 integerT = "i64"
 pointerT = integerT <> "*"
+pointerPointerT = pointerT <> "*"
 voidT = "void"
 
 ptrSize :: Operand Int
@@ -136,6 +138,9 @@ integer (Operand b) = integerT <+> b
 
 pointer :: Operand Ptr -> B
 pointer (Operand b) = pointerT <+> b
+
+pointerPointer :: Operand PtrPtr -> B
+pointerPointer (Operand b) = pointerT <+> b
 
 label :: Operand Label -> B
 label (Operand b) = "label" <+> b
@@ -194,6 +199,15 @@ wordcpy dst src wordSize = do
   byteSize <- nameHint "byte-size" =: mul wordSize ptrSize
   memcpy dst src byteSize
 
+gcAlloc
+  :: MonadState LLVMState m
+  => LLVM.Operand Int
+  -> m (LLVM.Operand Ptr)
+gcAlloc wordSize = do
+  byteSize <- nameHint "byte-size" =: mul wordSize ptrSize
+  byteRef <- nameHint "byteref" =: Instr ("call i8* @GC_malloc(" <> integer byteSize <> ")")
+  nameHint "ref" =: Instr ("bitcast" <+> "i8*" <+> unOperand byteRef <+> "to" <+> pointerT)
+
 getElementPtr :: Operand Ptr -> Operand Int -> Instr Ptr
 getElementPtr x i = Instr $ "getelementptr" <+> integerT <> "," <+> pointer x <> "," <+> integer i
 
@@ -215,8 +229,14 @@ branch l = Instr $ "br" <+> label l
 load :: Operand Ptr -> Instr Int
 load x = Instr $ "load" <+> integerT <> "," <+> pointer x
 
+loadPtr :: Operand PtrPtr -> Instr Ptr
+loadPtr x = Instr $ "load" <+> pointerT <> "," <+> pointerT <> "*" <+> unOperand x
+
 store :: Operand Int -> Operand Ptr -> Instr ()
 store x p = Instr $ "store" <+> integer x <> "," <+> pointer p
+
+storePtr :: Operand Ptr -> Operand PtrPtr -> Instr ()
+storePtr x p = Instr $ "store" <+> pointer x <> "," <+> pointerT <> "*" <+> unOperand p
 
 switch :: Operand Int -> Operand Label -> [(Int, Operand Label)] -> Instr ()
 switch e def brs = Instr

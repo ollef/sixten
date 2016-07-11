@@ -44,6 +44,13 @@ sizeOf (Sized sz _) = sz
 sizedSizesOf :: Functor f => f (SExpr v) -> f (SExpr v)
 sizedSizesOf = fmap (sized 1 . sizeOf)
 
+sizeDir :: Expr v -> Direction
+sizeDir (Lit 1) = Direct
+sizeDir _ = Indirect
+
+sExprDir :: SExpr v -> Direction
+sExprDir (Sized sz _) = sizeDir sz
+
 -------------------------------------------------------------------------------
 -- Instances
 instance Eq1 Expr
