@@ -201,8 +201,8 @@ wordcpy dst src wordSize = do
 
 gcAlloc
   :: MonadState LLVMState m
-  => LLVM.Operand Int
-  -> m (LLVM.Operand Ptr)
+  => Operand Int
+  -> m (Operand Ptr)
 gcAlloc wordSize = do
   byteSize <- nameHint "byte-size" =: mul wordSize ptrSize
   byteRef <- nameHint "byteref" =: Instr ("call i8* @GC_malloc(" <> integer byteSize <> ")")

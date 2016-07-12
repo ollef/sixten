@@ -7,7 +7,7 @@ data List a where
 
 tail : forall ~{a}. Ptr (List a) -> Ptr (List a)
 tail xs = case deref xs of
-  Nil -> Ref Nil
+  Nil -> xs
   Cons x xs' -> xs'
 
 map : forall {m}{n}~{a : Type {m}}~{b : Type {n}}. (a -> b) -> Ptr (List a) -> Ptr (List b)
@@ -16,7 +16,7 @@ map f xs = Ref (case deref xs of
   Cons x xs' -> Cons (f x) (map f xs'))
 
 testList : Ptr (List Size)
-testList = Ref Nil
+testList = Ref (Cons 1 (Ref (Cons 2 (Ref Nil))))
 
 mappedList : Ptr (List Size)
 mappedList = map (addSize 1) testList

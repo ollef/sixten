@@ -58,11 +58,10 @@ generateGlobal g = do
   mbody <- asks (($ g) . definitions)
   case mbody of
     Just (ConstantBody (Constant Direct _)) -> do
-      intGlobal <- nameHint "int-global" =: ptrToInt (global g)
-      return $ DirectVar intGlobal
-    Just (ConstantBody (Constant Indirect _)) -> do
-      -- ptr <- nameHint "global" =: loadPtr (global g)
       return $ IndirectVar $ global g
+    Just (ConstantBody (Constant Indirect _)) -> do
+      ptr <- nameHint "global" =: loadPtr (global g)
+      return $ IndirectVar ptr
     Just (FunctionBody (Function retDir args _)) -> return
       $ DirectVar
       $ ptrToIntExpr
@@ -220,7 +219,7 @@ generateCall retDir funOperand os sz = do
       Indirect -> IndirectVar <$> indirect v
   case retDir of
     Indirect -> do
-      ret <- nameHint "return" =: alloca sz
+      ret <- nameHint "call-return" =: alloca sz
       emit $ varCall voidT fun $ Vector.snoc args $ IndirectVar ret
       return $ IndirectVar ret
     Direct -> do
@@ -310,16 +309,14 @@ generateBranches op branches brCont = do
       let teleVector = Vector.indexed $ unTelescope tele
           inst = instantiateSimpleTeleVars $ Vector.fromList $ reverse revArgs
           go (vs, index) (i, (h, (), s)) = do
-            outerPtr <- h =: getElementPtr expr index
-            innerInt <- mempty =: load outerPtr
-            innerPtr <- mempty =: intToPtr innerInt
+            ptr <- h =: getElementPtr expr index
             nextIndex <- if i == Vector.length teleVector - 1
               then return index
               else do
                 sz <- generateStmt $ inst s
                 szInt <- loadVar (nameHint "size") sz
                 nameHint "index" =: add index szInt
-            return (IndirectVar innerPtr : vs, nextIndex)
+            return (IndirectVar ptr : vs, nextIndex)
 
       (revArgs, _) <- Foldable.foldlM go (mempty, "0") teleVector
       contResult <- brCont $ inst brScope
@@ -367,7 +364,7 @@ generateBranches op branches brCont = do
 
         let teleVector = Vector.indexed $ unTelescope tele
             inst = instantiateSimpleTeleVars $ Vector.fromList $ reverse revArgs
-            go (i, (h, (), s)) (vs, index) = do
+            go (vs, index) (i, (h, (), s)) = do
               ptr <- h =: getElementPtr expr index
               nextIndex <- if i == Vector.length teleVector - 1
                 then return index
@@ -377,7 +374,7 @@ generateBranches op branches brCont = do
                   nameHint "index" =: add index szInt
               return (IndirectVar ptr : vs, nextIndex)
 
-        (revArgs, _) <- Foldable.foldrM go (mempty, "1") teleVector
+        (revArgs, _) <- Foldable.foldlM go (mempty, "1") teleVector
         contResult <- brCont $ inst brScope
         emit $ branch postLabel
         return contResult
