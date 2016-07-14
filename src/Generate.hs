@@ -95,12 +95,6 @@ varToPtr :: Var -> Gen (LLVM.Operand Ptr)
 varToPtr (DirectVar o) = nameHint "ptr" =: intToPtr o
 varToPtr (IndirectVar o) = return o
 
-allocaVar :: NameHint -> Var -> Gen Var
-allocaVar hint v = do
-  i <- loadVar mempty v
-  ptr <- hint =: alloca i
-  return $ IndirectVar ptr
-
 varcpy :: LLVM.Operand Ptr -> Var -> LLVM.Operand Int -> Gen ()
 varcpy dst (DirectVar src) _sz = emit $ store src dst
 varcpy dst (IndirectVar src) sz = wordcpy dst src sz
@@ -298,10 +292,10 @@ generateBranches
   -> (Stmt Var -> Gen a)
   -> Gen [(a, LLVM.Operand Label)]
 generateBranches op branches brCont = do
-  expr <- (varToPtr <=< generateOperand) op
   postLabel <- LLVM.Operand <$> freshenName "after-branch"
   case branches of
     SimpleConBranches [(Builtin.Ref, tele, brScope)] -> mdo
+      expr <- varToPtr =<< generateOperand op
       branchLabel <- LLVM.Operand <$> freshenName Builtin.RefName
 
       emit $ branch branchLabel
@@ -325,6 +319,7 @@ generateBranches op branches brCont = do
       return [(contResult, branchLabel)]
 
     SimpleConBranches [(QConstr _ c, tele, brScope)] -> mdo
+      expr <- (indirect <=< generateOperand) op
       branchLabel <- LLVM.Operand <$> freshenName c
 
       emit $ branch branchLabel
@@ -348,6 +343,7 @@ generateBranches op branches brCont = do
       return [(contResult, branchLabel)]
 
     SimpleConBranches cbrs -> do
+      expr <- indirect =<< generateOperand op
       e0Ptr <- nameHint "tag-pointer" =: getElementPtr expr "0"
       e0 <- nameHint "tag" =: load e0Ptr
 
@@ -380,14 +376,13 @@ generateBranches op branches brCont = do
         return contResult
 
       emitLabel failLabel
-      emit $ exit 1
+      -- emit $ exit 1
       emit unreachable
       emitLabel postLabel
       return $ zip contResults $ snd <$> branchLabels
 
     SimpleLitBranches lbrs def -> do
-      e0Ptr <- nameHint "lit-pointer" =: getElementPtr expr "0"
-      e0 <- nameHint "lit" =: load e0Ptr
+      e0 <- loadVar (nameHint "lit") =<< generateOperand op
 
       branchLabels <- Traversable.forM lbrs $ \(l, _) -> do
         branchLabel <- LLVM.Operand <$> freshenName (shower l)
