@@ -22,15 +22,15 @@ import ClosureConvert
 import Erase
 import qualified Generate
 import Infer
-import Lift
+import Close
 import qualified LLVM
 import Meta
 import TCM
 import Syntax
 import qualified Syntax.Abstract as Abstract
+import qualified Syntax.Closed as Closed
 import qualified Syntax.Concrete as Concrete
 import qualified Syntax.Converted as Converted
-import qualified Syntax.Lifted as Lifted
 import qualified Syntax.Parse as Parse
 import qualified Syntax.Resolve as Resolve
 import qualified Syntax.Restricted as Restricted
@@ -46,7 +46,7 @@ processGroup
   >=> typeCheckGroup
   >=> addGroupToContext
   >=> eraseGroup
-  >=> liftGroup
+  >=> closeGroup
   >=> closureConvertGroup
   >=> processConvertedGroup
 
@@ -103,19 +103,19 @@ eraseGroup
   -> TCM s [(Name, Definition SLambda.SExpr Void)]
 eraseGroup defs = forM defs $ \(x, e, _) -> (,) x <$> eraseDef e
 
-liftGroup
+closeGroup
   :: [(Name, Definition SLambda.SExpr Void)]
-  -> TCM s [(Name, Lifted.SExpr Void)]
-liftGroup defs = sequence
+  -> TCM s [(Name, Closed.SExpr Void)]
+closeGroup defs = sequence
   [ do
-      e' <- liftSExpr $ vacuous e
-      e'' <- traverse (throwError . ("liftGroup " ++) . show) e'
+      e' <- closeSExpr $ vacuous e
+      e'' <- traverse (throwError . ("closeGroup " ++) . show) e'
       return (x, e'')
   | (x, Definition e) <- defs
   ]
 
 closureConvertGroup
-  :: [(Name, Lifted.SExpr Void)]
+  :: [(Name, Closed.SExpr Void)]
   -> TCM s [(Name, Converted.SExpr Void)]
 closureConvertGroup defs = do
   sigs <- forM defs $ \(x, e) -> (,) x <$> ClosureConvert.convertSignature (vacuous e)

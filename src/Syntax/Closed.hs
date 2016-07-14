@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, OverloadedStrings #-}
-module Syntax.Lifted where
+module Syntax.Closed where
 
 import qualified Bound.Scope.Simple as Simple
 import Data.Monoid

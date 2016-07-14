@@ -13,7 +13,7 @@ import Prelude.Extras
 import Builtin
 import Meta
 import Syntax
-import qualified Syntax.Lifted as Lifted
+import qualified Syntax.Closed as Closed
 import qualified Syntax.Converted as Converted
 import TCM
 import Util
@@ -22,9 +22,9 @@ data MetaData s = Unknown deriving Show
 instance Show1 MetaData
 
 type Meta = MetaVar MetaData
-type LExprM s = Lifted.Expr (Meta s)
-type LSExprM s = Lifted.SExpr (Meta s)
-type LBrsM s = SimpleBranches QConstr Lifted.Expr (Meta s)
+type LExprM s = Closed.Expr (Meta s)
+type LSExprM s = Closed.SExpr (Meta s)
+type LBrsM s = SimpleBranches QConstr Closed.Expr (Meta s)
 
 type CExprM s = Converted.Expr (Meta s)
 type CSExprM s = Converted.SExpr (Meta s)
@@ -32,16 +32,16 @@ type CBrsM s = SimpleBranches QConstr Converted.Expr (Meta s)
 
 convertSignature
   :: LSExprM s
-  -> TCM s (Converted.Signature Lifted.SExpr (Meta s))
+  -> TCM s (Converted.Signature Closed.SExpr (Meta s))
 convertSignature expr = case expr of
-  Lifted.Sized _ (Lifted.Lams tele lamScope) -> do
+  Closed.Sized _ (Closed.Lams tele lamScope) -> do
     (retDir, tele') <- convertLambdaSignature tele lamScope
     return $ Converted.Function retDir tele' lamScope
-  _ -> return $ Converted.Constant (Lifted.sExprDir expr) expr
+  _ -> return $ Converted.Constant (Closed.sExprDir expr) expr
 
 convertLambdaSignature
-  :: Telescope Simple.Scope () Lifted.Expr Void
-  -> Simple.Scope Tele Lifted.SExpr Void
+  :: Telescope Simple.Scope () Closed.Expr Void
+  -> Simple.Scope Tele Closed.SExpr Void
   -> TCM s
     ( Direction
     , Telescope Simple.Scope Direction Converted.Expr Void
@@ -55,10 +55,10 @@ convertLambdaSignature tele (Simple.Scope lamExpr) = mdo
   let vs = fst <$> tele'
       abstr = teleAbstraction vs
       tele'' = error "convertLambda" <$> Telescope ((\(v, e) -> (metaHint v, Converted.sizeDir e, Simple.abstract abstr e)) <$> tele')
-  return (Lifted.sExprDir lamExpr, tele'')
+  return (Closed.sExprDir lamExpr, tele'')
 
 convertBody
-  :: Converted.Signature Lifted.SExpr Void
+  :: Converted.Signature Closed.SExpr Void
   -> TCM s (CSExprM s)
 convertBody sig = case sig of
   Converted.Function retDir tele lamScope -> do
@@ -74,8 +74,8 @@ convertBody sig = case sig of
   Converted.Constant _ e -> convertSExpr $ error "convertBody" <$> e
 
 convertLambda
-  :: Telescope Simple.Scope () Lifted.Expr Void
-  -> Simple.Scope Tele Lifted.SExpr Void
+  :: Telescope Simple.Scope () Closed.Expr Void
+  -> Simple.Scope Tele Closed.SExpr Void
   -> TCM s
     ( Direction
     , Telescope Simple.Scope Direction Converted.Expr Void
@@ -97,40 +97,40 @@ convertLambda tele lamScope = mdo
 
 convertExpr :: LExprM s -> TCM s (CExprM s)
 convertExpr expr = case expr of
-  Lifted.Var v -> return $ Converted.Var v
-  Lifted.Global g -> do
+  Closed.Var v -> return $ Converted.Var v
+  Closed.Global g -> do
     sig <- convertedSignature g
     case sig of
       Converted.Function retDir tele _ -> knownCall (Converted.Global g) retDir tele mempty
       _ -> return $ Converted.Global g
-  Lifted.Lit l -> return $ Converted.Lit l
-  Lifted.Con qc es -> Converted.Con qc <$> mapM convertSExpr es
-  Lifted.Lams tele s -> do
+  Closed.Lit l -> return $ Converted.Lit l
+  Closed.Con qc es -> Converted.Con qc <$> mapM convertSExpr es
+  Closed.Lams tele s -> do
     (retDir, tele', s') <- convertLambda tele s
     knownCall (Converted.Lams retDir tele' s') retDir tele' mempty
-  Lifted.Call (Lifted.Global g) es -> do
+  Closed.Call (Closed.Global g) es -> do
     es' <- mapM convertSExpr es
     sig <- convertedSignature g
     case sig of
       Converted.Function retDir tele _ -> knownCall (Converted.Global g) retDir tele es'
       _ -> throwError $ "convertExpr call global " ++ show g
-  Lifted.Call (Lifted.Lams tele s) es -> do
+  Closed.Call (Closed.Lams tele s) es -> do
     (retDir, tele', s') <- convertLambda tele s
     es' <- mapM convertSExpr es
     knownCall (Converted.Lams retDir tele' s') retDir tele' es'
-  Lifted.Call e es -> do
+  Closed.Call e es -> do
     e' <- convertExpr e
     es' <- mapM convertSExpr es
     unknownCall e' es'
-  Lifted.Let h e bodyScope -> do
+  Closed.Let h e bodyScope -> do
     e' <- convertSExpr e
     v <- forall_ h Unknown
     let bodyExpr = instantiateVar (\() -> v) bodyScope
     bodyExpr' <- convertExpr bodyExpr
     let bodyScope' = Simple.abstract1 v bodyExpr'
     return $ Converted.Let h e' bodyScope'
-  Lifted.Case e brs -> Converted.Case <$> convertSExpr e <*> convertBranches brs
-  Lifted.Prim p -> Converted.Prim <$> mapM convertExpr p
+  Closed.Case e brs -> Converted.Case <$> convertSExpr e <*> convertBranches brs
+  Closed.Prim p -> Converted.Prim <$> mapM convertExpr p
 
 unknownCall
   :: CExprM s
@@ -197,7 +197,7 @@ knownCall f retDir tele args
           <|> (\(n, h) -> (h, Indirect, Builtin.svarb $ 1 + Tele n)) <$> Vector.indexed xs
 
 convertSExpr :: LSExprM s -> TCM s (CSExprM s)
-convertSExpr (Lifted.Sized sz e) = Converted.Sized <$> convertExpr sz <*> convertExpr e
+convertSExpr (Closed.Sized sz e) = Converted.Sized <$> convertExpr sz <*> convertExpr e
 
 convertBranches :: LBrsM s -> TCM s (CBrsM s)
 convertBranches (SimpleConBranches cbrs) = fmap SimpleConBranches $
