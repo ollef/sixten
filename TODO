@@ -1,3 +1,8 @@
+Improve and simplify backend
+  Remove Restricted, add Lifted which is closer to Closed
+  Add Lift which just a dead-simple monadic traversal lifting lams
+  Rewrite Generate to store more stuff inline (esp. constructors)
+  Keep Signature when going into Lifted
 Add printf or something
 Can case scrutinees and tail calls explicitly be of unspecified size?
 Clean up Syntax.{Telescope,Class,Branches,Data,Definition}

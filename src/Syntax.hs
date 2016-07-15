@@ -13,4 +13,5 @@ import Syntax.Direction as X
 import Syntax.Hint as X
 import Syntax.Name as X
 import Syntax.Pretty as X
+import Syntax.Primitive as X
 import Syntax.Telescope as X

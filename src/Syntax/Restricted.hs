@@ -15,7 +15,6 @@ import Data.Void
 import Prelude.Extras
 
 import Syntax
-import Syntax.Primitive
 import Util
 
 data Lifted e v = Lifted (Vector (NameHint, Function Tele)) (Simple.Scope Tele e v)

@@ -18,11 +18,12 @@ import System.Environment
 import System.IO
 
 import Builtin
+import Close
 import ClosureConvert
 import Erase
 import qualified Generate
 import Infer
-import Close
+import Lift
 import qualified LLVM
 import Meta
 import TCM

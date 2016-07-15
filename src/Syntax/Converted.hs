@@ -10,7 +10,6 @@ import Data.Void
 import Prelude.Extras
 
 import Syntax
-import Syntax.Primitive
 import Util
 
 data SExpr v = Sized (Expr v) (Expr v)
@@ -76,8 +75,8 @@ instance (Eq v, IsString v, Pretty v)
   prettyM expr = case expr of
     Var v -> prettyM v
     Global g -> prettyM g
-    Con c es -> prettyApps (prettyM c) $ prettyM <$> es
     Lit l -> prettyM l
+    Con c es -> prettyApps (prettyM c) $ prettyM <$> es
     Lams d tele s -> parens `above` absPrec $
       withTeleHints tele $ \ns ->
         prettyM d <+> "\\" <> hsep (map prettyM $ Vector.toList ns) <> "." <+>
