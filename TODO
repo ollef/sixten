@@ -1,8 +1,4 @@
-Improve and simplify backend
-  Remove Restricted, add Lifted which is closer to Closed
-  Remove restricted stuff from context
-  Rewrite Generate to store more stuff inline (esp. constructors)
-  Keep Signature when going into Lifted
+Rename to Sixten
 Make NameHint a specialised type with IsString instance, get rid of nameHint function
 Add printf or something
 Add Destructor calling convention for functions that return part of their argument

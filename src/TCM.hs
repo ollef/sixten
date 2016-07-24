@@ -19,7 +19,6 @@ import Data.Void
 import Syntax
 import Syntax.Abstract
 import qualified Syntax.Converted as Converted
-import qualified Syntax.Restricted as Restricted
 import Util
 
 import Debug.Trace
@@ -34,7 +33,6 @@ data State = State
   { tcContext :: Program Expr Void
   , tcConstrs :: HashMap Constr (Set (Name, Type Void))
   , tcConvertedSignatures :: HashMap Name (Converted.Signature Converted.Expr Unit Void)
-  , tcRestrictedContext :: HashMap Name (Restricted.Body Void)
   , tcIndent :: !Int -- This has no place here, but is useful for debugging
   , tcFresh :: !Int
   , tcLevel :: !Level
@@ -46,7 +44,6 @@ emptyState = State
   { tcContext = mempty
   , tcConstrs = mempty
   , tcConvertedSignatures = mempty
-  , tcRestrictedContext = mempty
   , tcIndent = 0
   , tcFresh = 0
   , tcLevel = Level 1
@@ -124,11 +121,6 @@ addConvertedSignatures p = modify $ \s -> s { tcConvertedSignatures = p' <> tcCo
   where
     p' = fmap (const $ error "addConvertedSignatures")
        . Converted.hoistSignature (const Unit) <$> p
-
-addRestrictedContext
-  :: HashMap Name (Restricted.Body Void)
-  -> TCM s ()
-addRestrictedContext p = modify $ \s -> s { tcRestrictedContext = p <> tcRestrictedContext s}
 
 modifyIndent :: (Int -> Int) -> TCM s ()
 modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}

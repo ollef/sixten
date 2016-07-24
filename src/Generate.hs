@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, RecursiveDo #-}
-module Generate2 where
+module Generate where
 
 import Control.Monad.State
 import Control.Monad.Reader

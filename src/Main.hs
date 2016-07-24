@@ -23,7 +23,6 @@ import Close
 import ClosureConvert
 import Erase
 import qualified Generate
-import qualified Generate2
 import Infer
 import Lift
 import qualified LLVM
@@ -37,9 +36,7 @@ import qualified Syntax.Converted as Converted
 import qualified Syntax.Lifted as Lifted
 import qualified Syntax.Parse as Parse
 import qualified Syntax.Resolve as Resolve
-import qualified Syntax.Restricted as Restricted
 import qualified Syntax.SLambda as SLambda
-import Restrict
 import Util
 
 processGroup
@@ -59,7 +56,7 @@ processConvertedGroup
   -> TCM s [(Name, LLVM.B)]
 processConvertedGroup
   = liftGroup
-  >=> generate2Group
+  >=> generateGroup
 
 exposeGroup
   :: [(Name, Definition Concrete.Expr Name, Concrete.Expr Name)]
@@ -133,6 +130,7 @@ liftGroup defs = fmap concat $ forM defs $ \(name, e) -> do
   addConvertedSignatures $ HM.fromList $ fmap fakeSignature <$> fs
   return $ (name, e') : fmap (second Lifted.FunctionDef) fs
   where
+    -- TODO this isn't a very nice way to do this
     fakeSignature
       :: Lifted.Function Void
       -> Converted.Signature Converted.Expr Unit Void
@@ -142,53 +140,18 @@ liftGroup defs = fmap concat $ forM defs $ \(name, e) -> do
         (Telescope $ (\(h, d) -> (h, d, Simple.Scope $ Converted.Lit 0)) <$> tele)
         $ Simple.Scope Unit
 
-generate2Group
-  :: [(Name, Lifted.Definition Void)]
-  -> TCM s [(LLVM.B, LLVM.B)]
-generate2Group defs = do
-  qcindex <- qconstructorIndex
-  cxt <- gets tcConvertedSignatures
-  let env = Generate2.GenEnv qcindex (`HM.lookup` cxt)
-  return $ flip map defs $ \(x, e) ->
-    second (fold . intersperse "\n")
-      $ Generate2.runGen env
-      $ Generate2.generateDefinition x
-      $ vacuous e
-
-restrictGroup
-  :: [(Name, Converted.SExpr Void)]
-  -> TCM s [(Name, Restricted.LBody Void)]
-restrictGroup defs = forM defs $ \(x, e) -> do
-  e' <- Restrict.restrictBody $ vacuous e
-  e'' <- traverse (throwError . ("restrictGroup " ++) . show) e'
-  return (x, e'')
-
-liftRestrictedGroup
-  :: Name
-  -> [(Name, Restricted.LBody Void)]
-  -> TCM s [(Name, Restricted.Body Void)]
-liftRestrictedGroup name defs = do
-  let defs' = Restrict.liftProgram name $ fmap vacuous <$> defs
-  traverse (traverse (traverse (throwError . ("liftGroup " ++) . show))) defs'
-
-addRestrictedGroupToContext
-  :: [(Name, Restricted.Body Void)]
-  -> TCM s [(Name, Restricted.Body Void)]
-addRestrictedGroupToContext defs = do
-  addRestrictedContext $ HM.fromList defs
-  return defs
-
 generateGroup
-  :: [(Name, Restricted.Body Void)]
+  :: [(Name, Lifted.Definition Void)]
   -> TCM s [(LLVM.B, LLVM.B)]
 generateGroup defs = do
   qcindex <- qconstructorIndex
-  cxt <- gets tcRestrictedContext
+  cxt <- gets tcConvertedSignatures
   let env = Generate.GenEnv qcindex (`HM.lookup` cxt)
   return $ flip map defs $ \(x, e) ->
     second (fold . intersperse "\n")
       $ Generate.runGen env
-      $ Generate.generateBody x $ vacuous e
+      $ Generate.generateDefinition x
+      $ vacuous e
 
 processFile :: FilePath -> FilePath -> IO ()
 processFile file output = do
