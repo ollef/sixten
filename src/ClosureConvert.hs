@@ -32,7 +32,7 @@ type CBrsM s = SimpleBranches QConstr Converted.Expr (Meta s)
 
 convertSignature
   :: LSExprM s
-  -> TCM s (Converted.Signature Closed.SExpr (Meta s))
+  -> TCM s (Converted.Signature Converted.Expr Closed.SExpr (Meta s))
 convertSignature expr = case expr of
   Closed.Sized _ (Closed.Lams tele lamScope) -> do
     (retDir, tele') <- convertLambdaSignature tele lamScope
@@ -58,7 +58,7 @@ convertLambdaSignature tele (Simple.Scope lamExpr) = mdo
   return (Closed.sExprDir lamExpr, tele'')
 
 convertBody
-  :: Converted.Signature Closed.SExpr Void
+  :: Converted.Signature Converted.Expr Closed.SExpr Void
   -> TCM s (CSExprM s)
 convertBody sig = case sig of
   Converted.Function retDir tele lamScope -> do

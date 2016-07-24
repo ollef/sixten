@@ -40,17 +40,6 @@ etaLam _ p _ (Scope (App e p' (Var (B ()))))
     = join $ unvar (error "etaLam impossible") id <$> e
 etaLam n p t s = Lam n p t s
 
-globals :: Expr v -> Expr (Var Name v)
-globals expr = case expr of
-  Var v       -> Var $ F v
-  Global g    -> Var $ B g
-  Con c       -> Con c
-  Lit l       -> Lit l
-  Pi  x p t s -> Pi x p (globals t) (exposeScope globals s)
-  Lam x p t s -> Lam x p (globals t) (exposeScope globals s)
-  App e1 p e2 -> App (globals e1) p (globals e2)
-  Case e brs  -> Case (globals e) (exposeBranches globals brs)
-
 -------------------------------------------------------------------------------
 -- Instances
 instance SyntaxPi Expr where

@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
+import qualified Bound.Scope.Simple as Simple
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Bifunctor
@@ -22,6 +23,7 @@ import Close
 import ClosureConvert
 import Erase
 import qualified Generate
+import qualified Generate2
 import Infer
 import Lift
 import qualified LLVM
@@ -32,6 +34,7 @@ import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Closed as Closed
 import qualified Syntax.Concrete as Concrete
 import qualified Syntax.Converted as Converted
+import qualified Syntax.Lifted as Lifted
 import qualified Syntax.Parse as Parse
 import qualified Syntax.Resolve as Resolve
 import qualified Syntax.Restricted as Restricted
@@ -55,10 +58,8 @@ processConvertedGroup
   :: [(Name, Converted.SExpr Void)]
   -> TCM s [(Name, LLVM.B)]
 processConvertedGroup
-  = restrictGroup
-  >=> liftRestrictedGroup "-lifted"
-  >=> addRestrictedGroupToContext
-  >=> generateGroup
+  = liftGroup
+  >=> generate2Group
 
 exposeGroup
   :: [(Name, Definition Concrete.Expr Name, Concrete.Expr Name)]
@@ -123,6 +124,36 @@ closureConvertGroup defs = do
   addConvertedSignatures $ HM.fromList sigs
   forM sigs $ \(x, sig) ->
     (,) x . fmap (error "closureConvertGroup conv") <$> ClosureConvert.convertBody (error "closureConvertGroup sig" <$> sig)
+
+liftGroup
+  :: [(Name, Converted.SExpr Void)]
+  -> TCM s [(Name, Lifted.Definition Void)]
+liftGroup defs = fmap concat $ forM defs $ \(name, e) -> do
+  let (e', fs) = liftDefinition name e
+  addConvertedSignatures $ HM.fromList $ fmap fakeSignature <$> fs
+  return $ (name, e') : fmap (second Lifted.FunctionDef) fs
+  where
+    fakeSignature
+      :: Lifted.Function Void
+      -> Converted.Signature Converted.Expr Unit Void
+    fakeSignature (Lifted.Function retDir tele _body)
+      = Converted.Function
+        retDir
+        (Telescope $ (\(h, d) -> (h, d, Simple.Scope $ Converted.Lit 0)) <$> tele)
+        $ Simple.Scope Unit
+
+generate2Group
+  :: [(Name, Lifted.Definition Void)]
+  -> TCM s [(LLVM.B, LLVM.B)]
+generate2Group defs = do
+  qcindex <- qconstructorIndex
+  cxt <- gets tcConvertedSignatures
+  let env = Generate2.GenEnv qcindex (`HM.lookup` cxt)
+  return $ flip map defs $ \(x, e) ->
+    second (fold . intersperse "\n")
+      $ Generate2.runGen env
+      $ Generate2.generateDefinition x
+      $ vacuous e
 
 restrictGroup
   :: [(Name, Converted.SExpr Void)]

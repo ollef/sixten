@@ -44,21 +44,6 @@ apps :: Foldable t => Expr v -> t (Annotation, Expr v) -> Expr v
 apps = Foldable.foldl (uncurry . App)
 
 -------------------------------------------------------------------------------
--- * Views
-globals :: Expr v -> Expr (Var Name v)
-globals expr = case expr of
-  Var v -> Var $ F v
-  Global n -> Var $ B n
-  Lit l -> Lit l
-  Con c -> Con c
-  Pi  h p t s -> Pi h p (globals t) (exposeScope globals s)
-  Lam h p s -> Lam h p (exposeScope globals s)
-  App e1 p e2 -> App (globals e1) p (globals e2)
-  Case e brs -> Case (globals e) (exposeBranches globals brs)
-  Anno e t -> Anno (globals e) (globals t)
-  Wildcard -> Wildcard
-
--------------------------------------------------------------------------------
 -- Instances
 instance Eq1 Expr
 instance Ord1 Expr

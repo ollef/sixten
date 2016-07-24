@@ -53,6 +53,22 @@ deriving instance Traversable (scope Tele expr) => Traversable (Telescope scope 
 mapAnnotations :: (a -> a') -> Telescope s a e v -> Telescope s a' e v
 mapAnnotations f (Telescope xs) = Telescope $ (\(h, a, s) -> (h, f a, s)) <$> xs
 
+hoistTelescope
+  :: Functor e
+  => (forall v'. e v' -> e' v')
+  -> Telescope Scope a e v
+  -> Telescope Scope a e' v
+hoistTelescope f (Telescope xs)
+  = Telescope $ (\(h, p, s) -> (h, p, hoistScope f s)) <$> xs
+
+hoistSimpleTelescope
+  :: Functor e
+  => (forall v'. e v' -> e' v')
+  -> Telescope Simple.Scope a e v
+  -> Telescope Simple.Scope a e' v
+hoistSimpleTelescope f (Telescope xs)
+  = Telescope $ (\(h, p, s) -> (h, p, Simple.hoistScope f s)) <$> xs
+
 teleLength :: Telescope s a e v -> Int
 teleLength = Vector.length . unTelescope
 
@@ -114,13 +130,6 @@ quantify pifun s (Telescope ps) =
 
 instance Bound (s Tele) => Bound (Telescope s a) where
   Telescope t >>>= f = Telescope $ second (>>>= f) <$> t
-
-exposeTelescope
-  :: Applicative expr
-  => (forall w. expr w -> expr (Var e w))
-  -> Telescope Scope a expr v
-  -> Telescope Scope a expr (Var e v)
-exposeTelescope f (Telescope t) = Telescope $ second (exposeScope f) <$> t
 
 withTeleHints
   :: Telescope s a expr v

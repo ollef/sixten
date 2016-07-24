@@ -32,15 +32,6 @@ instance (Eq v, Eq1 f, Monad f, Pretty c, Pretty (f v), IsString v)
     | (l, e) <- lbrs] ++
     ["_" <+> "->" <+> prettyM def]
 
-exposeBranches :: Applicative expr
-               => (forall v. expr v -> expr (Var e v))
-               -> Branches c expr x
-               -> Branches c expr (Var e x)
-exposeBranches f (ConBranches cbrs typ) =
-  ConBranches [(c, exposeTelescope f tele, exposeScope f s) | (c, tele, s) <- cbrs] (f typ)
-exposeBranches f (LitBranches lbrs def) =
-  LitBranches [(l, f e) | (l, e) <- lbrs] (f def)
-
 data SimpleBranches c expr v
   = SimpleConBranches [(c, Telescope Simple.Scope () expr v, Simple.Scope Tele expr v)]
   | SimpleLitBranches [(Literal, expr v)] (expr v)

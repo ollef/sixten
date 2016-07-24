@@ -38,6 +38,14 @@ data Definition v
 
 -------------------------------------------------------------------------------
 -- Helpers
+sized :: Literal -> Expr v -> SExpr v
+sized = Sized . Lit
+
+sizeOf :: SExpr v -> Expr v
+sizeOf (Sized sz _) = sz
+
+-------------------------------------------------------------------------------
+-- Instances
 instance Eq1 Expr
 instance Ord1 Expr
 instance Show1 Expr

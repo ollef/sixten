@@ -27,21 +27,23 @@ data Expr v
   | Prim (Primitive (Expr v))
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-data Signature expr v
-  = Function Direction (Telescope Simple.Scope Direction Expr Void) (Simple.Scope Tele expr Void)
-  | Constant Direction (expr v)
+data Signature expr expr' v
+  = Function Direction (Telescope Simple.Scope Direction expr Void) (Simple.Scope Tele expr' Void)
+  | Constant Direction (expr' v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-signature :: SExpr v -> Signature SExpr v
+signature :: SExpr v -> Signature Expr SExpr v
 signature (Sized _ (Lams retDir tele s)) = Function retDir tele s
 signature e = Constant (sExprDir e) e
 
-mapSignature
-  :: (forall v'. expr v' -> expr' v')
-  -> Signature expr v
-  -> Signature expr' v
-mapSignature f (Function d tele (Simple.Scope e)) = Function d tele $ Simple.Scope $ f e
-mapSignature f (Constant d e) = Constant d $ f e
+hoistSignature
+  :: (forall v'. expr1 v' -> expr2 v')
+  -> Signature expr expr1 v
+  -> Signature expr expr2 v
+hoistSignature f (Function d tele (Simple.Scope e))
+  = Function d tele $ Simple.Scope $ f e
+hoistSignature f (Constant d e)
+  = Constant d $ f e
 
 -------------------------------------------------------------------------------
 -- Helpers

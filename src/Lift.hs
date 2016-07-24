@@ -1,20 +1,23 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module Lift where
 import qualified Bound.Scope.Simple as Simple
 import Control.Monad.State
+import Data.Bifunctor
 import Data.Bitraversable
+import Data.Monoid
 import Data.Void
 
 import Syntax
 import qualified Syntax.Converted as Converted
 import qualified Syntax.Lifted as Lifted
+import Util
 
 data LiftState = LiftState
   { freshNames :: [Name]
-  , liftedFunctions :: [Lifted.Function Void]
+  , liftedFunctions :: [(Name, Lifted.Function Void)]
   }
 
-newtype Lift a = Lift (State LiftState a)
+newtype Lift a = Lift { unLifted :: State LiftState a }
   deriving (Functor, Applicative, Monad, MonadState LiftState)
 
 liftFunction :: Lifted.Function Void -> Lift Name
@@ -22,7 +25,7 @@ liftFunction f = do
   name:names <- gets freshNames
   modify $ \s -> s
     { freshNames = names
-    , liftedFunctions = f : liftedFunctions s
+    , liftedFunctions = (name, f) : liftedFunctions s
     }
   return name
 
@@ -78,12 +81,23 @@ liftTelescope
 liftTelescope (Telescope tele) = Telescope
   <$> mapM (\(h, (), s) -> (,,) h () <$> underScope liftExpr s) tele
 
-liftDefinition
+liftDefinitionM
   :: Converted.SExpr Void
   -> Lift (Lifted.Definition Void)
-liftDefinition (Converted.Sized _ (Converted.Lams retDir tele s))
+liftDefinitionM (Converted.Sized _ (Converted.Lams retDir tele s))
   = Lifted.FunctionDef . Lifted.Function retDir (teleNamedAnnotations tele)
     <$> underScope liftSExpr s
-liftDefinition sexpr
+liftDefinitionM sexpr
   = Lifted.ConstantDef . Lifted.Constant (Converted.sExprDir sexpr)
     <$> liftSExpr sexpr
+
+liftDefinition
+  :: Name
+  -> Converted.SExpr Void
+  -> (Lifted.Definition Void, [(Name, Lifted.Function Void)])
+liftDefinition name expr
+  = second liftedFunctions
+  $ runState (unLifted $ liftDefinitionM expr) LiftState
+  { freshNames = [name <> "-lifted" <> if n == 0 then "" else shower n | n <- [(0 :: Int)..]]
+  , liftedFunctions = mempty
+  }

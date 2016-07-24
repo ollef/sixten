@@ -1,9 +1,12 @@
 Improve and simplify backend
   Remove Restricted, add Lifted which is closer to Closed
-  Add Lift which just a dead-simple monadic traversal lifting lams
+  Remove restricted stuff from context
   Rewrite Generate to store more stuff inline (esp. constructors)
   Keep Signature when going into Lifted
+Make NameHint a specialised type with IsString instance, get rid of nameHint function
 Add printf or something
+Add Destructor calling convention for functions that return part of their argument
+  To get rid of the memcpy from deref
 Can case scrutinees and tail calls explicitly be of unspecified size?
 Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
 Make printing of passes optional and configurable
@@ -14,6 +17,7 @@ Size types
   How to cleanly make `(a -> b) : Type 0` when `b : Type 0`?
     Maybe just make the usage analysis pass aware of this
   Can the size be made abstract, e.g. `List A : Type {sizeof (List A)}`?
+  Can we have an Infinity size for things we can only hold in pointers?
 Cases
   Make Concrete syntax have deep patterns and desugar them
   Normalisation
@@ -31,6 +35,7 @@ Globals
   Make literals llvm `constant`s
   Add error message for circular globals
 Do real GC with LLVM gcroots etc
+Generalise LLVM module?
 Type classes
 Specialisation pragma
 Row polymorphism

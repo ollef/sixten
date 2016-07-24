@@ -33,7 +33,7 @@ instance Pretty Level where
 data State = State
   { tcContext :: Program Expr Void
   , tcConstrs :: HashMap Constr (Set (Name, Type Void))
-  , tcConvertedSignatures :: HashMap Name (Converted.Signature Unit Void)
+  , tcConvertedSignatures :: HashMap Name (Converted.Signature Converted.Expr Unit Void)
   , tcRestrictedContext :: HashMap Name (Restricted.Body Void)
   , tcIndent :: !Int -- This has no place here, but is useful for debugging
   , tcFresh :: !Int
@@ -118,12 +118,12 @@ addContext prog = modify $ \s -> s
       return (c, Set.fromList [(n, t)])
 
 addConvertedSignatures
-  :: HashMap Name (Converted.Signature a b)
+  :: HashMap Name (Converted.Signature Converted.Expr b c)
   -> TCM s ()
 addConvertedSignatures p = modify $ \s -> s { tcConvertedSignatures = p' <> tcConvertedSignatures s }
   where
     p' = fmap (const $ error "addConvertedSignatures")
-       . Converted.mapSignature (const Unit) <$> p
+       . Converted.hoistSignature (const Unit) <$> p
 
 addRestrictedContext
   :: HashMap Name (Restricted.Body Void)
@@ -154,7 +154,7 @@ lookupConstructor name
 
 lookupConvertedSignature
   :: Name
-  -> TCM s (Maybe (Converted.Signature Unit Void))
+  -> TCM s (Maybe (Converted.Signature Converted.Expr Unit Void))
 lookupConvertedSignature name
   = gets
   $ HM.lookup name
@@ -171,7 +171,7 @@ definition v = do
 
 convertedSignature
   :: Name
-  -> TCM s (Converted.Signature Unit Void)
+  -> TCM s (Converted.Signature Converted.Expr Unit Void)
 convertedSignature v = do
   mres <- lookupConvertedSignature v
   maybe (throwError $ "Not in scope: converted " ++ show v)
