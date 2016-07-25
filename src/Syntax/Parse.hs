@@ -176,7 +176,7 @@ abstractBindings c = flip $ foldr f
     f (Plain p xs)   e = foldr (\x -> c (h x) p Nothing  . abstractMaybe1 x) e xs
     f (Typed p xs t) e = foldr (\x -> c (h x) p (Just t) . abstractMaybe1 x) e xs
     abstractMaybe1 = maybe abstractNone abstract1
-    h = Hint
+    h = NameHint . Hint
 
 bindingNames :: [Binding] -> Vector (Maybe Name)
 bindingNames bs = Vector.fromList $ bs >>= flatten
@@ -187,12 +187,12 @@ bindingNames bs = Vector.fromList $ bs >>= flatten
 bindingHints :: [Binding] -> Vector (NameHint, Annotation)
 bindingHints bs = Vector.fromList $ bs >>= flatten
   where
-    flatten (Plain p names) = [(Hint n, p) | n <- names]
-    flatten (Typed p names _type) = [(Hint n, p) | n <- names]
+    flatten (Plain p names) = [(NameHint $ Hint n, p) | n <- names]
+    flatten (Typed p names _type) = [(NameHint $ Hint n, p) | n <- names]
 
 bindingsTelescope :: [Binding] -> Telescope Scope Annotation Expr Name
 bindingsTelescope bs = Telescope $
-  Vector.imap (\i (n, p, t) -> (Hint n, p, abstract (abstr i) t)) unabstracted
+  Vector.imap (\i (n, p, t) -> (NameHint $ Hint n, p, abstract (abstr i) t)) unabstracted
   where
     unabstracted = Vector.fromList $ bs >>= flatten
     abstr i v = case Vector.elemIndex (Just v) $ bindingNames bs of
@@ -256,7 +256,7 @@ branches = dropAnchor $  ConBranches <$> manySameCol conBranch <*> pure Wildcard
     conBranch = con <$> constructor <*> manyBindings <*% symbol "->" <*>% expr
     con c bs e = (Left c, bindingsTelescope bs, abstract (fmap Tele . (`Vector.elemIndex` ns) . Just) e)
       where
-        ns = unHint . fst <$> bindingHints bs
+        ns = unNameHint . fst <$> bindingHints bs
 
 rel :: Parser Relevance
 rel = Irrelevant <$ symbol "~"  <|> pure Relevant
@@ -269,7 +269,7 @@ expr
  <?> "expression"
   where
     typeAnno = flip Anno <$% symbol ":" <*>% expr
-    arr      = (\e' (a, e) -> Pi (Hint Nothing) a e $ Scope $ Var $ F e')
+    arr      = (\e' (a, e) -> Pi mempty a e $ Scope $ Var $ F e')
            <$% symbol "->" <*>% expr
     argument :: Parser (Annotation, Expr Name)
     argument = (first . Annotation <$> rel) <*>

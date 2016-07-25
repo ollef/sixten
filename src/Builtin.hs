@@ -84,7 +84,7 @@ convertedContext = HM.fromList $ concat
                           ])
       $ Simple.Scope
       $ Converted.sized 1
-      $ Converted.Let (nameHint "lt")
+      $ Converted.Let "lt"
       (Converted.sized 1
       $ Converted.Prim
       $ "icmp ult i64 " <> pure (Converted.Var $ B 0) <> ", " <> pure (Converted.Var $ B 1))
@@ -115,7 +115,7 @@ deref e
   $ SimpleConBranches
   [ ( Ref
     , Telescope
-      $ pure (nameHint "dereferenced", (), Simple.Scope $ Converted.Global "Builtin.deref.UnknownSize")
+      $ pure ("dereferenced", (), Simple.Scope $ Converted.Global "Builtin.deref.UnknownSize")
     , Simple.Scope
     $ Converted.Var $ B 0
     )
@@ -127,16 +127,16 @@ apply numArgs
   $ Converted.Lams
     Indirect
     (Telescope
-    $ Vector.cons (nameHint "this", Direct, slit 1)
-    $ (\n -> (nameHint $ "size" <> shower (unTele n), Direct, slit 1)) <$> Vector.enumFromN 0 numArgs
-    <|> (\n -> (nameHint $ "x" <> shower (unTele n), Indirect, svarb $ 1 + n)) <$> Vector.enumFromN 0 numArgs)
+    $ Vector.cons ("this", Direct, slit 1)
+    $ (\n -> (fromText $ "size" <> shower (unTele n), Direct, slit 1)) <$> Vector.enumFromN 0 numArgs
+    <|> (\n -> (fromText $ "x" <> shower (unTele n), Indirect, svarb $ 1 + n)) <$> Vector.enumFromN 0 numArgs)
   $ Simple.Scope
   $ unknownSize
   $ Converted.Case (unknownSize $ deref $ Converted.Var $ B 0)
   $ SimpleConBranches
   [ ( Closure
     , Telescope
-      $ Vector.fromList [(nameHint "f_unknown", (), slit 1), (nameHint "n", (), slit 1)]
+      $ Vector.fromList [("f_unknown", (), slit 1), ("n", (), slit 1)]
     , Simple.Scope
       $ Converted.Case (Converted.sized 1 $ Converted.Var $ B 1)
       $ SimpleLitBranches
@@ -190,20 +190,20 @@ pap k m
   $ Converted.Lams
     Indirect
     (Telescope
-    $ Vector.cons (nameHint "this", Direct, slit 1)
-    $ (\n -> (nameHint $ "size" <> shower (unTele n), Direct, slit 1)) <$> Vector.enumFromN 0 k
-    <|> (\n -> (nameHint $ "x" <> shower (unTele n), Indirect, svarb $ 1 + n)) <$> Vector.enumFromN 0 k)
+    $ Vector.cons ("this", Direct, slit 1)
+    $ (\n -> (fromText $ "size" <> shower (unTele n), Direct, slit 1)) <$> Vector.enumFromN 0 k
+    <|> (\n -> (fromText $ "x" <> shower (unTele n), Indirect, svarb $ 1 + n)) <$> Vector.enumFromN 0 k)
   $ Simple.Scope
   $ unknownSize
   $ Converted.Case (unknownSize $ deref $ Converted.Var $ B 0)
   $ SimpleConBranches
     [ ( Closure
       , Telescope
-        $ Vector.cons (nameHint "_", (), slit 1)
-        $ Vector.cons (nameHint "_", (), slit 1)
-        $ Vector.cons (nameHint "that", (), slit 1)
-        $ (\n -> (nameHint $ "size" <> shower (unTele n), (), slit 1)) <$> Vector.enumFromN 0 m
-        <|> (\n -> (nameHint $ "y" <> shower (unTele n), (), svarb $ 3 + n)) <$> Vector.enumFromN 0 m
+        $ Vector.cons ("_", (), slit 1)
+        $ Vector.cons ("_", (), slit 1)
+        $ Vector.cons ("that", (), slit 1)
+        $ (\n -> (fromText $ "size" <> shower (unTele n), (), slit 1)) <$> Vector.enumFromN 0 m
+        <|> (\n -> (fromText $ "y" <> shower (unTele n), (), svarb $ 3 + n)) <$> Vector.enumFromN 0 m
       , Simple.Scope
         $ Converted.Call Indirect (Converted.Global $ applyName $ m + k)
         $ Vector.cons (Converted.sized 1 $ Converted.Var $ B 2, Direct)

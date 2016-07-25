@@ -107,10 +107,10 @@ showWide d = Leijen.displayT (Leijen.renderPretty 1.0 10000 d)
 withName :: (Name -> PrettyM a) -> PrettyM a
 withName k = do
   name:fnames <- asks freeNames
-  local (\env -> env {freeNames = fnames}) $ withHint (Hint name) k
+  local (\env -> env {freeNames = fnames}) $ withHint name k
 
-withHint :: Hint Name -> (Name -> PrettyM a) -> PrettyM a
-withHint (Hint name) k = do
+withHint :: Name -> (Name -> PrettyM a) -> PrettyM a
+withHint name k = do
   bnames <- asks boundNames
   let candidates = name : [name <> fromString (show n) | n <- [(1 :: Int)..]]
       actualName = head $ filter (not . (`HashSet.member` bnames)) candidates
@@ -118,8 +118,8 @@ withHint (Hint name) k = do
   local (\env -> env {boundNames = bnames'}) $ k actualName
 
 withNameHint :: NameHint -> (Name -> PrettyM a) -> PrettyM a
-withNameHint (Hint (Just name)) = withHint (Hint name)
-withNameHint (Hint Nothing) = withName
+withNameHint (NameHint (Hint (Just name))) = withHint name
+withNameHint (NameHint (Hint Nothing)) = withName
 
 withNameHints :: Vector NameHint -> (Vector Name -> PrettyM a) -> PrettyM a
 withNameHints v k = go (Vector.toList v) $ k . Vector.fromList

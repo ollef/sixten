@@ -17,9 +17,9 @@ data Expr v
   | Global Name
   | Con QConstr
   | Lit Literal
-  | Pi  !NameHint !Annotation (Type v) (Scope1 Expr v)
+  | Pi !NameHint !Annotation (Type v) (Scope1 Expr v)
   | Lam !NameHint !Annotation (Type v) (Scope1 Expr v)
-  | App  (Expr v) !Annotation (Expr v)
+  | App (Expr v) !Annotation (Expr v)
   | Case (Expr v) (Branches QConstr Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
@@ -29,12 +29,12 @@ type Type = Expr
 -------------------------------------------------------------------------------
 -- * Views and smart constructors
 pi_ :: Name -> Annotation -> Type Name -> Expr Name -> Expr Name
-pi_ n p t e = Pi (Hint $ Just n) p t $ abstract1 n e
+pi_ n p t e = Pi (fromText n) p t $ abstract1 n e
 
 lam :: Name -> Annotation -> Type Name -> Expr Name -> Expr Name
-lam n p t e = Lam (Hint $ Just n) p t $ abstract1 n e
+lam n p t e = Lam (fromText n) p t $ abstract1 n e
 
-etaLam :: Hint (Maybe Name) -> Annotation -> Expr v -> Scope1 Expr v -> Expr v
+etaLam :: NameHint -> Annotation -> Expr v -> Scope1 Expr v -> Expr v
 etaLam _ p _ (Scope (App e p' (Var (B ()))))
   | B () `S.notMember` toSet (second (const ()) <$> e) && p == p'
     = join $ unvar (error "etaLam impossible") id <$> e

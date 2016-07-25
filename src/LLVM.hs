@@ -101,8 +101,8 @@ freshName = do
   freshenName name
 
 freshWithHint :: MonadState LLVMState m => NameHint -> m B
-freshWithHint (Hint (Just name)) = freshenName name
-freshWithHint (Hint Nothing) = freshName
+freshWithHint (NameHint (Hint (Just name))) = freshenName name
+freshWithHint (NameHint (Hint Nothing)) = freshName
 
 -------------------------------------------------------------------------------
 -- * Operands
@@ -182,8 +182,8 @@ memcpy
   -> Operand Int
   -> m ()
 memcpy dst src sz = do
-  src' <- nameHint "src" =: Instr ("bitcast" <+> pointer src <+> "to i8*")
-  dst' <- nameHint "dst" =: Instr ("bitcast" <+> pointer dst <+> "to i8*")
+  src' <- "src" =: Instr ("bitcast" <+> pointer src <+> "to i8*")
+  dst' <- "dst" =: Instr ("bitcast" <+> pointer dst <+> "to i8*")
   emit $ Instr
        $ "call" <+> voidT <+> "@llvm.memcpy.p0i8.p0i8.i64(i8*"
        <+> unOperand dst' <> ", i8*" <+> unOperand src' <> ","
@@ -196,7 +196,7 @@ wordcpy
   -> Operand Int
   -> m ()
 wordcpy dst src wordSize = do
-  byteSize <- nameHint "byte-size" =: mul wordSize ptrSize
+  byteSize <- "byte-size" =: mul wordSize ptrSize
   memcpy dst src byteSize
 
 gcAlloc
@@ -204,9 +204,9 @@ gcAlloc
   => Operand Int
   -> m (Operand Ptr)
 gcAlloc wordSize = do
-  byteSize <- nameHint "byte-size" =: mul wordSize ptrSize
-  byteRef <- nameHint "byteref" =: Instr ("call i8* @GC_malloc(" <> integer byteSize <> ")")
-  nameHint "ref" =: Instr ("bitcast" <+> "i8*" <+> unOperand byteRef <+> "to" <+> pointerT)
+  byteSize <- "byte-size" =: mul wordSize ptrSize
+  byteRef <- "byteref" =: Instr ("call i8* @GC_malloc(" <> integer byteSize <> ")")
+  "ref" =: Instr ("bitcast" <+> "i8*" <+> unOperand byteRef <+> "to" <+> pointerT)
 
 getElementPtr :: Operand Ptr -> Operand Int -> Instr Ptr
 getElementPtr x i = Instr $ "getelementptr" <+> integerT <> "," <+> pointer x <> "," <+> integer i

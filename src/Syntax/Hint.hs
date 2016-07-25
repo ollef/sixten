@@ -1,7 +1,8 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleInstances #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleInstances, GeneralizedNewtypeDeriving #-}
 module Syntax.Hint where
 
 import Control.Applicative
+import Data.String
 
 import Syntax.Name
 
@@ -19,12 +20,15 @@ instance Eq (Hint a) where
 instance Ord (Hint a) where
   compare _ _ = EQ
 
-type NameHint = Hint (Maybe Name)
+newtype NameHint = NameHint (Hint (Maybe Name))
+  deriving (Eq, Ord, Show)
 
-nameHint :: Name -> NameHint
-nameHint = Hint . Just
+unNameHint :: NameHint -> Maybe Name
+unNameHint (NameHint (Hint x)) = x
 
--- | Alternative means that 'Just's don't get appended if 'm' is 'Maybe'
-instance Alternative m => Monoid (Hint (m a)) where
-  mempty = Hint empty
-  mappend (Hint a) (Hint b) = Hint (a <|> b)
+instance Monoid NameHint where
+  mempty = NameHint $ Hint mempty
+  mappend (NameHint (Hint a)) (NameHint (Hint b)) = NameHint $ Hint $ a <|> b
+
+instance IsString NameHint where
+  fromString = NameHint . Hint . Just . fromString

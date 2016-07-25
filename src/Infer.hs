@@ -457,8 +457,9 @@ checkRecursiveDefs
 checkRecursiveDefs ds =
   generaliseDefs <=< enterLevel $ do
     evs <- V.forM ds $ \(v, _, _) -> do
-      t <- existsType $ nameHint v
-      forall_ (nameHint v) t
+      let h = fromText v
+      t <- existsType h
+      forall_ h t
     let instantiatedDs = flip V.map ds $ \(_, e, t) ->
           ( instantiateDef (pure . (evs V.!)) e
           , instantiate (pure . (evs V.!)) t

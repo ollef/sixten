@@ -192,7 +192,7 @@ knownCall f retDir tele args
         numXs = Vector.length xs
         tele'
           = Telescope
-          $ Vector.cons (nameHint "x_this", Direct, Builtin.slit 1)
+          $ Vector.cons ("x_this", Direct, Builtin.slit 1)
           $ (\h -> (h, Direct, Builtin.slit 1)) <$> xs
           <|> (\(n, h) -> (h, Indirect, Builtin.svarb $ 1 + Tele n)) <$> Vector.indexed xs
 

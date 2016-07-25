@@ -79,9 +79,9 @@ unify type1 type2 = do
       v <- forallVar h a
       go True (instantiate1 v s1) (instantiate1 v s2)
     distinctForalls pes | distinct pes = traverse isForall pes
-                        | otherwise    = Nothing
+                        | otherwise = Nothing
     isForall (p, Var v@(metaRef -> Nothing)) = Just (p, v)
-    isForall _                               = Nothing
+    isForall _ = Nothing
     distinct pes = S.size (S.fromList es) == length es where es = map snd pes
     solveVar r v pvs t = do
       unify (metaType v) =<< typeOf t
@@ -91,7 +91,7 @@ unify type1 type2 = do
           occurs l v t
           solve r =<< lambdas pvs t
         Right c -> go True (apps c $ map (second pure) pvs) t
-    lambdas pvs t = foldrM (\(p, v) -> fmap (Lam (Hint Nothing) p $ metaType v) . abstract1M v) t pvs
+    lambdas pvs t = foldrM (\(p, v) -> fmap (Lam mempty p $ metaType v) . abstract1M v) t pvs
 
 subtype
   :: Relevance

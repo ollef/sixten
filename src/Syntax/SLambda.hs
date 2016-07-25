@@ -45,7 +45,7 @@ instance Eq1 SExpr
 instance Ord1 SExpr
 instance Show1 SExpr
 
-etaLam :: Hint (Maybe Name) -> Expr v -> Simple.Scope () SExpr v -> Expr v
+etaLam :: NameHint -> Expr v -> Simple.Scope () SExpr v -> Expr v
 etaLam _ _ (Simple.Scope (Sized _ (App e (Sized _ (Var (B ()))))))
   | B () `S.notMember` toSet (second (const ()) <$> e)
     = unvar (error "etaLam") id <$> e

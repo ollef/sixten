@@ -79,4 +79,4 @@ betaApp e1@(lamView -> Just (_, p1, _, s)) p2 e2 | p1 == p2 = case bindings s of
 betaApp e1 p e2 = app e1 p e2
 
 arrow :: SyntaxPi e => Annotation -> e v -> e v -> e v
-arrow p a b = pi_ (Hint Nothing) p a $ Scope $ pure $ F b
+arrow p a b = pi_ mempty p a $ Scope $ pure $ F b
