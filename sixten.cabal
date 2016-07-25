@@ -1,4 +1,4 @@
-name:                funbox
+name:                sixten
 version:             0.1.0.0
 -- synopsis:            
 -- description:         
@@ -12,7 +12,7 @@ build-type:          Simple
 -- extra-source-files:  
 cabal-version:       >=1.10
 
-executable funbox
+executable sixten
   ghc-options:         -Wall -funbox-strict-fields
   main-is:             Main.hs
   build-depends:       wl-pprint-text,

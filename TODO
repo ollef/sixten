@@ -1,4 +1,3 @@
-Rename to Sixten
 Make NameHint a specialised type with IsString instance, get rid of nameHint function
 Add printf or something
 Add Destructor calling convention for functions that return part of their argument
