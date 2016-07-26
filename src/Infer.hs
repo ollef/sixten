@@ -339,8 +339,12 @@ checkDataType name (DataDef cs) typ = mdo
 
   mapM_ (unify constrRetType) rets
 
-  let typeSize = Builtin.AddSize (Abstract.Lit 1)
-              $ foldr Builtin.MaxSize (Abstract.Lit 0) sizes
+  let addTagSize = case cs of
+        [_] -> id
+        _ -> Builtin.AddSize $ Abstract.Lit 1
+
+      typeSize = addTagSize
+               $ foldr Builtin.MaxSize (Abstract.Lit 0) sizes
   typeSize' <- normalise typeSize
 
   let typeReturnType = Builtin.Type typeSize'
