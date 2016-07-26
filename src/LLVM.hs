@@ -154,10 +154,6 @@ add x y = Instr $ "add" <+> integer x <> "," <+> unOperand y
 mul :: Operand Int -> Operand Int -> Instr Int
 mul x y = Instr $ "mul" <+> integer x <> "," <+> unOperand y
 
-callFun :: (Foldable f, Functor f) => Operand Fun -> f (Operand Ptr) -> Instr ()
-callFun name xs = Instr
-  $ "call" <+> voidT <+> unOperand name <> "(" <> Foldable.fold (intersperse ", " $ Foldable.toList $ pointer <$> xs) <> ")"
-
 (=:) :: MonadState LLVMState m => NameHint -> Instr a -> m (Operand a)
 h =: i = do
   x <- freshWithHint h

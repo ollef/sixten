@@ -71,7 +71,7 @@ varCall
   -> f Var
   -> Instr a
 varCall retType name xs = Instr
-  $ "call" <+> retType <+> unOperand name 
+  $ "call fastcc" <+> retType <+> unOperand name
   <> "(" <> Foldable.fold (intersperse ", " $ Foldable.toList $ go <$> xs) <> ")"
   where
     go (DirectVar x) = integer x
@@ -349,7 +349,7 @@ generateConstant name (Constant dir e) = do
       initName = gname <> "-init"
   emitRaw $ Instr $ gname <+> "= global" <+> typVal <> ", align" <+> align
   emitRaw $ Instr ""
-  emitRaw $ Instr $ "define private" <+> voidT <+> initName <> "() {"
+  emitRaw $ Instr $ "define private fastcc" <+> voidT <+> initName <> "() {"
   case dir of
     Direct -> storeSExpr e $ global name
     Indirect -> do
@@ -357,7 +357,7 @@ generateConstant name (Constant dir e) = do
       emit $ storePtr ptr $ global name
   emit returnVoid
   emitRaw "}"
-  return $ "  call" <+> voidT <+> initName <> "()"
+  return $ "  call fastcc" <+> voidT <+> initName <> "()"
   where
     typVal = case dir of
       Direct -> integer "0"
@@ -374,12 +374,12 @@ generateFunction name (Function retDir hs funScope) = do
   case retDir of
     Indirect -> do
       ret <- LLVM.Operand <$> freshenName "return"
-      emitRaw $ Instr $ "define" <+> voidT <+> "@" <> name
+      emitRaw $ Instr $ "define fastcc" <+> voidT <+> "@" <> name
         <> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList vs <> pure (IndirectVar ret)) <> ") {"
       storeSExpr funExpr ret
       emit returnVoid
     Direct -> do
-      emitRaw $ Instr $ "define" <+> integerT <+> "@" <> name <> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList vs) <> ") {"
+      emitRaw $ Instr $ "define fastcc" <+> integerT <+> "@" <> name <> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList vs) <> ") {"
       res <- generateSExpr funExpr
       resInt <- loadVar "function-result" res
       emit $ returnInt resInt
