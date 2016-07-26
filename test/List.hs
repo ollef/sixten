@@ -32,5 +32,9 @@ sum xs = case deref xs of
   Nil -> 0
   Cons x xs' -> addSize x (sum xs')
 
-testSum = printSize (sum testList)
-testMappedSum = printSize (sum mappedList)
+mappedList2 = map (add3 1) testList
+mappedList3 = map (\f. f 10) mappedList2
+
+printSum = printSize (sum testList)
+printMappedSum = printSize (sum mappedList)
+printMappedSum2 = printSize (sum mappedList3)
