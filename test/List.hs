@@ -16,10 +16,21 @@ map f xs = Ref (case deref xs of
   Cons x xs' -> Cons (f x) (map f xs'))
 
 testList : Ptr (List Size)
-testList = Ref (Cons 1 (Ref (Cons 2 (Ref Nil))))
+testList = Ref (Cons 1 (Ref (Cons 2 (Ref (Cons 3 (Ref Nil))))))
 
 mappedList : Ptr (List Size)
 mappedList = map (addSize 1) testList
 
 testList2 : List Size
 testList2 = deref testList
+
+add3 : Size -> Size -> Size -> Size
+add3 a b c = addSize (addSize a b) c
+
+sum : Ptr (List Size) -> Size
+sum xs = case deref xs of
+  Nil -> 0
+  Cons x xs' -> addSize x (sum xs')
+
+testSum = printSize (sum testList)
+testMappedSum = printSize (sum mappedList)

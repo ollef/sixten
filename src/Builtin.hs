@@ -22,6 +22,9 @@ pattern Size = Global SizeName
 pattern AddSizeName <- ((==) "addSize" -> True) where AddSizeName = "addSize"
 pattern AddSize e1 e2 = App (App (Global AddSizeName) ReEx e1) ReEx e2
 
+pattern PrintSizeName <- ((==) "printSize" -> True) where PrintSizeName = "printSize"
+pattern PrintSize e1 = App (Global AddSizeName) ReEx e1
+
 pattern MaxSizeName <- ((==) "maxSize" -> True) where MaxSizeName = "maxSize"
 pattern MaxSize e1 e2 = App (App (Global MaxSizeName) ReEx e1) ReEx e2
 
@@ -46,6 +49,7 @@ context = HM.fromList
   [ (SizeName, opaque $ Type $ Lit 1)
   , (AddSizeName, opaque $ arrow ReEx Size $ arrow ReEx Size Size)
   , (MaxSizeName, opaque $ arrow ReEx Size $ arrow ReEx Size Size)
+  , (PrintSizeName, opaque $ arrow ReEx Size Size)
   , (TypeName, opaque $ arrow IrIm Size $ Type $ Lit 0)
   , (PtrName, dataType (Abstract.pi_ "size" IrIm Size
                        $ arrow IrEx (Type $ pure "size")
@@ -93,6 +97,23 @@ convertedContext = HM.fromList $ concat
       $ "select i1 " <> pure (Converted.Var $ B ())
       <> ", i64 " <> pure (Converted.Var $ F $ B 0) <> ", i64 "
       <> pure (Converted.Var $ F $ B 1)
+    )
+  , ( PrintSizeName
+    , Converted.sized 1
+      $ Converted.Lams
+        Direct
+        (Telescope
+        $ Vector.fromList [(mempty, Direct, slit 1)])
+      $ Simple.Scope
+      $ Converted.sized 1
+      $ Converted.Let "res"
+      (Converted.sized 1
+      $ Converted.Prim
+      ("call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([6 x i8], [6 x i8]* @i64-format, i64 0, i64 0), i64 " <> pure (Converted.Var $ B 0) <> ")"))
+
+      $ Simple.Scope
+      $ Converted.Prim
+      $ "zext i32 " <> pure (Converted.Var $ B ()) <> " to i64"
     )
   ]
   , [(papName left given, pap left given) | given <- [1..maxArity - 1], left <- [1..maxArity - given]]
