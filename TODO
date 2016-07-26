@@ -1,22 +1,38 @@
-Add Destructor calling convention for functions that return part of their argument
-  To get rid of the memcpy from deref
-Can case scrutinees and tail calls explicitly be of unspecified size?
-Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
-Make printing of passes optional and configurable
-Usage analysis for better erasure
-Add new Int type -- overloaded literals
-Instantiate implicits at variable use sites
+Codegen
+  Add Destructor calling convention for functions that return part of their argument
+    To get rid of the memcpy from deref
+  Can case scrutinees and tail calls explicitly be of unspecified size?
+  Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
+  Arity inference
+Compiler
+  Make printing of passes optional and configurable
+  Test suite
+  Better error messages
+Language
+  Add new Int type -- overloaded literals
+  Let(rec) definitions
+  Mutually recursive top-level definitions
+  Laziness
+  Cases
+    Make Concrete syntax have deep patterns and desugar them
+    Normalisation
+  Type classes
+  Specialisation pragma
+  Row polymorphism
+    r : Row : Type
+    {l = A} : {l : A} : Type
+  Modules
+  Mixfix definitions and noncompounds?
+  Inductive families
+  FFI & More general way to define builtins (extern LLVM, C?)
+Type checking
+  Fix issue with data and implicits
+  Instantiate implicits at variable use sites
 Size types
   How to cleanly make `(a -> b) : Type 0` when `b : Type 0`?
     Maybe just make the usage analysis pass aware of this
   Can the size be made abstract, e.g. `List A : Type {sizeof (List A)}`?
   Can we have an Infinity size for things we can only hold in pointers?
-Cases
-  Make Concrete syntax have deep patterns and desugar them
-  Normalisation
-Let(rec) definitions
-Mutually recursive definitions
-Laziness
 Optimisations
   Inlining
   Common subexpressions
@@ -24,20 +40,9 @@ Optimisations
   Tagged pointers
     Reorder data to enable more?
   App of lambda -> let
+  Usage analysis for better erasure
 Globals
   Make literals llvm `constant`s
   Add error message for circular globals
-Do real GC with LLVM gcroots etc
-Generalise LLVM module?
-Type classes
-Specialisation pragma
-Row polymorphism
-  r : Row : Type
-  {l = A} : {l : A} : Type
-Test suite
-Better error messages
-Modules
-Arity inference
-Mixfix definitions and noncompounds?
-Inductive families
-FFI & More general way to define builtins (extern LLVM, C?)
+Runtime
+  Do real GC with LLVM gcroots etc
