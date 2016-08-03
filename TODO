@@ -17,10 +17,10 @@ Language
     Make Concrete syntax have deep patterns and desugar them
     Normalisation
   Type classes
-  Specialisation pragma
   Row polymorphism
     r : Row : Type
     {l = A} : {l : A} : Type
+  Specialisation pragma
   Modules
   Mixfix definitions and noncompounds?
   Inductive families

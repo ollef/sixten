@@ -26,9 +26,9 @@ import Util
 checkType
   :: Relevance
   -> Plicitness
-  -> ConcreteM s
-  -> AbstractM s
-  -> TCM s (AbstractM s, AbstractM s)
+  -> ConcreteM
+  -> AbstractM
+  -> TCM (AbstractM, AbstractM)
 checkType surrR surrP expr typ = do
   tr ("checkType " ++ show (Annotation surrR surrP) ++ " e") expr
   tr "          t" =<< freeze typ
@@ -82,10 +82,10 @@ checkType surrR surrP expr typ = do
         (expr', typ') <- inferType surrR surrP expr
         subtype surrR surrP expr' typ' typ
 
-existsTypeType :: NameHint -> TCM s (AbstractM s)
+existsTypeType :: NameHint -> TCM AbstractM
 existsTypeType n = existsVar n $ Builtin.Type (Abstract.Lit 0)
 
-existsType :: NameHint -> TCM s (AbstractM s)
+existsType :: NameHint -> TCM AbstractM
 existsType n = do
   t <- existsTypeType n
   existsVar n t
@@ -93,8 +93,8 @@ existsType n = do
 inferType
   :: Relevance
   -> Plicitness
-  -> ConcreteM s
-  -> TCM s (AbstractM s, AbstractM s)
+  -> ConcreteM
+  -> TCM (AbstractM, AbstractM)
 inferType surrR surrP expr = do
   tr "inferType" expr
   modifyIndent succ
@@ -154,8 +154,8 @@ inferType surrR surrP expr = do
 
 resolveConstrType
   :: [Either Constr QConstr]
-  -> Maybe (AbstractM s)
-  -> TCM s Name
+  -> Maybe AbstractM
+  -> TCM Name
 resolveConstrType cs mtype = do
   n <- case mtype of
     Just (appsView -> (headType, _)) -> do
@@ -177,12 +177,12 @@ resolveConstrType cs mtype = do
 inferBranches
   :: Relevance
   -> Plicitness
-  -> ConcreteM s
-  -> BranchesM (Either Constr QConstr) Concrete.Expr s
-  -> TCM s ( AbstractM s
-           , BranchesM QConstr Abstract.Expr s
-           , AbstractM s
-           )
+  -> ConcreteM
+  -> BranchesM (Either Constr QConstr) Concrete.Expr
+  -> TCM ( AbstractM
+         , BranchesM QConstr Abstract.Expr
+         , AbstractM
+         )
 inferBranches surrR surrP expr (ConBranches cbrs _) = mdo
   (expr1, etype1) <- inferType surrR surrP expr
 
@@ -258,9 +258,9 @@ inferBranches surrR surrP expr brs@(LitBranches lbrs d) = do
   return (expr', LitBranches lbrs' d', t')
 
 generalise
-  :: AbstractM s
-  -> AbstractM s
-  -> TCM s (AbstractM s, AbstractM s)
+  :: AbstractM
+  -> AbstractM
+  -> TCM (AbstractM, AbstractM)
 generalise expr typ = do
   tr "generalise e" expr
   tr "           t" typ
@@ -290,8 +290,8 @@ generalise expr typ = do
     go _   _ _ = error "Generalise"
 
 checkConstrDef
-  :: ConstrDef (ConcreteM s)
-  -> TCM s (ConstrDef (AbstractM s), AbstractM s, AbstractM s)
+  :: ConstrDef ConcreteM
+  -> TCM (ConstrDef AbstractM, AbstractM, AbstractM)
 checkConstrDef (ConstrDef c (pisView -> (args, ret))) = mdo
   let inst = instantiateTele $ (\(a, _, _, _, _) -> pure a) <$> args'
   args' <- forMTele args $ \h a arg -> do
@@ -312,12 +312,12 @@ checkConstrDef (ConstrDef c (pisView -> (args, ret))) = mdo
   return (ConstrDef c res, ret', size)
 
 checkDataType
-  :: MetaVar Abstract.Expr s
-  -> DataDef Concrete.Expr (MetaVar Abstract.Expr s)
-  -> AbstractM s
-  -> TCM s ( DataDef Abstract.Expr (MetaVar Abstract.Expr s)
-           , AbstractM s
-           )
+  :: MetaVar Abstract.Expr
+  -> DataDef Concrete.Expr (MetaVar Abstract.Expr)
+  -> AbstractM
+  -> TCM ( DataDef Abstract.Expr (MetaVar Abstract.Expr)
+         , AbstractM
+         )
 checkDataType name (DataDef cs) typ = mdo
   typ' <- freeze typ
   tr "checkDataType t" typ'
@@ -357,22 +357,22 @@ checkDataType name (DataDef cs) typ = mdo
   return (DataDef cs', typ'')
 
 checkDefType
-  :: MetaVar Abstract.Expr s
-  -> Definition Concrete.Expr (MetaVar Abstract.Expr s)
-  -> AbstractM s
-  -> TCM s ( Definition Abstract.Expr (MetaVar Abstract.Expr s)
-           , AbstractM s
-           )
+  :: MetaVar Abstract.Expr
+  -> Definition Concrete.Expr (MetaVar Abstract.Expr)
+  -> AbstractM
+  -> TCM ( Definition Abstract.Expr (MetaVar Abstract.Expr)
+         , AbstractM
+         )
 checkDefType _ (Definition e) typ = first Definition <$> checkType Relevant Explicit e typ
 checkDefType v (DataDefinition d) typ = first DataDefinition <$> checkDataType v d typ
 
 generaliseDef
-  :: Vector (MetaVar Abstract.Expr s)
-  -> Definition Abstract.Expr (MetaVar Abstract.Expr s)
-  -> AbstractM s
-  -> TCM s ( Definition Abstract.Expr (MetaVar Abstract.Expr s)
-           , AbstractM s
-           )
+  :: Vector (MetaVar Abstract.Expr)
+  -> Definition Abstract.Expr (MetaVar Abstract.Expr)
+  -> AbstractM
+  -> TCM ( Definition Abstract.Expr (MetaVar Abstract.Expr)
+         , AbstractM
+         )
 generaliseDef vs (Definition e) t = do
   ge <- go etaLamM e
   gt <- go (\h p typ s -> pure $ Abstract.Pi h p typ s) t
@@ -394,14 +394,14 @@ generaliseDef vs (DataDefinition (DataDef cs)) typ = do
     g = pure . B . (+ Tele (length vs))
 
 generaliseDefs
-  :: Vector ( MetaVar Abstract.Expr s
-            , Definition Abstract.Expr (MetaVar Abstract.Expr s)
-            , AbstractM s
+  :: Vector ( MetaVar Abstract.Expr
+            , Definition Abstract.Expr (MetaVar Abstract.Expr)
+            , AbstractM
             )
-  -> TCM s (Vector ( Definition Abstract.Expr (Var Int (MetaVar Abstract.Expr s))
-                   , ScopeM Int Abstract.Expr s
-                   )
-           )
+  -> TCM (Vector ( Definition Abstract.Expr (Var Int (MetaVar Abstract.Expr))
+                 , ScopeM Int Abstract.Expr
+                 )
+         )
 generaliseDefs xs = do
   modifyIndent succ
 
@@ -451,13 +451,13 @@ generaliseDefs xs = do
 
 checkRecursiveDefs
   :: Vector ( Name
-            , Definition Concrete.Expr (Var Int (MetaVar Abstract.Expr s))
-            , ScopeM Int Concrete.Expr s
+            , Definition Concrete.Expr (Var Int (MetaVar Abstract.Expr))
+            , ScopeM Int Concrete.Expr
             )
-  -> TCM s (Vector ( Definition Abstract.Expr (Var Int (MetaVar Abstract.Expr s))
-                   , ScopeM Int Abstract.Expr s
-                   )
-           )
+  -> TCM (Vector ( Definition Abstract.Expr (Var Int (MetaVar Abstract.Expr))
+                 , ScopeM Int Abstract.Expr
+                 )
+         )
 checkRecursiveDefs ds =
   generaliseDefs <=< enterLevel $ do
     evs <- V.forM ds $ \(v, _, _) -> do

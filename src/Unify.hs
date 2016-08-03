@@ -17,13 +17,13 @@ import Syntax
 import Syntax.Abstract
 import Util
 
--- occurs :: Level -> MetaVar Abstract.Expr s -> AbstractM s -> TCM s ()
+-- occurs :: Level -> MetaVar Abstract.Expr s -> AbstractM s -> TCM ()
 occurs
   :: Foldable e
   => Level
-  -> MetaVar e s
-  -> e (MetaVar e s)
-  -> TCM s ()
+  -> MetaVar e
+  -> e (MetaVar e)
+  -> TCM ()
 occurs l tv = traverse_ go
   where
     go tv'@(MetaVar _ typ _ mr)
@@ -38,7 +38,7 @@ occurs l tv = traverse_ go
               Left l'    -> liftST $ writeSTRef r $ Left $ min l l'
               Right typ' -> occurs l tv typ'
 
-unify :: AbstractM s -> AbstractM s -> TCM s ()
+unify :: AbstractM -> AbstractM -> TCM ()
 unify type1 type2 = do
   ftype1 <- freeze type1
   ftype2 <- freeze type2
@@ -96,10 +96,10 @@ unify type1 type2 = do
 subtype
   :: Relevance
   -> Plicitness
-  -> AbstractM s
-  -> AbstractM s
-  -> AbstractM s
-  -> TCM s (AbstractM s, AbstractM s)
+  -> AbstractM
+  -> AbstractM
+  -> AbstractM
+  -> TCM (AbstractM, AbstractM)
 subtype surrR surrP expr type1 type2 = do
   tr "subtype e"  =<< freeze expr
   tr "        t1" =<< freeze type1
@@ -174,8 +174,8 @@ subtype surrR surrP expr type1 type2 = do
 
 -- TODO move these
 typeOf
-  :: AbstractM s
-  -> TCM s (AbstractM s)
+  :: AbstractM
+  -> TCM AbstractM
 typeOf expr = do
   tr "typeOf" expr
   modifyIndent succ
@@ -205,8 +205,8 @@ typeOf expr = do
   return t
 
 sizeOfType
-  :: AbstractM s
-  -> TCM s (AbstractM s)
+  :: AbstractM
+  -> TCM AbstractM
 sizeOfType expr = do
   tr "sizeOf" expr
   modifyIndent succ
@@ -219,6 +219,6 @@ sizeOfType expr = do
     _ -> throwError $ "sizeOfType: Not a type: " ++ show t
 
 sizeOf
-  :: AbstractM s
-  -> TCM s (AbstractM s)
+  :: AbstractM
+  -> TCM AbstractM
 sizeOf = typeOf >=> sizeOfType

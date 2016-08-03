@@ -8,7 +8,6 @@ import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
-import Prelude.Extras
 
 import Builtin
 import Meta
@@ -18,21 +17,18 @@ import qualified Syntax.Converted as Converted
 import TCM
 import Util
 
-data MetaData s = Unknown deriving Show
-instance Show1 MetaData
+type Meta = MetaVar Unit
+type LExprM = Closed.Expr Meta
+type LSExprM = Closed.SExpr Meta
+type LBrsM = SimpleBranches QConstr Closed.Expr Meta
 
-type Meta = MetaVar MetaData
-type LExprM s = Closed.Expr (Meta s)
-type LSExprM s = Closed.SExpr (Meta s)
-type LBrsM s = SimpleBranches QConstr Closed.Expr (Meta s)
-
-type CExprM s = Converted.Expr (Meta s)
-type CSExprM s = Converted.SExpr (Meta s)
-type CBrsM s = SimpleBranches QConstr Converted.Expr (Meta s)
+type CExprM = Converted.Expr Meta
+type CSExprM = Converted.SExpr Meta
+type CBrsM = SimpleBranches QConstr Converted.Expr Meta
 
 convertSignature
-  :: LSExprM s
-  -> TCM s (Converted.Signature Converted.Expr Closed.SExpr (Meta s))
+  :: LSExprM
+  -> TCM (Converted.Signature Converted.Expr Closed.SExpr Meta)
 convertSignature expr = case expr of
   Closed.Sized _ (Closed.Lams tele lamScope) -> do
     (retDir, tele') <- convertLambdaSignature tele lamScope
@@ -42,14 +38,14 @@ convertSignature expr = case expr of
 convertLambdaSignature
   :: Telescope Simple.Scope () Closed.Expr Void
   -> Simple.Scope Tele Closed.SExpr Void
-  -> TCM s
+  -> TCM
     ( Direction
     , Telescope Simple.Scope Direction Converted.Expr Void
     )
 convertLambdaSignature tele (Simple.Scope lamExpr) = mdo
   tele' <- forMTele tele $ \h () s -> do
     let e = instantiateVar ((vs Vector.!) . unTele) $ vacuous s
-    v <- forall_ h Unknown
+    v <- forall_ h Unit
     e' <- convertExpr e
     return (v, e')
   let vs = fst <$> tele'
@@ -59,10 +55,10 @@ convertLambdaSignature tele (Simple.Scope lamExpr) = mdo
 
 convertBody
   :: Converted.Signature Converted.Expr Closed.SExpr Void
-  -> TCM s (CSExprM s)
+  -> TCM CSExprM
 convertBody sig = case sig of
   Converted.Function retDir tele lamScope -> do
-    vs <- forMTele tele $ \h _ _ -> forall_ h Unknown
+    vs <- forMTele tele $ \h _ _ -> forall_ h Unit
     let lamExpr = instantiateVar ((vs Vector.!) . unTele) $ vacuous lamScope
         abstr = teleAbstraction vs
     lamExpr' <- convertSExpr lamExpr
@@ -76,7 +72,7 @@ convertBody sig = case sig of
 convertLambda
   :: Telescope Simple.Scope () Closed.Expr Void
   -> Simple.Scope Tele Closed.SExpr Void
-  -> TCM s
+  -> TCM
     ( Direction
     , Telescope Simple.Scope Direction Converted.Expr Void
     , Simple.Scope Tele Converted.SExpr Void
@@ -84,7 +80,7 @@ convertLambda
 convertLambda tele lamScope = mdo
   tele' <- forMTele tele $ \h () s -> do
     let e = instantiateVar ((vs Vector.!) . unTele) $ vacuous s
-    v <- forall_ h Unknown
+    v <- forall_ h Unit
     e' <- convertExpr e
     return (v, e')
   let vs = fst <$> tele'
@@ -95,7 +91,7 @@ convertLambda tele lamScope = mdo
   let lamScope' = Simple.abstract abstr lamExpr'
   return (Converted.sExprDir lamExpr', tele'', error "convertLambda" <$> lamScope')
 
-convertExpr :: LExprM s -> TCM s (CExprM s)
+convertExpr :: LExprM -> TCM CExprM
 convertExpr expr = case expr of
   Closed.Var v -> return $ Converted.Var v
   Closed.Global g -> do
@@ -124,7 +120,7 @@ convertExpr expr = case expr of
     unknownCall e' es'
   Closed.Let h e bodyScope -> do
     e' <- convertSExpr e
-    v <- forall_ h Unknown
+    v <- forall_ h Unit
     let bodyExpr = instantiateVar (\() -> v) bodyScope
     bodyExpr' <- convertExpr bodyExpr
     let bodyScope' = Simple.abstract1 v bodyExpr'
@@ -133,9 +129,9 @@ convertExpr expr = case expr of
   Closed.Prim p -> Converted.Prim <$> mapM convertExpr p
 
 unknownCall
-  :: CExprM s
-  -> Vector (CSExprM s)
-  -> TCM s (CExprM s)
+  :: CExprM
+  -> Vector CSExprM
+  -> TCM CExprM
 unknownCall e es = return
   $ Converted.Call Indirect (Converted.Global $ Builtin.applyName $ Vector.length es)
   $ Vector.cons (Converted.sized 1 e, Direct) $ (\sz -> (sz, Direct)) <$> Converted.sizedSizesOf es <|> (\arg -> (arg, Indirect)) <$> es
@@ -144,8 +140,8 @@ knownCall
   :: Converted.Expr Void
   -> Direction
   -> Telescope Simple.Scope Direction Converted.Expr Void
-  -> Vector (CSExprM s)
-  -> TCM s (CExprM s)
+  -> Vector CSExprM
+  -> TCM CExprM
 knownCall f retDir tele args
   | numArgs < arity
     = return
@@ -196,15 +192,15 @@ knownCall f retDir tele args
           $ (\h -> (h, Direct, Builtin.slit 1)) <$> xs
           <|> (\(n, h) -> (h, Indirect, Builtin.svarb $ 1 + Tele n)) <$> Vector.indexed xs
 
-convertSExpr :: LSExprM s -> TCM s (CSExprM s)
+convertSExpr :: LSExprM -> TCM CSExprM
 convertSExpr (Closed.Sized sz e) = Converted.Sized <$> convertExpr sz <*> convertExpr e
 
-convertBranches :: LBrsM s -> TCM s (CBrsM s)
+convertBranches :: LBrsM -> TCM CBrsM
 convertBranches (SimpleConBranches cbrs) = fmap SimpleConBranches $
   forM cbrs $ \(qc, tele, brScope) -> mdo
     tele' <- forMTele tele $ \h () s -> do
       let e = instantiateVar ((vs Vector.!) . unTele) s
-      v <- forall_ h Unknown
+      v <- forall_ h Unit
       e' <- convertExpr e
       return (v, e')
     let vs = fst <$> tele'

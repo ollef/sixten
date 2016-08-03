@@ -41,7 +41,7 @@ import Util
 
 processGroup
   :: [(Name, Definition Concrete.Expr Name, Concrete.Expr Name)]
-  -> TCM s [(Name, LLVM.B)]
+  -> TCM [(Name, LLVM.B)]
 processGroup
   = exposeGroup
   >=> typeCheckGroup
@@ -53,14 +53,14 @@ processGroup
 
 processConvertedGroup
   :: [(Name, Converted.SExpr Void)]
-  -> TCM s [(Name, LLVM.B)]
+  -> TCM [(Name, LLVM.B)]
 processConvertedGroup
   = liftGroup
   >=> generateGroup
 
 exposeGroup
   :: [(Name, Definition Concrete.Expr Name, Concrete.Expr Name)]
-  -> TCM s [(Name, Definition Concrete.Expr (Var Int v), Scope Int Concrete.Expr v)]
+  -> TCM [(Name, Definition Concrete.Expr (Var Int v), Scope Int Concrete.Expr v)]
 exposeGroup defs = return
   [ ( n
     , s >>>= unvar (pure . B) Concrete.Global
@@ -72,12 +72,12 @@ exposeGroup defs = return
     abstractedTypes = recursiveAbstract [(n, t) | (n, _, t) <- defs]
 
 typeCheckGroup
-  :: [(Name, Definition Concrete.Expr (Var Int (MetaVar Abstract.Expr s)), ScopeM Int Concrete.Expr s)]
-  -> TCM s [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  :: [(Name, Definition Concrete.Expr (Var Int (MetaVar Abstract.Expr)), ScopeM Int Concrete.Expr)]
+  -> TCM [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
 typeCheckGroup defs = do
   checkedDefs <- checkRecursiveDefs $ V.fromList defs
 
-  let vf :: MetaVar Abstract.Expr s -> TCM s b
+  let vf :: MetaVar Abstract.Expr -> TCM b
       vf v = throwError $ "typeCheckGroup " ++ show v
   checkedDefs' <- traverse (bitraverse (traverse $ traverse vf) (traverse vf)) checkedDefs
   let names = V.fromList [n | (n, _, _) <- defs]
@@ -92,19 +92,19 @@ typeCheckGroup defs = do
 
 addGroupToContext
   :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
-  -> TCM s [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  -> TCM [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
 addGroupToContext defs = do
   addContext $ HM.fromList $ (\(n, d, t) -> (n, (d, t))) <$> defs
   return defs
 
 eraseGroup
   :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)] 
-  -> TCM s [(Name, Definition SLambda.SExpr Void)]
+  -> TCM [(Name, Definition SLambda.SExpr Void)]
 eraseGroup defs = forM defs $ \(x, e, _) -> (,) x <$> eraseDef e
 
 closeGroup
   :: [(Name, Definition SLambda.SExpr Void)]
-  -> TCM s [(Name, Closed.SExpr Void)]
+  -> TCM [(Name, Closed.SExpr Void)]
 closeGroup defs = sequence
   [ do
       e' <- closeSExpr $ vacuous e
@@ -115,7 +115,7 @@ closeGroup defs = sequence
 
 closureConvertGroup
   :: [(Name, Closed.SExpr Void)]
-  -> TCM s [(Name, Converted.SExpr Void)]
+  -> TCM [(Name, Converted.SExpr Void)]
 closureConvertGroup defs = do
   sigs <- forM defs $ \(x, e) -> (,) x <$> ClosureConvert.convertSignature (vacuous e)
   addConvertedSignatures $ HM.fromList sigs
@@ -124,7 +124,7 @@ closureConvertGroup defs = do
 
 liftGroup
   :: [(Name, Converted.SExpr Void)]
-  -> TCM s [(Name, Lifted.Definition Void)]
+  -> TCM [(Name, Lifted.Definition Void)]
 liftGroup defs = fmap concat $ forM defs $ \(name, e) -> do
   let (e', fs) = liftDefinition name e
   addConvertedSignatures $ HM.fromList $ fmap fakeSignature <$> fs
@@ -142,7 +142,7 @@ liftGroup defs = fmap concat $ forM defs $ \(name, e) -> do
 
 generateGroup
   :: [(Name, Lifted.Definition Void)]
-  -> TCM s [(LLVM.B, LLVM.B)]
+  -> TCM [(LLVM.B, LLVM.B)]
 generateGroup defs = do
   qcindex <- qconstructorIndex
   cxt <- gets tcConvertedSignatures
@@ -169,7 +169,8 @@ processFile file output = do
             | otherwise = pure v
           resolved' = bimap (>>>= instCon) (>>= instCon) <$> resolved
           groups = dependencyOrder resolved'
-      case runTCM (process groups) mempty of
+      procRes <- runTCM (process groups) mempty
+      case procRes of
         (Left err, t) -> do
           mapM_ (putDoc . (<> "\n")) t
           putStrLn err

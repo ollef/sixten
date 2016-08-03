@@ -15,10 +15,10 @@ import Meta
 import TCM
 import Unify
 
-eraseS :: AbstractM s -> TCM s (SLambdaM s)
+eraseS :: AbstractM -> TCM SLambdaM
 eraseS e = SLambda.Sized <$> (erase =<< sizeOf e) <*> erase e
 
-erase :: AbstractM s -> TCM s (LambdaM s)
+erase :: AbstractM -> TCM LambdaM
 erase expr = do
   tr "erase expr" expr
   modifyIndent succ
@@ -73,8 +73,8 @@ relevantAbstraction tele (Tele n) = Tele <$> perm Vector.! n
 
 eraseBranches
   :: Pretty c
-  => BranchesM c Abstract.Expr s
-  -> TCM s (SimpleBranchesM c SLambda.Expr s)
+  => BranchesM c Abstract.Expr
+  -> TCM (SimpleBranchesM c SLambda.Expr)
 eraseBranches (ConBranches cbrs typ) = do
   tr "eraseBranches brs" $ ConBranches cbrs typ
   modifyIndent succ
@@ -103,7 +103,7 @@ eraseBranches (LitBranches lbrs d)
 
 eraseDef
   :: Definition Abstract.Expr Void
-  -> TCM s (Definition SLambda.SExpr Void)
+  -> TCM (Definition SLambda.SExpr Void)
 eraseDef (Definition e) = fmap (error . show) . Definition <$> eraseS (vacuous e)
 eraseDef (DataDefinition DataDef {})
   = return $ DataDefinition $ DataDef mempty

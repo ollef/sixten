@@ -10,7 +10,7 @@ import Syntax
 import Syntax.Abstract
 import Util
 
-whnf :: AbstractM s -> TCM s (AbstractM s)
+whnf :: AbstractM -> TCM AbstractM
 whnf expr = case expr of
   Var (metaRef -> Nothing) -> return expr
   Var (metaRef -> Just r) -> refineIfSolved r expr whnf
@@ -35,7 +35,7 @@ whnf expr = case expr of
       _ -> return expr
   Case _ _ -> return expr -- TODO
 
-normalise :: AbstractM s -> TCM s (AbstractM s)
+normalise :: AbstractM -> TCM AbstractM
 normalise expr = case expr of
   Var (metaRef -> Nothing) -> return expr
   Var (metaRef -> Just r) -> refineIfSolved r expr normalise
@@ -67,10 +67,10 @@ normalise expr = case expr of
 binOp
   :: Literal
   -> (Literal -> Literal -> Literal)
-  -> (AbstractM s -> AbstractM s -> AbstractM s)
-  -> AbstractM s
-  -> AbstractM s
-  -> TCM s (AbstractM s)
+  -> (AbstractM -> AbstractM -> AbstractM)
+  -> AbstractM
+  -> AbstractM
+  -> TCM AbstractM
 binOp zero op cop x y = do
     x' <- normalise x
     y' <- normalise y

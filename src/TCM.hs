@@ -50,47 +50,45 @@ emptyState = State
   , tcLog = mempty
   }
 
-newtype TCM s a = TCM (ExceptT String (StateT State (ST s)) a)
+newtype TCM a = TCM (ExceptT String (StateT State IO) a)
   deriving (Functor, Applicative, Monad, MonadFix, MonadError String, MonadState State)
 
-instance MonadST (TCM s) where
-  type World (TCM s) = s
+instance MonadST TCM where
+  type World TCM = RealWorld
   liftST = TCM . liftST
 
 unTCM
-  :: (forall s. TCM s a)
-  -> forall s. ExceptT String (StateT State (ST s)) a
+  :: TCM a
+  -> ExceptT String (StateT State IO) a
 unTCM (TCM x) = x
 
 evalTCM
-  :: (forall s. TCM s a)
+  :: TCM a
   -> Program Expr Void
-  -> Either String a
+  -> IO (Either String a)
 evalTCM tcm cxt
-  = runST
-  $ evalStateT (runExceptT $ unTCM tcm)
+  = evalStateT (runExceptT $ unTCM tcm)
                emptyState { tcContext = cxt }
 
 runTCM
-  :: (forall s. TCM s a)
+  :: TCM a
   -> Program Expr Void
-  -> (Either String a, [Doc])
+  -> IO (Either String a, [Doc])
 runTCM tcm cxt
   = second (reverse . tcLog)
-  $ runST
-  $ runStateT (runExceptT $ unTCM tcm)
-              emptyState { tcContext = cxt }
+  <$> runStateT (runExceptT $ unTCM tcm)
+                emptyState { tcContext = cxt }
 
-fresh :: TCM s Int
+fresh :: TCM Int
 fresh = do
   i <- gets tcFresh
   modify $ \s -> s {tcFresh = i + 1}
   return i
 
-level :: TCM s Level
+level :: TCM Level
 level = gets tcLevel
 
-enterLevel :: TCM s a -> TCM s a
+enterLevel :: TCM a -> TCM a
 enterLevel x = do
   l <- level
   modify $ \s -> s {tcLevel = l + 1}
@@ -98,10 +96,10 @@ enterLevel x = do
   modify $ \s -> s {tcLevel = l}
   return r
 
-log :: Lazy.Text -> TCM s ()
+log :: Lazy.Text -> TCM ()
 log l = trace (Lazy.unpack l) $ modify $ \s -> s {tcLog = text l : tcLog s}
 
-addContext :: Program Expr Void -> TCM s ()
+addContext :: Program Expr Void -> TCM ()
 addContext prog = modify $ \s -> s
   { tcContext = prog <> tcContext s
   , tcConstrs = HM.unionWith (<>) cs $ tcConstrs s
@@ -116,18 +114,18 @@ addContext prog = modify $ \s -> s
 
 addConvertedSignatures
   :: HashMap Name (Converted.Signature Converted.Expr b c)
-  -> TCM s ()
+  -> TCM ()
 addConvertedSignatures p = modify $ \s -> s { tcConvertedSignatures = p' <> tcConvertedSignatures s }
   where
     p' = fmap (const $ error "addConvertedSignatures")
        . Converted.hoistSignature (const Unit) <$> p
 
-modifyIndent :: (Int -> Int) -> TCM s ()
+modifyIndent :: (Int -> Int) -> TCM ()
 modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
 
 lookupDefinition
   :: Name
-  -> TCM s (Maybe (Definition Expr b, Type b'))
+  -> TCM (Maybe (Definition Expr b, Type b'))
 lookupDefinition name
   = gets
   $ fmap (bimap vacuous vacuous)
@@ -137,7 +135,7 @@ lookupDefinition name
 lookupConstructor
   :: Ord b
   => Constr
-  -> TCM s (Set (Name, Type b))
+  -> TCM (Set (Name, Type b))
 lookupConstructor name
   = gets
   $ maybe mempty (Set.map $ second vacuous)
@@ -146,7 +144,7 @@ lookupConstructor name
 
 lookupConvertedSignature
   :: Name
-  -> TCM s (Maybe (Converted.Signature Converted.Expr Unit Void))
+  -> TCM (Maybe (Converted.Signature Converted.Expr Unit Void))
 lookupConvertedSignature name
   = gets
   $ HM.lookup name
@@ -154,7 +152,7 @@ lookupConvertedSignature name
 
 definition
   :: Name
-  -> TCM s (Definition Expr v, Type v)
+  -> TCM (Definition Expr v, Type v)
 definition v = do
   mres <- lookupDefinition v
   maybe (throwError $ "Not in scope: " ++ show v)
@@ -163,7 +161,7 @@ definition v = do
 
 convertedSignature
   :: Name
-  -> TCM s (Converted.Signature Converted.Expr Unit Void)
+  -> TCM (Converted.Signature Converted.Expr Unit Void)
 convertedSignature v = do
   mres <- lookupConvertedSignature v
   maybe (throwError $ "Not in scope: converted " ++ show v)
@@ -173,13 +171,13 @@ convertedSignature v = do
 constructor
   :: Ord v
   => Either Constr QConstr
-  -> TCM s (Set (Name, Type v))
+  -> TCM (Set (Name, Type v))
 constructor (Right qc@(QConstr n _)) = Set.singleton . (,) n <$> qconstructor qc
 constructor (Left c) = lookupConstructor c
 
 qconstructor
   :: QConstr
-  -> TCM s (Type v)
+  -> TCM (Type v)
 qconstructor qc@(QConstr n c) = do
   results <- lookupConstructor c
   let filtered = Set.filter ((== n) . fst) results
@@ -190,7 +188,7 @@ qconstructor qc@(QConstr n c) = do
     0 -> throwError $ "Not in scope: constructor " ++ show qc
     _ -> throwError $ "Ambiguous constructor: " ++ show qc
 
-qconstructorIndex :: TCM s (QConstr -> Maybe Int)
+qconstructorIndex :: TCM (QConstr -> Maybe Int)
 qconstructorIndex = do
   cxt <- gets tcContext
   return $ \(QConstr n c) -> do
@@ -201,12 +199,12 @@ qconstructorIndex = do
 
 constrArity
   :: QConstr
-  -> TCM s Int
+  -> TCM Int
 constrArity = fmap (teleLength . fst . pisView) . qconstructor
 
 constrIndex
   :: QConstr
-  -> TCM s Int
+  -> TCM Int
 constrIndex qc@(QConstr n c) = do
   (DataDefinition (DataDef cs), _) <- definition n
   case List.findIndex ((== c) . constrName) cs of
@@ -215,7 +213,7 @@ constrIndex qc@(QConstr n c) = do
 
 relevantConstrArity
   :: QConstr
-  -> TCM s Int
+  -> TCM Int
 relevantConstrArity
   = fmap ( Vector.length
          . Vector.filter (\(_, a, _) -> relevance a == Relevant)

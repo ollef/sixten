@@ -16,15 +16,15 @@ import TopoSort
 import Util
 
 type Meta = MetaVar SLambda.Expr
-type ExprM s = SLambda.Expr (Meta s)
-type CExprM s = Closed.Expr (Meta s)
+type ExprM = SLambda.Expr Meta
+type CExprM = Closed.Expr Meta
 
-type SExprM s = SLambda.SExpr (Meta s)
-type CSExprM s = Closed.SExpr (Meta s)
+type SExprM = SLambda.SExpr Meta
+type CSExprM = Closed.SExpr Meta
 
-type BrsM e s = SimpleBranches QConstr e (Meta s)
+type BrsM e = SimpleBranches QConstr e Meta
 
-closeExpr :: ExprM s -> TCM s (CExprM s)
+closeExpr :: ExprM -> TCM CExprM
 closeExpr expr = case expr of
   SLambda.Var v -> return $ Closed.Var v
   SLambda.Global g -> return $ Closed.Global g
@@ -36,9 +36,9 @@ closeExpr expr = case expr of
   (SLambda.appsView -> (e, es)) -> Closed.apps <$> closeExpr e <*> mapM closeSExpr es
 
 closeLambda
-  :: Telescope Simple.Scope () SLambda.Expr (Meta s)
-  -> Simple.Scope Tele SLambda.SExpr (Meta s)
-  -> TCM s (CExprM s)
+  :: Telescope Simple.Scope () SLambda.Expr Meta
+  -> Simple.Scope Tele SLambda.SExpr Meta
+  -> TCM CExprM
 closeLambda tele lamScope = mdo
   sortedFvs <- do
     -- TODO move into util function
@@ -82,10 +82,10 @@ closeLambda tele lamScope = mdo
     impure _ = error "closeLambda"
 
 
-closeSExpr :: SExprM s -> TCM s (CSExprM s)
+closeSExpr :: SExprM -> TCM CSExprM
 closeSExpr (SLambda.Sized sz e) = Closed.Sized <$> closeExpr sz <*> closeExpr e
 
-closeBranches :: BrsM SLambda.Expr s -> TCM s (BrsM Closed.Expr s)
+closeBranches :: BrsM SLambda.Expr -> TCM (BrsM Closed.Expr)
 closeBranches (SimpleConBranches cbrs) = fmap SimpleConBranches $
   forM cbrs $ \(qc, tele, brScope) -> mdo
     tele' <- forMTele tele $ \h () s -> do
