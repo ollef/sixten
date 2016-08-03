@@ -180,7 +180,8 @@ apply numArgs
         $ Vector.cons (Converted.sized 1 $ Converted.Global $ papName (arity - numArgs) numArgs)
         $ Vector.cons (Converted.sized 1 $ Converted.Lit $ fromIntegral $ arity - numArgs)
         $ Vector.cons (Converted.sized 1 $ Converted.Var $ F $ B 0)
-        $ (\n -> Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + Tele numArgs + n) <$> Vector.enumFromN 0 numArgs
+        $ (\n -> Converted.sized 1 $ Converted.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs
+        <|> (\n -> Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + Tele numArgs + n) <$> Vector.enumFromN 0 numArgs
       | numArgs == arity
         = Converted.Call Indirect (Converted.Var $ B 0)
         $ Vector.cons (Converted.sized 1 $ Converted.Var $ F $ B 0, Direct)

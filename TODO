@@ -28,6 +28,8 @@ Language
 Type checking
   Fix issue with data and implicits
   Instantiate implicits at variable use sites
+  Why doesn't the following compile without the signature?
+    print2 = printSize (sum (map (\(f : Size -> Size). f 2) (map (add3 1) testList)))
 Size types
   How to cleanly make `(a -> b) : Type 0` when `b : Type 0`?
     Maybe just make the usage analysis pass aware of this

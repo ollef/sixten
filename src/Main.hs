@@ -77,8 +77,8 @@ typeCheckGroup
 typeCheckGroup defs = do
   checkedDefs <- checkRecursiveDefs $ V.fromList defs
 
-  let vf :: a -> TCM s b
-      vf _ = throwError "typeCheckGroup"
+  let vf :: MetaVar Abstract.Expr s -> TCM s b
+      vf v = throwError $ "typeCheckGroup " ++ show v
   checkedDefs' <- traverse (bitraverse (traverse $ traverse vf) (traverse vf)) checkedDefs
   let names = V.fromList [n | (n, _, _) <- defs]
       instDefs =

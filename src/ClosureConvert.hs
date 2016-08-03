@@ -183,8 +183,8 @@ knownCall f retDir tele args
         clArgs = (\(h, d, s) -> (h, d, vacuous $ Simple.mapBound (+ 2) s)) <$> Vector.take numArgs (unTelescope tele)
         clArgs' = (\(h, _, s) -> (h, (), s)) <$> clArgs
         fArgs1 = Vector.zipWith
-          Converted.Sized (Converted.Var . B <$> Vector.enumFromN 2 numArgs)
-                          ((\(_, _, s) -> unvar F absurd <$> Simple.unscope s) <$> clArgs)
+          Converted.Sized ((\(_, _, s) -> unvar F absurd <$> Simple.unscope s) <$> clArgs)
+                          (Converted.Var . B <$> Vector.enumFromN 2 numArgs)
         fArgs2 = Vector.zipWith Converted.Sized
           (Converted.Var . F <$> Vector.enumFromN 1 numXs)
           (Converted.Var . F <$> Vector.enumFromN (fromIntegral $ 1 + numXs) numXs)
