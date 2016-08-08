@@ -11,10 +11,13 @@ import qualified Data.HashMap.Lazy as HM
 import qualified Data.HashSet as HS
 import Data.List
 import Data.Monoid
+import Data.Text(Text)
 import qualified Data.Text as Text
+import qualified Data.Text.Lazy.IO as LazyText
 import qualified Data.Text.IO as Text
 import qualified Data.Vector as V
 import Data.Void
+import Prelude.Extras
 import System.Environment
 import System.IO
 
@@ -43,12 +46,17 @@ processGroup
   :: [(Name, Definition Concrete.Expr Name, Concrete.Expr Name)]
   -> TCM [(Name, LLVM.B)]
 processGroup
-  = exposeGroup
+  = prettyTypedGroup "Concrete syntax" id
+  >=> exposeGroup
   >=> typeCheckGroup
+  >=> prettyTypedGroup "Abstract syntax" absurd
   >=> addGroupToContext
   >=> eraseGroup
+  >=> prettyGroup "Erased (SLambda)" absurd
   >=> closeGroup
+  >=> prettyGroup "Closed" absurd
   >=> closureConvertGroup
+  >=> prettyGroup "Closure-converted" absurd
   >=> processConvertedGroup
 
 processConvertedGroup
@@ -56,7 +64,45 @@ processConvertedGroup
   -> TCM [(Name, LLVM.B)]
 processConvertedGroup
   = liftGroup
+  >=> prettyGroup "Lambda-lifted" absurd
   >=> generateGroup
+
+prettyTypedGroup
+  :: (Pretty (e Name), Functor e, Eq1 e, SyntaxPi e)
+  => Text
+  -> (v -> Name)
+  -> [(Name, Definition e v, e v)]
+  -> TCM [(Name, Definition e v, e v)]
+prettyTypedGroup str f defs = do
+  liftIO $ Text.putStrLn $ "----- " <> str <> " -----"
+  forM_ defs $ \(n, d, t) -> liftIO $ do
+    let t' = f <$> t
+    LazyText.putStrLn
+      $ showWide
+      $ runPrettyM
+      $ prettyM n <+> ":" <+> prettyM t'
+    LazyText.putStrLn
+      $ showWide
+      $ runPrettyM
+      $ prettyM n <+> "=" <+> prettyTypedDef (f <$> d) t'
+    Text.putStrLn ""
+  return defs
+
+prettyGroup
+  :: (Pretty (e Name), Functor e)
+  => Text
+  -> (v -> Name)
+  -> [(Name, e v)]
+  -> TCM [(Name, e v)]
+prettyGroup str f defs = do
+  liftIO $ Text.putStrLn $ "----- " <> str <> " -----"
+  forM_ defs $ \(n, d) -> liftIO $ do
+    LazyText.putStrLn
+      $ showWide
+      $ runPrettyM
+      $ prettyM n <+> "=" <+> prettyM (f <$> d)
+    Text.putStrLn ""
+  return defs
 
 exposeGroup
   :: [(Name, Definition Concrete.Expr Name, Concrete.Expr Name)]
@@ -99,19 +145,22 @@ addGroupToContext defs = do
 
 eraseGroup
   :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)] 
-  -> TCM [(Name, Definition SLambda.SExpr Void)]
-eraseGroup defs = forM defs $ \(x, e, _) -> (,) x <$> eraseDef e
+  -> TCM [(Name, SLambda.SExpr Void)]
+eraseGroup defs = sequence
+  [ do
+      e' <- eraseS $ vacuous e
+      e'' <- traverse (throwError . ("eraseGroup " ++) . show) e'
+      return (x, e'')
+  | (x, Definition e, _) <- defs
+  ]
 
 closeGroup
-  :: [(Name, Definition SLambda.SExpr Void)]
+  :: [(Name, SLambda.SExpr Void)]
   -> TCM [(Name, Closed.SExpr Void)]
-closeGroup defs = sequence
-  [ do
-      e' <- closeSExpr $ vacuous e
-      e'' <- traverse (throwError . ("closeGroup " ++) . show) e'
-      return (x, e'')
-  | (x, Definition e) <- defs
-  ]
+closeGroup defs = forM defs $ \(x, e) -> do
+  e' <- closeSExpr $ vacuous e
+  e'' <- traverse (throwError . ("closeGroup " ++) . show) e'
+  return (x, e'')
 
 closureConvertGroup
   :: [(Name, Closed.SExpr Void)]
@@ -171,13 +220,10 @@ processFile file output = do
           groups = dependencyOrder resolved'
       procRes <- runTCM (process groups) mempty
       case procRes of
-        (Left err, t) -> do
-          mapM_ (putDoc . (<> "\n")) t
-          putStrLn err
-        (Right res, _) -> withFile output WriteMode $ \handle -> do
-          let outputStrLn s = do
-                Text.hPutStrLn handle s
-                Text.putStrLn s
+        Left err -> putStrLn err
+        Right res -> withFile output WriteMode $ \handle -> do
+          let outputStrLn s = Text.hPutStrLn handle s
+                -- Text.putStrLn s
           forM_ (concat res) $ \(_, b) -> do
             outputStrLn ""
             outputStrLn b

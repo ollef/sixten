@@ -6,7 +6,6 @@ import Bound.Scope
 import Control.Monad.Except
 import Data.Monoid
 import qualified Data.Vector as Vector
-import Data.Void
 
 import Syntax
 import qualified Syntax.Abstract as Abstract
@@ -100,10 +99,3 @@ eraseBranches (LitBranches lbrs d)
   = SimpleLitBranches
     <$> sequence [(,) l <$> erase e | (l, e) <- lbrs]
     <*> erase d
-
-eraseDef
-  :: Definition Abstract.Expr Void
-  -> TCM (Definition SLambda.SExpr Void)
-eraseDef (Definition e) = fmap (error . show) . Definition <$> eraseS (vacuous e)
-eraseDef (DataDefinition DataDef {})
-  = return $ DataDefinition $ DataDef mempty

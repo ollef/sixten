@@ -46,6 +46,10 @@ data ConstrDef typ = ConstrDef
   , constrType :: typ
   } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
+instance (IsString v, Pretty (typ v), Monad typ) => Pretty (DataDef typ v) where
+  prettyM (DataDef cs) = "data" <+> "_" <+> "where" <$$>
+    indent 2 (vcat (map (prettyM . fmap (instantiate $ pure . shower)) cs))
+
 instance Pretty typ => Pretty (ConstrDef typ) where
   prettyM (ConstrDef n t) = prettyM n <+> ":" <+> prettyM t
 

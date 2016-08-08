@@ -2,7 +2,7 @@
 module TCM where
 
 import Control.Monad.Except
-import Control.Monad.State(MonadState, evalStateT, StateT, runStateT, gets, modify)
+import Control.Monad.State(MonadState, evalStateT, StateT, gets, modify)
 import Control.Monad.ST
 import Control.Monad.ST.Class
 import Data.Bifunctor
@@ -21,8 +21,6 @@ import Syntax.Abstract
 import qualified Syntax.Converted as Converted
 import Util
 
-import Debug.Trace
-
 newtype Level = Level Int
   deriving (Eq, Num, Ord, Show)
 
@@ -36,7 +34,6 @@ data State = State
   , tcIndent :: !Int -- This has no place here, but is useful for debugging
   , tcFresh :: !Int
   , tcLevel :: !Level
-  , tcLog :: ![Doc]
   }
 
 emptyState :: State
@@ -47,11 +44,10 @@ emptyState = State
   , tcIndent = 0
   , tcFresh = 0
   , tcLevel = Level 1
-  , tcLog = mempty
   }
 
 newtype TCM a = TCM (ExceptT String (StateT State IO) a)
-  deriving (Functor, Applicative, Monad, MonadFix, MonadError String, MonadState State)
+  deriving (Functor, Applicative, Monad, MonadFix, MonadError String, MonadState State, MonadIO)
 
 instance MonadST TCM where
   type World TCM = RealWorld
@@ -73,10 +69,9 @@ evalTCM tcm cxt
 runTCM
   :: TCM a
   -> Program Expr Void
-  -> IO (Either String a, [Doc])
+  -> IO (Either String a)
 runTCM tcm cxt
-  = second (reverse . tcLog)
-  <$> runStateT (runExceptT $ unTCM tcm)
+  = evalStateT (runExceptT $ unTCM tcm)
                 emptyState { tcContext = cxt }
 
 fresh :: TCM Int
@@ -96,8 +91,9 @@ enterLevel x = do
   modify $ \s -> s {tcLevel = l}
   return r
 
+-- TODO
 log :: Lazy.Text -> TCM ()
-log l = trace (Lazy.unpack l) $ modify $ \s -> s {tcLog = text l : tcLog s}
+log _ = return () -- Lazy.putStrLn l
 
 addContext :: Program Expr Void -> TCM ()
 addContext prog = modify $ \s -> s

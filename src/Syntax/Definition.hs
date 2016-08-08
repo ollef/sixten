@@ -13,11 +13,10 @@ import Data.String
 import Bound
 import Prelude.Extras
 
-import Syntax.Annotation
+import Syntax.Class
 import Syntax.Data
 import Syntax.Name
 import Syntax.Pretty
-import Syntax.Telescope
 import TopoSort
 import Util
 
@@ -27,13 +26,12 @@ data Definition expr v
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 prettyTypedDef
-  :: (Eq1 expr, Eq v, IsString v, Monad expr, Pretty (expr v))
+  :: (Eq1 expr, Eq v, IsString v, Monad expr, Pretty (expr v), SyntaxPi expr)
   => Definition expr v
   -> expr v
-  -> Telescope Scope Annotation expr v
   -> PrettyM Doc
-prettyTypedDef (Definition d) t _ = prettyM d <+> ":" <+> prettyM t
-prettyTypedDef (DataDefinition d) t tele = prettyDataDef tele d <+> ":" <+> prettyM t
+prettyTypedDef (Definition d) _ = prettyM d
+prettyTypedDef (DataDefinition d) t = prettyDataDef (telescope t) d
 
 abstractDef
   :: Monad expr
@@ -47,6 +45,10 @@ instantiateDef :: Monad expr
                => (b -> expr a) -> Definition expr (Var b a) -> Definition expr a
 instantiateDef f (Definition d) = Definition $ instantiate f $ toScope d
 instantiateDef f (DataDefinition d) = DataDefinition $ instantiateDataDef f d
+
+instance (Monad expr, Pretty (expr v), IsString v) => Pretty (Definition expr v) where
+  prettyM (Definition e) = prettyM e
+  prettyM (DataDefinition d) = prettyM d
 
 instance Bound Definition where
   Definition d >>>= f = Definition $ d >>= f

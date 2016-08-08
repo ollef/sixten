@@ -2,7 +2,9 @@
 module Syntax.Lifted where
 
 import qualified Bound.Scope.Simple as Simple
+import Data.Monoid
 import Data.String
+import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 import Prelude.Extras
 
@@ -54,7 +56,7 @@ instance Ord1 SExpr
 instance Show1 SExpr
 
 instance (Eq v, IsString v, Pretty v)
-      => Pretty (Expr v) where
+  => Pretty (Expr v) where
   prettyM expr = case expr of
     Var v -> prettyM v
     Global g -> prettyM g
@@ -73,3 +75,17 @@ instance (Eq v, IsString v, Pretty v)
 instance (Eq v, IsString v, Pretty v) => Pretty (SExpr v) where
   prettyM (Sized sz e) = parens `above` annoPrec $
     prettyM e <+> ":" <+> prettyM sz
+
+instance (Eq v, IsString v, Pretty v) => Pretty (Function v) where
+  prettyM (Function retDir vs s) = parens `above` absPrec $
+    withNameHints (fst <$> vs) $ \ns -> prettyM retDir <+>
+      "\\" <> hsep (Vector.toList $ prettyM <$> Vector.zip ns (snd <$> vs)) <> "." <+>
+      associate absPrec (prettyM $ instantiateTeleVars (fromText <$> ns) s)
+
+instance (Eq v, IsString v, Pretty v) => Pretty (Constant v) where
+  prettyM (Constant dir e) = prettyM dir <+> prettyM e
+
+instance (Eq v, IsString v, Pretty v)
+  => Pretty (Syntax.Lifted.Definition v) where
+  prettyM (ConstantDef c) = prettyM c
+  prettyM (FunctionDef f) = prettyM f
