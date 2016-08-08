@@ -1,11 +1,17 @@
+Type checking
+  [2] Fix issue with data and implicits
+  [4] Instantiate implicits at variable use sites
+  [3] Why doesn't the following compile without the signature?
+    print2 = printSize (sum (map (\(f : Size -> Size). f 2) (map (add3 1) testList)))
 Codegen
+  [1] Add all forward declarations to generated code
   Add Destructor calling convention for functions that return part of their argument
     To get rid of the memcpy from deref
   Can case scrutinees and tail calls explicitly be of unspecified size?
   Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
   Arity inference
 Compiler
-  Make printing of passes optional and configurable
+  [] Make log function respond to verbosity
   Test suite
   Better error messages
 Language
@@ -25,11 +31,6 @@ Language
   Mixfix definitions and noncompounds?
   Inductive families
   FFI & More general way to define builtins (extern LLVM, C?)
-Type checking
-  Fix issue with data and implicits
-  Instantiate implicits at variable use sites
-  Why doesn't the following compile without the signature?
-    print2 = printSize (sum (map (\(f : Size -> Size). f 2) (map (add3 1) testList)))
 Size types
   How to cleanly make `(a -> b) : Type 0` when `b : Type 0`?
     Maybe just make the usage analysis pass aware of this
