@@ -1,10 +1,9 @@
 Type checking
-  [2] Fix issue with data and implicits
-  [4] Instantiate implicits at variable use sites
-  [3] Why doesn't the following compile without the signature?
+  [1] Fix issue with data and implicits
+  [3] Instantiate implicits at variable use sites
+  [2] Why doesn't the following compile without the signature?
     print2 = printSize (sum (map (\(f : Size -> Size). f 2) (map (add3 1) testList)))
 Codegen
-  [1] Add all forward declarations to generated code
   Add Destructor calling convention for functions that return part of their argument
     To get rid of the memcpy from deref
   Can case scrutinees and tail calls explicitly be of unspecified size?

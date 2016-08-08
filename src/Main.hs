@@ -221,19 +221,22 @@ processFile file output = do
       procRes <- runTCM (process groups) mempty
       case procRes of
         Left err -> putStrLn err
-        Right res -> withFile output WriteMode $ \handle -> do
-          let outputStrLn s = Text.hPutStrLn handle s
-                -- Text.putStrLn s
-          forM_ (concat res) $ \(_, b) -> do
+        Right res -> do
+          forwardDecls <- Text.readFile "test/forwarddecls.ll"
+          withFile output WriteMode $ \handle -> do
+            let outputStrLn s = Text.hPutStrLn handle s
+                  -- Text.putStrLn s
+            outputStrLn forwardDecls
+            forM_ (concat res) $ \(_, b) -> do
+              outputStrLn ""
+              outputStrLn b
             outputStrLn ""
-            outputStrLn b
-          outputStrLn ""
-          outputStrLn "define i32 @main() {"
-          outputStrLn "  call void @GC_init()"
-          forM_ (concat res) $ \(i, _) ->
-            unless (Text.null i) $ outputStrLn i
-          outputStrLn "  ret i32 0"
-          outputStrLn "}"
+            outputStrLn "define i32 @main() {"
+            outputStrLn "  call void @GC_init()"
+            forM_ (concat res) $ \(i, _) ->
+              unless (Text.null i) $ outputStrLn i
+            outputStrLn "  ret i32 0"
+            outputStrLn "}"
   where
     process groups = do
       addContext Builtin.context
