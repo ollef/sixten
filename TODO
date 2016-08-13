@@ -1,16 +1,17 @@
 Type checking
-  [1] Fix issue with data and implicits
-  [3] Instantiate implicits at variable use sites
-  [2] Why doesn't the following compile without the signature?
+  [2] Instantiate implicits at variable use sites
+  [1] Why doesn't the following compile without the signature?
     print2 = printSize (sum (map (\(f : Size -> Size). f 2) (map (add3 1) testList)))
 Codegen
+  [3] Make lifted functions private
   Add Destructor calling convention for functions that return part of their argument
     To get rid of the memcpy from deref
+  Make case expressions return Direct vars if possible
   Can case scrutinees and tail calls explicitly be of unspecified size?
   Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
   Arity inference
 Compiler
-  [] Make log function respond to verbosity
+  [] Make log function respond to verbosity and tag
   Test suite
   Better error messages
 Language

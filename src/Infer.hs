@@ -332,10 +332,8 @@ checkDataType name (DataDef cs) typ = mdo
 
   params <- forM ps' $ \(_, h, p, t) -> (,,) h p <$> abstractM (fmap Tele . (`V.elemIndex` vs)) t
 
-  (cs', rets, sizes) <- fmap unzip3 $ forM cs $ \(ConstrDef c t) -> do
-    (res, ret, size) <- checkConstrDef (ConstrDef c $ instantiateTele (pure <$> vs) t)
-    ares <- traverse (abstractM (fmap Tele . (`V.elemIndex` vs))) res
-    return (ares, ret, size)
+  (cs', rets, sizes) <- fmap unzip3 $ forM cs $ \(ConstrDef c t) ->
+    checkConstrDef $ ConstrDef c $ instantiateTele (pure <$> vs) t
 
   mapM_ (unify constrRetType) rets
 
@@ -345,16 +343,19 @@ checkDataType name (DataDef cs) typ = mdo
 
       typeSize = addTagSize
                $ foldr Builtin.MaxSize (Abstract.Lit 0) sizes
-  typeSize' <- normalise typeSize
 
-  let typeReturnType = Builtin.Type typeSize'
-  let typ'' = pis (Telescope params) $ abstractNone typeReturnType
-
+  let typeReturnType = Builtin.Type typeSize
   unify typeReturnType =<< typeOf constrRetType
 
-  tr "typeSize" typeSize'
+  abstractedReturnType <- abstractM (fmap Tele . (`V.elemIndex` vs)) typeReturnType
+  let typ'' = pis (Telescope params) abstractedReturnType
+
+  abstractedCs <- forM cs' $ \c ->
+    traverse (abstractM (fmap Tele . (`V.elemIndex` vs))) c
+
+  trp "dataDef" $ fmap (fmap show . fromScope) <$> abstractedCs
   tr "checkDataType res typ" typ''
-  return (DataDef cs', typ'')
+  return (DataDef abstractedCs, typ'')
 
 checkDefType
   :: MetaVar Abstract.Expr
@@ -408,11 +409,14 @@ generaliseDefs xs = do
   fvs <- asum <$> mapM (foldMapM (:[])) types
   -- dfvs <- asum <$> mapM (foldMapM (:[])) defs
 
-  l   <- level
+  l <- level
   let p (metaRef -> Just r) = either (> l) (const False) <$> solution r
       p _                   = return False
   fvs' <- HS.fromList <$> filterM p fvs
+  -- dfvs' <- HS.fromList <$> filterM p dfvs
   trs "generaliseDefs l" l
+  -- trs "generaliseDefs dfvs" dfvs
+  -- trs "generaliseDefs dfvs'" dfvs'
   trs "generaliseDefs fvs" fvs
   trs "generaliseDefs fvs'" fvs'
 

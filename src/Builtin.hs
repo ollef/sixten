@@ -91,7 +91,7 @@ convertedContext = HM.fromList $ concat
       $ Converted.Let "lt"
       (Converted.sized 1
       $ Converted.Prim
-      $ "icmp ult i64 " <> pure (Converted.Var $ B 0) <> ", " <> pure (Converted.Var $ B 1))
+      $ "icmp ugt i64 " <> pure (Converted.Var $ B 0) <> ", " <> pure (Converted.Var $ B 1))
       $ Simple.Scope
       $ Converted.Prim
       $ "select i1 " <> pure (Converted.Var $ B ())

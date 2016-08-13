@@ -13,6 +13,7 @@ import Data.Monoid
 import Data.Set(Set)
 import qualified Data.Set as Set
 import qualified Data.Text.Lazy as Lazy
+import qualified Data.Text.Lazy.IO as Lazy
 import qualified Data.Vector as Vector
 import Data.Void
 

@@ -102,7 +102,7 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
       <+> ":" <+> inviolable (prettyM t)
       <> "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
     Lam h a s -> withNameHint h $ \x -> parens `above` absPrec $
-      "\\" <+> inviolable (prettyAnnotation a $ prettyM x)
+      "\\" <> inviolable (prettyAnnotation a $ prettyM x)
         <> "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
     App e1 a e2 -> prettyApp (prettyM e1) (prettyAnnotation a $ prettyM e2)
     Case e brs -> parens `above` casePrec $
