@@ -1,9 +1,8 @@
 Type checking
-  [2] Instantiate implicits at variable use sites
-  [1] Why doesn't the following compile without the signature?
-    print2 = printSize (sum (map (\(f : Size -> Size). f 2) (map (add3 1) testList)))
+  [1] Instantiate implicits at variable use sites
+  Can the special-case equations for unifying sizes be done in a principled way?
 Codegen
-  [3] Make lifted functions private
+  [2] Make lifted functions private
   Add Destructor calling convention for functions that return part of their argument
     To get rid of the memcpy from deref
   Make case expressions return Direct vars if possible

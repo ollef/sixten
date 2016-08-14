@@ -17,7 +17,6 @@ import Syntax
 import Syntax.Abstract
 import Util
 
--- occurs :: Level -> MetaVar Abstract.Expr s -> AbstractM s -> TCM ()
 occurs
   :: Foldable e
   => Level
@@ -57,23 +56,29 @@ unify type1 type2 = do
         (_, appsView -> (Var v@(metaRef -> Just r), distinctForalls -> Just pvs)) -> solveVar r v pvs t1
         (Pi h1 p1 a s1, Pi h2 p2 b s2) | p1 == p2 -> absCase (h1 <> h2) a b s1 s2
         (Lam h1 p1 a s1, Lam h2 p2 b s2) | p1 == p2 -> absCase (h1 <> h2) a b s1 s2
-        -- If we've already tried reducing the application,
-        -- we can only hope to unify it pointwise.
-        (App e1 a1 e1', App e2 a2 e2') | a1 == a2 && not reduce -> do
-          unify e1  e2
-          unify e1' e2'
         (Lit 0, Builtin.AddSize x y) -> do
           unify (Lit 0) x
           unify (Lit 0) y
         (Builtin.AddSize x y, Lit 0) -> do
           unify x (Lit 0)
           unify y (Lit 0)
+        (Builtin.AddSize (Lit m) y, Lit n) -> unify y $ Lit $ n - m
+        (Builtin.AddSize y (Lit m), Lit n) -> unify y $ Lit $ n - m
+        (Lit n, Builtin.AddSize (Lit m) y) -> unify y $ Lit $ n - m
+        (Lit n, Builtin.AddSize y (Lit m)) -> unify y $ Lit $ n - m
+        -- If we've already tried reducing the application,
+        -- we can only hope to unify it pointwise.
+        (App e1 a1 e1', App e2 a2 e2') | a1 == a2 && not reduce -> do
+          unify e1  e2
+          unify e1' e2'
         _ | reduce -> do
           t1' <- whnf t1
           t2' <- whnf t2
           go False t1' t2'
         _ -> throwError $ "Can't unify types: "
                            ++ show (pretty (show <$> type1, show <$> type2))
+                           ++ " reduced "
+                           ++ show (pretty (show <$> t1, show <$> t2))
     absCase h a b s1 s2 = do
       go True a b
       v <- forallVar h a

@@ -33,8 +33,8 @@ sum xs = case deref xs of
   Cons x xs' -> addSize x (sum xs')
 
 print1 = printSize (sum (map (add3 1 2) testList))
-print2 = printSize (sum (map (\(f : Size -> Size). f 2) (map (add3 1) testList)))
-print3 = printSize (sum (map (\(f : Size -> Size). f 2) (map (\(f : Size -> Size -> Size). f 1) (map add3 testList))))
+print2 = printSize (sum (map (\f. f 2) (map (add3 1) testList)))
+print3 = printSize (sum (map (\f. f 2) (map (\f. f 1) (map add3 testList))))
 
 -- mappedList2 = map (add3 2) testList
 -- mappedList3 = map (\f. f 3) mappedList2
