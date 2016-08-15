@@ -7,10 +7,10 @@ Codegen
     To get rid of the memcpy from deref
   Make case expressions return Direct vars if possible
   Can case scrutinees and tail calls explicitly be of unspecified size?
-  Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
   Arity inference
 Compiler
   [] Make log function respond to verbosity and tag
+  Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
   Test suite
   Better error messages
 Language

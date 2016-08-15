@@ -106,6 +106,11 @@ someSameCol p = Trifecta.some (sameCol >> p)
 manySameCol :: Parser a -> Parser [a]
 manySameCol p = Trifecta.many (sameCol >> p)
 
+manyIndentedSameCol :: Parser a -> Parser [a]
+manyIndentedSameCol p
+  = Trifecta.option []
+  $ sameLineOrIndented >> dropAnchor (someSameCol p)
+
 -- | One or more on the same line or a successive but indented line.
 someSI :: Parser a -> Parser [a]
 someSI p = Trifecta.some (sameLineOrIndented >> p)
@@ -241,16 +246,17 @@ atomicExpr
  <|> Var      <$> ident
  <|> abstr (reserved "forall") piType
  <|> abstr (symbol   "\\")     Concrete.tlam
- <|> Case <$ reserved "case" <*>% expr <*% reserved "of" <*>% dropAnchor branches
+ <|> Case <$ reserved "case" <*>% expr <*% reserved "of" <*> branches
  <|> symbol "(" *>% expr <*% symbol ")"
  <?> "atomic expression"
   where
     abstr t c = abstractBindings c <$ t <*>% someBindings <*% symbol "." <*>% expr
 
 branches :: Parser (Branches (Either Constr QConstr) Expr Name)
-branches = dropAnchor $  ConBranches <$> manySameCol conBranch <*> pure Wildcard
-                     <|> LitBranches <$> manySameCol litBranch
-                                     <*> (sameCol >> (reserved "_" *>% symbol "->" *>% expr))
+branches
+  = ConBranches <$> manyIndentedSameCol conBranch <*> pure Wildcard
+ <|> LitBranches <$> manyIndentedSameCol litBranch
+                 <*> (sameCol >> (reserved "_" *>% symbol "->" *>% expr))
   where
     litBranch = (,) <$> literal <*% symbol "->" <*>% expr
     conBranch = con <$> constructor <*> manyBindings <*% symbol "->" <*>% expr
@@ -295,7 +301,7 @@ def = ident    <**>% (typeDecl <|> mkDef Just)
 
 dataDef :: Parser (TopLevelParsed Name)
 dataDef = mkDataDef <$ reserved "data" <*>% constructor <*> manyBindings
-    <*% reserved "where" <*> dropAnchor (manySameCol conDef)
+    <*% reserved "where" <*> manyIndentedSameCol conDef
   where
     conDef = ConstrDef <$> constructor <*% symbol ":" <*>% expr
     mkDataDef tc bs cs

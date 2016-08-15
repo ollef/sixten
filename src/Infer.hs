@@ -338,6 +338,7 @@ checkDataType name (DataDef cs) typ = mdo
   mapM_ (unify constrRetType) rets
 
   let addTagSize = case cs of
+        [] -> id
         [_] -> id
         _ -> Builtin.AddSize $ Abstract.Lit 1
 
