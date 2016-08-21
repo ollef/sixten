@@ -23,9 +23,26 @@ import TopoSort
 import Unify
 import Util
 
+existsTypeType :: Monad e => NameHint -> TCM (e (MetaVar Abstract.Expr))
+existsTypeType n = existsVar n $ Builtin.Type (Abstract.Lit 0)
+
+existsSize :: Monad e => NameHint -> TCM (e (MetaVar Abstract.Expr))
+existsSize n = existsVar n Builtin.Size
+
+existsType :: Monad e => NameHint -> TCM (e (MetaVar Abstract.Expr))
+existsType n = do
+  sz <- existsSize n
+  t <- existsVar n $ Builtin.Type sz
+  existsVar n t
+
+data Generalise
+  = Generalise
+  | Instantiate
+  deriving (Eq, Show)
+
 checkType
   :: Relevance
-  -> Plicitness
+  -> Plicitness -- ^ Used to eagerly instantiate applications in implicit contexts
   -> ConcreteM
   -> AbstractM
   -> TCM (AbstractM, AbstractM)
@@ -37,31 +54,12 @@ checkType surrR surrP expr typ = do
     Concrete.Con c@(Left _) -> do
       n <- resolveConstrType [c] $ Just typ
       checkType surrR surrP (Concrete.Con $ Right $ qualify n c) typ
-    Concrete.Lam h1 a1 s1 -> do
-      typ' <- whnf typ
-      case typ' of
-        Abstract.Pi h2 a2 t2 ts2 | a1 == a2 -> do
-          v <- forall_ (h2 <> h1) t2
-          (body, ts2') <- checkType surrR surrP
-                                    (instantiate1 (pure v) s1)
-                                    (instantiate1 (pure v) ts2)
-          expr' <- Abstract.Lam (h1 <> h2) a2 t2 <$> abstract1M v body
-          typ'' <- Abstract.Pi  (h2 <> h1) a2 t2 <$> abstract1M v ts2'
-          return (expr', typ'')
-        Abstract.Pi h2 a2 t2 ts2 | plicitness a2 == Implicit
-                                || surrP == Implicit -> do
-          v <- forall_ h2 t2
-          (expr', ts2') <- checkType surrR surrP expr (instantiate1 (pure v) ts2)
-          expr'' <- etaLamM h2 a2 t2 =<< abstract1M v expr'
-          typ''  <- Abstract.Pi  h2 a2 t2 <$> abstract1M v ts2'
-          return (expr'', typ'')
-        _ -> inferIt
-    -- TODO: Gather applications for better propagation
     Concrete.App e1 a1 e2 -> do
       argType <- existsType mempty
       resType <- existsType mempty
-      (e1', funType) <- checkType surrR surrP e1 $ Abstract.Pi mempty a1 argType
-                                                 $ abstractNone resType
+      (e1', funType) <- checkType surrR surrP e1
+        $ Abstract.Pi mempty a1 argType
+        $ abstractNone resType
       case funType of
         Abstract.Pi h a2 argType' returnScope | plicitness a1 == plicitness a2
                                              && relevance a1 >= min (relevance a2) surrR -> do
@@ -81,14 +79,6 @@ checkType surrR surrP expr typ = do
       inferIt = do
         (expr', typ') <- inferType surrR surrP expr
         subtype surrR surrP expr' typ' typ
-
-existsTypeType :: NameHint -> TCM AbstractM
-existsTypeType n = existsVar n $ Builtin.Type (Abstract.Lit 0)
-
-existsType :: NameHint -> TCM AbstractM
-existsType n = do
-  t <- existsTypeType n
-  existsVar n t
 
 inferType
   :: Relevance
@@ -117,19 +107,21 @@ inferType surrR surrP expr = do
       (e', _) <- checkType Irrelevant surrP (instantiate1 (pure v) s) resTypeType
       s' <- abstract1M v e'
       return (Abstract.Pi n p t' s', Builtin.Type $ Abstract.Lit 1)
-    Concrete.Lam n p s -> uncurry generalise <=< enterLevel $ do
-      argType <- existsType n
+    Concrete.Lam n p argType s -> {- uncurry generalise <=< enterLevel $ -} do
+      argTypeType <- existsTypeType n
+      (argType', _) <- checkType Irrelevant surrP argType argTypeType
       resType <- existsType mempty
-      x <- forall_ n argType
+      x <- forall_ n argType'
       (e', resType')  <- checkType surrR surrP (instantiate1 (pure x) s) resType
       s' <- abstract1M x e'
       abstractedResType <- abstract1M x resType'
-      return (Abstract.Lam n p argType s', Abstract.Pi n p argType abstractedResType)
+      return (Abstract.Lam n p argType' s', Abstract.Pi n p argType' abstractedResType)
     Concrete.App e1 a1 e2 -> do
       argType <- existsType mempty
       resType <- existsType mempty
-      (e1', e1type) <- checkType surrR surrP e1 $ Abstract.Pi mempty a1 argType
-                                                $ abstractNone resType
+      (e1', e1type) <- checkType surrR surrP e1
+        $ Abstract.Pi mempty a1 argType
+        $ abstractNone resType
       case e1type of
         Abstract.Pi _ a2 argType' resType' | plicitness a1 == plicitness a2
                                           && relevance a1 >= min (relevance a2) surrR -> do
@@ -295,7 +287,7 @@ checkConstrDef
 checkConstrDef (ConstrDef c (pisView -> (args, ret))) = mdo
   let inst = instantiateTele $ (\(a, _, _, _, _) -> pure a) <$> args'
   args' <- forMTele args $ \h a arg -> do
-    argSize <- existsVar h Builtin.Size
+    argSize <- existsSize h
     (arg', _) <- checkType Irrelevant (plicitness a) (inst arg) $ Builtin.Type argSize
     v <- forall_ h arg'
     return (v, h, a, arg', argSize)
@@ -303,7 +295,7 @@ checkConstrDef (ConstrDef c (pisView -> (args, ret))) = mdo
   let sizes = (\(_, _, _, _, sz) -> sz) <$> args'
       size = foldr Builtin.AddSize (Abstract.Lit 0) sizes
 
-  sizeVar <- existsVar mempty Builtin.Size
+  sizeVar <- existsSize mempty
 
   (ret', _) <- checkType Irrelevant Explicit (inst ret) $ Builtin.Type sizeVar
 

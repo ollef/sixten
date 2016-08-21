@@ -12,11 +12,11 @@ import Util
 
 data Expr v
   = Var v
-  | Global Name -- ^ Really just a variable, but it's often annoying to not have it
+  | Global Name  -- ^ Really just a variable, but it's often annoying to not have it
   | Lit Literal
   | Con (Either Constr QConstr)
   | Pi  !NameHint !Annotation (Type v) (Scope1 Expr v)  -- ^ Dependent function space
-  | Lam !NameHint !Annotation (Scope1 Expr v)
+  | Lam !NameHint !Annotation (Type v) (Scope1 Expr v)
   | App (Expr v) !Annotation (Expr v)
   | Case (Expr v) (Branches (Either Constr QConstr) Expr v)
   | Anno (Expr v) (Expr v)
@@ -28,17 +28,27 @@ type Type = Expr
 
 -- * Smart constructors
 tlam :: NameHint -> Annotation -> Maybe (Type v) -> Scope1 Expr v -> Expr v
-tlam x p Nothing  = Lam x p
-tlam x p (Just Wildcard) = Lam x p
-tlam x p (Just t) = (`Anno` Pi x p t (Scope Wildcard)) . Lam x p
+tlam x p Nothing  = Lam x p Wildcard
+tlam x p (Just t) = Lam x p t
 
 piType :: NameHint -> Annotation -> Maybe (Type v) -> Scope1 Expr v -> Expr v
 piType x p Nothing  = Pi x p Wildcard
 piType x p (Just t) = Pi x p t
 
-anno :: Expr v -> Expr v -> Expr v
+anno :: Expr v -> Type v -> Expr v
 anno e Wildcard = e
-anno e t        = Anno e t
+anno (Lam h1 a1 Wildcard s1) (Pi h2 a2 t2 s2)
+  | a1 == a2
+    = Lam (h1 <> h2) a1 t2
+    $ annoScope s1 s2
+anno e@(Lam _ a1 _ _) t@(Pi h2 a2 _ _)
+  | plicitness a1 == Explicit
+  && plicitness a2 == Implicit
+  = anno (Lam h2 a2 Wildcard $ abstractNone e) t
+anno e t = Anno e t
+
+annoScope :: Scope b Expr v -> Scope b Type v -> Scope b Expr v
+annoScope e t = toScope $ anno (fromScope e) (fromScope t)
 
 apps :: Foldable t => Expr v -> t (Annotation, Expr v) -> Expr v
 apps = Foldable.foldl (uncurry . App)
@@ -56,9 +66,9 @@ instance SyntaxPi Expr where
   piView _ = Nothing
 
 instance SyntaxLambda Expr where
-  lam h a = tlam h a . Just
+  lam = Lam
 
-  lamView (Lam n p s) = Just (n, p, Wildcard, s)
+  lamView (Lam n p t s) = Just (n, p, t, s)
   lamView _ = Nothing
 
 instance SyntaxApp Expr where
@@ -81,7 +91,7 @@ instance Monad Expr where
     Lit l       -> Lit l
     Con c       -> Con c
     Pi  n p t s -> Pi n p (t >>= f) (s >>>= f)
-    Lam n p s   -> Lam n p (s >>>= f)
+    Lam n p t s -> Lam n p (t >>= f) (s >>>= f)
     App e1 p e2 -> App (e1 >>= f) p (e2 >>= f)
     Case e brs  -> Case (e >>= f) (brs >>>= f)
     Anno e t    -> Anno (e >>= f) (t >>= f)
@@ -101,9 +111,13 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
       "forall" <+> inviolable (prettyAnnotation a $ prettyM x)
       <+> ":" <+> inviolable (prettyM t)
       <> "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
-    Lam h a s -> withNameHint h $ \x -> parens `above` absPrec $
+    Lam h a Wildcard s -> withNameHint h $ \x -> parens `above` absPrec $
       "\\" <> inviolable (prettyAnnotation a $ prettyM x)
         <> "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
+    Lam h a t s -> withNameHint h $ \x -> parens `above` absPrec $
+      "\\" <> inviolable (prettyAnnotation a $ prettyM x)
+        <+> ":" <+> inviolable (prettyM t) <> "."
+        <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
     App e1 a e2 -> prettyApp (prettyM e1) (prettyAnnotation a $ prettyM e2)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (prettyM brs)

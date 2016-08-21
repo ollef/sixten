@@ -274,7 +274,7 @@ expr
  <|> argument <**> arr
  <?> "expression"
   where
-    typeAnno = flip Anno <$% symbol ":" <*>% expr
+    typeAnno = flip anno <$% symbol ":" <*>% expr
     arr      = (\e' (a, e) -> Pi mempty a e $ Scope $ Var $ F e')
            <$% symbol "->" <*>% expr
     argument :: Parser (Annotation, Expr Name)

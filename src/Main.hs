@@ -47,6 +47,8 @@ processGroup
   -> TCM [(Name, LLVM.B)]
 processGroup
   = prettyTypedGroup "Concrete syntax" id
+  >=> propagateGroup
+  >=> prettyTypedGroup "Propagated" id
   >=> exposeGroup
   >=> typeCheckGroup
   >=> prettyTypedGroup "Abstract syntax" absurd
@@ -103,6 +105,13 @@ prettyGroup str f defs = do
       $ prettyM n <+> "=" <+> prettyM (f <$> d)
     Text.putStrLn ""
   return defs
+
+propagateGroup
+  :: [(Name, Definition Concrete.Expr v, Concrete.Expr v)]
+  -> TCM [(Name, Definition Concrete.Expr v, Concrete.Expr v)]
+propagateGroup defs = forM defs $ \(n, def, t) -> return $ case def of
+  Definition e -> (n, Definition $ Concrete.anno e t, t)
+  DataDefinition _ -> (n, def, t)
 
 exposeGroup
   :: [(Name, Definition Concrete.Expr Name, Concrete.Expr Name)]
