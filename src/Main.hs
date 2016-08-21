@@ -202,8 +202,8 @@ generateGroup defs = do
       $ Generate.generateDefinition x
       $ vacuous e
 
-processFile :: FilePath -> FilePath -> IO ()
-processFile file output = do
+processFile :: FilePath -> FilePath -> FilePath -> IO ()
+processFile file output logFile = do
   parseResult <- Parse.parseFromFile Parse.program file
   let resolveResult = Resolve.program <$> parseResult
   case resolveResult of
@@ -218,14 +218,14 @@ processFile file output = do
             | otherwise = pure v
           resolved' = bimap (>>>= instCon) (>>= instCon) <$> resolved
           groups = dependencyOrder resolved'
-      procRes <- runTCM (process groups) mempty
+      procRes <- withFile logFile WriteMode $ \handle ->
+        runTCM (process groups) mempty handle
       case procRes of
         Left err -> putStrLn err
         Right res -> do
           forwardDecls <- Text.readFile "test/forwarddecls.ll"
           withFile output WriteMode $ \handle -> do
-            let outputStrLn s = Text.hPutStrLn handle s
-                  -- Text.putStrLn s
+            let outputStrLn = Text.hPutStrLn handle
             outputStrLn forwardDecls
             forM_ (concat res) $ \(_, b) -> do
               outputStrLn ""
@@ -247,5 +247,5 @@ processFile file output = do
 
 main :: IO ()
 main = do
-  x:y:_ <- getArgs
-  processFile x y
+  x:y:z:_ <- getArgs
+  processFile x y z

@@ -16,6 +16,7 @@ import qualified Data.Text.Lazy as Lazy
 import qualified Data.Text.Lazy.IO as Lazy
 import qualified Data.Vector as Vector
 import Data.Void
+import System.IO
 
 import Syntax
 import Syntax.Abstract
@@ -35,16 +36,18 @@ data State = State
   , tcIndent :: !Int -- This has no place here, but is useful for debugging
   , tcFresh :: !Int
   , tcLevel :: !Level
+  , tcLogHandle :: !Handle
   }
 
-emptyState :: State
-emptyState = State
+emptyState :: Handle -> State
+emptyState handle = State
   { tcContext = mempty
   , tcConstrs = mempty
   , tcConvertedSignatures = mempty
   , tcIndent = 0
   , tcFresh = 0
   , tcLevel = Level 1
+  , tcLogHandle = handle
   }
 
 newtype TCM a = TCM (ExceptT String (StateT State IO) a)
@@ -62,18 +65,20 @@ unTCM (TCM x) = x
 evalTCM
   :: TCM a
   -> Program Expr Void
+  -> Handle
   -> IO (Either String a)
-evalTCM tcm cxt
+evalTCM tcm cxt handle
   = evalStateT (runExceptT $ unTCM tcm)
-               emptyState { tcContext = cxt }
+               (emptyState handle) { tcContext = cxt }
 
 runTCM
   :: TCM a
   -> Program Expr Void
+  -> Handle
   -> IO (Either String a)
-runTCM tcm cxt
+runTCM tcm cxt handle
   = evalStateT (runExceptT $ unTCM tcm)
-                emptyState { tcContext = cxt }
+               (emptyState handle) { tcContext = cxt }
 
 fresh :: TCM Int
 fresh = do
@@ -94,7 +99,9 @@ enterLevel x = do
 
 -- TODO
 log :: Lazy.Text -> TCM ()
-log _ = return () -- Lazy.putStrLn l
+log l = do
+  h <- gets tcLogHandle
+  liftIO $ Lazy.hPutStrLn h l
 
 addContext :: Program Expr Void -> TCM ()
 addContext prog = modify $ \s -> s

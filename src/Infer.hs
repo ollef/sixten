@@ -1,4 +1,4 @@
-{-# LANGUAGE RecursiveDo, ViewPatterns #-}
+{-# LANGUAGE RecursiveDo, OverloadedStrings, ViewPatterns #-}
 module Infer where
 
 import Control.Monad.Except
