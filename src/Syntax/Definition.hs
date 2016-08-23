@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, Rank2Types, OverloadedStrings #-}
 module Syntax.Definition where
 
+import Bound
 import Data.Bifoldable
 import Data.Foldable
 import Data.Hashable
@@ -8,9 +9,7 @@ import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HM
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HS
-import Data.Monoid
 import Data.String
-import Bound
 import Prelude.Extras
 
 import Syntax.Class
@@ -24,6 +23,14 @@ data Definition expr v
   = Definition (expr v)
   | DataDefinition (DataDef expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+foldMapDefinition
+  :: (Monoid m, Monad expr)
+  => (forall v. expr v -> m)
+  -> Definition expr x
+  -> m
+foldMapDefinition f (Definition e) = f e
+foldMapDefinition f (DataDefinition d) = foldMapDataDef f d
 
 prettyTypedDef
   :: (Eq1 expr, Eq v, IsString v, Monad expr, Pretty (expr v), SyntaxPi expr)
@@ -65,20 +72,23 @@ recursiveAbstractDefs es = (abstractDef (`HM.lookup` vs) . snd) <$> es
 type Program expr v = HashMap Name (Definition expr v, expr v)
 
 dependencies
-  :: Foldable e
-  => Program e Name
+  :: (Foldable e, Monad e)
+  => (forall v. e v -> HashSet Constr)
+  -> Program e Name
   -> HashMap Name (HashSet Name)
-dependencies prog
-  = HM.map (bifoldMap defNames toHashSet) prog
-  <> HM.fromList constrMappings
+dependencies constrs prog =
+  HM.map (bifoldMap toHashSet toHashSet) prog
+  `union`
+  HM.map (bifoldMap (foldMapDefinition constrs) constrs) prog
+  `union`
+  constrMappings
   where
-    defNames (DataDefinition d) = toHashSet (constrNames d) <> toHashSet d
-    defNames x = toHashSet x
-    constrMappings
-      = [ (c, HS.singleton n)
-        | (n, (DataDefinition d, _)) <- HM.toList prog
-        , c <- constrNames d
-        ]
+    union = HM.unionWith HS.union
+    constrMappings = HM.fromListWith mappend
+      [ (c, HS.singleton n)
+      | (n, (DataDefinition d, _)) <- HM.toList prog
+      , c <- constrNames d
+      ]
 
 programConstrNames :: Program e v -> [Constr]
 programConstrNames prog
@@ -88,9 +98,10 @@ programConstrNames prog
     ]
 
 dependencyOrder
-  :: Foldable e
-  => Program e Name
+  :: (Foldable e, Monad e)
+  => (forall v. e v -> HashSet Constr)
+  -> Program e Name
   -> [[(Name, (Definition e Name, e Name))]]
-dependencyOrder prog
+dependencyOrder constrs prog
   = fmap (\n -> (n, prog HM.! n)) . filter (`HM.member` prog)
-  <$> topoSort (HM.toList $ dependencies prog)
+  <$> topoSort (HM.toList $ dependencies constrs prog)

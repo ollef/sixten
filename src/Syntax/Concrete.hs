@@ -6,6 +6,8 @@ import qualified Data.Foldable as Foldable
 import Data.Monoid
 import Data.String
 import Prelude.Extras
+import Data.HashSet(HashSet)
+import qualified Data.HashSet as HS
 
 import Syntax
 import Util
@@ -25,6 +27,28 @@ data Expr v
 
 -- | Synonym for documentation purposes
 type Type = Expr
+
+constructors :: Expr v -> HashSet (Either Constr QConstr)
+constructors expr = case expr of
+  Var _ -> mempty
+  Global _ -> mempty
+  Lit _ -> mempty
+  Con c -> HS.singleton c
+  Pi  _ _ t s -> constructors t <> scopeConstrs s
+  Lam _ _ t s -> constructors t <> scopeConstrs s
+  App e1 _ e2 -> constructors e1 <> constructors e2
+  Case e brs -> constructors e <> case brs of
+    ConBranches cbrs def -> Foldable.fold
+      [HS.singleton c <> teleConstrs tele <> scopeConstrs s | (c, tele, s) <- cbrs]
+      <> constructors def
+    LitBranches lbrs def -> Foldable.fold
+      [constructors s | (_, s) <- lbrs]
+      <> constructors def
+  Anno e t -> constructors e <> constructors t
+  Wildcard -> mempty
+  where
+    teleConstrs = Foldable.fold . fmap scopeConstrs . teleTypes
+    scopeConstrs = constructors . fromScope
 
 -- * Smart constructors
 tlam :: NameHint -> Annotation -> Maybe (Type v) -> Scope1 Expr v -> Expr v

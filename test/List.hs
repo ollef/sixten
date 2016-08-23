@@ -5,7 +5,7 @@ data List {a : Size}(A : Type {a}) where
   Nil : List A
   Cons : A -> Ptr (List A) -> List A
 
-tail : forall ~{a}. Ptr (List a) -> Ptr (List a)
+-- tail : forall ~{a}. Ptr (List a) -> Ptr (List a)
 tail xs = case deref xs of
   Nil -> xs
   Cons x xs' -> xs'
@@ -14,6 +14,11 @@ map : forall {m}{n}~{a : Type {m}}~{b : Type {n}}. (a -> b) -> Ptr (List a) -> P
 map f xs = Ref (case deref xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (map f xs'))
+
+sizeof : forall {n}. ~(Type {n}) -> Size
+sizeof {n} _ = n
+
+sizeOfList = printSize (sizeof ~(List (List Size)))
 
 -- mappedList : Ptr (List Size)
 -- mappedList = map (addSize 1) testList

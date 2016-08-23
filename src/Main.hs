@@ -219,16 +219,17 @@ processFile file output logFile = do
     Nothing -> return ()
     Just (Left err) -> Text.putStrLn err
     Just (Right resolved) -> do
-      let constrs = HS.fromList
+      let groups = dependencyOrder
+            (HS.map (either id (\(QConstr n _) -> n)) . Concrete.constructors) resolved
+          constrs = HS.fromList
                   $ programConstrNames Builtin.context
                   <> programConstrNames resolved
           instCon v
             | v `HS.member` constrs = Concrete.Con $ Left v
             | otherwise = pure v
-          resolved' = bimap (>>>= instCon) (>>= instCon) <$> resolved
-          groups = dependencyOrder resolved'
+          groups' = fmap (fmap $ bimap (>>>= instCon) (>>= instCon)) <$> groups
       procRes <- withFile logFile WriteMode $ \handle ->
-        runTCM (process groups) mempty handle
+        runTCM (process groups') mempty handle
       case procRes of
         Left err -> putStrLn err
         Right res -> do

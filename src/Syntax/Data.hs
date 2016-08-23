@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings, RankNTypes #-}
 module Syntax.Data where
 
 import Bound
@@ -16,6 +16,13 @@ import Util
 
 newtype DataDef typ v = DataDef { dataConstructors :: [ConstrDef (Scope Tele typ v)] }
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+foldMapDataDef
+  :: (Monoid m, Monad typ)
+  => (forall v. typ v -> m)
+  -> DataDef typ x
+  -> m
+foldMapDataDef f (DataDef cs) = foldMap (foldMap $ f . fromScope) cs
 
 quantifiedConstrTypes
   :: (Eq v, Syntax typ)
