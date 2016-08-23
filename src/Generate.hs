@@ -222,7 +222,7 @@ generateBranches caseExpr branches brCont = do
   postLabel <- LLVM.Operand <$> freshenName "after-branch"
   case branches of
     SimpleConBranches [] -> mdo
-      generateSExpr caseExpr
+      void $ generateSExpr caseExpr
       emit unreachable
       return []
     SimpleConBranches [(Builtin.Ref, tele, brScope)] -> mdo
