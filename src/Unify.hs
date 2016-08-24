@@ -94,7 +94,9 @@ unify type1 type2 = do
       case sol of
         Left l -> do
           occurs l v t
-          solve r =<< lambdas pvs t
+          t' <- lambdas pvs t
+          tr ("solving " <> show (metaId v)) t'
+          solve r t'
         Right c -> go True (apps c $ map (second pure) pvs) t
     lambdas pvs t = foldrM (\(p, v) -> fmap (Lam mempty p $ metaType v) . abstract1M v) t pvs
 
