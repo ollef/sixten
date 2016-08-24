@@ -3,7 +3,7 @@ data Unit where
 
 data Void where
 
-absurd : forall {a}~{A : Type {a}}. Void -> A
+absurd : forall ~{A : Type {_}}. Void -> A
 absurd x = case x of
 
 loop : Unit -> Void
