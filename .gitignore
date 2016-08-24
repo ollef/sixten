@@ -1,3 +1,8 @@
 *.swo
 *.swn
 .stack-work
+*.ll
+*.o
+*.bc
+*.s
+a.out
