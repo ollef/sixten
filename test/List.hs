@@ -5,8 +5,21 @@ data List {a : Size}(A : Type {a}) where
   Nil : List A
   Cons : A -> Ptr (List A) -> List A
 
--- tail : forall ~{a}. Ptr (List a) -> Ptr (List a)
+data List2 (A : Type) where
+  Nil2 : List2 A
+  Cons2 : A -> Ptr (List2 A) -> List2 A
+
+tail : forall ~{A : Type}. Ptr (List A) -> Ptr (List A)
 tail xs = case deref xs of
+  Nil -> xs
+  Cons x xs' -> xs'
+
+tail2 xs = case deref xs of
+  Nil -> xs
+  Cons x xs' -> xs'
+
+tail3 : forall ~{A}. Ptr (List A) -> Ptr (List A)
+tail3 xs = case deref xs of
   Nil -> xs
   Cons x xs' -> xs'
 
@@ -14,6 +27,10 @@ map : forall {m}{n}~{a : Type {m}}~{b : Type {n}}. (a -> b) -> Ptr (List a) -> P
 map f xs = Ref (case deref xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (map f xs'))
+
+map2 f xs = Ref (case deref xs of
+  Nil -> Nil
+  Cons x xs' -> Cons (f x) (map2 f xs'))
 
 sizeof : forall {n}. ~(Type {n}) -> Size
 sizeof {n} _ = n

@@ -23,9 +23,6 @@ import TopoSort
 import Unify
 import Util
 
-existsTypeType :: Monad e => NameHint -> TCM (e (MetaVar Abstract.Expr))
-existsTypeType n = existsVar n $ Builtin.Type (Abstract.Lit 0)
-
 existsSize :: Monad e => NameHint -> TCM (e (MetaVar Abstract.Expr))
 existsSize n = existsVar n Builtin.Size
 
@@ -100,21 +97,19 @@ inferType surrR surrP expr = do
       return (Abstract.Con qc, typ)
     Concrete.Lit l -> return (Abstract.Lit l, Builtin.Size)
     Concrete.Pi n p t s -> do
-      argTypeType <- existsTypeType n
-      (t', _) <- checkType Irrelevant surrP t argTypeType
+      sz <- existsSize n
+      (t', _) <- checkType Irrelevant surrP t $ Builtin.Type sz
       v  <- forall_ n t'
-      resTypeType <- existsTypeType mempty
-      (e', _) <- checkType Irrelevant surrP (instantiate1 (pure v) s) resTypeType
+      (e', _) <- inferType Irrelevant surrP $ instantiate1 (pure v) s
       s' <- abstract1M v e'
       return (Abstract.Pi n p t' s', Builtin.Type $ Abstract.Lit 1)
     Concrete.Lam n p argType s -> {- uncurry generalise <=< enterLevel $ -} do
-      argTypeType <- existsTypeType n
-      (argType', _) <- checkType Irrelevant surrP argType argTypeType
-      resType <- existsType mempty
+      sz <- existsSize n
+      (argType', _) <- checkType Irrelevant surrP argType $ Builtin.Type sz
       x <- forall_ n argType'
-      (e', resType')  <- checkType surrR surrP (instantiate1 (pure x) s) resType
+      (e', resType) <- inferType surrR surrP $ instantiate1 (pure x) s
       s' <- abstract1M x e'
-      abstractedResType <- abstract1M x resType'
+      abstractedResType <- abstract1M x resType
       return (Abstract.Lam n p argType' s', Abstract.Pi n p argType' abstractedResType)
     Concrete.App e1 a1 e2 -> do
       argType <- existsType mempty
@@ -132,9 +127,10 @@ inferType surrR surrP expr = do
       (e'', brs', retType) <- inferBranches surrR surrP e brs
       return (Abstract.Case e'' brs', retType)
     Concrete.Anno e t  -> do
-      tType <- existsTypeType mempty
-      (t', _) <- checkType Irrelevant surrP t tType
-      checkType surrR surrP e t'
+      (t', tType) <- inferType Irrelevant surrP t
+      sz <- existsSize mempty
+      (t'', _) <- subtype Irrelevant surrP t' tType $ Builtin.Type sz
+      checkType surrR surrP e t''
     Concrete.Wildcard  -> do
       t <- existsType mempty
       x <- existsVar mempty t
@@ -200,8 +196,9 @@ inferBranches surrR surrP expr (ConBranches cbrs _) = mdo
 
   let go (c, tele, sbr) (etype, resBrs, resType) = mdo
         args <- forMTele tele $ \h p s -> do
-          tType <- existsTypeType h
-          (t', _) <- checkType Irrelevant surrP (instantiateTele pureVs s) tType
+          let t = instantiateTele pureVs s
+          sz <- existsSize h
+          (t', _) <- checkType Irrelevant surrP t $ Builtin.Type sz
           v <- forall_ h t'
           return (p, pure v)
         let qc = qualify typeName c

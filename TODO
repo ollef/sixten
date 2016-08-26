@@ -1,5 +1,4 @@
 Type checking
-  [1] Instantiate implicits at variable use sites
   Can the special-case equations for unifying sizes be done in a principled way?
   Gather applications and do non-vars first for better propagation in checkType
 Codegen
