@@ -2,13 +2,15 @@ Type checking
   Can the special-case equations for unifying sizes be done in a principled way?
   Gather applications and do non-vars first for better propagation in checkType
 Codegen
-  Make lifted functions private
   Add Destructor calling convention for functions that return part of their argument
     To get rid of the memcpy from deref
   Don't pass size 0 things
   Make case expressions return Direct vars if possible
   Can case scrutinees and tail calls explicitly be of unspecified size?
   Arity inference
+  Globals
+    Make literals llvm `constant`s
+    Add error message for circular globals
 Compiler
   [] Make log function respond to verbosity and tag
   Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
@@ -46,8 +48,5 @@ Optimisations
     Reorder data to enable more?
   App of lambda -> let
   Usage analysis for better erasure
-Globals
-  Make literals llvm `constant`s
-  Add error message for circular globals
 Runtime
   Do real GC with LLVM gcroots etc

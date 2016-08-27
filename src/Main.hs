@@ -186,7 +186,7 @@ liftGroup
 liftGroup defs = fmap concat $ forM defs $ \(name, e) -> do
   let (e', fs) = liftDefinition name e
   addConvertedSignatures $ HM.fromList $ fmap fakeSignature <$> fs
-  return $ (name, e') : fmap (second Lifted.FunctionDef) fs
+  return $ (name, e') : fmap (second $ Lifted.FunctionDef Private) fs
   where
     -- TODO this isn't a very nice way to do this
     fakeSignature

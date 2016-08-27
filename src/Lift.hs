@@ -85,10 +85,10 @@ liftDefinitionM
   :: Converted.SExpr Void
   -> Lift (Lifted.Definition Void)
 liftDefinitionM (Converted.Sized _ (Converted.Lams retDir tele s))
-  = Lifted.FunctionDef . Lifted.Function retDir (teleNamedAnnotations tele)
+  = Lifted.FunctionDef Public . Lifted.Function retDir (teleNamedAnnotations tele)
     <$> underScope liftSExpr s
 liftDefinitionM sexpr
-  = Lifted.ConstantDef . Lifted.Constant (Converted.sExprDir sexpr)
+  = Lifted.ConstantDef Public . Lifted.Constant (Converted.sExprDir sexpr)
     <$> liftSExpr sexpr
 
 liftDefinition

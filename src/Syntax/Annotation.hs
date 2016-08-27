@@ -1,4 +1,4 @@
-{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE PatternSynonyms, OverloadedStrings #-}
 module Syntax.Annotation where
 
 import Syntax.Pretty
@@ -39,3 +39,10 @@ pattern ReEx = Annotation Relevant Explicit
 pattern IrEx = Annotation Irrelevant Explicit
 pattern ReIm = Annotation Relevant Implicit
 pattern IrIm = Annotation Irrelevant Implicit
+
+data Visibility = Private | Public
+  deriving (Eq, Ord, Show)
+
+instance Pretty Visibility where
+  prettyM Private = "private"
+  prettyM Public = "public"

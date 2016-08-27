@@ -34,8 +34,8 @@ data Constant v
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 data Definition v
-  = FunctionDef (Function v)
-  | ConstantDef (Constant v)
+  = FunctionDef Visibility (Function v)
+  | ConstantDef Visibility (Constant v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 -------------------------------------------------------------------------------
@@ -87,5 +87,5 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Constant v) where
 
 instance (Eq v, IsString v, Pretty v)
   => Pretty (Syntax.Lifted.Definition v) where
-  prettyM (ConstantDef c) = prettyM c
-  prettyM (FunctionDef f) = prettyM f
+  prettyM (ConstantDef v c) = prettyM v <+> prettyM c
+  prettyM (FunctionDef v f) = prettyM v <+> prettyM f

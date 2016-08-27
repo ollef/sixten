@@ -13,6 +13,7 @@ import Data.Void
 
 import Builtin
 import LLVM
+import Syntax.Annotation
 import Syntax.Branches
 import qualified Syntax.Converted as Converted
 import Syntax.Direction
@@ -347,11 +348,13 @@ generatePrim (Primitive xs) = do
   ret <- "prim" =: Instr (Foldable.fold strs)
   return $ DirectVar ret
 
-generateConstant :: Name -> Constant Var -> Gen B
-generateConstant name (Constant dir e) = do
+generateConstant :: Visibility -> Name -> Constant Var -> Gen B
+generateConstant visibility name (Constant dir e) = do
   let gname = unOperand $ global name
       initName = gname <> "-init"
-  emitRaw $ Instr $ gname <+> "= global" <+> typVal <> ", align" <+> align
+      vis | visibility == Private = "private"
+          | otherwise = ""
+  emitRaw $ Instr $ gname <+> "= global" <+> vis <+> typVal <> ", align" <+> align
   emitRaw $ Instr ""
   emitRaw $ Instr $ "define private fastcc" <+> voidT <+> initName <> "() {"
   case dir of
@@ -367,23 +370,25 @@ generateConstant name (Constant dir e) = do
       Direct -> integer "0"
       Indirect -> pointer "null"
 
-generateFunction :: Name -> Function Var -> Gen ()
-generateFunction name (Function retDir hs funScope) = do
+generateFunction :: Visibility -> Name -> Function Var -> Gen ()
+generateFunction visibility name (Function retDir hs funScope) = do
   vs <- Traversable.forM hs $ \(h, d) -> do
     n <- freshWithHint h
     return $ case d of
       Direct -> DirectVar $ LLVM.Operand n
       Indirect -> IndirectVar $ LLVM.Operand n
   let funExpr = instantiateVar ((vs Vector.!) . unTele) funScope
+      vis | visibility == Private = "private"
+          | otherwise = ""
   case retDir of
     Indirect -> do
       ret <- LLVM.Operand <$> freshenName "return"
-      emitRaw $ Instr $ "define fastcc" <+> voidT <+> "@" <> name
+      emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> voidT <+> "@" <> name
         <> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList vs <> pure (IndirectVar ret)) <> ") {"
       storeSExpr funExpr ret
       emit returnVoid
     Direct -> do
-      emitRaw $ Instr $ "define fastcc" <+> integerT <+> "@" <> name <> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList vs) <> ") {"
+      emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> integerT <+> "@" <> name <> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList vs) <> ") {"
       res <- generateSExpr funExpr
       resInt <- loadVar "function-result" res
       emit $ returnInt resInt
@@ -394,7 +399,7 @@ generateFunction name (Function retDir hs funScope) = do
 
 generateDefinition :: Name -> Definition Var -> Gen B
 generateDefinition name def = case def of
-  ConstantDef c -> generateConstant name c
-  FunctionDef f -> do
-    generateFunction name f
+  ConstantDef v c -> generateConstant v name c
+  FunctionDef v f -> do
+    generateFunction v name f
     return mempty
