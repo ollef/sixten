@@ -2,30 +2,30 @@ Type checking
   Can the special-case equations for unifying sizes be done in a principled way?
   Gather applications and do non-vars first for better propagation in checkType
 Codegen
-  Add Destructor calling convention for functions that return part of their argument
+  * Add Destructor calling convention for functions that return part of their argument
     To get rid of the memcpy from deref
   Don't pass size 0 things
-  Make case expressions return Direct vars if possible
-  Can case scrutinees and tail calls explicitly be of unspecified size?
+  * Make case expressions return Direct vars if possible
+  * Can case scrutinees and tail calls explicitly be of unspecified size?
   Arity inference
   Globals
     Make literals llvm `constant`s
     Add error message for circular globals
 Compiler
-  [] Make log function respond to verbosity and tag
+  * Make it automatically compile the llvm bytecode
+  * Make command-line executable with options
+  Make log function respond to verbosity and tag
   Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
-  Test suite
+  * Test suite
     A list of programs and their expected outputs
     A list of programs that should not typecheck
-  Better error messages
+  * Better error messages
 Language
   Add new Int type -- overloaded literals
-  Let(rec) definitions
-  Mutually recursive top-level definitions
+  * Let(rec) definitions
+  * Mutually recursive top-level definitions
   Laziness
-  Cases
-    Make Concrete syntax have deep patterns and desugar them
-    Normalisation
+  Make Concrete syntax have deep patterns and desugar them
   Type classes
   Row polymorphism
     r : Row : Type

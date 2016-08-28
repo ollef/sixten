@@ -1,7 +1,8 @@
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE RecursiveDo, ViewPatterns #-}
 module Normalise where
 
 import Control.Monad.Except
+import qualified Data.Vector as Vector
 
 import qualified Builtin
 import Meta
@@ -33,7 +34,9 @@ whnf expr = case expr of
         e2' <- whnf e2
         whnf $ instantiate1 e2' s
       _ -> return expr
-  Case _ _ -> return expr -- TODO
+  Case e brs -> do
+    e' <- whnf e
+    chooseBranch e' brs whnf
 
 normalise :: AbstractM -> TCM AbstractM
 normalise expr = case expr of
@@ -57,12 +60,42 @@ normalise expr = case expr of
     case e1' of
       Lam _ p' _ s | p == p' -> normalise $ instantiate1 e2' s
       _ -> return $ App e1' p e2'
-  Case _ _ -> return expr -- TODO
+  Case e brs -> do
+    e' <- whnf e
+    res <- chooseBranch e' brs whnf
+    case res of
+      Case e'' brs' -> Case e'' <$> case brs' of
+        ConBranches cbrs typ -> ConBranches
+          <$> sequence
+            [ uncurry ((,,) qc) <$> normaliseTelescope tele s
+            | (qc, tele, s) <- cbrs
+            ]
+          <*> normalise typ
+        LitBranches lbrs def -> LitBranches
+          <$> sequence [(,) l <$> normalise br | (l, br) <- lbrs]
+          <*> normalise def
+      _ -> return res
   where
-    normaliseScope h c a s = do
-      x <- forall_ h a
+    normaliseTelescope tele scope = mdo
+      avs <- forMTele tele $ \h a s -> do
+        t' <- normalise $ instantiateTele pvs s
+        v <- forall_ h t'
+        return (a, v)
+      let vs = snd <$> avs
+          pvs = pure <$> vs
+
+          abstr = teleAbstraction vs
+      e' <- normalise $ instantiateTele pvs scope
+      scope' <- abstractM abstr e'
+      tele' <- forM avs $ \(a, v) -> do
+        s <- abstractM abstr $ metaType v
+        return (metaHint v, a, s)
+      return (Telescope tele', scope')
+    normaliseScope h c t s = do
+      t' <- normalise t
+      x <- forall_ h t'
       ns <- normalise $ instantiate1 (pure x) s
-      c a <$> abstract1M x ns
+      c t' <$> abstract1M x ns
 
 binOp
   :: Literal
@@ -79,3 +112,19 @@ binOp zero op cop x y = do
       (_, Lit n) | n == zero -> return x'
       (Lit m, Lit n) -> return $ Lit $ op m n
       _ -> return $ cop x' y'
+
+chooseBranch
+  :: AbstractM
+  -> BranchesM QConstr Expr
+  -> (AbstractM -> TCM AbstractM)
+  -> TCM AbstractM
+chooseBranch (Lit l) (LitBranches lbrs def) k = k chosenBranch
+  where
+    chosenBranch = head $ [br | (l', br) <- lbrs, l == l'] ++ [def]
+chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs _) k =
+  k $ instantiateTele (Vector.fromList $ snd <$> args) chosenBranch
+  where
+    chosenBranch = case [br | (qc', _, br) <- cbrs, qc == qc'] of
+      [br] -> br
+      _ -> error "Normalise.chooseBranch"
+chooseBranch e brs _ = return $ Case e brs
