@@ -12,69 +12,81 @@ import Syntax.Abstract
 import Util
 
 whnf :: AbstractM -> TCM AbstractM
-whnf expr = case expr of
-  Var (metaRef -> Nothing) -> return expr
-  Var (metaRef -> Just r) -> refineIfSolved r expr whnf
-  Var _ -> throwError "whnf impossible"
-  Global v -> do
-    (d, _) <- definition v
-    case d of
-      Definition e -> whnf e
-      _ -> return expr
-  Con _ -> return expr
-  Lit _ -> return expr
-  Pi {} -> return expr
-  Lam {} -> return expr
-  Builtin.AddSize x y -> binOp 0 (+) Builtin.AddSize x y
-  Builtin.MaxSize x y -> binOp 0 max Builtin.MaxSize x y
-  App e1 p e2 -> do
-    e1' <- whnf e1
-    case e1' of
-      Lam _ p' _ s | p == p' -> do
-        e2' <- whnf e2
-        whnf $ instantiate1 e2' s
-      _ -> return expr
-  Case e brs -> do
-    e' <- whnf e
-    chooseBranch e' brs whnf
+whnf expr = do
+  -- tr "whnf e" expr
+  modifyIndent succ
+  res <- case expr of
+    Var (metaRef -> Nothing) -> return expr
+    Var (metaRef -> Just r) -> refineIfSolved r expr whnf
+    Var _ -> throwError "whnf impossible"
+    Global v -> do
+      (d, _) <- definition v
+      case d of
+        Definition e -> whnf e
+        _ -> return expr
+    Con _ -> return expr
+    Lit _ -> return expr
+    Pi {} -> return expr
+    Lam {} -> return expr
+    Builtin.AddSize x y -> binOp 0 (+) Builtin.AddSize whnf x y
+    Builtin.MaxSize x y -> binOp 0 max Builtin.MaxSize whnf x y
+    App e1 p e2 -> do
+      e1' <- whnf e1
+      case e1' of
+        Lam _ p' _ s | p == p' -> do
+          e2' <- whnf e2
+          whnf $ instantiate1 e2' s
+        _ -> return expr
+    Case e brs -> do
+      e' <- whnf e
+      chooseBranch e' brs whnf
+  modifyIndent pred
+  -- tr "whnf res" res
+  return res
 
 normalise :: AbstractM -> TCM AbstractM
-normalise expr = case expr of
-  Var (metaRef -> Nothing) -> return expr
-  Var (metaRef -> Just r) -> refineIfSolved r expr normalise
-  Var _ -> throwError "normalise impossible"
-  Global v -> do
-    (d, _) <- definition v
-    case d of
-      Definition e -> normalise e
-      _ -> return expr
-  Con _ -> return expr
-  Lit _ -> return expr
-  Pi n p a s -> normaliseScope n (Pi n p)  a s
-  Lam n p a s -> normaliseScope n (Lam n p) a s
-  Builtin.AddSize x y -> binOp 0 (+) Builtin.AddSize x y
-  Builtin.MaxSize x y -> binOp 0 max Builtin.MaxSize x y
-  App e1 p e2 -> do
-    e1' <- normalise e1
-    e2' <- normalise e2
-    case e1' of
-      Lam _ p' _ s | p == p' -> normalise $ instantiate1 e2' s
-      _ -> return $ App e1' p e2'
-  Case e brs -> do
-    e' <- whnf e
-    res <- chooseBranch e' brs whnf
-    case res of
-      Case e'' brs' -> Case e'' <$> case brs' of
-        ConBranches cbrs typ -> ConBranches
-          <$> sequence
-            [ uncurry ((,,) qc) <$> normaliseTelescope tele s
-            | (qc, tele, s) <- cbrs
-            ]
-          <*> normalise typ
-        LitBranches lbrs def -> LitBranches
-          <$> sequence [(,) l <$> normalise br | (l, br) <- lbrs]
-          <*> normalise def
-      _ -> return res
+normalise expr = do
+  -- tr "normalise e" expr
+  modifyIndent succ
+  res <- case expr of
+    Var (metaRef -> Nothing) -> return expr
+    Var (metaRef -> Just r) -> refineIfSolved r expr normalise
+    Var _ -> throwError "normalise impossible"
+    Global v -> do
+      (d, _) <- definition v
+      case d of
+        Definition e -> normalise e
+        _ -> return expr
+    Con _ -> return expr
+    Lit _ -> return expr
+    Pi n p a s -> normaliseScope n (Pi n p)  a s
+    Lam n p a s -> normaliseScope n (Lam n p) a s
+    Builtin.AddSize x y -> binOp 0 (+) Builtin.AddSize normalise x y
+    Builtin.MaxSize x y -> binOp 0 max Builtin.MaxSize normalise x y
+    App e1 p e2 -> do
+      e1' <- normalise e1
+      e2' <- normalise e2
+      case e1' of
+        Lam _ p' _ s | p == p' -> normalise $ instantiate1 e2' s
+        _ -> return $ App e1' p e2'
+    Case e brs -> do
+      e' <- whnf e
+      res <- chooseBranch e' brs whnf
+      case res of
+        Case e'' brs' -> Case e'' <$> case brs' of
+          ConBranches cbrs typ -> ConBranches
+            <$> sequence
+              [ uncurry ((,,) qc) <$> normaliseTelescope tele s
+              | (qc, tele, s) <- cbrs
+              ]
+            <*> normalise typ
+          LitBranches lbrs def -> LitBranches
+            <$> sequence [(,) l <$> normalise br | (l, br) <- lbrs]
+            <*> normalise def
+        _ -> return res
+  modifyIndent pred
+  -- tr "normalise res" res
+  return res
   where
     normaliseTelescope tele scope = mdo
       avs <- forMTele tele $ \h a s -> do
@@ -101,12 +113,13 @@ binOp
   :: Literal
   -> (Literal -> Literal -> Literal)
   -> (AbstractM -> AbstractM -> AbstractM)
+  -> (AbstractM -> TCM AbstractM)
   -> AbstractM
   -> AbstractM
   -> TCM AbstractM
-binOp zero op cop x y = do
-    x' <- normalise x
-    y' <- normalise y
+binOp zero op cop norm x y = do
+    x' <- norm x
+    y' <- norm y
     case (x', y') of
       (Lit m, _) | m == zero -> return y'
       (_, Lit n) | n == zero -> return x'
