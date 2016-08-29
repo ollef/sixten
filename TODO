@@ -1,10 +1,11 @@
 Type checking
   Can the special-case equations for unifying sizes be done in a principled way?
   Gather applications and do non-vars first for better propagation in checkType
+  Propagate equalities from cases
 Codegen
-  * Add Destructor calling convention for functions that return part of their argument
+  Add Destructor calling convention for functions that return part of their argument
     To get rid of the memcpy from deref
-  Don't pass size 0 things
+  * Don't pass size 0 things
   * Make case expressions return Direct vars if possible
   * Can case scrutinees and tail calls explicitly be of unspecified size?
   Arity inference

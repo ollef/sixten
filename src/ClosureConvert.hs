@@ -9,7 +9,7 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 
-import Builtin
+import qualified Builtin
 import Meta
 import Syntax
 import qualified Syntax.Closed as Closed

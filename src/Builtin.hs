@@ -34,6 +34,10 @@ pattern Type sz = App (Global TypeName) IrIm sz
 pattern RefName <- ((==) "Ref" -> True) where RefName = "Ref"
 pattern PtrName <- ((==) "Ptr" -> True) where PtrName = "Ptr"
 
+pattern UnitName <- ((==) "Unit_" -> True) where UnitName = "Unit_"
+pattern UnitConstrName <- ((==) "unit_" -> True) where UnitConstrName = "unit_"
+pattern Unit = QConstr UnitName UnitConstrName
+
 pattern Closure <- ((== QConstr "Builtin" "CL") -> True) where Closure = QConstr "Builtin" "CL"
 
 pattern Ref <- ((== QConstr PtrName RefName) -> True) where Ref = QConstr PtrName RefName
@@ -57,6 +61,9 @@ context = HM.fromList
                        [ ConstrDef RefName $ toScope $ fmap B $ arrow ReEx (pure 1)
                                            $ apps (Global PtrName) [(IrIm, pure 0), (IrEx, pure 1)]
                        ])
+  , (UnitName, dataType (Type $ Lit 0)
+                        [ConstrDef UnitConstrName $ toScope $ Global UnitName])
+
   ]
   where
     cl = fromMaybe (error "Builtin not closed") . closed
@@ -65,7 +72,15 @@ context = HM.fromList
 
 convertedContext :: HashMap Name (Converted.SExpr Void)
 convertedContext = HM.fromList $ concat
-  [[ ( AddSizeName
+  [[( SizeName
+    , Converted.sized 0
+    $ Converted.Con Builtin.Unit mempty
+    )
+  , ( TypeName
+    , Converted.sized 0
+    $ Converted.Con Builtin.Unit mempty
+    )
+  , ( AddSizeName
     , Converted.sized 1
       $ Converted.Lams
         Direct

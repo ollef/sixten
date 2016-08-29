@@ -165,6 +165,7 @@ generateDirectedSExpr expr dir
   = generateSExpr expr >>= directed dir
 
 gcAllocSExpr :: SExpr Var -> Gen (Operand Ptr)
+gcAllocSExpr (Sized (Lit 0) _) = return "null"
 gcAllocSExpr (Sized sz expr) = do
   szVar <- generateExpr "1" sz
   szInt <- loadVar "size" szVar

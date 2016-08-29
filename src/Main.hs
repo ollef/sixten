@@ -21,7 +21,7 @@ import Prelude.Extras
 import System.Environment
 import System.IO
 
-import Builtin
+import qualified Builtin
 import Close
 import ClosureConvert
 import Erase
@@ -157,10 +157,10 @@ eraseGroup
   -> TCM [(Name, SLambda.SExpr Void)]
 eraseGroup defs = sequence
   [ do
-      e' <- eraseS $ vacuous e
-      e'' <- traverse (throwError . ("eraseGroup " ++) . show) e'
-      return (x, e'')
-  | (x, Definition e, _) <- defs
+      d' <- eraseDef (vacuous d) (vacuous t)
+      d'' <- traverse (throwError . ("eraseGroup " ++) . show) d'
+      return (x, d'')
+  | (x, d, t) <- defs
   ]
 
 closeGroup
@@ -219,7 +219,7 @@ processFile file output logFile = do
     Nothing -> return ()
     Just (Left err) -> Text.putStrLn err
     Just (Right resolved) -> do
-      let groups = dependencyOrder
+      let groups = filter (not . null) $ dependencyOrder
             (HS.map (either id (\(QConstr n _) -> n)) . Concrete.constructors) resolved
           constrs = HS.fromList
                   $ programConstrNames Builtin.context

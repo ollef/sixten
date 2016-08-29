@@ -7,6 +7,7 @@ import Control.Monad.Except
 import Data.Monoid
 import qualified Data.Vector as Vector
 
+import qualified Builtin
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.SLambda as SLambda
@@ -25,7 +26,7 @@ erase expr = do
     Abstract.Var v -> return $ SLambda.Var v
     Abstract.Global g -> return $ SLambda.Global g
     Abstract.Lit l -> return $ SLambda.Lit l
-    Abstract.Pi {} -> return $ SLambda.Global "__unit"
+    Abstract.Pi {} -> return $ SLambda.Con Builtin.Unit mempty
     Abstract.Lam h a t s
       | relevance a == Relevant -> do
         v <- forall_ h t
@@ -99,3 +100,21 @@ eraseBranches (LitBranches lbrs d)
   = SimpleLitBranches
     <$> sequence [(,) l <$> erase e | (l, e) <- lbrs]
     <*> erase d
+
+eraseDef
+  :: Definition Abstract.Expr (MetaVar Abstract.Expr)
+  -> AbstractM
+  -> TCM SLambdaM
+eraseDef (Definition e) _ = eraseS e
+eraseDef (DataDefinition _) typ = go typ
+  where
+    go (Abstract.Pi h a t s)
+      | relevance a == Relevant = do
+        v <- forall_ h t
+        sz <- erase =<< sizeOfType t
+        e <- go $ instantiate1 (pure v) s
+        return $ SLambda.Sized (SLambda.Lit 1) $ SLambda.Lam h sz $ Simple.abstract1 v e
+      | otherwise = do
+        v <- forall_ h t
+        go $ instantiate1 (pure v) s
+    go _ = return $ SLambda.Sized (SLambda.Lit 0) $ SLambda.Con Builtin.Unit mempty
