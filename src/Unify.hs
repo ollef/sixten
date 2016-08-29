@@ -128,10 +128,10 @@ subtype surrR surrP expr type1 type2 = do
           typ2' <- whnf typ2
           go reduce1 False e typ1 typ2'
         (Pi h1 a1 t1 s1, Pi h2 a2 t2 s2) | plicitness a1 == plicitness a2
-                                        && relevance a1 >= min (relevance a2) surrR -> do
+                                        && relevance a1 <= max (relevance a2) surrR -> do
           let h = h1 <> h2
           x2  <- forall_ h t2
-          (x1, _)   <- subtype (min (relevance a2) surrR) (plicitness a2) (pure x2) t2 t1
+          (x1, _)   <- subtype (max (relevance a2) surrR) (plicitness a2) (pure x2) t2 t1
           (ex, s2') <- subtype surrR surrP
                                (betaApp e a1 x1)
                                (instantiate1 x1 s1)
