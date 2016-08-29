@@ -42,19 +42,23 @@ constrIndex qc = asks $ ($ qc) . constrArity
 -------------------------------------------------------------------------------
 -- Vars
 data Var
-  = IndirectVar (Operand Ptr)
+  = VoidVar
+  | IndirectVar (Operand Ptr)
   | DirectVar (Operand Int)
   deriving Show
 
 varDir :: Var -> Direction
+varDir VoidVar = Void
 varDir (IndirectVar _) = Indirect
 varDir (DirectVar _) = Direct
 
 loadVar :: NameHint -> Var -> Gen (Operand Int)
+loadVar _ VoidVar = return "0"
 loadVar _ (DirectVar o) = return o
 loadVar h (IndirectVar o) = h =: load o
 
 indirect :: NameHint -> Var -> Gen (Operand Ptr)
+indirect _ VoidVar = return "null"
 indirect n (DirectVar o) = do
   result <- n =: alloca "1"
   emit $ store o result
@@ -62,6 +66,7 @@ indirect n (DirectVar o) = do
 indirect _ (IndirectVar o) = return o
 
 varcpy :: Operand Ptr -> Var -> Operand Int -> Gen ()
+varcpy _dst VoidVar _sz = return ()
 varcpy dst (DirectVar src) _sz = emit $ store src dst
 varcpy dst (IndirectVar src) sz = wordcpy dst src sz
 
@@ -73,16 +78,18 @@ varCall
   -> Instr a
 varCall retType name xs = Instr
   $ "call fastcc" <+> retType <+> unOperand name
-  <> "(" <> Foldable.fold (intersperse ", " $ Foldable.toList $ go <$> xs) <> ")"
+  <> "(" <> Foldable.fold (intersperse ", " $ Foldable.toList $ concat $ go <$> xs) <> ")"
   where
-    go (DirectVar x) = integer x
-    go (IndirectVar x) = pointer x
+    go VoidVar = []
+    go (DirectVar x) = [integer x]
+    go (IndirectVar x) = [pointer x]
 
 directed
   :: Direction
   -> Var
   -> Gen Var
 directed d v = case d of
+  Void -> return VoidVar
   Direct -> DirectVar <$> loadVar mempty v
   Indirect -> IndirectVar <$> indirect mempty v
 
@@ -113,6 +120,9 @@ generateExpr sz expr = case expr of
     fun <- generateFunOp funExpr retDir $ snd <$> es
     args <- mapM (uncurry generateDirectedSExpr) es
     case retDir of
+      Void -> do
+        emit $ varCall voidT fun args
+        return VoidVar
       Indirect -> do
         ret <- "call-return" =: alloca sz
         emit $ varCall voidT fun $ Vector.snoc args $ IndirectVar ret
@@ -144,6 +154,7 @@ storeExpr sz expr ret = case expr of
     fun <- generateFunOp funExpr retDir $ snd <$> es
     args <- mapM (uncurry generateDirectedSExpr) es
     case retDir of
+      Void -> emit $ varCall voidT fun args
       Indirect -> emit $ varCall voidT fun $ Vector.snoc args $ IndirectVar ret
       Direct -> do
         res <- "call-return" =: varCall integerT fun args
@@ -165,7 +176,6 @@ generateDirectedSExpr expr dir
   = generateSExpr expr >>= directed dir
 
 gcAllocSExpr :: SExpr Var -> Gen (Operand Ptr)
-gcAllocSExpr (Sized (Lit 0) _) = return "null"
 gcAllocSExpr (Sized sz expr) = do
   szVar <- generateExpr "1" sz
   szInt <- loadVar "size" szVar
@@ -359,6 +369,7 @@ generateConstant visibility name (Constant dir e) = do
   emitRaw $ Instr ""
   emitRaw $ Instr $ "define private fastcc" <+> voidT <+> initName <> "() {"
   case dir of
+    Void -> storeSExpr e $ global name
     Direct -> storeSExpr e $ global name
     Indirect -> do
       ptr <- gcAllocSExpr e
@@ -368,6 +379,7 @@ generateConstant visibility name (Constant dir e) = do
   return $ "  call fastcc" <+> voidT <+> initName <> "()"
   where
     typVal = case dir of
+      Void -> pointer "null"
       Direct -> integer "0"
       Indirect -> pointer "null"
 
@@ -376,27 +388,35 @@ generateFunction visibility name (Function retDir hs funScope) = do
   vs <- Traversable.forM hs $ \(h, d) -> do
     n <- freshWithHint h
     return $ case d of
+      Void -> VoidVar
       Direct -> DirectVar $ LLVM.Operand n
       Indirect -> IndirectVar $ LLVM.Operand n
   let funExpr = instantiateVar ((vs Vector.!) . unTele) funScope
       vis | visibility == Private = "private"
           | otherwise = ""
   case retDir of
+    Void -> do
+      ret <- LLVM.Operand <$> freshenName "return"
+      emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> voidT <+> "@" <> name
+        <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList vs) <> ") {"
+      storeSExpr funExpr ret
+      emit returnVoid
     Indirect -> do
       ret <- LLVM.Operand <$> freshenName "return"
       emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> voidT <+> "@" <> name
-        <> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList vs <> pure (IndirectVar ret)) <> ") {"
+        <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList vs <> pure (IndirectVar ret)) <> ") {"
       storeSExpr funExpr ret
       emit returnVoid
     Direct -> do
-      emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> integerT <+> "@" <> name <> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList vs) <> ") {"
+      emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> integerT <+> "@" <> name <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList vs) <> ") {"
       res <- generateSExpr funExpr
       resInt <- loadVar "function-result" res
       emit $ returnInt resInt
   emitRaw "}"
   where
-    go (DirectVar n) = integer n
-    go (IndirectVar n) = pointer n
+    go VoidVar = []
+    go (DirectVar n) = [integer n]
+    go (IndirectVar n) = [pointer n]
 
 generateDefinition :: Name -> Definition Var -> Gen B
 generateDefinition name def = case def of

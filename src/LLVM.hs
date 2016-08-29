@@ -253,23 +253,27 @@ phiInt xs = Instr
 bitcastToFun :: Operand Ptr -> Direction -> Vector Direction -> Instr Fun
 bitcastToFun i retDir ds = Instr
   $ "bitcast" <+> pointer i <+> "to"
-  <+> retType <+> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList ds <|> retArg) <> ")*"
+  <+> retType <+> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList ds <|> [retArg]) <> ")*"
   where
     (retType, retArg) = case retDir of
+      Void -> (voidT, mempty)
       Direct -> (integerT, mempty)
       Indirect -> (voidT, pure pointerT)
-    go Direct = integerT
-    go Indirect = pointerT
+    go Void = []
+    go Direct = [integerT]
+    go Indirect = [pointerT]
 
 bitcastFunToPtrExpr :: Operand Fun -> Direction -> Vector Direction -> Operand Ptr
 bitcastFunToPtrExpr i retDir ds = Operand
-  $ "bitcast" <+> "(" <> retType <+> "(" <> Foldable.fold (intersperse ", " $ go <$> Vector.toList ds <|> retArg) <> ")*" <+> unOperand i <+> "to" <+> pointerT <> ")"
+  $ "bitcast" <+> "(" <> retType <+> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList ds <|> [retArg]) <> ")*" <+> unOperand i <+> "to" <+> pointerT <> ")"
   where
     (retType, retArg) = case retDir of
+      Void -> (voidT, mempty)
       Direct -> (integerT, mempty)
       Indirect -> (voidT, pure pointerT)
-    go Direct = integerT
-    go Indirect = pointerT
+    go Void = []
+    go Direct = [integerT]
+    go Indirect = [pointerT]
 
 exit :: Int -> Instr ()
 exit n = Instr $ "call" <+> voidT <+> "@exit(i32" <+> shower n <> ")"

@@ -5,7 +5,6 @@ Type checking
 Codegen
   Add Destructor calling convention for functions that return part of their argument
     To get rid of the memcpy from deref
-  * Don't pass size 0 things
   * Make case expressions return Direct vars if possible
   * Can case scrutinees and tail calls explicitly be of unspecified size?
   Arity inference
