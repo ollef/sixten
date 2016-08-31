@@ -3,8 +3,11 @@ module Generate where
 
 import Control.Monad.State
 import Control.Monad.Reader
+import Data.Bifunctor
+import Data.Bitraversable
 import qualified Data.Foldable as Foldable
 import Data.List
+import Data.Maybe
 import Data.Monoid
 import qualified Data.Traversable as Traversable
 import Data.Vector(Vector)
@@ -133,13 +136,22 @@ generateExpr sz expr = case expr of
   Let _h e s -> do
     v <- generateSExpr e
     generateExpr sz $ instantiate1Var v s
-  Case e brs -> do
-
+  Case e brs -> mdo
     rets <- generateBranches e brs $ \br -> do
-      -- TODO Can we avoid indirection when all branches return direct vars?
-      ret <- generateExpr sz br
-      indirect "indirect-br-result" ret
-    fmap IndirectVar $ "case-result" =: phiPtr rets
+      v <- generateExpr sz br
+      let mdirectRet = case v of
+            VoidVar -> Just "0"
+            IndirectVar _ -> Nothing
+            DirectVar o -> Just o
+      indirectRet <- if shouldIndirect
+        then indirect mempty v
+        else return "null"
+      return (mdirectRet, indirectRet)
+    let mdirectRets = traverse (bitraverse fst pure) rets
+        shouldIndirect = isNothing mdirectRets
+    case mdirectRets of
+      Just directRets -> fmap DirectVar $ "case-result" =: phiInt directRets
+      Nothing -> fmap IndirectVar $ "case-result" =: phiPtr (first snd <$> rets)
   Prim p -> generatePrim p
 
 storeExpr :: Operand Int -> Expr Var -> Operand Ptr -> Gen ()

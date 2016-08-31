@@ -84,7 +84,6 @@ validIdent str1 = case Text.uncons str1 of
                || c `elem` ("-$._" :: String)
     contChar c = startChar c || isDigit c
 
-
 freshenName :: MonadState LLVMState m => B -> m B
 freshenName name = do
   bnames <- gets boundNames
