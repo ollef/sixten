@@ -115,10 +115,7 @@ generateExpr sz expr = case expr of
   Var v -> return v
   Global g -> generateGlobal g
   Lit l -> return $ DirectVar $ shower l
-  Con qc es -> do
-    ret <- "cons-cell" =: alloca sz
-    storeCon qc es ret
-    return $ IndirectVar ret
+  Con qc es -> generateCon sz qc es
   Call retDir funExpr es -> do
     fun <- generateFunOp funExpr retDir $ snd <$> es
     args <- mapM (uncurry generateDirectedSExpr) es
@@ -195,8 +192,8 @@ gcAllocSExpr (Sized sz expr) = do
   storeExpr szInt expr ref
   return ref
 
-storeCon :: QConstr -> Vector (SExpr Var) -> Operand Ptr -> Gen ()
-storeCon Builtin.Ref es ret = do
+generateCon :: Operand Int -> QConstr -> Vector (SExpr Var) -> Gen Var
+generateCon _ Builtin.Ref es = do
   sizes <- mapM (loadVar "size" <=< generateExpr "1" . sizeOf) es
   (is, fullSize) <- adds sizes
   ref <- gcAlloc fullSize
@@ -204,7 +201,17 @@ storeCon Builtin.Ref es ret = do
     index <- "index" =: getElementPtr ref i
     storeExpr sz e index
   refInt <- "ref-int" =: ptrToInt ref
-  emit $ store refInt ret
+  return $ DirectVar refInt
+generateCon sz qc es = do
+  ret <- "cons-cell" =: alloca sz
+  storeCon qc es ret
+  return $ IndirectVar ret
+
+storeCon :: QConstr -> Vector (SExpr Var) -> Operand Ptr -> Gen ()
+storeCon Builtin.Ref es ret = do
+  v <- generateCon "1" Builtin.Ref es
+  i <- loadVar mempty v
+  emit $ store i ret
 storeCon qc es ret = do
   mqcIndex <- constrIndex qc
   let es' = maybe id (Vector.cons . sized 1 . Lit . fromIntegral) mqcIndex es
