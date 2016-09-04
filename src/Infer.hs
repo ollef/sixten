@@ -146,6 +146,7 @@ resolveConstrType
   -> TCM Name
 resolveConstrType cs mtype = do
   n <- case mtype of
+    -- TODO Also use a pi-view?
     Just (appsView -> (headType, _)) -> do
       headType' <- whnf headType
       case headType' of
@@ -158,6 +159,9 @@ resolveConstrType cs mtype = do
     _ -> return mempty
   ns <- mapM (fmap (Set.map (fst :: (Name, Abstract.Expr ()) -> Name)) . constructor) cs
   case Set.toList $ List.foldl1' Set.intersection (n ++ ns) of
+    [] -> case cs of
+      [c] -> throwError $ "Not in scope: constructor " ++ show c ++ "."
+      _ -> throwError $ "No type matching the constructors " ++ show cs ++ "."
     [x] -> return x
     xs -> throwError $ "Ambiguous constructors: " ++ show cs ++ ". Possible types: "
                ++ show xs ++ show (n ++ ns)
