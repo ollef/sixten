@@ -5,7 +5,9 @@ import Control.Monad.Except
 import Control.Monad.ST.Class
 import Data.Bifunctor
 import Data.Foldable
+import Data.List
 import Data.Monoid
+import Data.Ord
 import qualified Data.Set as S
 import Data.STRef
 
@@ -16,6 +18,15 @@ import Normalise
 import Syntax
 import Syntax.Abstract
 import Util
+
+existsSize :: Monad e => NameHint -> TCM (e (MetaVar Expr))
+existsSize n = existsVar n Builtin.Size
+
+existsType :: Monad e => NameHint -> TCM (e (MetaVar Expr))
+existsType n = do
+  sz <- existsSize n
+  t <- existsVar n $ Builtin.Type sz
+  existsVar n t
 
 occurs
   :: Foldable e
@@ -178,6 +189,37 @@ subtype surrR surrP expr type1 type2 = do
           typ2' <- whnf typ2
           go False False e typ1' typ2'
         _ -> do unify typ1 typ2; return (e, typ2)
+
+-- | Do a bunch of subtypings in order of least to most polymorphic
+parSubtypes
+  :: Relevance
+  -> Plicitness
+  -> [(AbstractM, AbstractM)]
+  -> AbstractM
+  -> TCM ([AbstractM], AbstractM)
+parSubtypes surrR surrP exprs1 resType1 = do
+  exprs2 <- forM exprs1 $ \(e, t) -> do
+    t' <- freeze t
+    return (e, t')
+  let exprs3 = sortBy (comparing $ numPis . snd . snd) $ zip [(0 :: Int)..] exprs2
+      go (es, resType) (n, (e, t)) = do
+        (e', t') <- subtype surrR surrP e t resType
+        return ((n, e'):es, t')
+  exprs4 <- foldlM go ([], resType1) exprs3
+  return $ first (fmap snd . sortBy (comparing fst)) exprs4
+  where
+    numPis = teleLength . telescope
+
+-- | Do a bunch of subtypings in order of least to most polymorphic
+subtypes
+  :: Relevance
+  -> Plicitness
+  -> AbstractM
+  -> AbstractM
+  -> [AbstractM]
+  -> TCM (AbstractM, AbstractM)
+subtypes surrR surrP expr typ
+  = foldlM (uncurry $ subtype surrR surrP) (expr, typ)
 
 -- TODO move these
 typeOf

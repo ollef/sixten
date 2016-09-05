@@ -12,6 +12,7 @@ data QConstr = QConstr !Name !Constr
 
 instance Hashable QConstr
 
+-- TODO remove?
 qualify :: Name -> Either Constr QConstr -> QConstr
 qualify n (Right qc@(QConstr n' _)) | n == n' = qc
 qualify n (Left c) = QConstr n c

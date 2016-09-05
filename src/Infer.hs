@@ -23,15 +23,6 @@ import TopoSort
 import Unify
 import Util
 
-existsSize :: Monad e => NameHint -> TCM (e (MetaVar Abstract.Expr))
-existsSize n = existsVar n Builtin.Size
-
-existsType :: Monad e => NameHint -> TCM (e (MetaVar Abstract.Expr))
-existsType n = do
-  sz <- existsSize n
-  t <- existsVar n $ Builtin.Type sz
-  existsVar n t
-
 data Generalise
   = Generalise
   | Instantiate
@@ -166,6 +157,22 @@ resolveConstrType cs mtype = do
     xs -> throwError $ "Ambiguous constructors: " ++ show cs ++ ". Possible types: "
                ++ show xs ++ show (n ++ ns)
 
+instantiateDataType
+  :: Applicative f
+  => Name
+  -> TCM (AbstractM, Vector (Annotation, f (MetaVar Abstract.Expr)))
+instantiateDataType typeName = mdo
+  (_, dataTypeType) <- definition typeName
+  let params = telescope dataTypeType
+      inst = instantiateTele (pure . snd <$> paramVars)
+  paramVars <- forMTele params $ \h p s -> do
+    v <- exists h (inst s)
+    return (p, v)
+  let pureParamVars  = fmap pure <$> paramVars
+      dataType = apps (Abstract.Global typeName) pureParamVars
+      implicitParamVars = (\(_p, v) -> (IrIm, pure v)) <$> paramVars
+  return (dataType, implicitParamVars)
+
 inferBranches
   :: Relevance
   -> Plicitness
@@ -175,7 +182,7 @@ inferBranches
          , BranchesM QConstr Abstract.Expr
          , AbstractM
          )
-inferBranches surrR surrP expr (ConBranches cbrs _) = mdo
+inferBranches surrR surrP expr (ConBranches cbrs _) = do
   (expr1, etype1) <- inferType surrR surrP expr
 
   tr "inferBranches e" expr1
@@ -184,57 +191,49 @@ inferBranches surrR surrP expr (ConBranches cbrs _) = mdo
   modifyIndent succ
 
   typeName <- resolveConstrType ((\(c, _, _) -> c) <$> cbrs) $ Just etype1
+  (dataType, params) <- instantiateDataType typeName
 
-  (_, dataTypeType) <- definition typeName
-  let params = telescope dataTypeType
-      inst = instantiateTele (pure . snd <$> paramVars)
-  paramVars <- forMTele params $ \h p s -> do
-    v <- exists h (inst s)
-    return (p, v)
+  instantiatedBranches <- forM cbrs $ \(c, tele, sbr) -> mdo
+    args <- forMTele tele $ \h p s -> do
+      let t = instantiateTele argVars s
+      sz <- existsSize h
+      (t', _) <- checkType Irrelevant surrP t $ Builtin.Type sz
+      v <- forall_ h t'
+      return (p, pure v)
+    let argVars = snd <$> args
+    return (qualify typeName c, args, instantiateTele argVars sbr)
 
-  let pureParamVars  = fmap pure <$> paramVars
-      dataType = apps (Abstract.Global typeName) pureParamVars
-      implicitParamVars = (\(_p, v) -> (IrIm, pure v)) <$> paramVars
+  inferredBranches <- forM instantiatedBranches $ \(qc, args, br) -> do
+    (paramsArgsExpr, etype) <- inferType
+      surrR surrP
+      (Concrete.apps (Concrete.Con $ Right qc) $ params <> args)
+    (br', brType) <- inferType surrR surrP br
+    paramsArgsExpr' <- freeze paramsArgsExpr
+    let (_, args') = appsView paramsArgsExpr'
+        vs = V.fromList $ second fromVar <$> drop (V.length params) args'
+        fromVar (Abstract.Var v) = v
+        fromVar _ = error "inferBranches fromVar"
+    return (qc, vs, br', brType, etype)
 
-  (expr2, etype2) <- subtype surrR surrP expr1 etype1 dataType
-
-  let go (c, tele, sbr) (etype, resBrs, resType) = mdo
-        args <- forMTele tele $ \h p s -> do
-          let t = instantiateTele pureVs s
-          sz <- existsSize h
-          (t', _) <- checkType Irrelevant surrP t $ Builtin.Type sz
-          v <- forall_ h t'
-          return (p, pure v)
-        let qc = qualify typeName c
-            pureVs = snd <$> args
-        (paramsArgsExpr, etype') <- checkType
-          surrR surrP
-          (Concrete.apps (Concrete.Con $ Right qc) $ implicitParamVars <> args)
-          etype
-        (br, resType') <- checkType surrR surrP (instantiateTele pureVs sbr) resType
-        paramsArgsExpr' <- freeze paramsArgsExpr
-
-        let (_, args') = appsView paramsArgsExpr'
-            vs = V.fromList $ map (\(p, arg) -> (p, case arg of
-                Abstract.Var v -> v
-                _ -> error "inferBranches")) $ drop (teleLength params) args'
-        sbr' <- abstractM (teleAbstraction (snd <$> vs)) br
-        tele' <- V.forM vs $ \(p, v) -> do
-          s <- abstractM (teleAbstraction (snd <$> vs)) $ metaType v
-          return (metaHint v, p, s)
-        return (etype', (qc, Telescope tele', sbr'):resBrs, resType')
+  let etypes = (\(_, _, _, _, etype) -> etype) <$> inferredBranches
+  (expr2, _) <- subtypes surrR surrP expr1 etype1 $ dataType : etypes
 
   resType1 <- existsType mempty
+  let branchResults = (\(_, _, br, brType, _) -> (br, brType)) <$> inferredBranches
+  (branchResults', resType2) <- parSubtypes surrR surrP branchResults resType1
 
-  (etype3, cbrs2, resType2) <- foldrM go (etype2, mempty, resType1) cbrs
-
-  (expr3, _etype3) <- subtype surrR surrP expr2 etype2 etype3
+  cbrs2 <- forM (zip branchResults' inferredBranches) $ \(br, (qc, vs, _, _, _)) -> do
+    sbr' <- abstractM (teleAbstraction (snd <$> vs)) br
+    tele' <- V.forM vs $ \(p, v) -> do
+      s <- abstractM (teleAbstraction (snd <$> vs)) $ metaType v
+      return (metaHint v, p, s)
+    return (qc, Telescope tele', sbr')
 
   modifyIndent pred
-  tr "inferBranches res e" expr3
+  tr "inferBranches res e" expr2
   tr "              res brs" $ ConBranches cbrs2 resType2
   tr "              res t" resType2
-  return (expr3, ConBranches cbrs2 resType2, resType2)
+  return (expr2, ConBranches cbrs2 resType2, resType2)
 inferBranches surrR surrP expr brs@(LitBranches lbrs d) = do
   tr "inferBranches e" expr
   tr "              brs" brs
