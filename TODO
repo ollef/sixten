@@ -1,4 +1,5 @@
 Type checking
+  * Instantiate inferred types such that the map4 example works
   Can the special-case equations for unifying sizes be done in a principled way?
   Gather applications and do non-vars first for better propagation in checkType
   Propagate equalities from cases
@@ -22,6 +23,7 @@ Language
   Add new Int type -- overloaded literals
   * Let(rec) definitions
   * Mutually recursive top-level definitions
+  Named implicit arguments
   Laziness
   Make Concrete syntax have deep patterns and desugar them
   Type classes
