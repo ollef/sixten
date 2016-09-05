@@ -5,7 +5,6 @@ data List {a : Size}(A : Type {a}) where
   Nil : List A
   Cons : A -> Ptr (List A) -> List A
 
-{-
 data List2 (A : Type) where
   Nil2 : List2 A
   Cons2 : A -> Ptr (List2 A) -> List2 A
@@ -36,13 +35,18 @@ map2 f xs = Ref (case deref xs of
 dumbId xs = case xs of
   Nil -> Nil
   Cons x xs' -> Cons x xs'
-  -}
 
 map3 f xs = case deref xs of
-  Nil -> Ref Nil
   Cons x xs' -> Ref (Cons (f x) (map3 f xs'))
+  Nil -> Ref (Nil : List _)
 
 {-
+-- TODO
+map4 f xs = case deref xs of
+  Cons x xs' -> Ref (Cons (f x) (map4 f xs'))
+  Nil -> Ref Nil
+-}
+
 sizeof : forall {n}. (Type {n}) -> Size
 sizeof {n} _ = n
 
@@ -76,4 +80,3 @@ print3 = printSize (sum (map (\f. f 2) (map (\f. f 1) (map add3 testList))))
 -- printMappedSum = printSize (sum mappedList)
 -- printNum = printSize (add3 1 2 3)
 -- printMappedSum2 = printSize (sum mappedList3)
--- -}
