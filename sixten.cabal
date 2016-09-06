@@ -15,6 +15,42 @@ cabal-version:       >=1.10
 executable sixten
   ghc-options:         -Wall -funbox-strict-fields
   main-is:             Main.hs
+  other-modules:
+                       Builtin
+                       Close
+                       ClosureConvert
+                       Erase
+                       Generate
+                       Infer
+                       LLVM
+                       Lift
+                       Meta
+                       Normalise
+                       Processor
+                       Syntax
+                       Syntax.Abstract
+                       Syntax.Annotation
+                       Syntax.Branches
+                       Syntax.Class
+                       Syntax.Closed
+                       Syntax.Concrete
+                       Syntax.Converted
+                       Syntax.Data
+                       Syntax.Definition
+                       Syntax.Direction
+                       Syntax.Hint
+                       Syntax.Lifted
+                       Syntax.Name
+                       Syntax.Parse
+                       Syntax.Pretty
+                       Syntax.Primitive
+                       Syntax.Resolve
+                       Syntax.SLambda
+                       Syntax.Telescope
+                       TCM
+                       TopoSort
+                       Unify
+                       Util
   build-depends:
                        base >=4.8 && <4.9,
                        bifunctors,
