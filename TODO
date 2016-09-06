@@ -12,7 +12,6 @@ Codegen
     Make literals llvm `constant`s
     Add error message for circular globals
 Compiler
-  * Make it automatically compile the llvm bytecode
   Make log function respond to verbosity and tag
   Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
   * Test suite

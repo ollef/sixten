@@ -1,20 +1,24 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
-import Data.Maybe
 import Options.Applicative
+import System.Directory
+import System.FilePath
+import System.IO.Temp
+import System.Process
 
 import qualified Processor
 
 data Options = Options
   { inputFile :: FilePath
-  , logFile :: Maybe FilePath
   , outputFile :: FilePath
+  , optimisation :: Maybe String
+  , assemblyDir :: Maybe FilePath
   } deriving (Show)
 
 cmdLineOptions :: ParserInfo Options
-cmdLineOptions = info (helper <*> opts) $
-  fullDesc
+cmdLineOptions = info (helper <*> opts)
+  $ fullDesc
   <> progDesc "Compile a Sixten program"
   <> header "sixten"
   where
@@ -23,23 +27,46 @@ cmdLineOptions = info (helper <*> opts) $
         (metavar "FILE"
         <> help "Input source FILE"
         )
-      <*> optional (strOption
-        $ long "verbose"
-        <> short 'v'
-        <> metavar "FILE"
-        <> help "Write log to FILE (default: 'log.txt')"
-        )
       <*> strOption
         (long "output"
         <> short 'o'
         <> metavar "FILE"
         <> help "Write output to FILE"
         )
+      <*> optional (strOption
+        $ long "optimisation-level"
+        <> short 'O'
+        <> metavar "LEVEL"
+        <> help "Set the optimisation level to LEVEL"
+        )
+      <*> optional (strOption
+        $ long "save-assembly"
+        <> short 'S'
+        <> metavar "DIR"
+        <> help "Save intermediate assembly files to DIR"
+        )
 
 main :: IO ()
 main = do
   opts <- execParser cmdLineOptions
-  Processor.processFile
-    (inputFile opts)
-    (outputFile opts)
-    (fromMaybe "log.txt" $ logFile opts)
+  withAssemblyDir (assemblyDir opts) $ \asmDir -> do
+    let inFile = inputFile opts
+        fileName = dropExtension $ takeFileName inFile
+        llFile = asmDir </> fileName <.> "ll"
+        logFile = asmDir </> fileName <> "-log.txt"
+    Processor.processFile inFile llFile logFile
+    (optLlFile, optFlag) <- case optimisation opts of
+      Nothing -> return (llFile, id)
+      Just optLevel -> do
+        let optFlag = ("-O" <> optLevel :)
+            optLlFile = asmDir </> fileName <> "-opt" <.> "ll"
+        callProcess "opt" $ optFlag ["-S", llFile, "-o", optLlFile]
+        return (optLlFile, optFlag)
+    let asmFile = asmDir </> fileName <.> "s"
+    callProcess "llc" $ optFlag ["-march=x86-64", optLlFile, "-o", asmFile]
+    callProcess "gcc" $ optFlag [asmFile, "-lgc", "-o", outputFile opts]
+  where
+    withAssemblyDir Nothing k = withSystemTempDirectory "sixten" k
+    withAssemblyDir (Just dir) k = do
+      createDirectoryIfMissing True dir
+      k dir
