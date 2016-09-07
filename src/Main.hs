@@ -64,7 +64,8 @@ main = do
         return (optLlFile, optFlag)
     let asmFile = asmDir </> fileName <.> "s"
     callProcess "llc" $ optFlag ["-march=x86-64", optLlFile, "-o", asmFile]
-    callProcess "gcc" $ optFlag [asmFile, "-lgc", "-o", outputFile opts]
+    ldFlags <- readProcess "pkg-config" ["--libs", "--static", "bdw-gc"] ""
+    callProcess "gcc" $ concatMap words (lines ldFlags) ++ optFlag [asmFile, "-o", outputFile opts]
   where
     withAssemblyDir Nothing k = withSystemTempDirectory "sixten" k
     withAssemblyDir (Just dir) k = do
