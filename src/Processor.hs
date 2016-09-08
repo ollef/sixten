@@ -216,7 +216,9 @@ processFile file output logFile = do
   let resolveResult = Resolve.program <$> parseResult
   case resolveResult of
     Nothing -> return ()
-    Just (Left err) -> Text.putStrLn err
+    Just (Left err) -> do
+      Text.putStrLn err
+      error "Syntax error"
     Just (Right resolved) -> do
       let groups = filter (not . null) $ dependencyOrder
             (HS.map (either id (\(QConstr n _) -> n)) . Concrete.constructors) resolved
@@ -230,7 +232,9 @@ processFile file output logFile = do
       procRes <- withFile logFile WriteMode $ \handle ->
         runTCM (process groups') mempty handle
       case procRes of
-        Left err -> putStrLn err
+        Left err -> do
+          putStrLn err
+          error "Error"
         Right res -> do
           forwardDecls <- Text.readFile "test/forwarddecls.ll"
           withFile output WriteMode $ \handle -> do
