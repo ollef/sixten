@@ -26,23 +26,23 @@ type CExprM = Converted.Expr Meta
 type CSExprM = Converted.SExpr Meta
 type CBrsM = SimpleBranches QConstr Converted.Expr Meta
 
-convertSignature
+createSignature
   :: LSExprM
   -> TCM (Converted.Signature Converted.Expr Closed.SExpr Meta)
-convertSignature expr = case expr of
+createSignature expr = case expr of
   Closed.Sized _ (Closed.Lams tele lamScope) -> do
-    (retDir, tele') <- convertLambdaSignature tele lamScope
+    (retDir, tele') <- createLambdaSignature tele lamScope
     return $ Converted.Function retDir tele' lamScope
   _ -> return $ Converted.Constant (Closed.sExprDir expr) expr
 
-convertLambdaSignature
+createLambdaSignature
   :: Telescope Simple.Scope () Closed.Expr Void
   -> Simple.Scope Tele Closed.SExpr Void
   -> TCM
     ( Direction
     , Telescope Simple.Scope Direction Converted.Expr Void
     )
-convertLambdaSignature tele (Simple.Scope lamExpr) = mdo
+createLambdaSignature tele (Simple.Scope lamExpr) = mdo
   tele' <- forMTele tele $ \h () s -> do
     let e = instantiateVar ((vs Vector.!) . unTele) $ vacuous s
     v <- forall_ h Unit
@@ -53,10 +53,10 @@ convertLambdaSignature tele (Simple.Scope lamExpr) = mdo
       tele'' = error "convertLambda" <$> Telescope ((\(v, e) -> (metaHint v, Converted.sizeDir e, Simple.abstract abstr e)) <$> tele')
   return (Closed.sExprDir lamExpr, tele'')
 
-convertBody
+convertSignature
   :: Converted.Signature Converted.Expr Closed.SExpr Void
   -> TCM CSExprM
-convertBody sig = case sig of
+convertSignature sig = case sig of
   Converted.Function retDir tele lamScope -> do
     vs <- forMTele tele $ \h _ _ -> forall_ h Unit
     let lamExpr = instantiateVar ((vs Vector.!) . unTele) $ vacuous lamScope

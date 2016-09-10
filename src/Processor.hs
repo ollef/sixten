@@ -174,10 +174,10 @@ closureConvertGroup
   :: [(Name, Closed.SExpr Void)]
   -> TCM [(Name, Converted.SExpr Void)]
 closureConvertGroup defs = do
-  sigs <- forM defs $ \(x, e) -> (,) x <$> ClosureConvert.convertSignature (vacuous e)
+  sigs <- forM defs $ \(x, e) -> (,) x <$> ClosureConvert.createSignature (vacuous e)
   addConvertedSignatures $ HM.fromList sigs
   forM sigs $ \(x, sig) ->
-    (,) x . fmap (error "closureConvertGroup conv") <$> ClosureConvert.convertBody (error "closureConvertGroup sig" <$> sig)
+    (,) x . fmap (error "closureConvertGroup conv") <$> ClosureConvert.convertSignature (error "closureConvertGroup sig" <$> sig)
 
 liftGroup
   :: [(Name, Converted.SExpr Void)]
