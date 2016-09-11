@@ -40,12 +40,9 @@ map3 f xs = case deref xs of
   Cons x xs' -> Ref (Cons (f x) (map3 f xs'))
   Nil -> Ref (Nil : List _)
 
-{-
--- TODO
 map4 f xs = case deref xs of
   Cons x xs' -> Ref (Cons (f x) (map4 f xs'))
   Nil -> Ref Nil
--}
 
 sizeof : forall {n}. (Type {n}) -> Size
 sizeof {n} _ = n
