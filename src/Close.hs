@@ -15,7 +15,7 @@ import TCM
 import TopoSort
 import Util
 
-type Meta = MetaVar SLambda.Expr
+type Meta = MetaVar Closed.Expr
 type ExprM = SLambda.Expr Meta
 type CExprM = Closed.Expr Meta
 
@@ -52,17 +52,15 @@ closeLambda tele lamScope = mdo
 
     return $ Vector.fromList $ impure <$> topoSort deps
 
-  tele' <- forMTele tele $ \h () s -> do
+  vs <- forMTele tele $ \h () s -> do
     let e = instantiateVar ((vs Vector.!) . unTele) s
-    v <- forall_ h e
     e' <- closeExpr e
-    return (v, e')
+    forall_ h e'
 
-  let vs = fst <$> tele'
-      lamExpr = instantiateVar ((vs Vector.!) . unTele) lamScope
+  let lamExpr = instantiateVar ((vs Vector.!) . unTele) lamScope
       vs' = sortedFvs <> vs
       abstr = teleAbstraction vs'
-      tele'' = Telescope $ (\(v, e) -> (metaHint v, (), Simple.abstract abstr e)) <$> tele'
+      tele'' = Telescope $ (\v -> (metaHint v, (), Simple.abstract abstr $ metaType v)) <$> vs'
 
   lamExpr' <- closeSExpr lamExpr
   let lamScope' = Simple.abstract abstr lamExpr'
@@ -70,9 +68,7 @@ closeLambda tele lamScope = mdo
   voidedTele <- traverse (const $ throwError "closeLambda") tele''
   voidedLamScope <- traverse (const $ throwError "closeLambda") lamScope'
 
-  args <- forM sortedFvs $ \m -> do
-    sz <- closeExpr $ metaType m
-    return $ Closed.Sized sz $ Closed.Var m
+  let args = (\v -> Closed.Sized (metaType v) $ Closed.Var v) <$> sortedFvs
 
   return $ if null args
     then Closed.Lams voidedTele voidedLamScope
@@ -81,22 +77,19 @@ closeLambda tele lamScope = mdo
     impure [a] = a
     impure _ = error "closeLambda"
 
-
 closeSExpr :: SExprM -> TCM CSExprM
 closeSExpr (SLambda.Sized sz e) = Closed.Sized <$> closeExpr sz <*> closeExpr e
 
 closeBranches :: BrsM SLambda.Expr -> TCM (BrsM Closed.Expr)
 closeBranches (SimpleConBranches cbrs) = fmap SimpleConBranches $
   forM cbrs $ \(qc, tele, brScope) -> mdo
-    tele' <- forMTele tele $ \h () s -> do
+    vs <- forMTele tele $ \h () s -> do
       let e = instantiateVar ((vs Vector.!) . unTele) s
-      v <- forall_ h e
       e' <- closeExpr e
-      return (v, e')
-    let vs = fst <$> tele'
-        brExpr = instantiateVar ((vs Vector.!) . unTele) brScope
+      forall_ h e'
+    let brExpr = instantiateVar ((vs Vector.!) . unTele) brScope
         abstr = teleAbstraction vs
-        tele'' = Telescope $ (\(v, e) -> (metaHint v, (), Simple.abstract abstr e)) <$> tele'
+        tele'' = Telescope $ (\v -> (metaHint v, (), Simple.abstract abstr $ metaType v)) <$> vs
     brExpr' <- closeExpr brExpr
     let brScope' = Simple.abstract abstr brExpr'
     return (qc, tele'', brScope')
