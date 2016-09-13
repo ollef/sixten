@@ -143,7 +143,7 @@ svarb :: b -> Simple.Scope b Converted.Expr a
 svarb = Simple.Scope . Converted.Var . B
 
 maxArity :: Num n => n
-maxArity = 3
+maxArity = 4
 
 deref :: Converted.Expr v -> Converted.Expr v
 deref e
