@@ -416,18 +416,18 @@ generateFunction visibility name (Function retDir hs funScope) = do
   case retDir of
     Void -> do
       ret <- LLVM.Operand <$> freshenName "return"
-      emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> voidT <+> "@" <> name
+      emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> voidT <+> unOperand (global name)
         <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList vs) <> ") {"
       storeSExpr funExpr ret
       emit returnVoid
     Indirect -> do
       ret <- LLVM.Operand <$> freshenName "return"
-      emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> voidT <+> "@" <> name
+      emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> voidT <+> unOperand (global name)
         <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList vs <> pure (IndirectVar ret)) <> ") {"
       storeSExpr funExpr ret
       emit returnVoid
     Direct -> do
-      emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> integerT <+> "@" <> name <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList vs) <> ") {"
+      emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> integerT <+> unOperand (global name) <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList vs) <> ") {"
       res <- generateSExpr funExpr
       resInt <- loadVar "function-result" res
       emit $ returnInt resInt

@@ -130,7 +130,7 @@ ptrSize :: Operand Int
 ptrSize = "8"
 
 global :: B -> Operand a
-global b = Operand $ "@" <> b
+global b = Operand $ "@" <> escape b
 
 integer :: Operand Int -> B
 integer (Operand b) = integerT <+> b
