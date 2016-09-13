@@ -31,9 +31,6 @@ APP f x = f x
 
 -- app2 f x = APP f x
 
--- app3 : forall {a b}. (a -> b) -> a -> b
--- app3 f x = APP f x
-
 if : Bool -> forall {n}{a : Type {n}}. a -> a -> a
 if b = b
 
