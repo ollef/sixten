@@ -44,19 +44,24 @@ checkType surrR surrP expr typ = do
       checkType surrR surrP (Concrete.Con $ Right $ qualify n c) typ
     Concrete.App e1 a1 e2 -> do
       argType <- existsType mempty
-      resType <- existsType mempty
+      retType <- existsType mempty
       (e1', funType) <- checkType surrR surrP e1
         $ Abstract.Pi mempty a1 argType
-        $ abstractNone resType
+        $ abstractNone retType
       case funType of
-        Abstract.Pi h a2 argType' returnScope | plicitness a1 == plicitness a2
-                                             && relevance a1 >= min (relevance a2) surrR -> do
-          arg <- existsVar h argType'
-          let returnType = instantiate1 arg returnScope
-          (appResult, typ') <- subtype surrR surrP (Abstract.App e1' a2 arg) returnType typ
-          (e2', _argType'') <- checkType (min (relevance a2) surrR) surrP e2 argType'
-          unify e2' arg
-          return (appResult, typ')
+        Abstract.Pi _ a2 argType' returnScope | plicitness a1 == plicitness a2
+                                             && relevance a1 >= min (relevance a2) surrR ->
+          case unusedScope returnScope of
+            Just returnType -> do
+              appVar <- forall_ mempty returnType
+              (appExpr, typ') <- subtype surrR surrP (pure appVar) returnType typ
+              (e2', _argType'') <- checkType (min (relevance a2) surrR) surrP e2 argType'
+              appScope <- abstract1M appVar appExpr
+              return (instantiate1 (Abstract.App e1' a2 e2') appScope, typ')
+            Nothing -> do
+              (e2', _argType'') <- checkType (min (relevance a2) surrR) surrP e2 argType'
+              let returnType = instantiate1 e2' returnScope
+              subtype surrR surrP (Abstract.App e1' a2 e2') returnType typ
         _ -> throwError "checkType: expected pi type"
     _ -> inferIt
   modifyIndent pred
