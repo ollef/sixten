@@ -13,6 +13,7 @@ Codegen
   Globals
     Make literals llvm `constant`s
     Add error message for circular globals
+  Should things of known size > 1 be passed as LLVM arrays?
 Compiler
   Make log function respond to verbosity and tag
   Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
