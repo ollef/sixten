@@ -42,9 +42,9 @@ map f xs = case xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (Ref (map f (deref xs')))
 
-map' f xs = case xs of
+mapp f xs = case xs of
   Nil -> Nil
-  Cons x xs' -> Cons (f x) (Ref (map' f (deref xs')))
+  Cons x xs' -> Cons (f x) (Ref (mapp f (deref xs')))
 
 id x = x
 
