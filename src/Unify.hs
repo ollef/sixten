@@ -150,7 +150,7 @@ subtype surrR surrP expr type1 type2 = do
           e2    <- etaLamM h a2 t2 =<< abstract1M x2 ex
           typ2' <- Pi h a2 t2 <$> abstract1M x2 s2'
           return (e2, typ2')
-        (Var v@(metaRef -> Just r), Pi h a t2 s2) -> do
+        (Var v@(metaRef -> Just r), Pi h a _ _) -> do
           sol <- solution r
           case sol of
             Left l -> do
@@ -161,13 +161,7 @@ subtype surrR surrP expr type1 type2 = do
               t11 <- existsVarAtLevel (metaHint v) (Builtin.Type t11TypeSize) l
               t12 <- existsVarAtLevel (metaHint v) (Builtin.Type t12TypeSize) l
               solve r $ Pi h a t11 $ abstractNone t12
-              x2  <- forall_ h t2
-              (x1, t11') <- subtype (min (relevance a) surrR) (plicitness a) (pure x2) t2 t11
-              (ex, s2')  <- subtype surrR surrP (betaApp e a x1) t12 (instantiate1 (pure x2) s2)
-              solve r . Pi h a t11' =<< abstract1M x2 s2'
-              e2    <- etaLamM h a t2 =<< abstract1M x2 ex
-              typ2' <- Pi h a t2 <$> abstract1M x2 s2'
-              return (e2, typ2')
+              subtype surrR surrP e typ1 typ2
             Right c -> subtype surrR surrP e c typ2
         (_, Var (metaRef -> Just r)) -> do
           sol <- solution r
