@@ -29,12 +29,12 @@ erase expr = do
     Abstract.Pi {} -> return $ SLambda.Con Builtin.Unit mempty
     Abstract.Lam h a t s
       | relevance a == Relevant -> do
-        v <- forall_ h t
+        v <- forall h t
         e <- eraseS $ instantiate1 (pure v) s
         sz <- erase =<< sizeOfType t
         return $ SLambda.Lam h sz $ Simple.abstract1 v e
       | otherwise -> do
-        v <- forall_ h t
+        v <- forall h t
         erase $ instantiate1 (pure v) s
     (appsView -> (Abstract.Con qc, es)) -> do
       n <- constrArity qc
@@ -82,7 +82,7 @@ eraseBranches (ConBranches cbrs typ) = do
     tele' <- forMTele tele $ \h a s -> do
       let t = instantiateTele pureVs s
       tsz <- erase =<< sizeOfType t
-      v <- forall_ h t
+      v <- forall h t
       return (v, (h, a, Simple.abstract abstr tsz))
     let vs = fst <$> tele'
         abstr v = relevantAbstraction tele =<< teleAbstraction vs v
@@ -110,11 +110,11 @@ eraseDef (DataDefinition _) typ = go typ
   where
     go (Abstract.Pi h a t s)
       | relevance a == Relevant = do
-        v <- forall_ h t
+        v <- forall h t
         sz <- erase =<< sizeOfType t
         e <- go $ instantiate1 (pure v) s
         return $ SLambda.Sized (SLambda.Lit 1) $ SLambda.Lam h sz $ Simple.abstract1 v e
       | otherwise = do
-        v <- forall_ h t
+        v <- forall h t
         go $ instantiate1 (pure v) s
     go _ = return $ SLambda.Sized (SLambda.Lit 0) $ SLambda.Con Builtin.Unit mempty

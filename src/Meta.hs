@@ -14,7 +14,8 @@ import qualified Data.Set as S
 import Data.STRef
 import Data.String
 import qualified Data.Traversable as T
-import qualified Data.Vector as V
+import Data.Vector(Vector)
+import qualified Data.Vector as Vector
 import Prelude.Extras
 
 import Syntax
@@ -116,8 +117,8 @@ existsVarAtLevel
   -> TCM (g (MetaVar e))
 existsVarAtLevel hint typ l = pure <$> existsAtLevel hint typ l
 
-forall_ :: NameHint -> e (MetaVar e) -> TCM (MetaVar e)
-forall_ hint typ = do
+forall :: NameHint -> e (MetaVar e) -> TCM (MetaVar e)
+forall hint typ = do
   i <- fresh
   TCM.log $ "forall: " <> fromString (show i)
   return $ MetaVar i typ hint Nothing
@@ -127,7 +128,7 @@ forallVar
   => NameHint
   -> e (MetaVar e)
   -> TCM (g (MetaVar e))
-forallVar hint typ = pure <$> forall_ hint typ
+forallVar hint typ = pure <$> forall hint typ
 
 solution :: Exists e -> TCM (Either Level (e (MetaVar e)))
 solution = liftST . readSTRef
@@ -182,7 +183,7 @@ abstractM
   -> e (MetaVar e)
   -> TCM (Scope b e (MetaVar e))
 abstractM f e = do
-  e' <- freeze e
+  e' <- zonk e
   changed <- liftST $ newSTRef False
   Scope . join <$> traverse (go changed) e'
   where
@@ -194,7 +195,9 @@ abstractM f e = do
     go changed (v'@(metaRef -> Just r)) = do
       tfvs <- foldMapM S.singleton $ metaType v'
       let mftfvs = S.filter (isJust . f) tfvs
-      unless (S.null mftfvs) $ throwError $ "cannot abstract, " ++ show mftfvs ++ " would escape"
+      unless (S.null mftfvs)
+        $ throwError $ "cannot abstract, " ++ show mftfvs ++ " would escape from the type of "
+        ++ show v'
       sol <- solution r
       case sol of
         Left _  -> free v'
@@ -241,12 +244,12 @@ abstractDataDefM
 abstractDataDefM f (DataDef cs) typ = mdo
   let inst = instantiateTele $ pure <$> vs
       vs = (\(_, _, _, v) -> v) <$> ps'
-  typ' <- freeze typ
+  typ' <- zonk typ
   ps' <- forMTele (telescope typ') $ \h p s -> do
     let is = inst s
-    v <- forall_ h is
+    v <- forall h is
     return (h, p, is, v)
-  let f' x = F <$> f x <|> B . Tele <$> V.elemIndex x vs
+  let f' x = F <$> f x <|> B . Tele <$> Vector.elemIndex x vs
   acs <- forM cs $ \c -> traverse (fmap (toScope . fmap assoc . fromScope) . abstractM f' . inst) c
   return $ DataDef acs
   where
@@ -260,21 +263,55 @@ etaLamM
   -> Scope1 Abstract.Expr (MetaVar Abstract.Expr)
   -> TCM (Abstract.Expr (MetaVar Abstract.Expr))
 etaLamM n p t s = do
-  s' <- freezeBound s
+  s' <- zonkBound s
   return $ Abstract.etaLam n p t s'
 
-freeze :: (Monad e, Traversable e) => e (MetaVar e) -> TCM (e (MetaVar e))
-freeze e = join <$> traverse go e
-  where
-    go v@(metaRef -> Just r) = either (const $ do mt <- freeze (metaType v); return $ pure v {metaType = mt})
-                                          freeze =<< solution r
-    go v                         = return $ pure v
+zonkVar
+  :: (Monad e, Traversable e)
+  => MetaVar e
+  -> TCM (e (MetaVar e))
+zonkVar v@(metaRef -> Just r) = do
+  sol <- solution r
+  case sol of
+    Left _ -> do
+      mt <- zonk $ metaType v
+      return $ pure v {metaType = mt}
+    Right e -> do
+      e' <- zonk e
+      solve r e'
+      return e'
+zonkVar v = return $ pure v
 
-freezeBound :: (Monad e, Traversable e, Traversable (t e), Bound t)
-            => t e (MetaVar e)
-            -> TCM (t e (MetaVar e))
-freezeBound e = (>>>= id) <$> traverse go e
+zonk
+  :: (Monad e, Traversable e)
+  => e (MetaVar e)
+  -> TCM (e (MetaVar e))
+zonk = fmap join . traverse zonkVar
+
+zonkBound
+  :: (Monad e, Traversable e, Traversable (t e), Bound t)
+  => t e (MetaVar e)
+  -> TCM (t e (MetaVar e))
+zonkBound = fmap (>>>= id) . traverse zonkVar
+
+metaTelescope
+  :: Monad e
+  => Vector (a, MetaVar e)
+  -> Telescope Scope a e (MetaVar e)
+metaTelescope vs =
+  Telescope
+  $ (\(a, v) -> (metaHint v, a, abstract abstr $ metaType v))
+  <$> vs
   where
-    go v@(metaRef -> Just r) = either (const $ do mt <- freeze (metaType v); return $ pure v {metaType = mt})
-                                          freeze =<< solution r
-    go v = return $ pure v
+    abstr = teleAbstraction $ snd <$> vs
+
+metaTelescopeM
+  :: (Monad e, Traversable e, Show1 e)
+  => Vector (a, MetaVar e)
+  -> TCM (Telescope Scope a e (MetaVar e))
+metaTelescopeM vs =
+  fmap Telescope $ forM vs $ \(a, v) -> do
+    s <- abstractM abstr $ metaType v
+    return (metaHint v, a, s)
+  where
+    abstr = teleAbstraction $ snd <$> vs

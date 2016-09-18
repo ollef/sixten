@@ -55,7 +55,7 @@ closeLambda tele lamScope = mdo
   vs <- forMTele tele $ \h () s -> do
     let e = instantiateVar ((vs Vector.!) . unTele) s
     e' <- closeExpr e
-    forall_ h e'
+    forall h e'
 
   let lamExpr = instantiateVar ((vs Vector.!) . unTele) lamScope
       vs' = sortedFvs <> vs
@@ -86,7 +86,7 @@ closeBranches (SimpleConBranches cbrs) = fmap SimpleConBranches $
     vs <- forMTele tele $ \h () s -> do
       let e = instantiateVar ((vs Vector.!) . unTele) s
       e' <- closeExpr e
-      forall_ h e'
+      forall h e'
     let brExpr = instantiateVar ((vs Vector.!) . unTele) brScope
         abstr = teleAbstraction vs
         tele'' = Telescope $ (\v -> (metaHint v, (), Simple.abstract abstr $ metaType v)) <$> vs

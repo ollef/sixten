@@ -25,8 +25,12 @@ existsSize n = existsVar n Builtin.Size
 existsType :: Monad e => NameHint -> TCM (e (MetaVar Expr))
 existsType n = do
   sz <- existsSize n
-  t <- existsVar n $ Builtin.Type sz
-  existsVar n t
+  existsVar n $ Builtin.Type sz
+
+existsTypeType :: NameHint -> TCM (Expr (MetaVar Expr))
+existsTypeType h = do
+  sz <- existsSize h
+  return $ Builtin.Type sz
 
 occurs
   :: Foldable e
@@ -50,8 +54,8 @@ occurs l tv = traverse_ go
 
 unify :: AbstractM -> AbstractM -> TCM ()
 unify type1 type2 = do
-  ftype1 <- freeze type1
-  ftype2 <- freeze type2
+  ftype1 <- zonk type1
+  ftype2 <- zonk type2
   tr "unify t1" ftype1
   tr "      t2" ftype2
   go True ftype1 ftype2
@@ -100,16 +104,18 @@ unify type1 type2 = do
     isForall _ = Nothing
     distinct pes = S.size (S.fromList es) == length es where es = map snd pes
     solveVar r v pvs t = do
-      unify (metaType v) =<< typeOf t
       sol <- solution r
       case sol of
         Left l -> do
           occurs l v t
-          t' <- lambdas pvs t
+          t' <- lambdasM pvs t
+          t'Type <- pisM pvs =<< typeOf t
+          unify (metaType v) t'Type
           tr ("solving " <> show (metaId v)) t'
           solve r t'
         Right c -> go True (apps c $ map (second pure) pvs) t
-    lambdas pvs t = foldrM (\(p, v) -> fmap (Lam mempty p $ metaType v) . abstract1M v) t pvs
+    lambdasM pvs t = foldrM (\(p, v) -> fmap (Lam (metaHint v) p $ metaType v) . abstract1M v) t pvs
+    pisM pvs t = foldrM (\(p, v) -> fmap (Pi (metaHint v) p $ metaType v) . abstract1M v) t pvs
 
 subtype
   :: Relevance
@@ -119,14 +125,14 @@ subtype
   -> AbstractM
   -> TCM (AbstractM, AbstractM)
 subtype surrR surrP expr type1 type2 = do
-  tr "subtype e"  =<< freeze expr
-  tr "        t1" =<< freeze type1
-  tr "        t2" =<< freeze type2
+  tr "subtype e"  =<< zonk expr
+  tr "        t1" =<< zonk type1
+  tr "        t2" =<< zonk type2
   modifyIndent succ
   (e', type') <- go True True expr type1 type2
   modifyIndent pred
-  tr "subtype res e'" =<< freeze e'
-  tr "            type'" =<< freeze type'
+  tr "subtype res e'" =<< zonk e'
+  tr "            type'" =<< zonk type'
   return (e', type')
   where
     go reduce1 reduce2 e typ1 typ2
@@ -141,7 +147,7 @@ subtype surrR surrP expr type1 type2 = do
         (Pi h1 a1 t1 s1, Pi h2 a2 t2 s2) | plicitness a1 == plicitness a2
                                         && relevance a1 <= max (relevance a2) surrR -> do
           let h = h1 <> h2
-          x2  <- forall_ h t2
+          x2  <- forall h t2
           (x1, _)   <- subtype (max (relevance a2) surrR) (plicitness a2) (pure x2) t2 t1
           (ex, s2') <- subtype surrR surrP
                                (betaApp e a1 x1)
@@ -170,7 +176,7 @@ subtype surrR surrP expr type1 type2 = do
             Right c -> subtype surrR surrP e typ1 c
         (_, Pi h a t2 s2) | plicitness a == Implicit
                          || surrP == Implicit -> do
-          x2 <- forall_ h t2
+          x2 <- forall h t2
           (e2, s2') <- subtype surrR Implicit e typ1 (instantiate1 (pure x2) s2)
           e2'   <- etaLamM h a t2 =<< abstract1M x2 e2
           typ2' <- Pi h a t2 <$> abstract1M x2 s2'
@@ -193,7 +199,7 @@ parSubtypes
   -> TCM ([AbstractM], AbstractM)
 parSubtypes surrR surrP exprs1 resType1 = do
   exprs2 <- forM exprs1 $ \(e, t) -> do
-    t' <- freeze t
+    t' <- zonk t
     return (e, t')
   let exprs3 = sortBy (comparing $ numPis . snd . snd) $ zip [(0 :: Int)..] exprs2
       go (es, resType) (n, (e, t)) = do
@@ -231,7 +237,7 @@ typeOf expr = do
     Lit _ -> return Builtin.Size
     Pi {} -> return $ Builtin.Type $ Lit 1
     Lam n a t s -> do
-      x <- forall_ n t
+      x <- forall n t
       resType  <- typeOf (instantiate1 (pure x) s)
       abstractedResType <- abstract1M x resType
       return $ Pi n a t abstractedResType
@@ -244,7 +250,7 @@ typeOf expr = do
     Case _ (ConBranches _ t) -> return t -- TODO do this properly to get rid of the ConBranches type field
     Case _ (LitBranches _ def) -> typeOf def
   modifyIndent pred
-  tr "typeOf res" =<< freeze t
+  tr "typeOf res" =<< zonk t
   return t
 
 sizeOfType

@@ -45,7 +45,7 @@ createLambdaSignature
 createLambdaSignature tele (Simple.Scope lamExpr) = mdo
   tele' <- forMTele tele $ \h () s -> do
     let e = instantiateVar ((vs Vector.!) . unTele) $ vacuous s
-    v <- forall_ h Unit
+    v <- forall h Unit
     e' <- convertExpr e
     return (v, e')
   let vs = fst <$> tele'
@@ -58,7 +58,7 @@ convertSignature
   -> TCM CSExprM
 convertSignature sig = case sig of
   Converted.Function retDir tele lamScope -> do
-    vs <- forMTele tele $ \h _ _ -> forall_ h Unit
+    vs <- forMTele tele $ \h _ _ -> forall h Unit
     let lamExpr = instantiateVar ((vs Vector.!) . unTele) $ vacuous lamScope
         abstr = teleAbstraction vs
     lamExpr' <- convertSExpr lamExpr
@@ -80,7 +80,7 @@ convertLambda
 convertLambda tele lamScope = mdo
   tele' <- forMTele tele $ \h () s -> do
     let e = instantiateVar ((vs Vector.!) . unTele) $ vacuous s
-    v <- forall_ h Unit
+    v <- forall h Unit
     e' <- convertExpr e
     return (v, e')
   let vs = fst <$> tele'
@@ -120,7 +120,7 @@ convertExpr expr = case expr of
     unknownCall e' es'
   Closed.Let h e bodyScope -> do
     e' <- convertSExpr e
-    v <- forall_ h Unit
+    v <- forall h Unit
     let bodyExpr = instantiateVar (\() -> v) bodyScope
     bodyExpr' <- convertExpr bodyExpr
     let bodyScope' = Simple.abstract1 v bodyExpr'
@@ -200,7 +200,7 @@ convertBranches (SimpleConBranches cbrs) = fmap SimpleConBranches $
   forM cbrs $ \(qc, tele, brScope) -> mdo
     tele' <- forMTele tele $ \h () s -> do
       let e = instantiateVar ((vs Vector.!) . unTele) s
-      v <- forall_ h Unit
+      v <- forall h Unit
       e' <- convertExpr e
       return (v, e')
     let vs = fst <$> tele'

@@ -17,7 +17,7 @@ data Expr v
   | Global Name  -- ^ Really just a variable, but it's often annoying to not have it
   | Lit Literal
   | Con (Either Constr QConstr)
-  | Pi  !NameHint !Annotation (Type v) (Scope1 Expr v)  -- ^ Dependent function space
+  | Pi !NameHint !Annotation (Type v) (Scope1 Expr v)  -- ^ Dependent function space
   | Lam !NameHint !Annotation (Type v) (Scope1 Expr v)
   | App (Expr v) !Annotation (Expr v)
   | Case (Expr v) (Branches (Either Constr QConstr) Expr v)

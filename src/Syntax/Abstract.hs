@@ -28,17 +28,18 @@ type Type = Expr
 
 -------------------------------------------------------------------------------
 -- * Views and smart constructors
+-- TODO remove?
 pi_ :: Name -> Annotation -> Type Name -> Expr Name -> Expr Name
 pi_ n p t e = Pi (fromText n) p t $ abstract1 n e
-
-lam :: Name -> Annotation -> Type Name -> Expr Name -> Expr Name
-lam n p t e = Lam (fromText n) p t $ abstract1 n e
 
 etaLam :: NameHint -> Annotation -> Expr v -> Scope1 Expr v -> Expr v
 etaLam _ p _ (Scope (App e p' (Var (B ()))))
   | B () `S.notMember` toSet (second (const ()) <$> e) && p == p'
     = join $ unvar (error "etaLam impossible") id <$> e
 etaLam n p t s = Lam n p t s
+
+etaLams :: Eq v => Telescope Scope Annotation Expr v -> Scope Tele Expr v -> Expr v
+etaLams tele s = quantify etaLam s tele
 
 -------------------------------------------------------------------------------
 -- Instances

@@ -36,7 +36,7 @@ checkType
   -> TCM (AbstractM, AbstractM)
 checkType surrR surrP expr typ = do
   tr ("checkType " ++ show (Annotation surrR surrP) ++ " e") expr
-  tr "          t" =<< freeze typ
+  tr "          t" =<< zonk typ
   modifyIndent succ
   (rese, rest) <- case expr of
     Concrete.Con c@(Left _) -> do
@@ -53,7 +53,7 @@ checkType surrR surrP expr typ = do
                                              && relevance a1 >= min (relevance a2) surrR ->
           case unusedScope returnScope of
             Just returnType -> do
-              appVar <- forall_ mempty returnType
+              appVar <- forall mempty returnType
               (appExpr, typ') <- subtype surrR surrP (pure appVar) returnType typ
               (e2', _argType'') <- checkType (min (relevance a2) surrR) surrP e2 argType'
               appScope <- abstract1M appVar appExpr
@@ -65,8 +65,8 @@ checkType surrR surrP expr typ = do
         _ -> throwError "checkType: expected pi type"
     _ -> inferIt
   modifyIndent pred
-  tr "checkType res e" =<< freeze rese
-  tr "              t" =<< freeze rest
+  tr "checkType res e" =<< zonk rese
+  tr "              t" =<< zonk rest
   return (rese, rest)
     where
       inferIt = do
@@ -103,14 +103,14 @@ inferType surrR surrP shouldInst expr = do
     Concrete.Pi n p t s -> do
       sz <- existsSize n
       (t', _) <- checkType Irrelevant surrP t $ Builtin.Type sz
-      v  <- forall_ n t'
+      v  <- forall n t'
       (e', _) <- inferType Irrelevant surrP DontInstantiate $ instantiate1 (pure v) s
       s' <- abstract1M v e'
       return (Abstract.Pi n p t' s', Builtin.Type $ Abstract.Lit 1)
     Concrete.Lam n p argType s -> {- uncurry generalise <=< enterLevel $ -} do
       sz <- existsSize n
       (argType', _) <- checkType Irrelevant surrP argType $ Builtin.Type sz
-      x <- forall_ n argType'
+      x <- forall n argType'
       (e', resType) <- inferType surrR surrP DontInstantiate $ instantiate1 (pure x) s
       s' <- abstract1M x e'
       abstractedResType <- abstract1M x resType
@@ -139,8 +139,8 @@ inferType surrR surrP shouldInst expr = do
       x <- existsVar mempty t
       return (x, t)
   modifyIndent pred
-  tr "inferType res e" =<< freeze e
-  tr "              t" =<< freeze t
+  tr "inferType res e" =<< zonk e
+  tr "              t" =<< zonk t
   return (e, t)
 
 maybeInstantiate
@@ -155,7 +155,7 @@ maybeInstantiate Instantiate expr0 typ0 = go True expr0 typ0
       Abstract.Pi h a t s | plicitness a == Implicit -> do
         trs "instantiating" h
         x <- existsVar h t
-        expr' <- freeze expr
+        expr' <- zonk expr
         go True (betaApp expr' a x) $ instantiate1 x s
       _ | reduce -> do
         expr' <- whnf expr
@@ -220,7 +220,7 @@ inferBranches surrR surrP shouldInst expr (ConBranches cbrs _) = do
 
   tr "inferBranches e" expr1
   tr "              brs" $ ConBranches cbrs Concrete.Wildcard
-  tr "              t" =<< freeze etype1
+  tr "              t" =<< zonk etype1
   modifyIndent succ
 
   typeName <- resolveConstrType ((\(c, _, _) -> c) <$> cbrs) $ Just etype1
@@ -231,7 +231,7 @@ inferBranches surrR surrP shouldInst expr (ConBranches cbrs _) = do
       let t = instantiateTele argVars s
       sz <- existsSize h
       (t', _) <- checkType Irrelevant surrP t $ Builtin.Type sz
-      v <- forall_ h t'
+      v <- forall h t'
       return (p, pure v)
     let argVars = snd <$> args
     return (qualify typeName c, args, instantiateTele argVars sbr)
@@ -241,7 +241,7 @@ inferBranches surrR surrP shouldInst expr (ConBranches cbrs _) = do
       surrR surrP Instantiate
       (Concrete.apps (Concrete.Con $ Right qc) $ params <> args)
     (br', brType) <- inferType surrR surrP shouldInst br
-    paramsArgsExpr' <- freeze paramsArgsExpr
+    paramsArgsExpr' <- zonk paramsArgsExpr
     let (_, args') = appsView paramsArgsExpr'
         vs = V.fromList $ second fromVar <$> drop (V.length params) args'
         fromVar (Abstract.Var v) = v
@@ -277,9 +277,9 @@ inferBranches surrR surrP _ expr brs@(LitBranches lbrs d) = do
     return (l, e')
   (d', t') <- checkType surrR surrP d t
   -- let brs' = LitBranches lbrs' d'
-  tr "inferBranches res e" =<< freeze expr'
+  tr "inferBranches res e" =<< zonk expr'
   -- tr "              res brs" brs'
-  tr "              res t" =<< freeze t'
+  tr "              res t" =<< zonk t'
   return (expr', LitBranches lbrs' d', t')
 
 generalise
@@ -322,7 +322,7 @@ checkConstrDef (ConstrDef c (pisView -> (args, ret))) = mdo
   args' <- forMTele args $ \h a arg -> do
     argSize <- existsSize h
     (arg', _) <- checkType Irrelevant (plicitness a) (inst arg) $ Builtin.Type argSize
-    v <- forall_ h arg'
+    v <- forall h arg'
     return (v, h, a, arg', argSize)
 
   let sizes = (\(_, _, _, _, sz) -> sz) <$> args'
@@ -344,12 +344,12 @@ checkDataType
          , AbstractM
          )
 checkDataType name (DataDef cs) typ = mdo
-  typ' <- freeze typ
+  typ' <- zonk typ
   tr "checkDataType t" typ'
 
   ps' <- forMTele (telescope typ') $ \h p s -> do
     let is = instantiateTele (pure <$> vs) s
-    v <- forall_ h is
+    v <- forall h is
     return (v, h, p, is)
 
   let vs = (\(v, _, _, _) -> v) <$> ps'
@@ -493,7 +493,7 @@ checkRecursiveDefs ds =
     evs <- V.forM ds $ \(v, _, _) -> do
       let h = fromText v
       t <- existsType h
-      forall_ h t
+      forall h t
     let instantiatedDs = flip V.map ds $ \(_, e, t) ->
           ( instantiateDef (pure . (evs V.!)) e
           , instantiate (pure . (evs V.!)) t

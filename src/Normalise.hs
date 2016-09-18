@@ -91,7 +91,7 @@ normalise expr = do
     normaliseTelescope tele scope = mdo
       avs <- forMTele tele $ \h a s -> do
         t' <- normalise $ instantiateTele pvs s
-        v <- forall_ h t'
+        v <- forall h t'
         return (a, v)
       let vs = snd <$> avs
           pvs = pure <$> vs
@@ -105,7 +105,7 @@ normalise expr = do
       return (Telescope tele', scope')
     normaliseScope h c t s = do
       t' <- normalise t
-      x <- forall_ h t'
+      x <- forall h t'
       ns <- normalise $ instantiate1 (pure x) s
       c t' <$> abstract1M x ns
 

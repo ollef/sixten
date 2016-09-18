@@ -17,6 +17,8 @@ import qualified Data.Set as S
 import Data.String
 import Data.Text(Text)
 import qualified Data.Text as Text
+import Data.Vector(Vector)
+import qualified Data.Vector as Vector
 
 type Scope1  = Scope ()
 type Literal = Integer
@@ -47,6 +49,9 @@ boundJoin = (>>>= id)
 
 toSet ::  (Ord a, Foldable f) => f a -> Set a
 toSet = foldMap S.singleton
+
+toVector :: Foldable f => f a -> Vector a
+toVector = Vector.fromList . toList
 
 toMonoid ::  (Foldable f, Monoid (g a), Applicative g) => f a -> g a
 toMonoid = foldMap pure

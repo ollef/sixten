@@ -25,7 +25,8 @@ import Close
 import ClosureConvert
 import Erase
 import qualified Generate
-import Infer
+-- import Infer
+import Typecheck
 import Lift
 import qualified LLVM
 import Meta
@@ -46,8 +47,8 @@ processGroup
   -> TCM [(Name, LLVM.B)]
 processGroup
   = prettyTypedGroup "Concrete syntax" id
-  >=> propagateGroup
-  >=> prettyTypedGroup "Propagated" id
+  -- >=> propagateGroup
+  -- >=> prettyTypedGroup "Propagated" id
   >=> exposeGroup
   >=> typeCheckGroup
   >=> prettyTypedGroup "Abstract syntax" absurd

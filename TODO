@@ -1,4 +1,14 @@
 Type checking
+  Fix handling of binders for implicit params
+  Always use whnf before unify
+  Make foralls scoped?
+  Use Wildcard instead of Maybe in Concrete.Lam again?
+  Do some simplification after type checking to remove coercion functions
+  Better checking for escaped vars?
+    Add depths to all meta variables so we can track escaping?
+  Make subtype return only the term
+  Make `subtype A B` return a term of type `A -> B`
+  Make checkType only return the term
   Can the special-case equations for unifying sizes be done in a principled way?
   Gather applications and do non-vars first for better propagation in checkType
   Propagate equalities from cases

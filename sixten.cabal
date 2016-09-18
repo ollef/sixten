@@ -52,7 +52,7 @@ executable sixten
                        Unify
                        Util
   build-depends:
-                       base >=4.8 && <4.9,
+                       base >=4.8 && <4.10,
                        bifunctors,
                        bound,
                        containers,
