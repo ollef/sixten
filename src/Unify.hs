@@ -5,10 +5,9 @@ import Control.Monad.Except
 import Control.Monad.ST.Class
 import Data.Bifunctor
 import Data.Foldable
-import Data.List
 import Data.Monoid
-import Data.Ord
-import qualified Data.Set as S
+import qualified Data.Set as Set
+import qualified Data.Vector as Vector
 import Data.STRef
 
 import qualified Builtin
@@ -17,7 +16,6 @@ import TCM
 import Normalise
 import Syntax
 import Syntax.Abstract
-import Util
 
 existsSize :: Monad e => NameHint -> TCM (e (MetaVar Expr))
 existsSize n = existsVar n Builtin.Size
@@ -102,124 +100,21 @@ unify type1 type2 = do
                         | otherwise = Nothing
     isForall (p, Var v@(metaRef -> Nothing)) = Just (p, v)
     isForall _ = Nothing
-    distinct pes = S.size (S.fromList es) == length es where es = map snd pes
+    distinct pes = Set.size (Set.fromList es) == length es where es = map snd pes
     solveVar r v pvs t = do
+      let pvs' = Vector.fromList pvs
       sol <- solution r
       case sol of
         Left l -> do
           occurs l v t
-          t' <- lambdasM pvs t
-          t'Type <- pisM pvs =<< typeOf t
+          tele <- metaTelescopeM pvs'
+          let abstr = teleAbstraction $ snd <$> pvs'
+          t' <- lams tele <$> abstractM abstr t
+          t'Type <- fmap (pis tele) $ abstractM abstr =<< typeOf t
           unify (metaType v) t'Type
           tr ("solving " <> show (metaId v)) t'
           solve r t'
         Right c -> go True (apps c $ map (second pure) pvs) t
-    lambdasM pvs t = foldrM (\(p, v) -> fmap (Lam (metaHint v) p $ metaType v) . abstract1M v) t pvs
-    pisM pvs t = foldrM (\(p, v) -> fmap (Pi (metaHint v) p $ metaType v) . abstract1M v) t pvs
-
-subtype
-  :: Relevance
-  -> Plicitness
-  -> AbstractM
-  -> AbstractM
-  -> AbstractM
-  -> TCM (AbstractM, AbstractM)
-subtype surrR surrP expr type1 type2 = do
-  tr "subtype e"  =<< zonk expr
-  tr "        t1" =<< zonk type1
-  tr "        t2" =<< zonk type2
-  modifyIndent succ
-  (e', type') <- go True True expr type1 type2
-  modifyIndent pred
-  tr "subtype res e'" =<< zonk e'
-  tr "            type'" =<< zonk type'
-  return (e', type')
-  where
-    go reduce1 reduce2 e typ1 typ2
-      | typ1 == typ2 = return (e, typ2)
-      | otherwise = case (typ1, typ2) of
-        (Global _, _) | reduce1 -> do
-          typ1' <- whnf typ1
-          go False reduce2 e typ1' typ2
-        (_, Global _) | reduce2 -> do
-          typ2' <- whnf typ2
-          go reduce1 False e typ1 typ2'
-        (Pi h1 a1 t1 s1, Pi h2 a2 t2 s2) | plicitness a1 == plicitness a2
-                                        && relevance a1 <= max (relevance a2) surrR -> do
-          let h = h1 <> h2
-          x2  <- forall h t2
-          (x1, _)   <- subtype (max (relevance a2) surrR) (plicitness a2) (pure x2) t2 t1
-          (ex, s2') <- subtype surrR surrP
-                               (betaApp e a1 x1)
-                               (instantiate1 x1 s1)
-                               (instantiate1 (pure x2) s2)
-          e2    <- etaLamM h a2 t2 =<< abstract1M x2 ex
-          typ2' <- Pi h a2 t2 <$> abstract1M x2 s2'
-          return (e2, typ2')
-        (Var v@(metaRef -> Just r), Pi h a _ _) -> do
-          sol <- solution r
-          case sol of
-            Left l -> do
-              occurs l v typ2
-              unify (metaType v) (Builtin.Type $ Lit 1)
-              t11TypeSize <- existsVarAtLevel (metaHint v) Builtin.Size l
-              t12TypeSize <- existsVarAtLevel (metaHint v) Builtin.Size l
-              t11 <- existsVarAtLevel (metaHint v) (Builtin.Type t11TypeSize) l
-              t12 <- existsVarAtLevel (metaHint v) (Builtin.Type t12TypeSize) l
-              solve r $ Pi h a t11 $ abstractNone t12
-              subtype surrR surrP e typ1 typ2
-            Right c -> subtype surrR surrP e c typ2
-        (_, Var (metaRef -> Just r)) -> do
-          sol <- solution r
-          case sol of
-            Left _ -> do unify typ1 typ2; return (e, typ2)
-            Right c -> subtype surrR surrP e typ1 c
-        (_, Pi h a t2 s2) | plicitness a == Implicit
-                         || surrP == Implicit -> do
-          x2 <- forall h t2
-          (e2, s2') <- subtype surrR Implicit e typ1 (instantiate1 (pure x2) s2)
-          e2'   <- etaLamM h a t2 =<< abstract1M x2 e2
-          typ2' <- Pi h a t2 <$> abstract1M x2 s2'
-          return (e2', typ2')
-        (Pi h a t1 s1, _) -> do
-          v1 <- existsVar h t1
-          subtype surrR surrP (betaApp e a v1) (instantiate1 v1 s1) typ2
-        _ | reduce1 || reduce2 -> do
-          typ1' <- whnf typ1
-          typ2' <- whnf typ2
-          go False False e typ1' typ2'
-        _ -> do unify typ1 typ2; return (e, typ2)
-
--- | Do a bunch of subtypings in order of least to most polymorphic
-parSubtypes
-  :: Relevance
-  -> Plicitness
-  -> [(AbstractM, AbstractM)]
-  -> AbstractM
-  -> TCM ([AbstractM], AbstractM)
-parSubtypes surrR surrP exprs1 resType1 = do
-  exprs2 <- forM exprs1 $ \(e, t) -> do
-    t' <- zonk t
-    return (e, t')
-  let exprs3 = sortBy (comparing $ numPis . snd . snd) $ zip [(0 :: Int)..] exprs2
-      go (es, resType) (n, (e, t)) = do
-        (e', t') <- subtype surrR surrP e t resType
-        return ((n, e'):es, t')
-  exprs4 <- foldlM go ([], resType1) exprs3
-  return $ first (fmap snd . sortBy (comparing fst)) exprs4
-  where
-    numPis = teleLength . telescope
-
--- | Do a bunch of subtypings in order of least to most polymorphic
-subtypes
-  :: Relevance
-  -> Plicitness
-  -> AbstractM
-  -> AbstractM
-  -> [AbstractM]
-  -> TCM (AbstractM, AbstractM)
-subtypes surrR surrP expr typ
-  = foldlM (uncurry $ subtype surrR surrP) (expr, typ)
 
 -- TODO move these
 typeOf
