@@ -27,6 +27,7 @@ executable sixten
                        Meta
                        Normalise
                        Processor
+                       Simplify
                        Syntax
                        Syntax.Abstract
                        Syntax.Annotation

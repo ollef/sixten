@@ -1,6 +1,4 @@
 Type checking
-  Make foralls scoped?
-  Do some simplification after type checking to remove coercion functions
   Better checking for escaped vars
     Add depths to all meta variables so we can track escaping
   Can the special-case equations for unifying sizes be done in a principled way?

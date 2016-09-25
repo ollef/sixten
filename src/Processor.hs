@@ -29,6 +29,7 @@ import Infer
 import Lift
 import qualified LLVM
 import Meta
+import Simplify
 import TCM
 import Syntax
 import qualified Syntax.Abstract as Abstract
@@ -49,6 +50,8 @@ processGroup
   >=> exposeGroup
   >=> typeCheckGroup
   >=> prettyTypedGroup "Abstract syntax" absurd
+  >=> simplifyGroup
+  >=> prettyTypedGroup "Simplified" absurd
   >=> addGroupToContext
   >=> eraseGroup
   >=> prettyGroup "Erased (SLambda)" absurd
@@ -134,6 +137,14 @@ typeCheckGroup defs = do
         | (i, (d, t)) <- zip [0..] $ V.toList checkedDefs'
         ]
   return instDefs
+
+simplifyGroup
+  :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  -> TCM [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
+simplifyGroup defs = forM defs $ \(x, def, typ) -> do
+  def' <- simplifyDef $ vacuous def
+  def'' <- traverse (throwError . ("simplifyGroup " ++) . show) def'
+  return (x, def'', typ)
 
 addGroupToContext
   :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
