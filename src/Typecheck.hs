@@ -236,10 +236,13 @@ checkPoly expr typ = do
   return res
 
 checkPoly' :: ConcreteM -> Polytype -> TCM AbstractM
+checkPoly' expr@(Concrete.Lam _ (plicitness -> Implicit) _ _) polyType = do
+  polyType' <- whnf polyType
+  checkRho expr polyType'
 checkPoly' expr polyType = do
   (vs, rhoType, f) <- prenexConvert polyType
   e <- checkRho expr rhoType
-  trs "prenexconvert vars" vs
+  trs "checkPoly: prenexConvert vars" vs
   f =<< Abstract.etaLams
     <$> metaTelescopeM vs
     <*> abstractM (teleAbstraction $ snd <$> vs) e

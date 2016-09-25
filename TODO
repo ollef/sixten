@@ -1,8 +1,6 @@
 Type checking
-  Fix handling of binders for implicit params
   Always use whnf before unify
   Make foralls scoped?
-  Use Wildcard instead of Maybe in Concrete.Lam again?
   Do some simplification after type checking to remove coercion functions
   Better checking for escaped vars?
     Add depths to all meta variables so we can track escaping?
