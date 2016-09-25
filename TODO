@@ -3,18 +3,15 @@ Type checking
   Make foralls scoped?
   Remove old typechecking code
   Do some simplification after type checking to remove coercion functions
-  Better checking for escaped vars?
-    Add depths to all meta variables so we can track escaping?
-  Make subtype return only the term
-  Make `subtype A B` return a term of type `A -> B`
-  Make checkType only return the term
+  Better checking for escaped vars
+    Add depths to all meta variables so we can track escaping
   Can the special-case equations for unifying sizes be done in a principled way?
-  Gather applications and do non-vars first for better propagation in checkType
   Propagate equalities from cases
   Make it so the following type checks when using `anno`:
     map : forall {b : Type ~{1}}. b -> Size
     map xs = map xs
 Codegen
+  Fix compilation of Fun with new typechecker
   Add Destructor calling convention for functions that return part of their argument
     To get rid of the memcpy from deref
   * Can case scrutinees and tail calls explicitly be of unspecified size?

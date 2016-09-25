@@ -49,6 +49,6 @@ mapp f xs = case xs of
 id x = x
 
 propagationTest : Bool
-propagationTest = id True
+propagationTest = id (id True)
 
 lift f x = f x (\y. y)

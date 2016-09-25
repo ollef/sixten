@@ -115,11 +115,18 @@ tcRho expr expected = case expr of
   Concrete.App fun a arg -> do
     (fun', funType) <- inferRho fun $ plicitness a
     (argType, resTypeScope, f1) <- subsumptionFun funType a
-    arg' <- checkPoly arg argType
-    let resType = instantiate1 arg' resTypeScope
-    f2 <- instExpected expected resType
-    fun'' <- f1 fun'
-    f2 $ Abstract.App fun'' a arg'
+    case unusedScope resTypeScope of
+      Nothing -> do
+        arg' <- checkPoly arg argType
+        let resType = instantiate1 arg' resTypeScope
+        f2 <- instExpected expected resType
+        fun'' <- f1 fun'
+        f2 $ Abstract.App fun'' a arg'
+      Just resType -> do
+        f2 <- instExpected expected resType
+        arg' <- checkPoly arg argType
+        fun'' <- f1 fun'
+        f2 $ Abstract.App fun'' a arg'
   Concrete.Case e brs -> tcBranches e brs expected
   Concrete.Anno e t -> do
     t' <- checkPoly t =<< existsTypeType mempty
@@ -236,9 +243,8 @@ checkPoly expr typ = do
   return res
 
 checkPoly' :: ConcreteM -> Polytype -> TCM AbstractM
-checkPoly' expr@(Concrete.Lam _ (plicitness -> Implicit) _ _) polyType = do
-  polyType' <- whnf polyType
-  checkRho expr polyType'
+checkPoly' expr@(Concrete.Lam _ (plicitness -> Implicit) _ _) polyType
+  = checkRho expr polyType
 checkPoly' expr polyType = do
   (vs, rhoType, f) <- prenexConvert polyType
   e <- checkRho expr rhoType
@@ -301,7 +307,7 @@ resolveConstrType cs expected = do
       _ -> throwError $ "No type matching the constructors " ++ show cs ++ "."
     [x] -> return x
     xs -> throwError $ "Ambiguous constructors: " ++ show cs ++ ". Possible types: "
-               ++ show xs ++ show (n ++ ns)
+               ++ show xs
 
 --------------------------------------------------------------------------------
 -- Prenex conversion/deep skolemisation
