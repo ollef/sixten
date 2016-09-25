@@ -69,27 +69,27 @@ inferRho' expr maxPlicitness = do
 tcRho :: ConcreteM -> Expected -> TCM AbstractM
 tcRho expr expected = case expr of
   Concrete.Var v -> do
-    f <- instExpected (metaType v) expected
+    f <- instExpected expected $ metaType v
     f $ Abstract.Var v
   Concrete.Global g -> do
     (_, typ) <- definition g
-    f <- instExpected typ expected
+    f <- instExpected expected typ
     f $ Abstract.Global g
   Concrete.Lit l -> do
-    f <- instExpected Builtin.Size expected
+    f <- instExpected expected Builtin.Size
     f $ Abstract.Lit l
   Concrete.Con con -> do
     typeName <- resolveConstrType [con] expected
     let qc = qualify typeName con
     typ <- qconstructor qc
-    f <- instExpected typ expected
+    f <- instExpected expected typ
     f $ Abstract.Con qc
   Concrete.Pi h a varType scope -> do
     varType' <- checkPoly varType =<< existsTypeType h
     x <- forall h varType'
     let body = instantiate1 (pure x) scope
     body' <- enterLevel $ checkPoly body =<< existsTypeType mempty
-    f <- instExpected (Builtin.Type $ Abstract.Lit 1) expected
+    f <- instExpected expected $ Builtin.Type $ Abstract.Lit 1
     f =<< Abstract.Pi h a varType' <$> abstract1M x body'
   Concrete.Lam h a varType bodyScope -> do
     varType' <- checkPoly varType =<< existsTypeType h
@@ -110,32 +110,32 @@ tcRho expr expected = case expr of
         (body', bodyType) <- enterLevel $ inferRho body Explicit
         bodyScope' <- abstract1M x body'
         bodyTypeScope <- abstract1M x bodyType
-        f <- instExpected (Abstract.Pi h a varType' bodyTypeScope) expected
+        f <- instExpected expected $ Abstract.Pi h a varType' bodyTypeScope
         f $ Abstract.Lam h a varType' bodyScope'
   Concrete.App fun a arg -> do
     (fun', funType) <- inferRho fun $ plicitness a
     (argType, resTypeScope, f1) <- subsumptionFun funType a
     arg' <- checkPoly arg argType
     let resType = instantiate1 arg' resTypeScope
-    f2 <- instExpected resType expected
+    f2 <- instExpected expected resType
     fun'' <- f1 fun'
     f2 $ Abstract.App fun'' a arg'
   Concrete.Case e brs -> tcBranches e brs expected
   Concrete.Anno e t -> do
     t' <- checkPoly t =<< existsTypeType mempty
     e' <- checkPoly e t'
-    f <- instExpected t' expected
+    f <- instExpected expected t'
     f e'
   Concrete.Wildcard -> do
     t <- existsType mempty
-    f <- instExpected t expected
+    f <- instExpected expected t
     x <- existsVar mempty t
     f x
 
--- | instExpected t1 t2 = e => e : t1 -> t2
-instExpected :: Polytype -> Expected -> TCM (AbstractM -> TCM AbstractM)
-instExpected t1 (Check t2) = subsumption t1 t2
-instExpected t (Infer r maxPlicitness) = do
+-- | instExpected t2 t1 = e => e : t1 -> t2
+instExpected :: Expected -> Polytype -> TCM (AbstractM -> TCM AbstractM)
+instExpected (Check t2) t1 = subsumption t1 t2
+instExpected (Infer r maxPlicitness) t = do
   (t', f) <- instantiateForalls t maxPlicitness
   liftST $ writeSTRef r t'
   return f
@@ -192,7 +192,7 @@ tcBranches expr (ConBranches cbrs _) expected = do
       return (metaHint v, p, s)
     return (qc, Telescope tele, sbr)
 
-  f <- instExpected resType expected
+  f <- instExpected expected resType
   f $ Abstract.Case expr' $ ConBranches cbrs' resType
 tcBranches expr (LitBranches lbrs d) expected = do
   expr' <- checkRho expr Builtin.Size
@@ -204,7 +204,7 @@ tcBranches expr (LitBranches lbrs d) expected = do
   lbrs' <- forM lbrs $ \(l, e) -> do
     e' <- checkRho e resType
     return (l, e')
-  f <- instExpected resType expected
+  f <- instExpected expected resType
   f $ Abstract.Case expr' $ LitBranches lbrs' d'
 
 instantiateDataType
