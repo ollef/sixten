@@ -256,16 +256,6 @@ abstractDataDefM f (DataDef cs) typ = mdo
     assoc :: Var (Var a b) c -> Var a (Var b c)
     assoc = unvar (unvar B (F . B)) (F . F)
 
-etaLamM
-  :: NameHint
-  -> Annotation
-  -> Abstract.Expr (MetaVar Abstract.Expr)
-  -> Scope1 Abstract.Expr (MetaVar Abstract.Expr)
-  -> TCM (Abstract.Expr (MetaVar Abstract.Expr))
-etaLamM n p t s = do
-  s' <- zonkBound s
-  return $ Abstract.etaLam n p t s'
-
 zonkVar
   :: (Monad e, Traversable e)
   => MetaVar e

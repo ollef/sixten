@@ -2,9 +2,7 @@
 module Syntax.Abstract where
 
 import Control.Monad
-import Data.Bifunctor
 import Data.Monoid
-import qualified Data.Set as S
 import Data.String
 import Prelude.Extras
 
@@ -25,21 +23,6 @@ data Expr v
 
 -- | Synonym for documentation purposes
 type Type = Expr
-
--------------------------------------------------------------------------------
--- * Views and smart constructors
--- TODO remove?
-pi_ :: Name -> Annotation -> Type Name -> Expr Name -> Expr Name
-pi_ n p t e = Pi (fromText n) p t $ abstract1 n e
-
-etaLam :: NameHint -> Annotation -> Expr v -> Scope1 Expr v -> Expr v
-etaLam _ p _ (Scope (App e p' (Var (B ()))))
-  | B () `S.notMember` toSet (second (const ()) <$> e) && p == p'
-    = join $ unvar (error "etaLam impossible") id <$> e
-etaLam n p t s = Lam n p t s
-
-etaLams :: Eq v => Telescope Scope Annotation Expr v -> Scope Tele Expr v -> Expr v
-etaLams tele s = quantify etaLam s tele
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -74,10 +57,10 @@ instance Applicative Expr where
 instance Monad Expr where
   return = Var
   expr >>= f = case expr of
-    Var v       -> f v
-    Global g    -> Global g
-    Con c       -> Con c
-    Lit l       -> Lit l
+    Var v -> f v
+    Global g -> Global g
+    Con c -> Con c
+    Lit l -> Lit l
     Pi  x p t s -> Pi x p (t >>= f) (s >>>= f)
     Lam x p t s -> Lam x p (t >>= f) (s >>>= f)
     App e1 p e2 -> App (e1 >>= f) p (e2 >>= f)
@@ -85,10 +68,10 @@ instance Monad Expr where
 
 instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
   prettyM expr = case expr of
-    Var v     -> prettyM v
-    Global g  -> prettyM g
-    Con c     -> prettyM c
-    Lit l     -> prettyM l
+    Var v -> prettyM v
+    Global g -> prettyM g
+    Con c -> prettyM c
+    Lit l -> prettyM l
     Pi  _ a t (unusedScope -> Just e) -> parens `above` arrPrec $
       prettyAnnotation a (prettyM t)
       <+> "->" <+>

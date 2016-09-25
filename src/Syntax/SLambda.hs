@@ -2,9 +2,7 @@
 module Syntax.SLambda where
 
 import qualified Bound.Scope.Simple as Simple
-import Data.Bifunctor
 import Data.Monoid
-import qualified Data.Set as S
 import Data.String
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
@@ -44,12 +42,6 @@ instance Show1 Expr
 instance Eq1 SExpr
 instance Ord1 SExpr
 instance Show1 SExpr
-
-etaLam :: NameHint -> Expr v -> Simple.Scope () SExpr v -> Expr v
-etaLam _ _ (Simple.Scope (Sized _ (App e (Sized _ (Var (B ()))))))
-  | B () `S.notMember` toSet (second (const ()) <$> e)
-    = unvar (error "etaLam") id <$> e
-etaLam n e s = Lam n e s
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Expr v) where

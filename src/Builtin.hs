@@ -55,7 +55,7 @@ context = HM.fromList
   , (MaxSizeName, opaque $ arrow ReEx Size $ arrow ReEx Size Size)
   , (PrintSizeName, opaque $ arrow ReEx Size Size)
   , (TypeName, opaque $ arrow IrIm Size $ Type $ Lit 0)
-  , (PtrName, dataType (Abstract.pi_ "size" IrIm Size
+  , (PtrName, dataType (namedPi "size" IrIm Size
                        $ arrow IrEx (Type $ pure "size")
                        $ Type $ Lit 1)
                        [ ConstrDef RefName $ toScope $ fmap B $ arrow ReEx (pure 1)
@@ -69,6 +69,8 @@ context = HM.fromList
     cl = fromMaybe (error "Builtin not closed") . closed
     opaque t = (DataDefinition $ DataDef mempty, cl t)
     dataType t xs = (DataDefinition $ DataDef xs, cl t)
+    namedPi :: Name -> Annotation -> Type Name -> Expr Name -> Expr Name
+    namedPi n p t e = Pi (fromText n) p t $ abstract1 n e
 
 convertedContext :: HashMap Name (Converted.SExpr Void)
 convertedContext = HM.fromList $ concat

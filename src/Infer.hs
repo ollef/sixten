@@ -19,6 +19,7 @@ import qualified Builtin
 import Meta
 import TCM
 import Normalise
+import Simplify
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete as Concrete
@@ -61,7 +62,7 @@ checkPoly' expr polyType = do
   (vs, rhoType, f) <- prenexConvert polyType
   e <- checkRho expr rhoType
   trs "checkPoly: prenexConvert vars" vs
-  f =<< Abstract.etaLams
+  f =<< lams
     <$> metaTelescopeM vs
     <*> abstractM (teleAbstraction $ snd <$> vs) e
 
@@ -330,7 +331,7 @@ prenexConvert' (Abstract.Pi h a t resScope) = do
     Implicit ->
       ( Vector.cons (a, y) vs
       , resType'
-      , \x -> fmap (Abstract.etaLam h a t) $ abstract1M y
+      , \x -> fmap (lam h a t) $ abstract1M y
         =<< f (betaApp x a $ pure y)
       )
     Explicit ->
@@ -338,7 +339,7 @@ prenexConvert' (Abstract.Pi h a t resScope) = do
       , Abstract.Pi h a t $ abstract1 y resType'
       , \x -> fmap (Abstract.Lam h a t) . abstract1M y
         =<< f
-        =<< Abstract.etaLams <$> metaTelescopeM vs
+        =<< lams <$> metaTelescopeM vs
         <*> abstractM (teleAbstraction $ snd <$> vs)
         (betaApp (betaApps x $ second pure <$> vs) a $ pure y)
       )
@@ -369,13 +370,13 @@ subtype' (Abstract.Pi h1 a1 argType1 retScope1) (Abstract.Pi h2 a2 argType2 retS
         retType2 = instantiate1 (pure v2) retScope2
     f2 <- subtype retType1 retType2
     return
-      $ \x -> fmap (Abstract.etaLam h a2 argType2)
+      $ \x -> fmap (lam h a2 argType2)
       $ abstract1M v2 =<< f2 (Abstract.App x a1 v1)
 subtype' typ1 typ2 = do
   (as, rho, f1) <- prenexConvert typ2
   f2 <- subtypeRho typ1 rho
   return $ \x ->
-    f1 =<< Abstract.etaLams <$> metaTelescopeM as
+    f1 =<< lams <$> metaTelescopeM as
     <*> (abstractM (teleAbstraction $ snd <$> as) =<< f2 x)
 
 subtypeRho :: Polytype -> Rhotype -> TCM (AbstractM -> TCM AbstractM)
@@ -401,7 +402,7 @@ subtypeRho' (Abstract.Pi h1 a1 argType1 retScope1) (Abstract.Pi h2 a2 argType2 r
         retType2 = instantiate1 (pure v2) retScope2
     f2 <- subtypeRho retType1 retType2
     return
-      $ \x -> fmap (Abstract.etaLam h a2 argType2)
+      $ \x -> fmap (lam h a2 argType2)
       $ abstract1M v2 =<< f2 (Abstract.App x a1 v1)
 subtypeRho' (Abstract.Pi h a t s) typ2
   | plicitness a == Implicit = do
@@ -473,13 +474,13 @@ generalise expr typ = do
     return (x, ds)
 
   let sorted = map go $ topoSort deps
-  genexpr <- foldrM ($ etaLamM) expr sorted
-  gentype <- foldrM ($ (\h a t s -> pure $ Abstract.Pi h a t s)) typ sorted
+  genexpr <- foldrM (\v e -> lam (metaHint v) ReIm (metaType v) <$> abstract1M v e) expr sorted
+  gentype <- foldrM (\v e -> pi_ (metaHint v) ReIm (metaType v) <$> abstract1M v e) typ sorted
 
   return (genexpr, gentype)
   where
-    go [a] f s = f (metaHint a) ReIm (metaType a) =<< abstract1M a s
-    go _   _ _ = error "Generalise"
+    go [v] = v
+    go _ = error "Generalise"
 
 --------------------------------------------------------------------------------
 -- Definitions
@@ -570,13 +571,12 @@ generaliseDef
          , AbstractM
          )
 generaliseDef vs (Definition e) t = do
-  ge <- go etaLamM e
-  gt <- go (\h p typ s -> pure $ Abstract.Pi h p typ s) t
+  ge <- go lam e
+  gt <- go pi_ t
   return (Definition ge, gt)
   where
     go c b = F.foldrM
-      (\a s -> c (metaHint a) ReIm (metaType a)
-            =<< abstract1M a s)
+      (\a s -> c (metaHint a) ReIm (metaType a) <$> abstract1M a s)
       b
       vs
 generaliseDef vs (DataDefinition (DataDef cs)) typ = do

@@ -141,10 +141,8 @@ typeCheckGroup defs = do
 simplifyGroup
   :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
   -> TCM [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
-simplifyGroup defs = forM defs $ \(x, def, typ) -> do
-  def' <- simplifyDef $ vacuous def
-  def'' <- traverse (throwError . ("simplifyGroup " ++) . show) def'
-  return (x, def'', typ)
+simplifyGroup defs = forM defs $ \(x, def, typ) ->
+  return (x, simplifyDef def, simplifyExpr False typ)
 
 addGroupToContext
   :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]

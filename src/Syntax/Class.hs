@@ -1,7 +1,6 @@
 {-# LANGUAGE ViewPatterns #-}
 module Syntax.Class where
 import Bound
-import Bound.Scope
 import Data.Bifunctor
 import Data.Foldable as Foldable
 
@@ -70,16 +69,6 @@ lams tele s = quantify lam s tele
 
 pis :: (SyntaxPi e, Eq v) => Telescope Scope Annotation e v -> Scope Tele e v -> e v
 pis tele s = quantify pi_ s tele
-
-betaApp :: (SyntaxApp e, SyntaxLambda e) => e v -> Annotation -> e v -> e v
-betaApp e1@(lamView -> Just (_, p1, _, s)) p2 e2 | p1 == p2 = case bindings s of
-  []  -> instantiate1 e2 s
-  [_] -> instantiate1 e2 s
-  _   -> app e1 p1 e2
-betaApp e1 p e2 = app e1 p e2
-
-betaApps :: (SyntaxApp e, SyntaxLambda e, Foldable t) => e v -> t (Annotation, e v) -> e v
-betaApps = Foldable.foldl (uncurry . betaApp)
 
 arrow :: SyntaxPi e => Annotation -> e v -> e v -> e v
 arrow p a b = pi_ mempty p a $ Scope $ pure $ F b
