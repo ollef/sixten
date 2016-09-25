@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings, ViewPatterns #-}
 module Syntax.Concrete where
 
 import Control.Monad
@@ -128,20 +128,20 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
     Lit l -> prettyM l
     Con (Left c) -> prettyM c
     Con (Right qc) -> prettyM qc
-    Pi  h a Wildcard s -> withNameHint h $ \x -> parens `above` absPrec $
-      "forall" <+> inviolable (prettyAnnotation a $ prettyM x)
-      <> "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
-    Pi  h a t s -> withNameHint h $ \x -> parens `above` absPrec $
-      "forall" <+> inviolable (prettyAnnotation a $ prettyM x)
-      <+> ":" <+> inviolable (prettyM t)
-      <> "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
-    Lam h a Wildcard s -> withNameHint h $ \x -> parens `above` absPrec $
-      "\\" <> inviolable (prettyAnnotation a $ prettyM x)
-        <> "." <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
-    Lam h a t s -> withNameHint h $ \x -> parens `above` absPrec $
-      "\\" <> inviolable (prettyAnnotation a $ prettyM x)
-        <+> ":" <+> inviolable (prettyM t) <> "."
-        <+> associate absPrec (prettyM $ instantiate1 (pure $ fromText x) s)
+    Pi  _ a t (unusedScope -> Just e) -> parens `above` arrPrec $
+      prettyAnnotation a (prettyM t)
+      <+> "->" <+>
+      associate arrPrec (prettyM e)
+    (usedPisViewM -> Just (tele, s)) -> withTeleHints tele $ \ns ->
+      parens `above` absPrec $
+      "forall" <+> prettyTeleVarTypes ns tele <> "." <+>
+      prettyM (instantiateTele (pure . fromText <$> ns) s)
+    Pi {} -> error "impossible prettyPrec pi"
+    (lamsViewM -> Just (tele, s)) -> withTeleHints tele $ \ns ->
+      parens `above` absPrec $
+      "\\" <> prettyTeleVarTypes ns tele <> "." <+>
+      prettyM (instantiateTele (pure . fromText <$> ns) s)
+    Lam {} -> error "impossible prettyPrec lam"
     App e1 a e2 -> prettyApp (prettyM e1) (prettyAnnotation a $ prettyM e2)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (prettyM brs)
