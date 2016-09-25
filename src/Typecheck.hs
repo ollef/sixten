@@ -500,7 +500,7 @@ checkDataType
   :: MetaVar Abstract.Expr
   -> DataDef Concrete.Expr (MetaVar Abstract.Expr)
   -> AbstractM
-  -> TCM (DataDef Abstract.Expr (MetaVar Abstract.Expr))
+  -> TCM (DataDef Abstract.Expr (MetaVar Abstract.Expr), AbstractM)
 checkDataType name (DataDef cs) typ = mdo
   typ' <- zonk typ
   tr "checkDataType t" typ'
@@ -508,10 +508,10 @@ checkDataType name (DataDef cs) typ = mdo
   ps' <- forMTele (telescope typ') $ \h p s -> do
     let is = instantiateTele (pure <$> vs) s
     v <- forall h is
-    return (v, h, p, is)
+    return (p, v)
 
-  let vs = (\(v, _, _, _) -> v) <$> ps'
-      constrRetType = apps (pure name) [(p, pure v) | (v, _, p, _) <- Vector.toList ps']
+  let vs = snd <$> ps'
+      constrRetType = apps (pure name) $ second pure <$> ps'
       abstr = teleAbstraction vs
 
   (cs', rets, sizes) <- fmap unzip3 $ forM cs $ \(ConstrDef c t) ->
@@ -530,19 +530,28 @@ checkDataType name (DataDef cs) typ = mdo
   let typeReturnType = Builtin.Type typeSize
   unify typeReturnType =<< typeOf constrRetType
 
-  abstractedCs <- forM cs' $ \c ->
+  abstractedReturnType <- abstractM abstr typeReturnType
+
+  abstractedCs <- forM cs' $ \c@(ConstrDef qc e) -> do
+    tr ("checkDataType res " ++ show qc) e
     traverse (abstractM abstr) c
 
-  trp "dataDef" $ fmap (fmap show . fromScope) <$> abstractedCs
-  return (DataDef abstractedCs)
+  params <- metaTelescopeM ps'
+  let typ'' = pis params abstractedReturnType
+
+  return (DataDef abstractedCs, typ'')
 
 checkDefType
   :: MetaVar Abstract.Expr
   -> Definition Concrete.Expr (MetaVar Abstract.Expr)
   -> AbstractM
-  -> TCM (Definition Abstract.Expr (MetaVar Abstract.Expr))
-checkDefType _ (Definition e) typ = Definition <$> checkPoly e typ
-checkDefType v (DataDefinition d) typ = DataDefinition <$> checkDataType v d typ
+  -> TCM (Definition Abstract.Expr (MetaVar Abstract.Expr), AbstractM)
+checkDefType _ (Definition e) typ = do
+  e' <- checkPoly e typ
+  return (Definition e', typ)
+checkDefType v (DataDefinition d) typ = do
+  (d', typ') <- checkDataType v d typ
+  return (DataDefinition d', typ')
 
 generaliseDef
   :: Vector (MetaVar Abstract.Expr)
@@ -645,5 +654,7 @@ checkRecursiveDefs ds =
       let v = evs Vector.! i
       t' <- checkPoly t =<< existsTypeType mempty
       unify (metaType v) t'
-      d' <- checkDefType v d t'
-      return (v, d', t')
+      (d', t'') <- checkDefType v d t'
+      tr ("checkRecursiveDefs res " ++ show (metaHint v)) d'
+      tr ("checkRecursiveDefs res t " ++ show (metaHint v)) t'
+      return (v, d', t'')

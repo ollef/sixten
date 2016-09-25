@@ -1,6 +1,7 @@
 Type checking
   Always use whnf before unify
   Make foralls scoped?
+  Remove old typechecking code
   Do some simplification after type checking to remove coercion functions
   Better checking for escaped vars?
     Add depths to all meta variables so we can track escaping?

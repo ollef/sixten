@@ -56,8 +56,8 @@ unify :: AbstractM -> AbstractM -> TCM ()
 unify type1 type2 = do
   ftype1 <- zonk type1
   ftype2 <- zonk type2
-  tr "unify t1" ftype1
-  tr "      t2" ftype2
+  -- tr "unify t1" ftype1
+  -- tr "      t2" ftype2
   go True ftype1 ftype2
   where
     go reduce t1 t2
@@ -226,7 +226,7 @@ typeOf
   :: AbstractM
   -> TCM AbstractM
 typeOf expr = do
-  tr "typeOf" expr
+  -- tr "typeOf" expr
   modifyIndent succ
   t <- case expr of
     Global v -> do
@@ -250,20 +250,20 @@ typeOf expr = do
     Case _ (ConBranches _ t) -> return t -- TODO do this properly to get rid of the ConBranches type field
     Case _ (LitBranches _ def) -> typeOf def
   modifyIndent pred
-  tr "typeOf res" =<< zonk t
+  -- tr "typeOf res" =<< zonk t
   return t
 
 sizeOfType
   :: AbstractM
   -> TCM AbstractM
 sizeOfType expr = do
-  tr "sizeOf" expr
+  -- tr "sizeOf" expr
   modifyIndent succ
   t <- whnf =<< typeOf expr
   case t of
     Builtin.Type sz -> do
       modifyIndent pred
-      tr "sizeOf res" sz
+      -- tr "sizeOf res" sz
       return sz
     _ -> throwError $ "sizeOfType: Not a type: " ++ show t
 

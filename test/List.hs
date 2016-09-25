@@ -1,7 +1,7 @@
 deref : forall {n}{t : Type {n}}. Ptr t -> t
 deref p = case p of Ref t -> t
 
-data List {a : Size}(A : Type {a}) where
+data List {a : Size}(A : Type ~{a}) where
   Nil : List A
   Cons : A -> Ptr (List A) -> List A
 
