@@ -415,10 +415,9 @@ generateFunction visibility name (Function retDir hs funScope) = do
           | otherwise = ""
   case retDir of
     Void -> do
-      ret <- LLVM.Operand <$> freshenName "return"
       emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> voidT <+> unOperand (global name)
         <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList vs) <> ") {"
-      storeSExpr funExpr ret
+      storeSExpr funExpr $ LLVM.Operand "null"
       emit returnVoid
     Indirect -> do
       ret <- LLVM.Operand <$> freshenName "return"

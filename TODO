@@ -11,7 +11,6 @@ Type checking
     map : forall {b : Type ~{1}}. b -> Size
     map xs = map xs
 Codegen
-  Fix compilation of Fun with new typechecker
   Add Destructor calling convention for functions that return part of their argument
     To get rid of the memcpy from deref
   * Can case scrutinees and tail calls explicitly be of unspecified size?
