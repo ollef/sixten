@@ -1,5 +1,4 @@
 Type checking
-  Always use whnf before unify
   Make foralls scoped?
   Do some simplification after type checking to remove coercion functions
   Better checking for escaped vars

@@ -52,50 +52,46 @@ occurs l tv = traverse_ go
 
 unify :: AbstractM -> AbstractM -> TCM ()
 unify type1 type2 = do
-  ftype1 <- zonk type1
-  ftype2 <- zonk type2
   -- tr "unify t1" ftype1
   -- tr "      t2" ftype2
-  go True ftype1 ftype2
+  type1' <- whnf type1
+  type2' <- whnf type2
+  unify' type1' type2'
+
+unify' :: AbstractM -> AbstractM -> TCM ()
+unify' type1 type2
+  | type1 == type2 = return ()
+  | otherwise = case (type1, type2) of
+    -- If we have 'unify (f xs) t', where 'f' is an existential, and 'xs' are
+    -- distinct universally quantified variables, then 'f = \xs. t' is a most
+    -- general solution (see Miller, Dale (1991) "A Logic programming...")
+    (appsView -> (Var v@(metaRef -> Just r), distinctForalls -> Just pvs), _) -> solveVar r v pvs type2
+    (_, appsView -> (Var v@(metaRef -> Just r), distinctForalls -> Just pvs)) -> solveVar r v pvs type1
+    (Pi h1 p1 a s1, Pi h2 p2 b s2) | p1 == p2 -> absCase (h1 <> h2) a b s1 s2
+    (Lam h1 p1 a s1, Lam h2 p2 b s2) | p1 == p2 -> absCase (h1 <> h2) a b s1 s2
+    (Lit 0, Builtin.AddSize x y) -> do
+      unify (Lit 0) x
+      unify (Lit 0) y
+    (Builtin.AddSize x y, Lit 0) -> do
+      unify x (Lit 0)
+      unify y (Lit 0)
+    (Builtin.AddSize (Lit m) y, Lit n) -> unify y $ Lit $ n - m
+    (Builtin.AddSize y (Lit m), Lit n) -> unify y $ Lit $ n - m
+    (Lit n, Builtin.AddSize (Lit m) y) -> unify y $ Lit $ n - m
+    (Lit n, Builtin.AddSize y (Lit m)) -> unify y $ Lit $ n - m
+    -- Since we've already tried reducing the application, we can only hope to
+    -- unify it pointwise.
+    (App e1 a1 e1', App e2 a2 e2') | a1 == a2 -> do
+      unify e1  e2
+      unify e1' e2'
+    _ -> throwError
+      $ "Can't unify types: "
+      ++ show (pretty (show <$> type1, show <$> type2))
   where
-    go reduce t1 t2
-      | t1 == t2 = return ()
-      | otherwise = case (t1, t2) of
-        -- If we have 'unify (f xs) t', where 'f' is an existential, and 'xs'
-        -- are distinct universally quantified variables, then 'f = \xs. t' is
-        -- a most general solution (see Miller, Dale (1991) "A Logic
-        -- programming...")
-        (appsView -> (Var v@(metaRef -> Just r), distinctForalls -> Just pvs), _) -> solveVar r v pvs t2
-        (_, appsView -> (Var v@(metaRef -> Just r), distinctForalls -> Just pvs)) -> solveVar r v pvs t1
-        (Pi h1 p1 a s1, Pi h2 p2 b s2) | p1 == p2 -> absCase (h1 <> h2) a b s1 s2
-        (Lam h1 p1 a s1, Lam h2 p2 b s2) | p1 == p2 -> absCase (h1 <> h2) a b s1 s2
-        (Lit 0, Builtin.AddSize x y) -> do
-          unify (Lit 0) x
-          unify (Lit 0) y
-        (Builtin.AddSize x y, Lit 0) -> do
-          unify x (Lit 0)
-          unify y (Lit 0)
-        (Builtin.AddSize (Lit m) y, Lit n) -> unify y $ Lit $ n - m
-        (Builtin.AddSize y (Lit m), Lit n) -> unify y $ Lit $ n - m
-        (Lit n, Builtin.AddSize (Lit m) y) -> unify y $ Lit $ n - m
-        (Lit n, Builtin.AddSize y (Lit m)) -> unify y $ Lit $ n - m
-        -- If we've already tried reducing the application,
-        -- we can only hope to unify it pointwise.
-        (App e1 a1 e1', App e2 a2 e2') | a1 == a2 && not reduce -> do
-          unify e1  e2
-          unify e1' e2'
-        _ | reduce -> do
-          t1' <- whnf t1
-          t2' <- whnf t2
-          go False t1' t2'
-        _ -> throwError $ "Can't unify types: "
-                           ++ show (pretty (show <$> type1, show <$> type2))
-                           ++ " reduced "
-                           ++ show (pretty (show <$> t1, show <$> t2))
     absCase h a b s1 s2 = do
-      go True a b
+      unify a b
       v <- forallVar h a
-      go True (instantiate1 v s1) (instantiate1 v s2)
+      unify (instantiate1 v s1) (instantiate1 v s2)
     distinctForalls pes | distinct pes = traverse isForall pes
                         | otherwise = Nothing
     isForall (p, Var v@(metaRef -> Nothing)) = Just (p, v)
@@ -114,7 +110,7 @@ unify type1 type2 = do
           unify (metaType v) t'Type
           tr ("solving " <> show (metaId v)) t'
           solve r t'
-        Right c -> go True (apps c $ map (second pure) pvs) t
+        Right c -> unify (apps c $ map (second pure) pvs) t
 
 -- TODO move these
 typeOf
