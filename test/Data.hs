@@ -1,3 +1,6 @@
+the : forall {n}. ~(A : Type ~{n}) -> A -> A
+the A a = a
+
 data Bool2 where
   True : Bool2
   False : Bool2
@@ -10,7 +13,7 @@ tt : Bool2
 tt = True
 nil = Nil
 list : boolList
-list = Cons (False : Bool) (Ref (Cons (True : Bool) (Ref Nil)))
+list = Cons (the ~Bool False) (Ref (Cons (the ~Bool True) (Ref Nil)))
 boolList = List Bool
 
 test (b : Bool) = case b of

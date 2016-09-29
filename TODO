@@ -1,11 +1,7 @@
 Type checking
   Better checking for escaped vars
-    Add depths to all meta variables so we can track escaping
   Can the special-case equations for unifying sizes be done in a principled way?
   Propagate equalities from cases
-  Make it so the following type checks when using `anno`:
-    map : forall {b : Type ~{1}}. b -> Size
-    map xs = map xs
 Codegen
   Add Destructor calling convention for functions that return part of their argument
     To get rid of the memcpy from deref
@@ -26,7 +22,7 @@ Language
   Add new Int type -- overloaded literals
   * Let(rec) definitions
   * Mutually recursive top-level definitions
-  Named implicit arguments
+  Named implicit arguments (maybe names should be mandatory?)
   Laziness
   Make Concrete syntax have deep patterns and desugar them
   Type classes
@@ -38,6 +34,7 @@ Language
   Mixfix definitions and noncompounds?
   Inductive families
   FFI & More general way to define builtins (extern LLVM, C?)
+  Remove type annotations (other than on binders) --- can be defined as a function
 Size types
   How to cleanly make `(a -> b) : Type 0` when `b : Type 0`?
     Maybe just make the usage analysis pass aware of this

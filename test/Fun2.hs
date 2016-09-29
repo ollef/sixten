@@ -1,5 +1,5 @@
 Bool : Type {1}
-Bool = forall {a : Type {1}}. a -> a -> a
+Bool = {a : Type {1}} -> a -> a -> a
 
 False : Bool
 False x y = y

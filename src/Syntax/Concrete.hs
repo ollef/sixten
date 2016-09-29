@@ -21,7 +21,6 @@ data Expr v
   | Lam !NameHint !Annotation (Type v) (Scope1 Expr v)
   | App (Expr v) !Annotation (Expr v)
   | Case (Expr v) (Branches (Either Constr QConstr) Expr v)
-  | Anno (Expr v) (Expr v)
   | Wildcard  -- ^ Attempt to infer it
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
@@ -44,7 +43,6 @@ constructors expr = case expr of
     LitBranches lbrs def -> Foldable.fold
       [constructors s | (_, s) <- lbrs]
       <> constructors def
-  Anno e t -> constructors e <> constructors t
   Wildcard -> mempty
   where
     teleConstrs = Foldable.fold . fmap scopeConstrs . teleTypes
@@ -58,24 +56,6 @@ tlam x p (Just t) = Lam x p t
 piType :: NameHint -> Annotation -> Maybe (Type v) -> Scope1 Expr v -> Expr v
 piType x p Nothing  = Pi x p Wildcard
 piType x p (Just t) = Pi x p t
-
-anno :: Expr v -> Type v -> Expr v
-anno e Wildcard = e
-anno (Lam h1 a1 Wildcard s1) (Pi h2 a2 t2 s2)
-  | a1 == a2
-    = Lam (h1 <> h2) a1 t2
-    $ annoScope s1 s2
-anno e@(Lam _ a1 _ _) t@(Pi h2 a2 _ _)
-  | plicitness a1 == Explicit
-  && plicitness a2 == Implicit
-  = anno (Lam h2 a2 Wildcard $ abstractNone e) t
-anno e t = Anno e t
-
-annoScope :: Scope b Expr v -> Scope b Type v -> Scope b Expr v
-annoScope e t = toScope $ anno (fromScope e) (fromScope t)
-
-apps :: Foldable t => Expr v -> t (Annotation, Expr v) -> Expr v
-apps = Foldable.foldl (uncurry . App)
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -118,7 +98,6 @@ instance Monad Expr where
     Lam n p t s -> Lam n p (t >>= f) (s >>>= f)
     App e1 p e2 -> App (e1 >>= f) p (e2 >>= f)
     Case e brs  -> Case (e >>= f) (brs >>>= f)
-    Anno e t    -> Anno (e >>= f) (t >>= f)
     Wildcard    -> Wildcard
 
 instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
@@ -134,8 +113,8 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
       associate arrPrec (prettyM e)
     (usedPisViewM -> Just (tele, s)) -> withTeleHints tele $ \ns ->
       parens `above` absPrec $
-      "forall" <+> prettyTeleVarTypes ns tele <> "." <+>
-      prettyM (instantiateTele (pure . fromText <$> ns) s)
+      prettyTeleVarTypes ns tele <+> "->" <+>
+      associate arrPrec (prettyM $ instantiateTele (pure . fromText <$> ns) s)
     Pi {} -> error "impossible prettyPrec pi"
     (lamsViewM -> Just (tele, s)) -> withTeleHints tele $ \ns ->
       parens `above` absPrec $
@@ -145,6 +124,4 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
     App e1 a e2 -> prettyApp (prettyM e1) (prettyAnnotation a $ prettyM e2)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (prettyM brs)
-    Anno e t  -> parens `above` annoPrec $
-      prettyM e <+> ":" <+> associate casePrec (prettyM t)
     Wildcard -> "_"

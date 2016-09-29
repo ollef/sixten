@@ -4,8 +4,8 @@
 -- fully specifying the type of {a} is a fix.
 --
 -- Should generalisation generalise vars found in expressions?
-Bool : Type {1}
-Bool = forall {A : Type {0}}. forall {a : A}. a -> a -> a
+Bool : Type ~{1}
+Bool = {A : Type {0}}{a : A} -> a -> a -> a
 -- Bool = forall {a : A}. a -> a -> a
 
 True : Bool

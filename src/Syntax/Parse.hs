@@ -206,16 +206,30 @@ bindingsTelescope bs = Telescope $
     flatten (Plain p names) = [(name, p, Wildcard) | name <- names]
     flatten (Typed p names t) = [(name, p, t) | name <- names]
 
+typedBinding :: Parser Binding
+typedBinding = rel <**>
+  (f Explicit <$ symbol "(" <*>% someSI identOrWildcard
+    <*% symbol ":" <*>% expr <*% symbol ")"
+  <|> f Implicit <$ symbol "{" <*>% someSI identOrWildcard
+    <*% symbol ":" <*>% expr <*% symbol "}")
+  <?> "typed variable binding"
+ where
+  f p xs t r = Typed (Annotation r p) xs t
+
+someTypedBindings :: Parser [Binding]
+someTypedBindings
+  = someSI typedBinding
+ <?> "typed variable bindings"
+
 atomicBinding :: Parser Binding
-atomicBinding
-  =  rel <**>
+atomicBinding = rel <**>
   (explicit <$> identOrWildcard
   <|> typedExplicit <$ symbol "(" <*>% someSI identOrWildcard
-                   <*% symbol ":" <*>% expr <*% symbol ")"
+    <*% symbol ":" <*>% expr <*% symbol ")"
   <|> implicit <$ symbol "{" <*>% someSI identOrWildcard
-               <*> Trifecta.optional (id <$% symbol ":" *> expr)
-               <*% symbol "}")
- <?> "atomic variable binding"
+    <*> Trifecta.optional (id <$% symbol ":" *> expr)
+    <*% symbol "}")
+  <?> "atomic variable binding"
  where
   explicit x r = Plain (Annotation r Explicit) [x]
   typedExplicit xs t r = Typed (Annotation r Explicit) xs t
@@ -233,17 +247,18 @@ manyBindings
  <?> "variable bindings"
 
 caseBinding :: Parser [(Maybe Name, Annotation)]
-caseBinding =  implicit <$> rel <* symbol "{" <*>% someSI identOrWildcard <*% symbol "}"
-           <|> explicit <$> rel <*> identOrWildcard
+caseBinding
+  = implicits <$> rel <* symbol "{" <*>% someSI identOrWildcard <*% symbol "}"
+ <|> explicit <$> rel <*> identOrWildcard
   where
-    implicit r xs = [(x, Annotation r Implicit) | x <- xs]
+    implicits r xs = [(x, Annotation r Implicit) | x <- xs]
     explicit r x = [(x, Annotation r Explicit)]
 
 atomicExpr :: Parser (Expr Name)
 atomicExpr
-  =  Lit      <$> literal
+  = Lit <$> literal
  <|> Wildcard <$ wildcard
- <|> Var      <$> ident
+ <|> Var <$> ident
  <|> abstr (reserved "forall") piType
  <|> abstr (symbol   "\\")     Concrete.tlam
  <|> Case <$ reserved "case" <*>% expr <*% reserved "of" <*> branches
@@ -269,19 +284,27 @@ rel = Irrelevant <$ symbol "~"  <|> pure Relevant
 
 expr :: Parser (Expr Name)
 expr
-  = (foldl (uncurry . App) <$> atomicExpr <*> manySI argument)
-    <**> (typeAnno <|> (\f t -> f (ReEx, t)) <$> arr <|> pure id)
- <|> argument <**> arr
+  = abstractBindings piType <$> Trifecta.try someTypedBindings <*% symbol "->" <*>% expr
+ <|> apps <$> atomicExpr <*> manySI argument
+   <**> ((\f t -> f (ReEx, t)) <$> arr <|> pure id)
+ <|> abstractBindings piType <$> funArgType <*% symbol "->" <*>% expr
  <?> "expression"
   where
-    typeAnno = flip anno <$% symbol ":" <*>% expr
-    arr      = (\e' (a, e) -> Pi mempty a e $ Scope $ Var $ F e')
+    arr = (\e' (a, e) -> Pi mempty a e $ abstractNone e')
            <$% symbol "->" <*>% expr
+
     argument :: Parser (Annotation, Expr Name)
     argument = (first . Annotation <$> rel) <*>
                ((,) Implicit <$ symbol "{" <*>% expr <*% symbol "}"
             <|> (,) Explicit <$> atomicExpr)
-            --
+
+    funArgType :: Parser [Binding]
+    funArgType = rel <**>
+      (f Implicit <$ symbol "{" <*>% expr <*% symbol "}"
+      <|> f Explicit <$> atomicExpr)
+      where
+        f p t r = [Typed (Annotation r p) [Nothing] t]
+
 -- | A definition or type declaration on the top-level
 data TopLevelParsed v
   = ParsedDefLine (Maybe v) (Expr v) -- ^ Maybe v means that we can use wildcard names that refer e.g. to the previous top-level thing
@@ -293,8 +316,9 @@ topLevel :: Parser (TopLevelParsed Name)
 topLevel = dataDef <|> def
 
 def :: Parser (TopLevelParsed Name)
-def = ident    <**>% (typeDecl <|> mkDef Just)
-  <|> wildcard <**>% mkDef (const Nothing)
+def
+  = ident <**>% (typeDecl <|> mkDef Just)
+ <|> wildcard <**>% mkDef (const Nothing)
   where
     typeDecl = flip ParsedTypeDecl <$ symbol ":" <*>% expr
     mkDef f = (\e n -> ParsedDefLine (f n) e) <$> (abstractBindings Concrete.tlam <$> manyBindings <*% symbol "=" <*>% expr)

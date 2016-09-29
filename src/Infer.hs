@@ -184,16 +184,12 @@ tcRho expr expected = case expr of
         fun'' <- f1 fun'
         f2 $ Abstract.App fun'' a arg'
       Just resType -> do
+        trs "App Just" ()
         f2 <- instExpected expected resType
         arg' <- checkPoly arg argType
         fun'' <- f1 fun'
         f2 $ Abstract.App fun'' a arg'
   Concrete.Case e brs -> tcBranches e brs expected
-  Concrete.Anno e t -> do
-    t' <- checkPoly t =<< existsTypeType mempty
-    e' <- checkPoly e t'
-    f <- instExpected expected t'
-    f e'
   Concrete.Wildcard -> do
     t <- existsType mempty
     f <- instExpected expected t
@@ -221,7 +217,7 @@ tcBranches expr (ConBranches cbrs _) expected = do
 
   inferredPatBranches <- forM instantiatedBranches $ \(qc, args, br) -> do
     paramsArgsExpr <- checkRho
-      (Concrete.apps (Concrete.Con $ Right qc) $ params <> args)
+      (apps (Concrete.Con $ Right qc) $ params <> args)
       exprType
     paramsArgsExpr' <- zonk paramsArgsExpr
     let (_, args') = appsView paramsArgsExpr'

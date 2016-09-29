@@ -21,10 +21,10 @@ idConst1 x = const x (\(x : Size). x)
 useConst : forall {a b}. ((a -> a -> a) -> b) -> b
 useConst f = f const
 
-APP : forall ~{a b}. (forall (x : a). b x) -> forall (x : a). b x
+APP : forall ~{a b}. ((x : a) -> b x) -> (x : a) -> b x
 APP f x = f x
 
-APP2 : forall {a b}. (forall (x : a). b x) -> forall (x : a). b x
+APP2 : forall {a b}. ((x : a) -> b x) -> (x : a) -> b x
 APP2 f x = APP f x
 
 app : forall {a b}. (a -> b) -> a -> b
