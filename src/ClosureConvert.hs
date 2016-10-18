@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, RecursiveDo #-}
+{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, OverloadedStrings, RecursiveDo, TypeFamilies #-}
 module ClosureConvert where
 
 import qualified Bound.Scope.Simple as Simple
@@ -45,7 +45,7 @@ createLambdaSignature
 createLambdaSignature tele (Simple.Scope lamExpr) = mdo
   tele' <- forMTele tele $ \h () s -> do
     let e = instantiateVar ((vs Vector.!) . unTele) $ vacuous s
-    v <- forall h Unit
+    v <- forall h () Unit
     e' <- convertExpr e
     return (v, e')
   let vs = fst <$> tele'
@@ -58,7 +58,7 @@ convertSignature
   -> TCM CSExprM
 convertSignature sig = case sig of
   Converted.Function retDir tele lamScope -> do
-    vs <- forMTele tele $ \h _ _ -> forall h Unit
+    vs <- forMTele tele $ \h _ _ -> forall h () Unit
     let lamExpr = instantiateVar ((vs Vector.!) . unTele) $ vacuous lamScope
         abstr = teleAbstraction vs
     lamExpr' <- convertSExpr lamExpr
@@ -80,7 +80,7 @@ convertLambda
 convertLambda tele lamScope = mdo
   tele' <- forMTele tele $ \h () s -> do
     let e = instantiateVar ((vs Vector.!) . unTele) $ vacuous s
-    v <- forall h Unit
+    v <- forall h () Unit
     e' <- convertExpr e
     return (v, e')
   let vs = fst <$> tele'
@@ -97,30 +97,30 @@ convertExpr expr = case expr of
   Closed.Global g -> do
     sig <- convertedSignature g
     case sig of
-      Converted.Function retDir tele _ -> knownCall (Converted.Global g) retDir tele mempty
+      Converted.Function retDir tele _ -> return $ knownCall (Converted.Global g) retDir tele mempty
       _ -> return $ Converted.Global g
   Closed.Lit l -> return $ Converted.Lit l
   Closed.Con qc es -> Converted.Con qc <$> mapM convertSExpr es
   Closed.Lams tele s -> do
     (retDir, tele', s') <- convertLambda tele s
-    knownCall (Converted.Lams retDir tele' s') retDir tele' mempty
+    return $ knownCall (Converted.Lams retDir tele' s') retDir tele' mempty
   Closed.Call (Closed.Global g) es -> do
     es' <- mapM convertSExpr es
     sig <- convertedSignature g
     case sig of
-      Converted.Function retDir tele _ -> knownCall (Converted.Global g) retDir tele es'
+      Converted.Function retDir tele _ -> return $ knownCall (Converted.Global g) retDir tele es'
       _ -> throwError $ "convertExpr call global " ++ show g
   Closed.Call (Closed.Lams tele s) es -> do
     (retDir, tele', s') <- convertLambda tele s
     es' <- mapM convertSExpr es
-    knownCall (Converted.Lams retDir tele' s') retDir tele' es'
+    return $ knownCall (Converted.Lams retDir tele' s') retDir tele' es'
   Closed.Call e es -> do
     e' <- convertExpr e
     es' <- mapM convertSExpr es
-    unknownCall e' es'
+    return $ unknownCall e' es'
   Closed.Let h e bodyScope -> do
     e' <- convertSExpr e
-    v <- forall h Unit
+    v <- forall h () Unit
     let bodyExpr = instantiateVar (\() -> v) bodyScope
     bodyExpr' <- convertExpr bodyExpr
     let bodyScope' = Simple.abstract1 v bodyExpr'
@@ -131,9 +131,9 @@ convertExpr expr = case expr of
 unknownCall
   :: CExprM
   -> Vector CSExprM
-  -> TCM CExprM
-unknownCall e es = return
-  $ Converted.Call Indirect (Converted.Global $ Builtin.applyName $ Vector.length es)
+  -> CExprM
+unknownCall e es
+  = Converted.Call Indirect (Converted.Global $ Builtin.applyName $ Vector.length es)
   $ Vector.cons (Converted.sized 1 e, Direct) $ (\sz -> (sz, Direct)) <$> Converted.sizedSizesOf es <|> (\arg -> (arg, Indirect)) <$> es
 
 knownCall
@@ -141,19 +141,17 @@ knownCall
   -> Direction
   -> Telescope Simple.Scope Direction Converted.Expr Void
   -> Vector CSExprM
-  -> TCM CExprM
+  -> CExprM
 knownCall f retDir tele args
   | numArgs < arity
-    = return
-    $ Converted.Con Builtin.Ref
+    = Converted.Con Builtin.Ref
     $ pure
     $ Converted.Sized (Builtin.addSizes $ Vector.cons (Converted.Lit 2) $ Converted.sizeOf <$> args)
     $ Converted.Con Builtin.Closure
     $ Vector.cons (Converted.sized 1 fNumArgs)
     $ Vector.cons (Converted.sized 1 $ Converted.Lit $ fromIntegral $ arity - numArgs) args
   | numArgs == arity
-    = return
-    $ Converted.Call retDir (vacuous f) $ Vector.zip args $ teleAnnotations tele
+    = Converted.Call retDir (vacuous f) $ Vector.zip args $ teleAnnotations tele
   | otherwise = do
     let (xs, ys) = Vector.splitAt arity args
     unknownCall (Converted.Call retDir (vacuous f) $ Vector.zip xs $ teleAnnotations tele) ys
@@ -176,8 +174,8 @@ knownCall f retDir tele args
       )
       where
         unknownSize = Converted.Sized $ Converted.Global "ClosureConvert.UnknownSize"
-        clArgs = (\(h, d, s) -> (h, d, vacuous $ Simple.mapBound (+ 2) s)) <$> Vector.take numArgs (unTelescope tele)
-        clArgs' = (\(h, _, s) -> (h, (), s)) <$> clArgs
+        clArgs = (\(h, d, s) -> (h, d, Simple.mapBound (+ 2) s)) <$> Vector.take numArgs (unTelescope tele)
+        clArgs' = (\(h, _, s) -> (h, (), vacuous s)) <$> clArgs
         fArgs1 = Vector.zipWith
           Converted.Sized ((\(_, _, s) -> unvar F absurd <$> Simple.unscope s) <$> clArgs)
                           (Converted.Var . B <$> Vector.enumFromN 2 numArgs)
@@ -200,7 +198,7 @@ convertBranches (SimpleConBranches cbrs) = fmap SimpleConBranches $
   forM cbrs $ \(qc, tele, brScope) -> mdo
     tele' <- forMTele tele $ \h () s -> do
       let e = instantiateVar ((vs Vector.!) . unTele) s
-      v <- forall h Unit
+      v <- forall h () Unit
       e' <- convertExpr e
       return (v, e')
     let vs = fst <$> tele'

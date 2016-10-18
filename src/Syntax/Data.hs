@@ -3,6 +3,9 @@ module Syntax.Data where
 
 import Bound
 import Bound.Var
+import Bound.Scope
+import Data.Bifunctor
+import Data.Bitraversable
 import Data.String
 import qualified Data.Vector as Vector
 import Prelude.Extras
@@ -17,19 +20,37 @@ import Util
 newtype DataDef typ v = DataDef { dataConstructors :: [ConstrDef (Scope Tele typ v)] }
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-foldMapDataDef
-  :: (Monoid m, Monad typ)
-  => (forall v. typ v -> m)
-  -> DataDef typ x
-  -> m
-foldMapDataDef f (DataDef cs) = foldMap (foldMap $ f . fromScope) cs
+traverseDataDefFirst
+  :: (Bitraversable typ, Applicative f)
+  => (a -> f a')
+  -> DataDef (typ a) v
+  -> f (DataDef (typ a') v)
+traverseDataDefFirst f (DataDef cs) = DataDef <$> traverse (traverse $ bitraverseScope f pure) cs
+
+dataDefFirst
+  :: Bifunctor typ
+  => (a -> a')
+  -> DataDef (typ a) v
+  -> DataDef (typ a') v
+dataDefFirst f (DataDef cs) = DataDef $ map (fmap $ bimapScope f id) cs
+
+bindDataDefGlobals
+  :: Monad e
+  => (forall x. (n -> e x) -> e x -> e x)
+  -> (n -> e v)
+  -> DataDef e v
+  -> DataDef e v
+bindDataDefGlobals expr f (DataDef cs) = DataDef $ fmap (bindScopeGlobals expr f) <$> cs
 
 quantifiedConstrTypes
-  :: (Eq v, Syntax typ)
+  :: Syntax typ
   => DataDef typ v
-  -> Telescope Scope Annotation typ v
+  -> typ v
+  -> (Annotation typ -> Annotation typ)
   -> [ConstrDef (typ v)]
-quantifiedConstrTypes (DataDef cs) ps = map (fmap $ \s -> pis ps s) cs
+quantifiedConstrTypes (DataDef cs) typ anno = map (fmap $ pis ps) cs
+  where
+    ps = mapAnnotations anno $ telescope typ
 
 constrNames :: DataDef typ v -> [Constr]
 constrNames = map constrName . dataConstructors
@@ -38,8 +59,8 @@ instance Bound DataDef where
   DataDef cs >>>= f = DataDef (fmap (>>>= f) <$> cs)
 
 prettyDataDef
-  :: (Eq1 typ, Eq v, IsString v, Monad typ, Pretty (typ v))
-  => Telescope Scope Annotation typ v
+  :: (Eq1 typ, Eq v, IsString v, Monad typ, Pretty (typ v), Eq (Annotation typ), PrettyAnnotation (Annotation typ))
+  => Telescope Scope (Annotation typ) typ v
   -> DataDef typ v
   -> PrettyM Doc
 prettyDataDef ps (DataDef cs) = "data" <+> "_" <+> withTeleHints ps (\ns ->

@@ -1,4 +1,4 @@
-{-# LANGUAGE RecursiveDo, ViewPatterns, OverloadedStrings #-}
+{-# LANGUAGE DefaultSignatures, FlexibleInstances, MultiParamTypeClasses, RecursiveDo, ViewPatterns, OverloadedStrings, TypeFamilies #-}
 module Meta where
 
 import Control.Applicative
@@ -25,6 +25,27 @@ import qualified Syntax.SLambda as SLambda
 import TCM
 import Util
 
+class Eq v => MetaVary e v where
+  type MetaData e v
+  forall :: NameHint -> MetaData e v -> e v -> TCM v
+  default forall :: (v ~ MetaVar e) => NameHint -> MetaData e (MetaVar e) -> e (MetaVar e) -> TCM (MetaVar e)
+  forall hint _a typ = do
+    i <- fresh
+    TCM.log $ "forall: " <> fromString (show i)
+    return $ MetaVar i typ hint Nothing
+  refineVar :: v -> (e v -> TCM (e v)) -> TCM (e v)
+  default refineVar :: (v ~ MetaVar e, Applicative e) => MetaVar e -> (e (MetaVar e) -> TCM (e (MetaVar e))) -> TCM (e (MetaVar e))
+  refineVar v@(metaRef -> Nothing) _ = return $ pure v
+  refineVar v@(metaRef -> Just r) f = refineIfSolved r (pure v) f
+  refineVar _ _ = error "refineVar impossible"
+  metaVarType :: v -> e v
+  default metaVarType :: (v ~ MetaVar e) => MetaVar e -> e (MetaVar e)
+  metaVarType = metaType
+
+instance MetaVary Unit (MetaVar Unit) where
+  type MetaData Unit (MetaVar Unit) = ()
+  refineVar _ _ = return Unit
+
 type Exists e = STRef (World TCM) (Either Level (e (MetaVar e)))
 
 data MetaVar e = MetaVar
@@ -34,13 +55,20 @@ data MetaVar e = MetaVar
   , metaRef  :: !(Maybe (Exists e))
   }
 
-type ConcreteM = Concrete.Expr (MetaVar Abstract.Expr)
-type AbstractM = Abstract.Expr (MetaVar Abstract.Expr)
-type LambdaM = SLambda.Expr (MetaVar Abstract.Expr)
-type SLambdaM = SLambda.SExpr (MetaVar Abstract.Expr)
-type ScopeM b f = Scope b f (MetaVar Abstract.Expr)
-type BranchesM c f = Branches c f (MetaVar Abstract.Expr)
-type SimpleBranchesM c f = SimpleBranches c f (MetaVar Abstract.Expr)
+instance MetaVary Concrete.Expr (MetaVar Concrete.Expr) where
+  type MetaData Concrete.Expr (MetaVar Concrete.Expr) = Plicitness
+
+instance MetaVary (Abstract.Expr a) (MetaVar (Abstract.Expr a)) where
+  type MetaData (Abstract.Expr a) (MetaVar (Abstract.Expr a)) = a
+
+type ConcreteM = Concrete.Expr (MetaVar Abstract.ExprP)
+type AbstractM = Abstract.ExprP (MetaVar Abstract.ExprP)
+type AbstractE = Abstract.ExprE (MetaVar Abstract.ExprE)
+type LambdaM = SLambda.Expr (MetaVar Abstract.ExprE)
+type SLambdaM = SLambda.SExpr (MetaVar Abstract.ExprE)
+type ScopeM b f = Scope b f (MetaVar Abstract.ExprP)
+type BranchesM c a f = Branches c a f (MetaVar Abstract.ExprP)
+type SimpleBranchesM c f = SimpleBranches c f (MetaVar Abstract.ExprE)
 
 instance Eq (MetaVar e) where
   (==) = (==) `on` metaId
@@ -82,16 +110,6 @@ tr s x = do
   r <- showMeta x
   TCM.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide r
 
-trp :: Pretty a => String -> a -> TCM ()
-trp s x = do
-  i <- gets tcIndent
-  TCM.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide (pretty x)
-
-trs :: Show a => String -> a -> TCM ()
-trs s x = do
-  i <- gets tcIndent
-  TCM.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> fromString (show x)
-
 existsAtLevel :: NameHint -> e (MetaVar e) -> Level -> TCM (MetaVar e)
 existsAtLevel hint typ l = do
   i   <- fresh
@@ -108,27 +126,6 @@ existsVar
   -> e (MetaVar e)
   -> TCM (g (MetaVar e))
 existsVar hint typ = pure <$> exists hint typ
-
-existsVarAtLevel
-  :: Applicative g
-  => NameHint
-  -> e (MetaVar e)
-  -> Level
-  -> TCM (g (MetaVar e))
-existsVarAtLevel hint typ l = pure <$> existsAtLevel hint typ l
-
-forall :: NameHint -> e (MetaVar e) -> TCM (MetaVar e)
-forall hint typ = do
-  i <- fresh
-  TCM.log $ "forall: " <> fromString (show i)
-  return $ MetaVar i typ hint Nothing
-
-forallVar
-  :: Applicative g
-  => NameHint
-  -> e (MetaVar e)
-  -> TCM (g (MetaVar e))
-forallVar hint typ = pure <$> forall hint typ
 
 solution :: Exists e -> TCM (Either Level (e (MetaVar e)))
 solution = liftST . readSTRef
@@ -149,17 +146,6 @@ refineIfSolved r d f = do
       e' <- f e
       solve r e'
       return e'
-
-letMeta
-  :: NameHint
-  -> e (MetaVar e)
-  -> e (MetaVar e)
-  -> TCM (MetaVar e)
-letMeta hint expr typ = do
-  i   <- fresh
-  TCM.log $ "let: " <> fromString (show i)
-  ref <- liftST $ newSTRef $ Right expr
-  return $ MetaVar i typ hint (Just ref)
 
 foldMapM
   :: (Foldable e, Foldable f, Monoid m)
@@ -213,19 +199,21 @@ abstractM f e = do
     go _ v' = free v'
     free = pure . pure . pure . pure
 
-abstract1M :: MetaVar Abstract.Expr
-           -> AbstractM
-           -> TCM (ScopeM () Abstract.Expr)
+abstract1M
+  :: Show a
+  => MetaVar (Abstract.Expr a)
+  -> Abstract.Expr a (MetaVar (Abstract.Expr a))
+  -> TCM (Scope () (Abstract.Expr a) (MetaVar (Abstract.Expr a)))
 abstract1M v e = do
   TCM.log $ "abstracting " <> fromString (show $ metaId v)
   abstractM (\v' -> if v == v' then Just () else Nothing) e
 
 abstractDefM
-  :: (MetaVar Abstract.Expr -> Maybe b)
-  -> Definition Abstract.Expr (MetaVar Abstract.Expr)
+  :: (MetaVar Abstract.ExprP -> Maybe b)
+  -> Definition Abstract.ExprP (MetaVar Abstract.ExprP)
   -> AbstractM
-  -> TCM ( Definition Abstract.Expr (Var b (MetaVar Abstract.Expr))
-           , ScopeM b Abstract.Expr
+  -> TCM ( Definition Abstract.ExprP (Var b (MetaVar Abstract.ExprP))
+           , ScopeM b Abstract.ExprP
            )
 abstractDefM f (Definition e) t = do
   e' <- abstractM f e
@@ -237,18 +225,18 @@ abstractDefM f (DataDefinition e) t = do
   return (DataDefinition e', t')
 
 abstractDataDefM
-  :: (MetaVar Abstract.Expr -> Maybe b)
-  -> DataDef Abstract.Expr (MetaVar Abstract.Expr)
+  :: (MetaVar Abstract.ExprP -> Maybe b)
+  -> DataDef Abstract.ExprP (MetaVar Abstract.ExprP)
   -> AbstractM
-  -> TCM (DataDef Abstract.Expr (Var b (MetaVar Abstract.Expr)))
+  -> TCM (DataDef Abstract.ExprP (Var b (MetaVar Abstract.ExprP)))
 abstractDataDefM f (DataDef cs) typ = mdo
   let inst = instantiateTele $ pure <$> vs
       vs = (\(_, _, _, v) -> v) <$> ps'
   typ' <- zonk typ
-  ps' <- forMTele (telescope typ') $ \h p s -> do
+  ps' <- forMTele (telescope typ') $ \h a s -> do
     let is = inst s
-    v <- forall h is
-    return (h, p, is, v)
+    v <- forall h a is
+    return (h, a, is, v)
   let f' x = F <$> f x <|> B . Tele <$> Vector.elemIndex x vs
   acs <- forM cs $ \c -> traverse (fmap (toScope . fmap assoc . fromScope) . abstractM f' . inst) c
   return $ DataDef acs

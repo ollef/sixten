@@ -4,7 +4,6 @@ module Syntax.Parse where
 import Control.Applicative((<**>), (<|>), Alternative)
 import Control.Monad.Except
 import Control.Monad.State
-import Data.Bifunctor
 import Data.Char
 import qualified Data.HashSet as HS
 import Data.Vector(Vector)
@@ -168,14 +167,14 @@ constructor :: Parser Constr
 constructor = ident
 
 data Binding
-  = Plain Annotation [Maybe Name]
-  | Typed Annotation [Maybe Name] (Expr Name)
+  = Plain Plicitness [Maybe Name]
+  | Typed Plicitness [Maybe Name] (Expr Name)
   deriving (Eq, Ord, Show)
 
-abstractBindings :: (NameHint -> Annotation -> Maybe (Expr Name)
-                              -> Scope1 Expr Name -> Expr Name)
-                 -> [Binding]
-                 -> Expr Name -> Expr Name
+abstractBindings
+  :: (NameHint -> Plicitness -> Maybe (Expr Name) -> Scope1 Expr Name -> Expr Name)
+  -> [Binding]
+  -> Expr Name -> Expr Name
 abstractBindings c = flip $ foldr f
   where
     f (Plain p xs)   e = foldr (\x -> c (h x) p Nothing  . abstractMaybe1 x) e xs
@@ -189,13 +188,13 @@ bindingNames bs = Vector.fromList $ bs >>= flatten
     flatten (Plain _ names) = names
     flatten (Typed _ names _) = names
 
-bindingHints :: [Binding] -> Vector (NameHint, Annotation)
+bindingHints :: [Binding] -> Vector (NameHint, Plicitness)
 bindingHints bs = Vector.fromList $ bs >>= flatten
   where
     flatten (Plain p names) = [(NameHint $ Hint n, p) | n <- names]
     flatten (Typed p names _type) = [(NameHint $ Hint n, p) | n <- names]
 
-bindingsTelescope :: [Binding] -> Telescope Scope Annotation Expr Name
+bindingsTelescope :: [Binding] -> Telescope Scope Plicitness Expr Name
 bindingsTelescope bs = Telescope $
   Vector.imap (\i (n, p, t) -> (NameHint $ Hint n, p, abstract (abstr i) t)) unabstracted
   where
@@ -207,14 +206,12 @@ bindingsTelescope bs = Telescope $
     flatten (Typed p names t) = [(name, p, t) | name <- names]
 
 typedBinding :: Parser Binding
-typedBinding = rel <**>
-  (f Explicit <$ symbol "(" <*>% someSI identOrWildcard
+typedBinding
+  = Typed Explicit <$ symbol "(" <*>% someSI identOrWildcard
     <*% symbol ":" <*>% expr <*% symbol ")"
-  <|> f Implicit <$ symbol "{" <*>% someSI identOrWildcard
-    <*% symbol ":" <*>% expr <*% symbol "}")
+  <|> Typed Implicit <$ symbol "{" <*>% someSI identOrWildcard
+    <*% symbol ":" <*>% expr <*% symbol "}"
   <?> "typed variable binding"
- where
-  f p xs t r = Typed (Annotation r p) xs t
 
 someTypedBindings :: Parser [Binding]
 someTypedBindings
@@ -222,19 +219,18 @@ someTypedBindings
  <?> "typed variable bindings"
 
 atomicBinding :: Parser Binding
-atomicBinding = rel <**>
-  (explicit <$> identOrWildcard
-  <|> typedExplicit <$ symbol "(" <*>% someSI identOrWildcard
+atomicBinding
+  = explicit <$> identOrWildcard
+  <|> Typed Explicit <$ symbol "(" <*>% someSI identOrWildcard
     <*% symbol ":" <*>% expr <*% symbol ")"
   <|> implicit <$ symbol "{" <*>% someSI identOrWildcard
     <*> Trifecta.optional (id <$% symbol ":" *> expr)
-    <*% symbol "}")
+    <*% symbol "}"
   <?> "atomic variable binding"
  where
-  explicit x r = Plain (Annotation r Explicit) [x]
-  typedExplicit xs t r = Typed (Annotation r Explicit) xs t
-  implicit xs Nothing  r = Plain (Annotation r Implicit) xs
-  implicit xs (Just t) r = Typed (Annotation r Implicit) xs t
+  explicit x = Plain Explicit [x]
+  implicit xs Nothing  = Plain Implicit xs
+  implicit xs (Just t) = Typed Implicit xs t
 
 someBindings :: Parser [Binding]
 someBindings
@@ -246,13 +242,13 @@ manyBindings
   = manySI atomicBinding
  <?> "variable bindings"
 
-caseBinding :: Parser [(Maybe Name, Annotation)]
+caseBinding :: Parser [(Maybe Name, Plicitness)]
 caseBinding
-  = implicits <$> rel <* symbol "{" <*>% someSI identOrWildcard <*% symbol "}"
- <|> explicit <$> rel <*> identOrWildcard
+  = implicits <$ symbol "{" <*>% someSI identOrWildcard <*% symbol "}"
+  <|> explicit <$> identOrWildcard
   where
-    implicits r xs = [(x, Annotation r Implicit) | x <- xs]
-    explicit r x = [(x, Annotation r Explicit)]
+    implicits xs = [(x, Implicit) | x <- xs]
+    explicit x = [(x, Explicit)]
 
 atomicExpr :: Parser (Expr Name)
 atomicExpr
@@ -267,7 +263,7 @@ atomicExpr
   where
     abstr t c = abstractBindings c <$ t <*>% someBindings <*% symbol "." <*>% expr
 
-branches :: Parser (Branches (Either Constr QConstr) Expr Name)
+branches :: Parser (Branches (Either Constr QConstr) Plicitness Expr Name)
 branches
   = ConBranches <$> manyIndentedSameCol conBranch <*> pure Wildcard
  <|> LitBranches <$> manyIndentedSameCol litBranch
@@ -279,37 +275,34 @@ branches
       where
         ns = unNameHint . fst <$> bindingHints bs
 
-rel :: Parser Relevance
-rel = Irrelevant <$ symbol "~"  <|> pure Relevant
-
 expr :: Parser (Expr Name)
 expr
   = abstractBindings piType <$> Trifecta.try someTypedBindings <*% symbol "->" <*>% expr
  <|> apps <$> atomicExpr <*> manySI argument
-   <**> ((\f t -> f (ReEx, t)) <$> arr <|> pure id)
+   <**> ((\f t -> f (Explicit, t)) <$> arr <|> pure id)
  <|> abstractBindings piType <$> funArgType <*% symbol "->" <*>% expr
  <?> "expression"
   where
     arr = (\e' (a, e) -> Pi mempty a e $ abstractNone e')
            <$% symbol "->" <*>% expr
 
-    argument :: Parser (Annotation, Expr Name)
-    argument = (first . Annotation <$> rel) <*>
-               ((,) Implicit <$ symbol "{" <*>% expr <*% symbol "}"
-            <|> (,) Explicit <$> atomicExpr)
+    argument :: Parser (Plicitness, Expr Name)
+    argument
+      = (,) Implicit <$ symbol "{" <*>% expr <*% symbol "}"
+      <|> (,) Explicit <$> atomicExpr
 
     funArgType :: Parser [Binding]
-    funArgType = rel <**>
-      (f Implicit <$ symbol "{" <*>% expr <*% symbol "}"
-      <|> f Explicit <$> atomicExpr)
+    funArgType
+      = f Implicit <$ symbol "{" <*>% expr <*% symbol "}"
+      <|> f Explicit <$> atomicExpr
       where
-        f p t r = [Typed (Annotation r p) [Nothing] t]
+        f p t = [Typed p [Nothing] t]
 
 -- | A definition or type declaration on the top-level
 data TopLevelParsed v
   = ParsedDefLine (Maybe v) (Expr v) -- ^ Maybe v means that we can use wildcard names that refer e.g. to the previous top-level thing
   | ParsedTypeDecl v (Type v)
-  | ParsedData  v (Telescope Scope Annotation Type v) (DataDef Type v)
+  | ParsedData v (Telescope Scope Plicitness Type v) (DataDef Type v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 topLevel :: Parser (TopLevelParsed Name)

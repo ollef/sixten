@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, Rank2Types, TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving, Rank2Types, TypeFamilies, OverloadedStrings #-}
 module TCM where
 
 import Control.Monad.Except
@@ -12,12 +12,14 @@ import Data.List as List
 import Data.Monoid
 import Data.Set(Set)
 import qualified Data.Set as Set
+import Data.String
 import qualified Data.Text.Lazy as Lazy
 import qualified Data.Text.Lazy.IO as Lazy
 import qualified Data.Vector as Vector
 import Data.Void
 import System.IO
 
+import qualified Builtin
 import Syntax
 import Syntax.Abstract
 import qualified Syntax.Converted as Converted
@@ -30,8 +32,9 @@ instance Pretty Level where
   pretty (Level i) = pretty i
 
 data State = State
-  { tcContext :: Program Expr Void
-  , tcConstrs :: HashMap Constr (Set (Name, Type Void))
+  { tcContext :: Program ExprP Void
+  , tcConstrs :: HashMap Constr (Set (Name, TypeP Void))
+  , tcErasableContext :: Program ExprE Void
   , tcConvertedSignatures :: HashMap Name (Converted.Signature Converted.Expr Unit Void)
   , tcIndent :: !Int -- This has no place here, but is useful for debugging
   , tcFresh :: !Int
@@ -43,6 +46,7 @@ emptyState :: Handle -> State
 emptyState handle = State
   { tcContext = mempty
   , tcConstrs = mempty
+  , tcErasableContext = mempty
   , tcConvertedSignatures = mempty
   , tcIndent = 0
   , tcFresh = 0
@@ -62,23 +66,13 @@ unTCM
   -> ExceptT String (StateT State IO) a
 unTCM (TCM x) = x
 
-evalTCM
-  :: TCM a
-  -> Program Expr Void
-  -> Handle
-  -> IO (Either String a)
-evalTCM tcm cxt handle
-  = evalStateT (runExceptT $ unTCM tcm)
-               (emptyState handle) { tcContext = cxt }
-
 runTCM
   :: TCM a
-  -> Program Expr Void
   -> Handle
   -> IO (Either String a)
-runTCM tcm cxt handle
+runTCM tcm handle
   = evalStateT (runExceptT $ unTCM tcm)
-               (emptyState handle) { tcContext = cxt }
+  $ emptyState handle
 
 fresh :: TCM Int
 fresh = do
@@ -97,23 +91,43 @@ enterLevel x = do
   modify $ \s -> s {tcLevel = l}
   return r
 
--- TODO
+-------------------------------------------------------------------------------
+-- Debugging
 log :: Lazy.Text -> TCM ()
 log l = do
   h <- gets tcLogHandle
   liftIO $ Lazy.hPutStrLn h l
 
-addContext :: Program Expr Void -> TCM ()
+modifyIndent :: (Int -> Int) -> TCM ()
+modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
+
+trp :: Pretty a => String -> a -> TCM ()
+trp s x = do
+  i <- gets tcIndent
+  TCM.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide (pretty x)
+
+trs :: Show a => String -> a -> TCM ()
+trs s x = do
+  i <- gets tcIndent
+  TCM.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> fromString (show x)
+
+-------------------------------------------------------------------------------
+-- Context class
+class Context e where
+  definition :: Name -> TCM (Definition e v, e v)
+  typeOfSize :: Integer -> e v
+  qconstructor :: QConstr -> TCM (e v)
+
+-------------------------------------------------------------------------------
+-- Working with abstract syntax
+addContext :: Program ExprP Void -> TCM ()
 addContext prog = modify $ \s -> s
   { tcContext = prog <> tcContext s
   , tcConstrs = HM.unionWith (<>) cs $ tcConstrs s
-  }
-  where
+  } where
     cs = HM.fromList $ do
       (n, (DataDefinition d, defType)) <- HM.toList prog
-      ConstrDef c t <- quantifiedConstrTypes
-                         d
-                         (mapAnnotations (const IrIm) $ telescope defType)
+      ConstrDef c t <- quantifiedConstrTypes d defType $ const Implicit
       return (c, Set.fromList [(n, t)])
 
 addConvertedSignatures
@@ -124,104 +138,110 @@ addConvertedSignatures p = modify $ \s -> s { tcConvertedSignatures = p' <> tcCo
     p' = fmap (const $ error "addConvertedSignatures")
        . Converted.hoistSignature (const Unit) <$> p
 
-modifyIndent :: (Int -> Int) -> TCM ()
-modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
+instance Context (Expr Plicitness) where
+  definition name = do
+    mres <- gets $ HM.lookup name . tcContext
+    maybe (throwError $ "Not in scope: " ++ show name)
+          (return . bimap vacuous vacuous)
+          mres
 
-lookupDefinition
-  :: Name
-  -> TCM (Maybe (Definition Expr b, Type b'))
-lookupDefinition name
-  = gets
-  $ fmap (bimap vacuous vacuous)
-  . HM.lookup name
-  . tcContext
+  qconstructor qc@(QConstr n c) = do
+    (def, typ) <- definition n
+    case def of
+      DataDefinition dataDef -> do
+        let qcs = quantifiedConstrTypes dataDef typ $ const Implicit
+        case filter ((== c) . constrName) qcs of
+          [] -> throwError $ "Not in scope: constructor " ++ show qc
+          [cdef] -> return $ constrType cdef
+          _ -> throwError $ "Ambiguous constructor: " ++ show qc
+      Definition _ -> throwError $ "Not a data type: " ++ show n
 
-lookupConstructor
-  :: Ord b
-  => Constr
-  -> TCM (Set (Name, Type b))
-lookupConstructor name
-  = gets
-  $ maybe mempty (Set.map $ second vacuous)
-  . HM.lookup name
-  . tcConstrs
-
-lookupConvertedSignature
-  :: Name
-  -> TCM (Maybe (Converted.Signature Converted.Expr Unit Void))
-lookupConvertedSignature name
-  = gets
-  $ HM.lookup name
-  . tcConvertedSignatures
-
-definition
-  :: Name
-  -> TCM (Definition Expr v, Type v)
-definition v = do
-  mres <- lookupDefinition v
-  maybe (throwError $ "Not in scope: " ++ show v)
-        return
-        mres
-
-convertedSignature
-  :: Name
-  -> TCM (Converted.Signature Converted.Expr Unit Void)
-convertedSignature v = do
-  mres <- lookupConvertedSignature v
-  maybe (throwError $ "Not in scope: converted " ++ show v)
-        return
-        mres
+  typeOfSize = Builtin.TypeP . Lit
 
 constructor
   :: Ord v
   => Either Constr QConstr
-  -> TCM (Set (Name, Type v))
+  -> TCM (Set (Name, TypeP v))
 constructor (Right qc@(QConstr n _)) = Set.singleton . (,) n <$> qconstructor qc
-constructor (Left c) = lookupConstructor c
+constructor (Left c) 
+  = gets
+  $ maybe mempty (Set.map $ second vacuous)
+  . HM.lookup c
+  . tcConstrs
 
-qconstructor
-  :: QConstr
-  -> TCM (Type v)
-qconstructor qc@(QConstr n c) = do
-  results <- lookupConstructor c
-  let filtered = Set.filter ((== n) . fst) results
-  case Set.size filtered of
-    1 -> do
-      let [(_, t)] = Set.toList filtered
-      return (vacuous t)
-    0 -> throwError $ "Not in scope: constructor " ++ show qc
-    _ -> throwError $ "Ambiguous constructor: " ++ show qc
+-------------------------------------------------------------------------------
+-- Erasable
+addErasableContext :: Program ExprE Void -> TCM ()
+addErasableContext prog = modify $ \s -> s
+  { tcErasableContext = prog <> tcErasableContext s
+  }
 
+instance Context (Expr Erasability) where
+  definition name = do
+    mres <- gets $ HM.lookup name . tcErasableContext
+    maybe (throwError $ "Not in scope: " ++ show name)
+          (return . bimap vacuous vacuous)
+          mres
+
+  qconstructor qc@(QConstr n c) = do
+    (def, typ) <- definition n
+    case def of
+      DataDefinition dataDef -> do
+        let qcs = quantifiedConstrTypes dataDef typ $ const Erased
+        case filter ((== c) . constrName) qcs of
+          [] -> throwError $ "Not in scope: constructor " ++ show qc
+          [cdef] -> return $ constrType cdef
+          _ -> throwError $ "Ambiguous constructor: " ++ show qc
+      Definition _ -> throwError $ "Not a data type: " ++ show n
+
+  typeOfSize = Builtin.TypeE . Lit
+
+-------------------------------------------------------------------------------
+-- Converted
+convertedSignature
+  :: Name
+  -> TCM (Converted.Signature Converted.Expr Unit Void)
+convertedSignature name = do
+  mres <- gets $ HM.lookup name . tcConvertedSignatures
+  maybe (throwError $ "Not in scope: converted " ++ show name)
+        return
+        mres
+
+-------------------------------------------------------------------------------
+-- General constructor queries
 qconstructorIndex :: TCM (QConstr -> Maybe Int)
 qconstructorIndex = do
   cxt <- gets tcContext
   return $ \(QConstr n c) -> do
     (DataDefinition (DataDef constrDefs), _) <- HM.lookup n cxt
-    if length constrDefs == 1
-    then Nothing
-    else findIndex ((== c) . constrName) constrDefs
+    case constrDefs of
+      [] -> Nothing
+      [_] -> Nothing
+      _ -> findIndex ((== c) . constrName) constrDefs
 
 constrArity
   :: QConstr
   -> TCM Int
-constrArity = fmap (teleLength . fst . pisView) . qconstructor
+constrArity
+  = fmap (teleLength . fst . pisView)
+  . (qconstructor :: QConstr -> TCM (ExprP Void))
 
 constrIndex
   :: QConstr
   -> TCM Int
 constrIndex qc@(QConstr n c) = do
-  (DataDefinition (DataDef cs), _) <- definition n
+  (DataDefinition (DataDef cs), _) <- (definition n :: TCM (Definition ExprP Void, ExprP Void))
   case List.findIndex ((== c) . constrName) cs of
     Just i -> return i
     Nothing -> throwError $ "Can't find index for " ++ show qc
 
-relevantConstrArity
+retainedConstrArity
   :: QConstr
   -> TCM Int
-relevantConstrArity
+retainedConstrArity
   = fmap ( Vector.length
-         . Vector.filter (\(_, a, _) -> relevance a == Relevant)
+         . Vector.filter (\(_, er, _) -> er == Retained)
          . unTelescope
          . fst
          . pisView)
-  . qconstructor
+  . (qconstructor :: QConstr -> TCM (ExprE Void))

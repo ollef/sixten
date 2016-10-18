@@ -20,16 +20,20 @@ pattern SizeName <- ((==) "Size" -> True) where SizeName = "Size"
 pattern Size = Global SizeName
 
 pattern AddSizeName <- ((==) "addSize" -> True) where AddSizeName = "addSize"
-pattern AddSize e1 e2 = App (App (Global AddSizeName) ReEx e1) ReEx e2
+pattern AddSizeE e1 e2 = AddSize Explicit Explicit e1 e2
+pattern AddSize p1 p2 e1 e2 = App (App (Global AddSizeName) p1 e1) p2 e2
 
 pattern PrintSizeName <- ((==) "printSize" -> True) where PrintSizeName = "printSize"
-pattern PrintSize e1 = App (Global AddSizeName) ReEx e1
+pattern PrintSize e1 = App (Global AddSizeName) Explicit e1
 
 pattern MaxSizeName <- ((==) "maxSize" -> True) where MaxSizeName = "maxSize"
-pattern MaxSize e1 e2 = App (App (Global MaxSizeName) ReEx e1) ReEx e2
+pattern MaxSizeE e1 e2 = AddSize Explicit Explicit e1 e2
+pattern MaxSize p1 p2 e1 e2 = App (App (Global MaxSizeName) p1 e1) p2 e2
 
 pattern TypeName <- ((==) "Type" -> True) where TypeName = "Type"
-pattern Type sz = App (Global TypeName) IrIm sz
+pattern Type p sz = App (Global TypeName) p sz
+pattern TypeP sz = Type Implicit sz
+pattern TypeE sz = Type Retained sz
 
 pattern RefName <- ((==) "Ref" -> True) where RefName = "Ref"
 pattern PtrName <- ((==) "Ptr" -> True) where PtrName = "Ptr"
@@ -48,20 +52,20 @@ applyName n = "apply_" <> shower n
 papName :: Int -> Int -> Name
 papName k m = "pap_" <> shower k <> "_" <> shower m
 
-context :: Program Expr Void
-context = HM.fromList
-  [ (SizeName, opaque $ Type $ Lit 1)
-  , (AddSizeName, opaque $ arrow ReEx Size $ arrow ReEx Size Size)
-  , (MaxSizeName, opaque $ arrow ReEx Size $ arrow ReEx Size Size)
-  , (PrintSizeName, opaque $ arrow ReEx Size Size)
-  , (TypeName, opaque $ arrow IrIm Size $ Type $ Lit 0)
-  , (PtrName, dataType (namedPi "size" IrIm Size
-                       $ arrow IrEx (Type $ pure "size")
-                       $ Type $ Lit 1)
-                       [ ConstrDef RefName $ toScope $ fmap B $ arrow ReEx (pure 1)
-                                           $ apps (Global PtrName) [(IrIm, pure 0), (IrEx, pure 1)]
+contextP :: Program ExprP Void
+contextP = HM.fromList
+  [ (SizeName, opaque $ TypeP $ Lit 1)
+  , (AddSizeName, opaque $ arrow Explicit Size $ arrow Explicit Size Size)
+  , (MaxSizeName, opaque $ arrow Explicit Size $ arrow Explicit Size Size)
+  , (PrintSizeName, opaque $ arrow Explicit Size Size)
+  , (TypeName, opaque $ arrow Implicit Size $ TypeP $ Lit 0)
+  , (PtrName, dataType (namedPi "size" Implicit Size
+                       $ arrow Explicit (TypeP $ pure "size")
+                       $ TypeP $ Lit 1)
+                       [ ConstrDef RefName $ toScope $ fmap B $ arrow Explicit (pure 1)
+                                           $ apps (Global PtrName) [(Implicit, pure 0), (Explicit, pure 1)]
                        ])
-  , (UnitName, dataType (Type $ Lit 0)
+  , (UnitName, dataType (TypeP $ Lit 0)
                         [ConstrDef UnitConstrName $ toScope $ Global UnitName])
 
   ]
@@ -69,8 +73,32 @@ context = HM.fromList
     cl = fromMaybe (error "Builtin not closed") . closed
     opaque t = (DataDefinition $ DataDef mempty, cl t)
     dataType t xs = (DataDefinition $ DataDef xs, cl t)
-    namedPi :: Name -> Annotation -> Type Name -> Expr Name -> Expr Name
+    namedPi :: Name -> Plicitness -> TypeP Name -> ExprP Name -> ExprP Name
     namedPi n p t e = Pi (fromText n) p t $ abstract1 n e
+
+contextE :: Program ExprE Void
+contextE = HM.fromList
+  [ (SizeName, opaque $ TypeE $ Lit 1)
+  , (AddSizeName, opaque $ arrow Retained Size $ arrow Retained Size Size)
+  , (MaxSizeName, opaque $ arrow Retained Size $ arrow Retained Size Size)
+  , (PrintSizeName, opaque $ arrow Retained Size Size)
+  , (TypeName, opaque $ arrow Retained Size $ TypeE $ Lit 0)
+  , (PtrName, dataType (namedPi "size" Retained Size
+                       $ arrow Retained (TypeE $ pure "size")
+                       $ TypeE $ Lit 1)
+                       [ ConstrDef RefName $ toScope $ fmap B $ arrow Retained (pure 1)
+                                           $ apps (Global PtrName) [(Retained, pure 0), (Retained, pure 1)]
+                       ])
+  , (UnitName, dataType (TypeE $ Lit 0)
+                        [ConstrDef UnitConstrName $ toScope $ Global UnitName])
+
+  ]
+  where
+    cl = fromMaybe (error "Builtin not closed") . closed
+    opaque t = (DataDefinition $ DataDef mempty, cl t)
+    dataType t xs = (DataDefinition $ DataDef xs, cl t)
+    namedPi :: Name -> Erasability -> TypeE Name -> ExprE Name -> ExprE Name
+    namedPi n a t e = Pi (fromText n) a t $ abstract1 n e
 
 convertedContext :: HashMap Name (Converted.SExpr Void)
 convertedContext = HM.fromList $ concat

@@ -1,10 +1,10 @@
 deref : forall {n}{t : Type {n}}. Ptr t -> t
 deref p = case p of Ref t -> t
 
-the : forall {n}. ~(A : Type ~{n}) -> A -> A
-the A a = a
+the : forall {n}. (A : Type {n}) -> A -> A
+the _ a = a
 
-data List {a : Size}(A : Type ~{a}) where
+data List {a : Size}(A : Type {a}) where
   Nil : List A
   Cons : A -> Ptr (List A) -> List A
 
@@ -41,13 +41,13 @@ dumbId xs = case xs of
 
 map3 f xs = case deref xs of
   Cons x xs' -> Ref (Cons (f x) (map3 f xs'))
-  Nil -> Ref (the ~(List _) Nil)
+  Nil -> Ref (the (List _) Nil)
 
 map4 f xs = case deref xs of
   Cons x xs' -> Ref (Cons (f x) (map4 f xs'))
   Nil -> Ref Nil
 
-sizeof : forall {n}. Type ~{n} -> Size
+sizeof : forall {n}. Type {n} -> Size
 sizeof {n} _ = n
 
 sizeOfList = printSize (sizeof (List (List Size)))

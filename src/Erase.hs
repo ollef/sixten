@@ -12,13 +12,13 @@ import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.SLambda as SLambda
 import Meta
+import TypeOf
 import TCM
-import Unify
 
-eraseS :: AbstractM -> TCM SLambdaM
+eraseS :: AbstractE -> TCM SLambdaM
 eraseS e = SLambda.Sized <$> (erase =<< sizeOf e) <*> erase e
 
-erase :: AbstractM -> TCM LambdaM
+erase :: AbstractE -> TCM LambdaM
 erase expr = do
   tr "erase expr" expr
   modifyIndent succ
@@ -27,15 +27,14 @@ erase expr = do
     Abstract.Global g -> return $ SLambda.Global g
     Abstract.Lit l -> return $ SLambda.Lit l
     Abstract.Pi {} -> return $ SLambda.Con Builtin.Unit mempty
-    Abstract.Lam h a t s
-      | relevance a == Relevant -> do
-        v <- forall h t
-        e <- eraseS $ instantiate1 (pure v) s
-        sz <- erase =<< sizeOfType t
-        return $ SLambda.Lam h sz $ Simple.abstract1 v e
-      | otherwise -> do
-        v <- forall h t
-        erase $ instantiate1 (pure v) s
+    Abstract.Lam h Erased t s -> do
+      v <- forall h Erased t
+      erase $ instantiate1 (pure v) s
+    Abstract.Lam h Retained t s -> do
+      v <- forall h Retained t
+      e <- eraseS $ instantiate1 (pure v) s
+      sz <- erase =<< sizeOfType t
+      return $ SLambda.Lam h sz $ Simple.abstract1 v e
     (appsView -> (Abstract.Con qc, es)) -> do
       n <- constrArity qc
       case compare argsLen n of
@@ -51,29 +50,28 @@ erase expr = do
                 $ Vector.fromList (fmap (pure . pure) <$> es)
                 <> forTele tele (\_ a t -> (a, unscope t))
       where
-        es' = Vector.fromList $ snd <$> filter (\(a, _) -> relevance a == Relevant) es
+        es' = Vector.fromList $ snd <$> filter (\(a, _) -> a == Retained) es
         argsLen = length es
     Abstract.Con _qc -> throwError "erase impossible"
-    Abstract.App e1 a e2
-      | relevance a == Relevant -> SLambda.App <$> erase e1 <*> eraseS e2
-      | otherwise -> erase e1
+    Abstract.App e1 Retained e2 -> SLambda.App <$> erase e1 <*> eraseS e2
+    Abstract.App e1 Erased _e2 -> erase e1
     Abstract.Case e brs -> SLambda.Case <$> eraseS e <*> eraseBranches brs
   modifyIndent pred
   tr "erase res" res
   return res
 
-relevantAbstraction :: Telescope Scope Annotation expr v -> Tele -> Maybe Tele
-relevantAbstraction tele (Tele n) = Tele <$> perm Vector.! n
+retainedAbstraction :: Telescope Scope Erasability expr v -> Tele -> Maybe Tele
+retainedAbstraction tele (Tele n) = Tele <$> perm Vector.! n
   where
     perm = Vector.fromList $ reverse $ fst $
-      Vector.foldl' (\(xs, i) (_, a, _) -> case relevance a of
-          Irrelevant -> (Nothing : xs, i)
-          Relevant -> (Just i : xs, i + 1))
+      Vector.foldl' (\(xs, i) (_, a, _) -> case a of
+          Erased -> (Nothing : xs, i)
+          Retained -> (Just i : xs, i + 1))
         ([], 0) $ unTelescope tele
 
 eraseBranches
   :: Pretty c
-  => BranchesM c Abstract.Expr
+  => Branches c Erasability Abstract.ExprE (MetaVar Abstract.ExprE)
   -> TCM (SimpleBranchesM c SLambda.Expr)
 eraseBranches (ConBranches cbrs typ) = do
   tr "eraseBranches brs" $ ConBranches cbrs typ
@@ -82,14 +80,14 @@ eraseBranches (ConBranches cbrs typ) = do
     tele' <- forMTele tele $ \h a s -> do
       let t = instantiateTele pureVs s
       tsz <- erase =<< sizeOfType t
-      v <- forall h t
+      v <- forall h a t
       return (v, (h, a, Simple.abstract abstr tsz))
     let vs = fst <$> tele'
-        abstr v = relevantAbstraction tele =<< teleAbstraction vs v
+        abstr v = retainedAbstraction tele =<< teleAbstraction vs v
         pureVs = pure <$> vs
         tele'' = Telescope
                $ fmap (\(h, _, t) -> (h, (), t))
-               $ Vector.filter (\(_, a, _) -> relevance a == Relevant)
+               $ Vector.filter (\(_, a, _) -> a == Retained)
                $ snd <$> tele'
     brScope' <- erase $ instantiateTele pureVs brScope
     return (c, tele'', Simple.abstract abstr brScope')
@@ -102,19 +100,18 @@ eraseBranches (LitBranches lbrs d)
     <*> erase d
 
 eraseDef
-  :: Definition Abstract.Expr (MetaVar Abstract.Expr)
-  -> AbstractM
+  :: Definition Abstract.ExprE (MetaVar Abstract.ExprE)
+  -> AbstractE
   -> TCM SLambdaM
 eraseDef (Definition e) _ = eraseS e
 eraseDef (DataDefinition _) typ = go typ
   where
-    go (Abstract.Pi h a t s)
-      | relevance a == Relevant = do
-        v <- forall h t
-        sz <- erase =<< sizeOfType t
-        e <- go $ instantiate1 (pure v) s
-        return $ SLambda.Sized (SLambda.Lit 1) $ SLambda.Lam h sz $ Simple.abstract1 v e
-      | otherwise = do
-        v <- forall h t
-        go $ instantiate1 (pure v) s
+    go (Abstract.Pi h Retained t s) = do
+      v <- forall h Retained t
+      sz <- erase =<< sizeOfType t
+      e <- go $ instantiate1 (pure v) s
+      return $ SLambda.Sized (SLambda.Lit 1) $ SLambda.Lam h sz $ Simple.abstract1 v e
+    go (Abstract.Pi h Erased t s) = do
+      v <- forall h Erased t
+      go $ instantiate1 (pure v) s
     go _ = return $ SLambda.Sized (SLambda.Lit 0) $ SLambda.Con Builtin.Unit mempty

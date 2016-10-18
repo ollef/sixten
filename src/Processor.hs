@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Processor where
 
 import qualified Bound.Scope.Simple as Simple
@@ -25,7 +25,8 @@ import Close
 import ClosureConvert
 import Erase
 import qualified Generate
-import Infer
+import qualified Infer
+import qualified InferErasability
 import Lift
 import qualified LLVM
 import Meta
@@ -47,12 +48,23 @@ processGroup
   -> TCM [(Name, LLVM.B)]
 processGroup
   = prettyTypedGroup "Concrete syntax" id
-  >=> exposeGroup
+  >=> exposeConcreteGroup
   >=> typeCheckGroup
   >=> prettyTypedGroup "Abstract syntax" absurd
   >=> simplifyGroup
   >=> prettyTypedGroup "Simplified" absurd
-  >=> addGroupToContext
+  >=> processAbstractGroup
+
+processAbstractGroup
+  :: [(Name, Definition Abstract.ExprP Void, Abstract.ExprP Void)]
+  -> TCM [(Name, LLVM.B)]
+processAbstractGroup
+  = addGroupToContext
+  >=> inferGroupErasability
+  >=> prettyTypedGroup "Inferred erasability" absurd
+  >=> simplifyGroup
+  >=> prettyTypedGroup "Simplified again" absurd
+  >=> addErasableGroupToContext
   >=> eraseGroup
   >=> prettyGroup "Erased (SLambda)" absurd
   >=> closeGroup
@@ -70,7 +82,7 @@ processConvertedGroup
   >=> generateGroup
 
 prettyTypedGroup
-  :: (Pretty (e Name), Functor e, Eq1 e, SyntaxPi e)
+  :: (Pretty (e Name), Functor e, Eq1 e, Syntax e, Eq (Annotation e), PrettyAnnotation (Annotation e))
   => Text
   -> (v -> Name)
   -> [(Name, Definition e v, e v)]
@@ -106,10 +118,10 @@ prettyGroup str f defs = do
     Text.putStrLn ""
   return defs
 
-exposeGroup
+exposeConcreteGroup
   :: [(Name, Definition Concrete.Expr Name, Concrete.Expr Name)]
   -> TCM [(Name, Definition Concrete.Expr (Var Int v), Scope Int Concrete.Expr v)]
-exposeGroup defs = return
+exposeConcreteGroup defs = return
   [ ( n
     , s >>>= unvar (pure . B) Concrete.Global
     , t >>>= Concrete.Global
@@ -120,12 +132,12 @@ exposeGroup defs = return
     abstractedTypes = recursiveAbstract [(n, t) | (n, _, t) <- defs]
 
 typeCheckGroup
-  :: [(Name, Definition Concrete.Expr (Var Int (MetaVar Abstract.Expr)), ScopeM Int Concrete.Expr)]
-  -> TCM [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  :: [(Name, Definition Concrete.Expr (Var Int (MetaVar Abstract.ExprP)), ScopeM Int Concrete.Expr)]
+  -> TCM [(Name, Definition Abstract.ExprP Void, Abstract.ExprP Void)]
 typeCheckGroup defs = do
-  checkedDefs <- checkRecursiveDefs $ V.fromList defs
+  checkedDefs <- Infer.checkRecursiveDefs $ V.fromList defs
 
-  let vf :: MetaVar Abstract.Expr -> TCM b
+  let vf :: MetaVar Abstract.ExprP -> TCM b
       vf v = throwError $ "typeCheckGroup " ++ show v
   checkedDefs' <- traverse (bitraverse (traverse $ traverse vf) (traverse vf)) checkedDefs
   let names = V.fromList [n | (n, _, _) <- defs]
@@ -139,20 +151,55 @@ typeCheckGroup defs = do
   return instDefs
 
 simplifyGroup
-  :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
-  -> TCM [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  :: Eq a
+  => [(Name, Definition (Abstract.Expr a) Void, Abstract.Expr a Void)]
+  -> TCM [(Name, Definition (Abstract.Expr a) Void, Abstract.Expr a Void)]
 simplifyGroup defs = forM defs $ \(x, def, typ) ->
   return (x, simplifyDef def, simplifyExpr False typ)
 
 addGroupToContext
-  :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
-  -> TCM [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  :: [(Name, Definition Abstract.ExprP Void, Abstract.ExprP Void)]
+  -> TCM [(Name, Definition Abstract.ExprP Void, Abstract.ExprP Void)]
 addGroupToContext defs = do
   addContext $ HM.fromList $ (\(n, d, t) -> (n, (d, t))) <$> defs
   return defs
 
+inferGroupErasability
+  :: PrettyAnnotation a
+  => [(Name, Definition (Abstract.Expr a) Void, Abstract.Expr a Void)]
+  -> TCM [(Name, Definition Abstract.ExprE Void, Abstract.ExprE Void)]
+inferGroupErasability defs = do
+  let names = V.fromList [n | (n, _, _) <- defs]
+      glob n = maybe (Abstract.Global n) (pure . B) $ V.elemIndex n names
+      exposedDefs = V.fromList
+        [ ( n
+          , bindDefinitionGlobals Abstract.bindGlobals glob $ vacuous d
+          , toScope $ Abstract.bindGlobals glob $ vacuous t
+          )
+        | (n, d, t) <- defs]
+  inferredDefs <- InferErasability.inferRecursiveDefs exposedDefs
+
+  let vf :: InferErasability.MetaVar -> TCM b
+      vf v = throwError $ "inferGroupErasability " ++ show v
+  inferredDefs' <- traverse (bitraverse (traverse $ traverse vf) (traverse vf)) inferredDefs
+  let instDefs =
+        [ ( names V.! i
+          , instantiateDef (Abstract.Global . (names V.!)) d
+          , instantiate (Abstract.Global . (names V.!)) t
+          )
+        | (i, (d, t)) <- zip [0..] $ V.toList inferredDefs'
+        ]
+  return instDefs
+
+addErasableGroupToContext
+  :: [(Name, Definition Abstract.ExprE Void, Abstract.ExprE Void)]
+  -> TCM [(Name, Definition Abstract.ExprE Void, Abstract.ExprE Void)]
+addErasableGroupToContext defs = do
+  addErasableContext $ HM.fromList $ (\(n, d, t) -> (n, (d, t))) <$> defs
+  return defs
+
 eraseGroup
-  :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)] 
+  :: [(Name, Definition Abstract.ExprE Void, Abstract.ExprE Void)] 
   -> TCM [(Name, SLambda.SExpr Void)]
 eraseGroup defs = sequence
   [ do
@@ -223,14 +270,14 @@ processFile file output logFile = do
       let groups = filter (not . null) $ dependencyOrder
             (HS.map (either id (\(QConstr n _) -> n)) . Concrete.constructors) resolved
           constrs = HS.fromList
-                  $ programConstrNames Builtin.context
+                  $ programConstrNames Builtin.contextP
                   <> programConstrNames resolved
           instCon v
             | v `HS.member` constrs = Concrete.Con $ Left v
             | otherwise = pure v
           groups' = fmap (fmap $ bimap (>>>= instCon) (>>= instCon)) <$> groups
       procRes <- withFile logFile WriteMode $ \handle ->
-        runTCM (process groups') mempty handle
+        runTCM (process groups') handle
       case procRes of
         Left err -> do
           putStrLn err
@@ -252,7 +299,8 @@ processFile file output logFile = do
             outputStrLn "}"
   where
     process groups = do
-      addContext Builtin.context
+      addContext Builtin.contextP
+      addErasableContext Builtin.contextE
       addConvertedSignatures $ Converted.signature <$> Builtin.convertedContext
       builtins <- processConvertedGroup $ HM.toList Builtin.convertedContext
       results <- mapM (processGroup . fmap (\(n, (d, t)) -> (n, d, t))) groups

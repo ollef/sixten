@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, OverloadedStrings #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, OverloadedStrings, TypeFamilies #-}
 module Syntax.Closed where
 
 import qualified Bound.Scope.Simple as Simple
@@ -8,6 +8,7 @@ import Data.Vector(Vector)
 import Data.Void
 import Prelude.Extras
 
+import Meta
 import Syntax hiding (lamView)
 import Util
 
@@ -84,3 +85,7 @@ instance (Eq v, IsString v, Pretty v)
 instance (Eq v, IsString v, Pretty v) => Pretty (SExpr v) where
   prettyM (Sized sz e) = parens `above` annoPrec $
     prettyM e <+> ":" <+> prettyM sz
+
+instance MetaVary Expr (MetaVar Expr) where
+  type MetaData Expr (MetaVar Expr) = ()
+  refineVar v _ = return $ Var v

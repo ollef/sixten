@@ -2,6 +2,7 @@ Type checking
   Better checking for escaped vars
   Can the special-case equations for unifying sizes be done in a principled way?
   Propagate equalities from cases
+  Error if a term's type depends on the term (i.e. x : ... x)?
 Codegen
   Add Destructor calling convention for functions that return part of their argument
     To get rid of the memcpy from deref
@@ -13,6 +14,8 @@ Codegen
   Should things of known size > 1 be passed as LLVM arrays?
 Compiler
   Make log function respond to verbosity and tag
+  Concretise some of the Context/MetaVary nonsense
+  Clean up MetaVar handling (not all modules need the full generality)
   Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
   * Test suite
     A list of programs and their expected outputs
@@ -34,7 +37,6 @@ Language
   Mixfix definitions and noncompounds?
   Inductive families
   FFI & More general way to define builtins (extern LLVM, C?)
-  Remove type annotations (other than on binders) --- can be defined as a function
 Size types
   How to cleanly make `(a -> b) : Type 0` when `b : Type 0`?
     Maybe just make the usage analysis pass aware of this

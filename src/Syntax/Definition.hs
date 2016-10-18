@@ -2,7 +2,9 @@
 module Syntax.Definition where
 
 import Bound
+import Data.Bifunctor
 import Data.Bifoldable
+import Data.Bitraversable
 import Data.Foldable
 import Data.Hashable
 import Data.HashMap.Lazy(HashMap)
@@ -12,6 +14,7 @@ import qualified Data.HashSet as HS
 import Data.String
 import Prelude.Extras
 
+import Syntax.Annotation
 import Syntax.Class
 import Syntax.Data
 import Syntax.Name
@@ -24,16 +27,33 @@ data Definition expr v
   | DataDefinition (DataDef expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-foldMapDefinition
-  :: (Monoid m, Monad expr)
-  => (forall v. expr v -> m)
-  -> Definition expr x
-  -> m
-foldMapDefinition f (Definition e) = f e
-foldMapDefinition f (DataDefinition d) = foldMapDataDef f d
+traverseDefinitionFirst
+  :: (Bitraversable expr, Applicative f)
+  => (a -> f a')
+  -> Definition (expr a) v
+  -> f (Definition (expr a') v)
+traverseDefinitionFirst f (Definition d) = Definition <$> bitraverse f pure d
+traverseDefinitionFirst f (DataDefinition d) = DataDefinition <$> traverseDataDefFirst f d
+
+definitionFirst
+  :: Bifunctor expr
+  => (a -> a')
+  -> Definition (expr a) v
+  -> Definition (expr a') v
+definitionFirst f (Definition d) = Definition $ first f d
+definitionFirst f (DataDefinition d) = DataDefinition $ dataDefFirst f d
+
+bindDefinitionGlobals
+  :: Monad e
+  => (forall x. (n -> e x) -> e x -> e x)
+  -> (n -> e v)
+  -> Definition e v
+  -> Definition e v
+bindDefinitionGlobals expr f (Definition e) = Definition $ expr f e
+bindDefinitionGlobals expr f (DataDefinition e) = DataDefinition $ bindDataDefGlobals expr f e
 
 prettyTypedDef
-  :: (Eq1 expr, Eq v, IsString v, Monad expr, Pretty (expr v), SyntaxPi expr)
+  :: (Eq1 expr, Eq v, IsString v, Monad expr, Pretty (expr v), Syntax expr, Eq (Annotation expr), PrettyAnnotation (Annotation expr))
   => Definition expr v
   -> expr v
   -> PrettyM Doc
@@ -89,6 +109,14 @@ dependencies constrs prog =
       | (n, (DataDefinition d, _)) <- HM.toList prog
       , c <- constrNames d
       ]
+
+foldMapDefinition
+  :: (Monoid m, Monad expr)
+  => (forall v. expr v -> m)
+  -> Definition expr x
+  -> m
+foldMapDefinition f (Definition e) = f e
+foldMapDefinition f (DataDefinition (DataDef cs)) = foldMap (foldMap $ f . fromScope) cs
 
 programConstrNames :: Program e v -> [Constr]
 programConstrNames prog

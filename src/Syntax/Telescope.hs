@@ -17,7 +17,10 @@ import Bound
 import Bound.Scope
 import qualified Bound.Scope.Simple as Simple
 import Bound.Var
+import Data.Bifoldable
 import Data.Bifunctor
+import Data.Bitraversable
+import qualified Data.Foldable as Foldable
 import Data.Hashable
 import Data.List as List
 import Data.Monoid
@@ -52,6 +55,33 @@ deriving instance Traversable (scope Tele expr) => Traversable (Telescope scope 
 
 mapAnnotations :: (a -> a') -> Telescope s a e v -> Telescope s a' e v
 mapAnnotations f (Telescope xs) = Telescope $ (\(h, a, s) -> (h, f a, s)) <$> xs
+
+bimapTelescope
+  :: Bifunctor e
+  => (a -> a')
+  -> (v -> v')
+  -> Telescope Scope a (e a) v
+  -> Telescope Scope a' (e a') v'
+bimapTelescope f g (Telescope xs)
+  = Telescope $ (\(h, a, s) -> (h, f a, bimapScope f g s)) <$> xs
+
+bifoldMapTelescope
+  :: (Bifoldable e, Monoid m)
+  => (a -> m)
+  -> (v -> m)
+  -> Telescope Scope a (e a) v
+  -> m
+bifoldMapTelescope f g (Telescope xs)
+  = Foldable.fold $ (\(_, a, s) -> f a <> bifoldMapScope f g s) <$> xs
+
+bitraverseTelescope
+  :: (Bitraversable e, Applicative f)
+  => (a -> f a')
+  -> (v -> f v')
+  -> Telescope Scope a (e a) v
+  -> f (Telescope Scope a' (e a') v')
+bitraverseTelescope f g (Telescope xs)
+  = Telescope <$> traverse (\(h, a, s) -> (,,) h <$> f a <*> bitraverseScope f g s) xs
 
 hoistTelescope
   :: Functor e
@@ -112,7 +142,7 @@ teleTypes :: Telescope s a expr v -> Vector (s Tele expr v)
 teleTypes (Telescope t) = (\(_, _, x) -> x) <$> t
 
 quantify
-  :: (Eq v', Monad expr)
+  :: Monad expr
   => (NameHint -> a
                -> expr (Var Tele v)
                -> Scope () expr (Var Tele v')
@@ -122,10 +152,12 @@ quantify
   -> expr v'
 quantify pifun s (Telescope ps) =
    unvar err id <$> Vector.ifoldr
-     (\i (h, p, s') -> pifun h p (fromScope s') . abstract1 (B $ Tele i))
+     (\i (h, p, s') -> pifun h p (fromScope s') . abstract (abstr i))
      (fromScope s)
      ps
   where
+    abstr i (B (Tele i')) | i == i' = Just ()
+    abstr _ _ = Nothing
     err = error "quantify Telescope"
 
 instance Bound (s Tele) => Bound (Telescope s a) where
@@ -138,8 +170,9 @@ withTeleHints
 withTeleHints = withNameHints . teleNames
 
 prettyTeleVars
-  :: Vector Name
-  -> Telescope s Annotation expr v
+  :: PrettyAnnotation a
+  => Vector Name
+  -> Telescope s a expr v
   -> PrettyM Doc
 prettyTeleVars ns t = hsep
   [ prettyAnnotation a $ prettyM $ ns Vector.! i
@@ -147,9 +180,9 @@ prettyTeleVars ns t = hsep
   ]
 
 prettyTeleVarTypes
-  :: (Eq1 expr, Eq v, Pretty (expr v), Monad expr, IsString v)
+  :: (Eq1 expr, Eq v, Pretty (expr v), Monad expr, IsString v, PrettyAnnotation a, Eq a)
   => Vector Name
-  -> Telescope Scope Annotation expr v
+  -> Telescope Scope a expr v
   -> PrettyM Doc
 prettyTeleVarTypes ns (Telescope v) = hcat $ map go grouped
   where
@@ -161,7 +194,7 @@ prettyTeleVarTypes ns (Telescope v) = hcat $ map go grouped
       = prettyAnnotationParens a
       $ hsep (map (prettyM . (ns Vector.!)) xs) <+> ":" <+> prettyM (inst t)
 
-instance (a ~ Annotation, s ~ Scope, Eq1 expr, Eq v, Pretty (expr v), Monad expr, IsString v)
+instance (a ~ Plicitness, s ~ Scope, Eq1 expr, Eq v, Pretty (expr v), Monad expr, IsString v)
   => Pretty (Telescope s a expr v) where
   prettyM tele = withTeleHints tele $ \ns -> prettyTeleVarTypes ns tele
 

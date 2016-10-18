@@ -22,6 +22,7 @@ executable sixten
                        Erase
                        Generate
                        Infer
+                       InferErasability
                        LLVM
                        Lift
                        Meta
@@ -50,6 +51,7 @@ executable sixten
                        Syntax.Telescope
                        TCM
                        TopoSort
+                       TypeOf
                        Unify
                        Util
   build-depends:

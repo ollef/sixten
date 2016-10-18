@@ -23,10 +23,11 @@ import Util
 program :: [TopLevelParsed Name] -> Either Text (Program Expr Name)
 program xs = snd <$> foldlM resolveName (Nothing, mempty) xs >>= matchTypes
   where
-    resolveName :: (Hashable v, Eq v, Show v)
-                => (Maybe v, (HashMap v (Expr v), HashMap v (Type v), HashMap v (Telescope Scope Annotation Type v, DataDef Type v)))
-                -> TopLevelParsed v
-                -> Either Text (Maybe v, (HashMap v (Expr v), HashMap v (Type v), HashMap v (Telescope Scope Annotation Type v, DataDef Type v)))
+    resolveName
+      :: (Hashable v, Eq v, Show v)
+      => (Maybe v, (HashMap v (Expr v), HashMap v (Type v), HashMap v (Telescope Scope Plicitness Type v, DataDef Type v)))
+      -> TopLevelParsed v
+      -> Either Text (Maybe v, (HashMap v (Expr v), HashMap v (Type v), HashMap v (Telescope Scope Plicitness Type v, DataDef Type v)))
     resolveName (prevName, (defs, types, datas)) (ParsedDefLine mn e) = case mn <|> prevName of
       Nothing -> throwError "not sure what a wildcard definition refers to"
       Just n  -> do
@@ -41,14 +42,15 @@ program xs = snd <$> foldlM resolveName (Nothing, mempty) xs >>= matchTypes
     insertNoDup err k v m = case (HM.lookup k m, HM.insert k v m) of
       (Just _, _)   -> err
       (Nothing, m') -> return m'
-    matchTypes :: (HashMap Name (Expr Name), HashMap Name (Type Name), HashMap Name (Telescope Scope Annotation Type Name, DataDef Type Name))
-               -> Either Text (Program Expr Name)
+    matchTypes
+      :: (HashMap Name (Expr Name), HashMap Name (Type Name), HashMap Name (Telescope Scope Plicitness Type Name, DataDef Type Name))
+      -> Either Text (Program Expr Name)
     matchTypes (defs, types, datas) = case HM.keys $ HM.difference types defs of
       [] -> do
         let defs' = HM.unionWith (\(d, _) (t, _) -> (d, t)) (flip (,) Wildcard <$> defs)
                                                             (flip (,) Wildcard <$> types)
             ldefs = first Definition <$> defs'
-            rdatas = (\(tele, d) -> (DataDefinition d, quantify Pi (Scope $ App (Global Builtin.TypeName) IrIm Wildcard) tele)) <$> datas
+            rdatas = (\(tele, d) -> (DataDefinition d, quantify Pi (Scope $ App (Global Builtin.TypeName) Implicit Wildcard) tele)) <$> datas
         case HM.keys $ HM.intersection ldefs rdatas of
           [] -> return $ ldefs <> rdatas
           vs -> throwError $ "duplicate definition: " <> Text.intercalate ", " (map shower vs)

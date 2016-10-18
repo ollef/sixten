@@ -96,3 +96,11 @@ indexed x = evalState (traverse go x) 0
 
 data Unit a = Unit
   deriving (Functor)
+
+bindScopeGlobals
+  :: Monad e
+  => (forall x. (n -> e x) -> e x -> e x)
+  -> (n -> e v)
+  -> Scope b e v
+  -> Scope b e v
+bindScopeGlobals expr f s = toScope $ expr (fmap F . f) $ fromScope s
