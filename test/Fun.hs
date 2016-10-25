@@ -21,7 +21,7 @@ idConst1 x = const x (\(x : Size). x)
 useConst : forall {a b}. ((a -> a -> a) -> b) -> b
 useConst f = f const
 
-APP : forall ~{a b}. ((x : a) -> b x) -> (x : a) -> b x
+APP : forall {a b}. ((x : a) -> b x) -> (x : a) -> b x
 APP f x = f x
 
 APP2 : forall {a b}. ((x : a) -> b x) -> (x : a) -> b x
@@ -32,17 +32,17 @@ app = APP
 
 app2 f x = APP f x
 
-if : Bool -> forall {n}{a : Type ~{n}}. a -> a -> a
+if : Bool -> forall {n}{a : Type {n}}. a -> a -> a
 if b = b
 
 fun : Type {_} -> Type {1}
 fun a = a -> a
 
-if' : forall {a}. Bool -> a -> a -> a
-if' b = b
+ifPrime : forall {a}. Bool -> a -> a -> a
+ifPrime b = b
 
-Bool : Type ~{1}
-Bool = forall {n} {a : Type ~{n}}. a -> a -> a
+Bool : Type {1}
+Bool = forall {n} {a : Type {n}}. a -> a -> a
 
 True : Bool
 True x y = x
@@ -54,7 +54,7 @@ a : forall {a}. a
 a = a
 
 and : Bool -> Bool -> Bool
-and b1 b2 = if' b1 b2 False
+and b1 b2 = ifPrime b1 b2 False
 
 or : Bool -> Bool -> Bool
-or b1 b2 = if' b1 True b2
+or b1 b2 = ifPrime b1 True b2

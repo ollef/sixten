@@ -18,6 +18,7 @@ import qualified Builtin
 import Syntax
 import Syntax.Abstract
 import TCM
+import TypeOf
 import Util
 import Meta(MetaVary(..))
 import Normalise
@@ -27,6 +28,11 @@ data MetaErasability
   | MRetained
   | MRef (STRef (World TCM) (Maybe MetaErasability))
   deriving Eq
+
+instance Show MetaErasability where
+  show MErased = "MErased"
+  show MRetained = "MRetained"
+  show (MRef _) = "MRef"
 
 minMetaErasability :: MetaErasability -> MetaErasability -> TCM MetaErasability
 minMetaErasability MErased _ = return MErased
@@ -179,9 +185,19 @@ inferArgType argEr argType = do
   (argType', argTypeType) <- infer MErased argType
   case argEr of
     MErased -> return ()
-    _ | Set.null $ toSet argTypeType -> return ()
-      | otherwise -> void $ infer argEr argTypeType -- retain the size of relevant args
+    _ -> void $ infer argEr argTypeType -- retain the size
   return argType'
+
+retainSize
+  :: MetaErasability
+  -> ErasableM
+  -> TCM ()
+retainSize argEr argType = do
+  argTypeType <- typeOf argType
+  case argEr of
+    MErased -> return ()
+    _ | Set.null $ toSet argTypeType -> return ()
+      | otherwise -> void $ infer argEr argTypeType
 
 infer
   :: PrettyAnnotation a
@@ -204,10 +220,10 @@ infer er expr = do
       return (Con c, first fromErasability typ)
     Lit l -> return (Lit l, Builtin.Size)
     Pi h _ argType retTypeScope -> do
-      let argEr = case appsView argType of
+      argEr <- case appsView argType of
             -- TODO use piView as well?
-            (Global Builtin.TypeName, _) -> MErased
-            _ -> MRetained
+            (Global Builtin.TypeName, _) -> existsMetaErasability
+            _ -> return MRetained
       argType' <- inferArgType argEr argType
       x <- forall h argEr argType'
       let retType = instantiate1 (pure x) retTypeScope
@@ -219,6 +235,7 @@ infer er expr = do
       x <- forall h argEr argType'
       let ret = instantiate1 (pure x) retScope
       (ret', retType) <- infer er ret
+      retainSize er retType
       return
         ( Lam h argEr argType' $ abstract1 x ret'
         , Pi h argEr argType' $ abstract1 x retType
@@ -229,9 +246,11 @@ infer er expr = do
       case funType' of
         Pi _ argEr argType s -> do
           er' <- minMetaErasability er argEr
-          argType' <- inferArgType er' argType
-          arg' <- check er' arg argType'
-          return (App fun' argEr arg', instantiate1 arg' s)
+          retainSize er' argType
+          arg' <- check er' arg argType
+          let retType = instantiate1 arg' s
+          retainSize er retType
+          return (App fun' argEr arg', retType)
         _ -> throwError "InferErasability: Expected function"
     Case e brs -> do
       (e', _eType) <- infer er e

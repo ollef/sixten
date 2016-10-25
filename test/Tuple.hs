@@ -1,11 +1,11 @@
 data Tuple {a b : Size} (A : Type {a}) (B : Type {b}) where
   Tup : A -> B -> Tuple A B
 
-fst : forall ~{a b}. Tuple a b -> a
+fst : forall {a b}. Tuple a b -> a
 fst x = case x of
   Tup a b -> a
 
-snd : forall ~{a b}. Tuple a b -> b
+snd : forall {a b}. Tuple a b -> b
 snd x = case x of
   Tup a b -> b
 
