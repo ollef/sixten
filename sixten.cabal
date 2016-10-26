@@ -19,6 +19,9 @@ executable sixten
                        Builtin
                        Close
                        ClosureConvert
+                       Command.Compile
+                       Command.Run
+                       Command.Test
                        Erase
                        Generate
                        Infer
