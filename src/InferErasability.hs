@@ -227,7 +227,7 @@ infer er expr = do
       argType' <- inferArgType argEr argType
       x <- forall h argEr argType'
       let retType = instantiate1 (pure x) retTypeScope
-      (retType', _) <- infer er retType
+      (retType', _) <- infer MErased retType -- since we know this is a type
       return (Pi h argEr argType' $ abstract1 x retType', first fromErasability $ Builtin.TypeE $ Lit 1)
     Lam h _ argType retScope -> do
       (argType', _argTypeType) <- infer MErased argType
