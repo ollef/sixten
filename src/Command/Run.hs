@@ -1,42 +1,33 @@
 module Command.Run where
 
-import GHC.IO.Handle
 import Options.Applicative
-import System.FilePath
-import System.IO.Temp
 import System.Process
 
 import qualified Command.Compile as Compile
 
 data Options = Options
-  { inputFile :: FilePath
+  { compileOptions :: Compile.Options
+  , commandLineArguments :: [String]
   } deriving (Show)
 
-runOptionsParser :: ParserInfo Options
-runOptionsParser = info (helper <*> opts)
+optionsParserInfo :: ParserInfo Options
+optionsParserInfo = info (helper <*> optionsParser)
   $ fullDesc
   <> progDesc "Run a Sixten program"
   <> header "sixten run"
-  where
-    opts = Options
-      <$> argument str
-        (metavar "FILE"
-        <> help "Input source FILE"
-        )
 
-run :: (FilePath -> IO a) -> Options -> IO a
-run k o = do
-  let (inputDir, inputFileName) = splitFileName $ inputFile o
-      outputFileSuggestion = dropExtension inputFileName
-  withTempFile inputDir outputFileSuggestion $ \outputFile outputFileHandle -> do
-    hClose outputFileHandle
-    Compile.compile Compile.Options
-      { Compile.inputFile = inputFile o
-      , Compile.outputFile = outputFile
-      , Compile.optimisation = Nothing
-      , Compile.assemblyDir = Nothing
-      }
-    k outputFile
+optionsParser :: Parser Options
+optionsParser = Options
+  <$> Compile.optionsParser
+  <*> many
+    (argument str
+    $ metavar "ARGS.."
+    <> help "Command-line options passed to the Sixten program"
+    )
+
+run :: Options -> IO ()
+run opts = Compile.compile (compileOptions opts) $ \f ->
+  callProcess f $ commandLineArguments opts
 
 command :: ParserInfo (IO ())
-command = run (\f -> callProcess f []) <$> runOptionsParser
+command = run <$> optionsParserInfo

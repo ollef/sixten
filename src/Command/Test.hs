@@ -4,48 +4,53 @@ import Options.Applicative
 import System.Exit
 import System.Process
 
-import qualified Command.Run as Run
+import qualified Command.Compile as Compile
 
 data Options = Options
-  { inputFile :: FilePath
-  , expectedOutputFile :: FilePath
+  { expectedOutputFile :: Maybe FilePath
+  , shouldFail :: Bool
+  , compileOptions :: Compile.Options
   } deriving (Show)
 
-testOptionsParser :: ParserInfo Options
-testOptionsParser = info (helper <*> opts)
+optionsParserInfo :: ParserInfo Options
+optionsParserInfo = info (helper <*> optionsParser)
   $ fullDesc
   <> progDesc "Test a Sixten program"
   <> header "sixten test"
-  where
-    opts = Options
-      <$> argument str
-        (metavar "FILE"
-        <> help "Input source FILE"
-        )
-      <*> strOption 
-        (long "expected"
-        <> short 'e'
-        <> metavar "FILE"
-        <> help "Compare output to contents of FILE"
-        )
+
+optionsParser :: Parser Options
+optionsParser = Options
+  <$> optional (strOption
+    $ long "expected"
+    <> short 'e'
+    <> metavar "FILE"
+    <> help "Compare output to the contents of FILE"
+    )
+  <*> switch
+    (long "fail"
+    <> short 'f'
+    <> help "The program should fail to typecheck"
+    )
+  <*> Compile.optionsParser
 
 test :: Options -> IO ()
-test o = do
-  output <- Run.run (\f -> readProcess f [] "") Run.Options
-    { Run.inputFile = inputFile o
-    }
-  expectedOutput <- readFile $ expectedOutputFile o
-  if output == expectedOutput
-  then do
-    putStrLn $ inputFile o ++ ": SUCCESS"
-    exitSuccess
-  else do
-    putStrLn "FAILED"
-    putStrLn "Expected:"
-    putStrLn expectedOutput
-    putStrLn "But got:"
-    putStrLn output
-    exitFailure
+test opts = Compile.compile (compileOptions opts) $ \f -> do
+  -- TODO check shouldFail
+  output <- readProcess f [] ""
+  mexpectedOutput <- traverse readFile $ expectedOutputFile opts
+  case mexpectedOutput of
+    Nothing -> return ()
+    Just expectedOutput
+      | output == expectedOutput -> do
+        putStrLn $ Compile.inputFile (compileOptions opts) ++ ": SUCCESS"
+        exitSuccess
+      | otherwise -> do
+        putStrLn "FAILED"
+        putStrLn "Expected:"
+        putStrLn expectedOutput
+        putStrLn "But got:"
+        putStrLn output
+        exitFailure
 
 command :: ParserInfo (IO ())
-command = test <$> testOptionsParser
+command = test <$> optionsParserInfo
