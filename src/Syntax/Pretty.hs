@@ -98,8 +98,8 @@ indent n = fmap $ Leijen.indent n
 tilde :: Doc
 tilde = Leijen.text "~"
 
-showWide :: Doc -> Lazy.Text
-showWide d = Leijen.displayT (Leijen.renderPretty 1.0 10000 d)
+showWide :: Doc -> Text
+showWide d = Lazy.toStrict $ Leijen.displayT (Leijen.renderPretty 1.0 10000 d)
 
 -------------------------------------------------------------------------------
 -- * Working with names

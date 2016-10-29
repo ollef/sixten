@@ -13,7 +13,6 @@ import Data.List
 import Data.Monoid
 import Data.Text(Text)
 import qualified Data.Text as Text
-import qualified Data.Text.Lazy.IO as LazyText
 import qualified Data.Text.IO as Text
 import qualified Data.Vector as V
 import Data.Void
@@ -88,18 +87,19 @@ prettyTypedGroup
   -> [(Name, Definition e v, e v)]
   -> TCM [(Name, Definition e v, e v)]
 prettyTypedGroup str f defs = do
-  liftIO $ Text.putStrLn $ "----- " <> str <> " -----"
-  forM_ defs $ \(n, d, t) -> liftIO $ do
-    let t' = f <$> t
-    LazyText.putStrLn
-      $ showWide
-      $ runPrettyM
-      $ prettyM n <+> ":" <+> prettyM t'
-    LazyText.putStrLn
-      $ showWide
-      $ runPrettyM
-      $ prettyM n <+> "=" <+> prettyTypedDef (f <$> d) t'
-    Text.putStrLn ""
+  whenVerbose 10 $ do
+    TCM.log $ "----- " <> str <> " -----"
+    forM_ defs $ \(n, d, t) -> do
+      let t' = f <$> t
+      TCM.log
+        $ showWide
+        $ runPrettyM
+        $ prettyM n <+> ":" <+> prettyM t'
+      TCM.log
+        $ showWide
+        $ runPrettyM
+        $ prettyM n <+> "=" <+> prettyTypedDef (f <$> d) t'
+      TCM.log ""
   return defs
 
 prettyGroup
@@ -109,13 +109,14 @@ prettyGroup
   -> [(Name, e v)]
   -> TCM [(Name, e v)]
 prettyGroup str f defs = do
-  liftIO $ Text.putStrLn $ "----- " <> str <> " -----"
-  forM_ defs $ \(n, d) -> liftIO $ do
-    LazyText.putStrLn
-      $ showWide
-      $ runPrettyM
-      $ prettyM n <+> "=" <+> prettyM (f <$> d)
-    Text.putStrLn ""
+  whenVerbose 10 $ do
+    TCM.log $ "----- " <> str <> " -----"
+    forM_ defs $ \(n, d) -> do
+      TCM.log
+        $ showWide
+        $ runPrettyM
+        $ prettyM n <+> "=" <+> prettyM (f <$> d)
+      TCM.log ""
   return defs
 
 exposeConcreteGroup
@@ -257,8 +258,8 @@ generateGroup defs = do
       $ Generate.generateDefinition x
       $ vacuous e
 
-processFile :: FilePath -> FilePath -> FilePath -> IO ()
-processFile file output logFile = do
+processFile :: FilePath -> FilePath -> Handle -> Int -> IO ()
+processFile file output logHandle verbosity = do
   parseResult <- Parse.parseFromFile Parse.program file
   let resolveResult = Resolve.program <$> parseResult
   case resolveResult of
@@ -276,8 +277,7 @@ processFile file output logFile = do
             | v `HS.member` constrs = Concrete.Con $ Left v
             | otherwise = pure v
           groups' = fmap (fmap $ bimap (>>>= instCon) (>>= instCon)) <$> groups
-      procRes <- withFile logFile WriteMode $ \handle ->
-        runTCM (process groups') handle
+      procRes <- runTCM (process groups') logHandle verbosity
       case procRes of
         Left err -> do
           putStrLn err

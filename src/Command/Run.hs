@@ -20,7 +20,7 @@ optionsParser :: Parser Options
 optionsParser = Options
   <$> Compile.optionsParser
   <*> many
-    (argument str
+    (strArgument
     $ metavar "ARGS.."
     <> help "Command-line options passed to the Sixten program"
     )

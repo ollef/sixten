@@ -137,13 +137,13 @@ subErasability' (MRef ref1) (MRef ref2) = liftST $ writeSTRef ref2 $ Just $ MRef
 tre :: String -> ErasableM -> TCM ()
 tre s e = do
   e' <- bitraverse normaliseMetaErasability pure e
-  trp s $ show <$> e'
+  logPretty 20 s $ show <$> e'
 
 check :: PrettyAnnotation a => MetaErasability -> AbstractM a -> ErasableM -> TCM ErasableM
 check er expr typ = do
   ers <- showMetaErasability er
-  trp ("check e " ++ ers) $ show <$> expr
-  trp ("check t " ++ ers) $ show <$> typ
+  logPretty 20 ("check e " ++ ers) $ show <$> expr
+  logPretty 20 ("check t " ++ ers) $ show <$> typ
   modifyIndent succ
   (expr', exprType) <- infer er expr
   f <- subtype exprType typ
@@ -159,7 +159,7 @@ inferType
   -> TCM (ErasableM, ErasableM)
 inferType er typ = do
   ers <- showMetaErasability er
-  trp ("inferType " ++ ers) $ show <$> typ
+  logPretty 20 ("inferType " ++ ers) $ show <$> typ
   modifyIndent succ
   (resType, resTypeType) <- case typ of
     Pi h _ argType retTypeScope -> do
@@ -206,7 +206,7 @@ infer
   -> TCM (ErasableM, ErasableM)
 infer er expr = do
   ers <- showMetaErasability er
-  trp ("infer " ++ ers) $ show <$> expr
+  logPretty 20 ("infer " ++ ers) $ show <$> expr
   modifyIndent succ
   (resExpr, resType) <- case expr of
     Var v -> do
@@ -273,7 +273,7 @@ inferBranches er (ConBranches cbrs retType) = do
     conType <- qconstructor c
     let (argTypes, _ret) = pisView (conType :: ExprE MetaVar)
     vs <- iforMTele tele $ \i h _ s -> do
-      TCM.log $ shower $ teleAnnotations argTypes
+      logVerbose 30 $ shower $ teleAnnotations argTypes
       let argEr = fromErasability $ teleAnnotations argTypes Vector.! (i + numParams)
           typ = instantiateTele pureVs s
       typ' <- inferArgType argEr typ
@@ -383,7 +383,7 @@ inferRecursiveDefs
          )
 inferRecursiveDefs ds = mdo
   evs <- Vector.forM ds $ \(v, _, t) -> do
-    trp "inferRecursiveDefs" v
+    logPretty 20 "inferRecursiveDefs" v
     (t', _) <- inferType MErased $ instantiate (pure . (evs Vector.!)) t
     let h = fromText v
     forall h MRetained t'

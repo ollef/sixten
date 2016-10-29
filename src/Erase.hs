@@ -20,7 +20,7 @@ eraseS e = SLambda.Sized <$> (erase =<< sizeOf e) <*> erase e
 
 erase :: AbstractE -> TCM LambdaM
 erase expr = do
-  tr "erase expr" expr
+  logMeta 20 "erase expr" expr
   modifyIndent succ
   res <- case expr of
     Abstract.Var v -> return $ SLambda.Var v
@@ -57,7 +57,7 @@ erase expr = do
     Abstract.App e1 Erased _e2 -> erase e1
     Abstract.Case e brs -> SLambda.Case <$> eraseS e <*> eraseBranches brs
   modifyIndent pred
-  tr "erase res" res
+  logMeta 20 "erase res" res
   return res
 
 retainedAbstraction :: Telescope Scope Erasability expr v -> Tele -> Maybe Tele
@@ -74,7 +74,7 @@ eraseBranches
   => Branches c Erasability Abstract.ExprE (MetaVar Abstract.ExprE)
   -> TCM (SimpleBranchesM c SLambda.Expr)
 eraseBranches (ConBranches cbrs typ) = do
-  tr "eraseBranches brs" $ ConBranches cbrs typ
+  logMeta 20 "eraseBranches brs" $ ConBranches cbrs typ
   modifyIndent succ
   cbrs' <- forM cbrs $ \(c, tele, brScope) -> mdo
     tele' <- forMTele tele $ \h a s -> do
@@ -92,7 +92,7 @@ eraseBranches (ConBranches cbrs typ) = do
     brScope' <- erase $ instantiateTele pureVs brScope
     return (c, tele'', Simple.abstract abstr brScope')
   modifyIndent pred
-  tr "eraseBranches res" $ SimpleConBranches cbrs'
+  logMeta 20 "eraseBranches res" $ SimpleConBranches cbrs'
   return $ SimpleConBranches cbrs'
 eraseBranches (LitBranches lbrs d)
   = SimpleLitBranches

@@ -16,7 +16,6 @@ Codegen
     Add error message for circular globals
   Should things of known size > 1 be passed as LLVM arrays?
 Compiler
-  Make log function respond to verbosity and tag
   Concretise some of the Context/MetaVary nonsense
   Clean up MetaVar handling (not all modules need the full generality)
   Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
@@ -55,3 +54,6 @@ Optimisations
   Usage analysis for better erasure
 Runtime
   Do real GC with LLVM gcroots etc
+  Closures
+    Store the arity as a bitfield where the highest set bit determines the
+    arity, and the other bits determine the arguments of size 1

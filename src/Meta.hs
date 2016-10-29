@@ -31,7 +31,7 @@ class Eq v => MetaVary e v where
   default forall :: (v ~ MetaVar e) => NameHint -> MetaData e (MetaVar e) -> e (MetaVar e) -> TCM (MetaVar e)
   forall hint _a typ = do
     i <- fresh
-    TCM.log $ "forall: " <> fromString (show i)
+    logVerbose 20 $ "forall: " <> fromString (show i)
     return $ MetaVar i typ hint Nothing
   refineVar :: v -> (e v -> TCM (e v)) -> TCM (e v)
   default refineVar :: (v ~ MetaVar e, Applicative e) => MetaVar e -> (e (MetaVar e) -> TCM (e (MetaVar e))) -> TCM (e (MetaVar e))
@@ -101,11 +101,12 @@ showMeta x = do
   let solutions = [(sv v, pretty $ sv <$> metaType v, pretty $ fmap sv <$> msol) | (v, msol) <- zip vsl pvs]
   return $ pretty (sv <$> x) <> text ", vars: " <> pretty solutions
 
-tr :: (Functor e, Foldable e, Functor f, Foldable f, Pretty (f String), Pretty (e String))
-   => String
+logMeta :: (Functor e, Foldable e, Functor f, Foldable f, Pretty (f String), Pretty (e String))
+   => Int
+   -> String
    -> f (MetaVar e)
    -> TCM ()
-tr s x = do
+logMeta v s x = whenVerbose v $ do
   i <- gets tcIndent
   r <- showMeta x
   TCM.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide r
@@ -114,7 +115,7 @@ existsAtLevel :: NameHint -> e (MetaVar e) -> Level -> TCM (MetaVar e)
 existsAtLevel hint typ l = do
   i   <- fresh
   ref <- liftST $ newSTRef $ Left l
-  TCM.log $ "exists: " <> fromString (show i)
+  logVerbose 20 $ "exists: " <> fromString (show i)
   return $ MetaVar i typ hint (Just ref)
 
 exists :: NameHint -> e (MetaVar e) -> TCM (MetaVar e)
@@ -205,7 +206,7 @@ abstract1M
   -> Abstract.Expr a (MetaVar (Abstract.Expr a))
   -> TCM (Scope () (Abstract.Expr a) (MetaVar (Abstract.Expr a)))
 abstract1M v e = do
-  TCM.log $ "abstracting " <> fromString (show $ metaId v)
+  logVerbose 20 $ "abstracting " <> fromString (show $ metaId v)
   abstractM (\v' -> if v == v' then Just () else Nothing) e
 
 abstractDefM

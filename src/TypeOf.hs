@@ -15,7 +15,7 @@ typeOfM
   :: AbstractM
   -> TCM AbstractM
 typeOfM expr = do
-  -- tr "typeOfM" expr
+  -- logMeta "typeOfM" expr
   modifyIndent succ
   t <- case expr of
     Global v -> do
@@ -39,7 +39,7 @@ typeOfM expr = do
     Case _ (ConBranches _ t) -> return t -- TODO do this properly to get rid of the ConBranches type field
     Case _ (LitBranches _ def) -> typeOfM def
   modifyIndent pred
-  -- tr "typeOfM res" =<< zonk t
+  -- logMeta "typeOfM res" =<< zonk t
   return t
 
 typeOf
@@ -47,7 +47,7 @@ typeOf
   => Expr a v
   -> TCM (Expr a v)
 typeOf expr = do
-  -- tr "typeOf" expr
+  -- logMeta "typeOf" expr
   modifyIndent succ
   t <- case expr of
     Global v -> do
@@ -71,7 +71,7 @@ typeOf expr = do
     Case _ (ConBranches _ t) -> return t -- TODO do this properly to get rid of the ConBranches type field
     Case _ (LitBranches _ def) -> typeOf def
   modifyIndent pred
-  -- tr "typeOf res" =<< zonk t
+  -- logMeta "typeOf res" =<< zonk t
   return t
 
 sizeOfType
@@ -79,13 +79,13 @@ sizeOfType
   => Expr a v
   -> TCM (Expr a v)
 sizeOfType expr = do
-  -- tr "sizeOf" expr
+  -- logMeta "sizeOf" expr
   modifyIndent succ
   t <- whnf =<< typeOf expr
   case t of
     Builtin.Type _ sz -> do
       modifyIndent pred
-      -- tr "sizeOf res" sz
+      -- logMeta "sizeOf res" sz
       return sz
     _ -> throwError $ "sizeOfType: Not a type: " ++ show t
 

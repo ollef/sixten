@@ -48,12 +48,12 @@ instExpected (Infer r maxPlicitness) t = do
 -- Polytypes
 checkPoly :: ConcreteM -> Polytype -> TCM AbstractM
 checkPoly expr typ = do
-  tr "checkPoly expr" expr
-  tr "checkPoly type" typ
+  logMeta 20 "checkPoly expr" expr
+  logMeta 20 "checkPoly type" typ
   modifyIndent succ
   res <- checkPoly' expr typ
   modifyIndent pred
-  tr "checkPoly res expr" res
+  logMeta 20 "checkPoly res expr" res
   return res
 
 checkPoly' :: ConcreteM -> Polytype -> TCM AbstractM
@@ -62,19 +62,19 @@ checkPoly' expr@(Concrete.Lam _ Implicit _ _) polyType
 checkPoly' expr polyType = do
   (vs, rhoType, f) <- prenexConvert polyType
   e <- checkRho expr rhoType
-  trs "checkPoly: prenexConvert vars" vs
+  logShow 25 "checkPoly: prenexConvert vars" vs
   f =<< lams
     <$> metaTelescopeM vs
     <*> abstractM (teleAbstraction $ snd <$> vs) e
 
 inferPoly :: ConcreteM -> Plicitness -> TCM (AbstractM, Polytype)
 inferPoly expr maxPlicitness = do
-  tr "inferPoly expr" expr
+  logMeta 20 "inferPoly expr" expr
   modifyIndent succ
   (resExpr, resType) <- inferPoly' expr maxPlicitness
   modifyIndent pred
-  tr "inferPoly res expr" resExpr
-  tr "inferPoly res typ" resType
+  logMeta 20 "inferPoly res expr" resExpr
+  logMeta 20 "inferPoly res typ" resType
   return (resExpr, resType)
 
 inferPoly' :: ConcreteM -> Plicitness -> TCM (AbstractM, Polytype)
@@ -100,12 +100,12 @@ instantiateForalls' typ _ = return (typ, pure)
 -- Rhotypes
 checkRho :: ConcreteM -> Rhotype -> TCM AbstractM
 checkRho expr typ = do
-  tr "checkRho expr" expr
-  tr "checkRho type" typ
+  logMeta 20 "checkRho expr" expr
+  logMeta 20 "checkRho type" typ
   modifyIndent succ
   res <- checkRho' expr typ
   modifyIndent pred
-  tr "checkRho res expr" res
+  logMeta 20 "checkRho res expr" res
   return res
 
 checkRho' :: ConcreteM -> Rhotype -> TCM AbstractM
@@ -113,12 +113,12 @@ checkRho' expr ty = tcRho expr (Check ty)
 
 inferRho :: ConcreteM -> Plicitness -> TCM (AbstractM, Rhotype)
 inferRho expr maxPlicitness = do
-  tr "inferRho" expr
+  logMeta 20 "inferRho" expr
   modifyIndent succ
   (resExpr, resType) <- inferRho' expr maxPlicitness
   modifyIndent pred
-  tr "inferRho res expr" resExpr
-  tr "inferRho res typ" resType
+  logMeta 20 "inferRho res expr" resExpr
+  logMeta 20 "inferRho res typ" resType
   return (resExpr, resType)
 
 inferRho' :: ConcreteM -> Plicitness -> TCM (AbstractM, Rhotype)
@@ -185,7 +185,6 @@ tcRho expr expected = case expr of
         fun'' <- f1 fun'
         f2 $ Abstract.App fun'' p arg'
       Just resType -> do
-        trs "App Just" ()
         f2 <- instExpected expected resType
         arg' <- checkPoly arg argType
         fun'' <- f1 fun'
@@ -347,8 +346,8 @@ prenexConvert' typ = return (mempty, typ, pure)
 -- | subtype t1 t2 = f => f : t1 -> t2
 subtype :: Polytype -> Polytype -> TCM (AbstractM -> TCM AbstractM)
 subtype typ1 typ2 = do
-  tr "subtype t1" typ1
-  tr "        t2" typ2
+  logMeta 30 "subtype t1" typ1
+  logMeta 30 "        t2" typ2
   modifyIndent succ
   typ1' <- whnf typ1
   typ2' <- whnf typ2
@@ -378,8 +377,8 @@ subtype' typ1 typ2 = do
 
 subtypeRho :: Polytype -> Rhotype -> TCM (AbstractM -> TCM AbstractM)
 subtypeRho typ1 typ2 = do
-  tr "subtypeRho t1" typ1
-  tr "           t2" typ2
+  logMeta 30 "subtypeRho t1" typ1
+  logMeta 30 "           t2" typ2
   modifyIndent succ
   typ1' <- whnf typ1
   typ2' <- whnf typ2
@@ -509,7 +508,7 @@ checkDataType
   -> TCM (DataDef Abstract.ExprP (MetaVar Abstract.ExprP), AbstractM)
 checkDataType name (DataDef cs) typ = mdo
   typ' <- zonk typ
-  tr "checkDataType t" typ'
+  logMeta 20 "checkDataType t" typ'
 
   ps' <- forMTele (telescope typ') $ \h p s -> do
     let is = instantiateTele (pure <$> vs) s
@@ -539,7 +538,7 @@ checkDataType name (DataDef cs) typ = mdo
   abstractedReturnType <- abstractM abstr typeReturnType
 
   abstractedCs <- forM cs' $ \c@(ConstrDef qc e) -> do
-    tr ("checkDataType res " ++ show qc) e
+    logMeta 20 ("checkDataType res " ++ show qc) e
     traverse (abstractM abstr) c
 
   params <- metaTelescopeM ps'
@@ -660,6 +659,6 @@ checkRecursiveDefs ds =
       t' <- checkPoly t =<< existsTypeType mempty
       unify (metaType v) t'
       (d', t'') <- checkDefType v d t'
-      tr ("checkRecursiveDefs res " ++ show (metaHint v)) d'
-      tr ("checkRecursiveDefs res t " ++ show (metaHint v)) t'
+      logMeta 20 ("checkRecursiveDefs res " ++ show (metaHint v)) d'
+      logMeta 20 ("checkRecursiveDefs res t " ++ show (metaHint v)) t'
       return (v, d', t'')

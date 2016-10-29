@@ -16,7 +16,6 @@ whnf
   => Expr a v
   -> TCM (Expr a v)
 whnf expr = do
-  -- tr "whnf e" expr
   modifyIndent succ
   res <- case expr of
     Var v -> refineVar v whnf
@@ -42,15 +41,14 @@ whnf expr = do
       e' <- whnf e
       chooseBranch e' brs whnf
   modifyIndent pred
-  -- tr "whnf res" res
   return res
 
 normaliseM
-  :: (Context (Expr a), Eq a, Show a)
+  :: (Context (Expr a), Eq a, PrettyAnnotation a, Show a)
   => Expr a (MetaVar (Expr a))
   -> TCM (Expr a (MetaVar (Expr a)))
 normaliseM expr = do
-  -- tr "normaliseM e" expr
+  logMeta 40 "normaliseM e" expr
   modifyIndent succ
   res <- case expr of
     Var v -> refineVar v normaliseM
@@ -87,7 +85,7 @@ normaliseM expr = do
             <*> normaliseM def
         _ -> return res
   modifyIndent pred
-  -- tr "normaliseM res" res
+  logMeta 40 "normaliseM res" res
   return res
   where
     normaliseTelescope tele scope = mdo

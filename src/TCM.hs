@@ -13,8 +13,8 @@ import Data.Monoid
 import Data.Set(Set)
 import qualified Data.Set as Set
 import Data.String
-import qualified Data.Text.Lazy as Lazy
-import qualified Data.Text.Lazy.IO as Lazy
+import Data.Text(Text)
+import qualified Data.Text.IO as Text
 import qualified Data.Vector as Vector
 import Data.Void
 import System.IO
@@ -40,10 +40,11 @@ data State = State
   , tcFresh :: !Int
   , tcLevel :: !Level
   , tcLogHandle :: !Handle
+  , tcVerbosity :: !Int
   }
 
-emptyState :: Handle -> State
-emptyState handle = State
+emptyState :: Handle -> Int -> State
+emptyState handle verbosity = State
   { tcContext = mempty
   , tcConstrs = mempty
   , tcErasableContext = mempty
@@ -52,6 +53,7 @@ emptyState handle = State
   , tcFresh = 0
   , tcLevel = Level 1
   , tcLogHandle = handle
+  , tcVerbosity = verbosity
   }
 
 newtype TCM a = TCM (ExceptT String (StateT State IO) a)
@@ -69,10 +71,11 @@ unTCM (TCM x) = x
 runTCM
   :: TCM a
   -> Handle
+  -> Int
   -> IO (Either String a)
-runTCM tcm handle
+runTCM tcm handle verbosity
   = evalStateT (runExceptT $ unTCM tcm)
-  $ emptyState handle
+  $ emptyState handle verbosity
 
 fresh :: TCM Int
 fresh = do
@@ -93,23 +96,31 @@ enterLevel x = do
 
 -------------------------------------------------------------------------------
 -- Debugging
-log :: Lazy.Text -> TCM ()
+log :: Text -> TCM ()
 log l = do
   h <- gets tcLogHandle
-  liftIO $ Lazy.hPutStrLn h l
+  liftIO $ Text.hPutStrLn h l
+
+logVerbose :: Int -> Text -> TCM ()
+logVerbose v l = whenVerbose v $ TCM.log l
 
 modifyIndent :: (Int -> Int) -> TCM ()
 modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
 
-trp :: Pretty a => String -> a -> TCM ()
-trp s x = do
+logPretty :: Pretty a => Int -> String -> a -> TCM ()
+logPretty v s x = whenVerbose v $ do
   i <- gets tcIndent
   TCM.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide (pretty x)
 
-trs :: Show a => String -> a -> TCM ()
-trs s x = do
+logShow :: Show a => Int -> String -> a -> TCM ()
+logShow v s x = whenVerbose v $ do
   i <- gets tcIndent
   TCM.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> fromString (show x)
+
+whenVerbose :: Int -> TCM () -> TCM ()
+whenVerbose i m = do
+  v <- gets tcVerbosity
+  when (v >= i) m
 
 -------------------------------------------------------------------------------
 -- Context class

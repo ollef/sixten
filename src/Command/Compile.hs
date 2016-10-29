@@ -5,6 +5,7 @@ import GHC.IO.Handle
 import Options.Applicative
 import System.Directory
 import System.FilePath
+import System.IO
 import System.IO.Temp
 import System.Process
 
@@ -15,6 +16,8 @@ data Options = Options
   , maybeOutputFile :: Maybe FilePath
   , optimisation :: Maybe String
   , assemblyDir :: Maybe FilePath
+  , verbosity :: Int
+  , logFile :: Maybe FilePath
   } deriving (Show)
 
 optionsParserInfo :: ParserInfo Options
@@ -25,7 +28,7 @@ optionsParserInfo = info (helper <*> optionsParser)
 
 optionsParser :: Parser Options
 optionsParser = Options
-  <$> argument str
+  <$> strArgument
     (metavar "FILE"
     <> help "Input source FILE"
     )
@@ -47,14 +50,26 @@ optionsParser = Options
     <> metavar "DIR"
     <> help "Save intermediate assembly files to DIR"
     )
+  <*> option auto
+    (long "verbose"
+    <> short 'v'
+    <> metavar "LEVEL"
+    <> help "Set the verbosity level to LEVEL"
+    <> value 0
+    )
+  <*> optional (strOption
+    $ long "log-file"
+    <> metavar "FILE"
+    <> help "Write logs to FILE instead of standard output"
+    )
 
 compile :: Options -> (FilePath -> IO a) -> IO a
 compile opts continuation =
   withAssemblyDir (assemblyDir opts) $ \asmDir ->
-  withOutputFile (maybeOutputFile opts) $ \outputFile -> do
+  withOutputFile (maybeOutputFile opts) $ \outputFile ->
+  withLogHandle (logFile opts) $ \logHandle -> do
     let llFile = asmDir </> fileName <.> "ll"
-        logFile = asmDir </> fileName <> "-log.txt"
-    Processor.processFile (inputFile opts) llFile logFile
+    Processor.processFile (inputFile opts) llFile logHandle (verbosity opts)
     (optLlFile, optFlag) <- case optimisation opts of
       Nothing -> return (llFile, id)
       Just optLevel -> do
@@ -80,6 +95,8 @@ compile opts continuation =
         hClose outputFileHandle
         k outputFile
     withOutputFile (Just o) k = k o
+    withLogHandle Nothing k = k stdout
+    withLogHandle (Just file) k = withFile file WriteMode k
 
 command :: ParserInfo (IO ())
 command = flip compile (const $ pure ()) <$> optionsParserInfo

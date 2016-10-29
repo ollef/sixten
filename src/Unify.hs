@@ -53,8 +53,8 @@ occurs l tv = traverse_ go
 
 unify :: AbstractM -> AbstractM -> TCM ()
 unify type1 type2 = do
-  -- tr "unify t1" ftype1
-  -- tr "      t2" ftype2
+  logMeta 30 "unify t1" type1
+  logMeta 30 "      t2" type2
   type1' <- whnf type1
   type2' <- whnf type2
   unify' type1' type2'
@@ -109,6 +109,6 @@ unify' type1 type2
           t' <- lams tele <$> abstractM abstr t
           t'Type <- fmap (pis tele) $ abstractM abstr =<< typeOfM t
           unify (metaType v) t'Type
-          tr ("solving " <> show (metaId v)) t'
+          logMeta 30 ("solving " <> show (metaId v)) t'
           solve r t'
         Right c -> unify (apps c $ map (second pure) pvs) t
