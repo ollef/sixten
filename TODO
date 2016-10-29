@@ -20,7 +20,6 @@ Compiler
   Clean up MetaVar handling (not all modules need the full generality)
   Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
   * Test suite
-    A list of programs and their expected outputs
     A list of programs that should not typecheck
   * Better error messages
 Language

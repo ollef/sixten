@@ -1,0 +1,15 @@
+deref : forall {t}. Ptr t -> t
+deref p = case p of Ref t -> t
+
+data List {n}(A : Type {n}) where
+  Nil : List A
+  Cons : A -> Ptr (List A) -> List A
+
+test : Ptr (List Size)
+test = Ref (Cons 2 (Ref (Cons 3 (Ref (Cons 5 (Ref Nil))))))
+
+sum xs = case deref xs of
+  Nil -> 0
+  Cons x xs -> addSize x (sum xs)
+
+x = printSize (sum test)
