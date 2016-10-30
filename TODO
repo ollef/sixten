@@ -13,7 +13,7 @@ Codegen
   Arity inference
   Globals
     Make literals llvm `constant`s
-    Add error message for circular globals
+    Add error message for circular globals, e.g. `a = a`
   Should things of known size > 1 be passed as LLVM arrays?
 Compiler
   Concretise some of the Context/MetaVary nonsense
