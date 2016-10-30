@@ -21,6 +21,7 @@ Compiler
   Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
   * Test suite
     A list of programs that should not typecheck
+    Make it run using CI
   * Better error messages
 Language
   Add new Int type -- overloaded literals
