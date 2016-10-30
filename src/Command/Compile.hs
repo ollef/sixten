@@ -31,24 +31,28 @@ optionsParser = Options
   <$> strArgument
     (metavar "FILE"
     <> help "Input source FILE"
+    <> action "file"
     )
   <*> optional (strOption
     $ long "output"
     <> short 'o'
     <> metavar "FILE"
     <> help "Write output to FILE"
+    <> action "file"
     )
   <*> optional (strOption
     $ long "optimisation-level"
     <> short 'O'
     <> metavar "LEVEL"
     <> help "Set the optimisation level to LEVEL"
+    <> completeWith ["0", "1", "2", "3"]
     )
   <*> optional (strOption
     $ long "save-assembly"
     <> short 'S'
     <> metavar "DIR"
     <> help "Save intermediate assembly files to DIR"
+    <> action "directory"
     )
   <*> option auto
     (long "verbose"
@@ -56,11 +60,13 @@ optionsParser = Options
     <> metavar "LEVEL"
     <> help "Set the verbosity level to LEVEL"
     <> value 0
+    <> completeWith ["0", "10", "20", "30", "40"]
     )
   <*> optional (strOption
     $ long "log-file"
     <> metavar "FILE"
     <> help "Write logs to FILE instead of standard output"
+    <> action "file"
     )
 
 compile :: Options -> (FilePath -> IO a) -> IO a

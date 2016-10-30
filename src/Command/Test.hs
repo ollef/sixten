@@ -25,6 +25,7 @@ optionsParser = Options
     <> short 'e'
     <> metavar "FILE"
     <> help "Compare output to the contents of FILE"
+    <> action "file"
     )
   <*> switch
     (long "fail"
