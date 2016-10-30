@@ -11,6 +11,7 @@ category:            Language
 build-type:          Simple
 -- extra-source-files:  
 cabal-version:       >=1.10
+data-files:          rts/forwarddecls.ll
 
 executable sixten
   ghc-options:         -Wall -funbox-strict-fields
@@ -30,6 +31,7 @@ executable sixten
                        Lift
                        Meta
                        Normalise
+                       Paths_sixten
                        Processor
                        Simplify
                        Syntax

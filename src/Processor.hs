@@ -29,8 +29,8 @@ import qualified InferErasability
 import Lift
 import qualified LLVM
 import Meta
+import Paths_sixten
 import Simplify
-import TCM
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Closed as Closed
@@ -40,6 +40,7 @@ import qualified Syntax.Lifted as Lifted
 import qualified Syntax.Parse as Parse
 import qualified Syntax.Resolve as Resolve
 import qualified Syntax.SLambda as SLambda
+import TCM
 import Util
 
 processGroup
@@ -283,7 +284,7 @@ processFile file output logHandle verbosity = do
           putStrLn err
           error "Error"
         Right res -> do
-          forwardDecls <- Text.readFile "test/forwarddecls.ll"
+          forwardDecls <- Text.readFile =<< getDataFileName "rts/forwarddecls.ll"
           withFile output WriteMode $ \handle -> do
             let outputStrLn = Text.hPutStrLn handle
             outputStrLn forwardDecls
