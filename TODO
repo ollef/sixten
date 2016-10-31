@@ -19,11 +19,9 @@ Compiler
   Concretise some of the Context/MetaVary nonsense
   Clean up MetaVar handling (not all modules need the full generality)
   Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
-  * Test suite
-    A list of programs that should not typecheck
-    Make it run using CI
   * Better error messages
 Language
+  Allow e.g. `True False : Bool` in data decls
   Add new Int type -- overloaded literals
   * Let(rec) definitions
   * Mutually recursive top-level definitions

@@ -35,6 +35,10 @@ parseFromFile :: MonadIO m => Parser a -> FilePath -> m (Maybe a)
 parseFromFile p = Trifecta.parseFromFile
                 $ evalStateT (runParser p) mempty <* Trifecta.eof
 
+parseFromFileEx :: MonadIO m => Parser a -> FilePath -> m (Trifecta.Result a)
+parseFromFileEx p = Trifecta.parseFromFileEx
+                  $ evalStateT (runParser p) mempty <* Trifecta.eof
+
 instance Trifecta.TokenParsing Parser where
   someSpace = Trifecta.skipSome (Trifecta.satisfy isSpace) *> (comments <|> pure ())
            <|> comments

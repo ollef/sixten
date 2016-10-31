@@ -1,6 +1,6 @@
 {-# LANGUAGE GADTs, GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module Syntax.Pretty
-  ( module Text.PrettyPrint.Leijen.Text
+  ( module Text.PrettyPrint.ANSI.Leijen
   , Pretty, PrettyM
   , runPrettyM
   , (<+>), (<$$>)
@@ -27,19 +27,18 @@ import qualified Data.HashSet as HashSet
 import Data.Monoid
 import Data.Text(Text)
 import qualified Data.Text as Text
-import qualified Data.Text.Lazy as Lazy
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 import Data.String
-import Text.PrettyPrint.Leijen.Text
+import Text.PrettyPrint.ANSI.Leijen
   ( Doc
   , list
   , putDoc
   , text
   , tupled
   )
-import qualified Text.PrettyPrint.Leijen.Text as Leijen
+import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 
 import Syntax.Hint
 import Syntax.Name
@@ -99,7 +98,7 @@ tilde :: Doc
 tilde = Leijen.text "~"
 
 showWide :: Doc -> Text
-showWide d = Lazy.toStrict $ Leijen.displayT (Leijen.renderPretty 1.0 10000 d)
+showWide d = Text.pack $ Leijen.displayS (Leijen.renderPretty 1.0 10000 d) ""
 
 -------------------------------------------------------------------------------
 -- * Working with names

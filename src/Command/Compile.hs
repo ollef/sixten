@@ -69,25 +69,28 @@ optionsParser = Options
     <> action "file"
     )
 
-compile :: Options -> (FilePath -> IO a) -> IO a
-compile opts continuation =
+compile :: Options -> (Processor.Error -> IO a) -> (FilePath -> IO a) -> IO a
+compile opts onError onSuccess =
   withAssemblyDir (assemblyDir opts) $ \asmDir ->
   withOutputFile (maybeOutputFile opts) $ \outputFile ->
   withLogHandle (logFile opts) $ \logHandle -> do
     let llFile = asmDir </> fileName <.> "ll"
-    Processor.processFile (inputFile opts) llFile logHandle (verbosity opts)
-    (optLlFile, optFlag) <- case optimisation opts of
-      Nothing -> return (llFile, id)
-      Just optLevel -> do
-        let optFlag = ("-O" <> optLevel :)
-            optLlFile = asmDir </> fileName <> "-opt" <.> "ll"
-        callProcess "opt" $ optFlag ["-S", llFile, "-o", optLlFile]
-        return (optLlFile, optFlag)
-    let asmFile = asmDir </> fileName <.> "s"
-    callProcess "llc" $ optFlag ["-march=x86-64", optLlFile, "-o", asmFile]
-    ldFlags <- readProcess "pkg-config" ["--libs", "--static", "bdw-gc"] ""
-    callProcess "gcc" $ concatMap words (lines ldFlags) ++ optFlag [asmFile, "-o", outputFile]
-    continuation outputFile
+    procResult <- Processor.processFile (inputFile opts) llFile logHandle $ verbosity opts
+    case procResult of
+      Processor.Error err -> onError err
+      Processor.Success -> do
+        (optLlFile, optFlag) <- case optimisation opts of
+          Nothing -> return (llFile, id)
+          Just optLevel -> do
+            let optFlag = ("-O" <> optLevel :)
+                optLlFile = asmDir </> fileName <> "-opt" <.> "ll"
+            callProcess "opt" $ optFlag ["-S", llFile, "-o", optLlFile]
+            return (optLlFile, optFlag)
+        let asmFile = asmDir </> fileName <.> "s"
+        callProcess "llc" $ optFlag ["-march=x86-64", optLlFile, "-o", asmFile]
+        ldFlags <- readProcess "pkg-config" ["--libs", "--static", "bdw-gc"] ""
+        callProcess "gcc" $ concatMap words (lines ldFlags) ++ optFlag [asmFile, "-o", outputFile]
+        onSuccess outputFile
   where
     (inputDir, inputFileName) = splitFileName $ inputFile opts
     fileName = dropExtension inputFileName
@@ -105,4 +108,6 @@ compile opts continuation =
     withLogHandle (Just file) k = withFile file WriteMode k
 
 command :: ParserInfo (IO ())
-command = flip compile (const $ pure ()) <$> optionsParserInfo
+command = go <$> optionsParserInfo
+  where
+    go opts = compile opts Processor.printError (const $ return ())

@@ -1,0 +1,5 @@
+data Bool where
+  False : Bool
+  True : Bool
+
+test = addSize True 1

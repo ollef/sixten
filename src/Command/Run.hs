@@ -4,6 +4,7 @@ import Options.Applicative
 import System.Process
 
 import qualified Command.Compile as Compile
+import qualified Processor
 
 data Options = Options
   { compileOptions :: Compile.Options
@@ -26,7 +27,7 @@ optionsParser = Options
     )
 
 run :: Options -> IO ()
-run opts = Compile.compile (compileOptions opts) $ \f ->
+run opts = Compile.compile (compileOptions opts) Processor.printError $ \f ->
   callProcess f $ commandLineArguments opts
 
 command :: ParserInfo (IO ())

@@ -18,6 +18,8 @@ import qualified Data.Vector as V
 import Data.Void
 import Prelude.Extras
 import System.IO
+import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
+import qualified Text.Trifecta as Trifecta
 
 import qualified Builtin
 import Close
@@ -259,16 +261,39 @@ generateGroup defs = do
       $ Generate.generateDefinition x
       $ vacuous e
 
-processFile :: FilePath -> FilePath -> Handle -> Int -> IO ()
+data Error
+  = SyntaxError Doc
+  | ResolveError Text
+  | TypeError Text
+  deriving Show
+
+printError :: Error -> IO ()
+printError err = case err of
+  SyntaxError doc -> do
+    Text.putStrLn "Syntax error"
+    Leijen.displayIO stdout
+      $ Leijen.renderPretty 0.8 80
+      $ doc <> Leijen.linebreak
+  ResolveError s -> do
+    Text.putStrLn "Syntax error"
+    Text.putStrLn s
+  TypeError s -> do
+    Text.putStrLn "Type error"
+    Text.putStrLn s
+
+data Result
+  = Error Error
+  | Success
+  deriving Show
+
+processFile :: FilePath -> FilePath -> Handle -> Int -> IO Result
 processFile file output logHandle verbosity = do
-  parseResult <- Parse.parseFromFile Parse.program file
+  parseResult <- Parse.parseFromFileEx Parse.program file
   let resolveResult = Resolve.program <$> parseResult
   case resolveResult of
-    Nothing -> return ()
-    Just (Left err) -> do
-      Text.putStrLn err
-      error "Syntax error"
-    Just (Right resolved) -> do
+    Trifecta.Failure xs -> return $ Error $ SyntaxError xs
+    Trifecta.Success (Left err) -> return $ Error $ ResolveError err
+    Trifecta.Success (Right resolved) -> do
       let groups = filter (not . null) $ dependencyOrder
             (HS.map (either id (\(QConstr n _) -> n)) . Concrete.constructors) resolved
           constrs = HS.fromList
@@ -280,9 +305,7 @@ processFile file output logHandle verbosity = do
           groups' = fmap (fmap $ bimap (>>>= instCon) (>>= instCon)) <$> groups
       procRes <- runTCM (process groups') logHandle verbosity
       case procRes of
-        Left err -> do
-          putStrLn err
-          error "Error"
+        Left err -> return $ Error $ TypeError $ Text.pack err
         Right res -> do
           forwardDecls <- Text.readFile =<< getDataFileName "rts/forwarddecls.ll"
           withFile output WriteMode $ \handle -> do
@@ -298,6 +321,7 @@ processFile file output logHandle verbosity = do
               unless (Text.null i) $ outputStrLn i
             outputStrLn "  ret i32 0"
             outputStrLn "}"
+          return Success
   where
     process groups = do
       addContext Builtin.contextP
