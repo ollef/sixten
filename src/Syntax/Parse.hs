@@ -43,7 +43,7 @@ instance Trifecta.TokenParsing Parser where
   someSpace = Trifecta.skipSome (Trifecta.satisfy isSpace) *> (comments <|> pure ())
            <|> comments
     where
-      comments = (lineComment <|> multilineComment) *> Trifecta.whiteSpace
+      comments = Trifecta.highlight Highlight.Comment (lineComment <|> multilineComment) *> Trifecta.whiteSpace
 
 lineComment :: Parser ()
 lineComment =
