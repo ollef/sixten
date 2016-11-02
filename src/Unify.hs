@@ -97,8 +97,9 @@ unify' type1 type2
       unify a b
       v <- pure <$> forall h p a
       unify (instantiate1 v s1) (instantiate1 v s2)
-    distinctForalls pes | distinct pes = traverse isForall pes
-                        | otherwise = Nothing
+    distinctForalls pes = case traverse isForall pes of
+      Just pes' | distinct pes' -> Just pes'
+      _ -> Nothing
     isForall (p, Var v@(metaRef -> Nothing)) = Just (p, v)
     isForall _ = Nothing
     distinct pes = Set.size (Set.fromList es) == length es where es = map snd pes
