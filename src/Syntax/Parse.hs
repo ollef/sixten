@@ -173,7 +173,7 @@ constructor = ident
 data Binding
   = Plain Plicitness [Maybe Name]
   | Typed Plicitness [Maybe Name] (Expr Name)
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Show)
 
 abstractBindings
   :: (NameHint -> Plicitness -> Maybe (Expr Name) -> Scope1 Expr Name -> Expr Name)
@@ -307,7 +307,7 @@ data TopLevelParsed v
   = ParsedDefLine (Maybe v) (Expr v) -- ^ Maybe v means that we can use wildcard names that refer e.g. to the previous top-level thing
   | ParsedTypeDecl v (Type v)
   | ParsedData v (Telescope Scope Plicitness Type v) (DataDef Type v)
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  deriving (Eq, Foldable, Functor, Show, Traversable)
 
 topLevel :: Parser (TopLevelParsed Name)
 topLevel = dataDef <|> def

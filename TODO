@@ -5,7 +5,7 @@ Type checking
   Error if a term's type depends on the term (i.e. x : ... x)?
 Erasure
   Make sure that we don't transform functions to non-functions by erasing all arguments.
-    e.g. `loop x = loop x` should not have its argument removed.
+    e.g. `loop x = loop x : Void` should not have its argument removed.
 Codegen
   Add Destructor calling convention for functions that return part of their argument
     To get rid of the memcpy from deref
