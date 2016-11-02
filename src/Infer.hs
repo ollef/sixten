@@ -195,6 +195,7 @@ tcRho expr expected = case expr of
     f <- instExpected expected t
     x <- existsVar mempty t
     f x
+  Concrete.SourceLoc _ e -> tcRho e expected
 
 tcBranches
   :: ConcreteM

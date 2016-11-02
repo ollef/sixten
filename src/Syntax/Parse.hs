@@ -175,6 +175,9 @@ data Binding
   | Typed Plicitness [Maybe Name] (Expr Name)
   deriving (Eq, Show)
 
+located :: Parser (Expr v) -> Parser (Expr v)
+located p = (\(e Trifecta.:~ s) -> SourceLoc (Trifecta.render s) e) <$> Trifecta.spanned p
+
 abstractBindings
   :: (NameHint -> Plicitness -> Maybe (Expr Name) -> Scope1 Expr Name -> Expr Name)
   -> [Binding]
@@ -255,8 +258,8 @@ caseBinding
     explicit x = [(x, Explicit)]
 
 atomicExpr :: Parser (Expr Name)
-atomicExpr
-  = Lit <$> literal
+atomicExpr = located
+ $ Lit <$> literal
  <|> Wildcard <$ wildcard
  <|> Var <$> ident
  <|> abstr (reserved "forall") piType
@@ -280,8 +283,8 @@ branches
         ns = unNameHint . fst <$> bindingHints bs
 
 expr :: Parser (Expr Name)
-expr
-  = abstractBindings piType <$> Trifecta.try someTypedBindings <*% symbol "->" <*>% expr
+expr = located
+ $ abstractBindings piType <$> Trifecta.try someTypedBindings <*% symbol "->" <*>% expr
  <|> apps <$> atomicExpr <*> manySI argument
    <**> ((\f t -> f (Explicit, t)) <$> arr <|> pure id)
  <|> abstractBindings piType <$> funArgType <*% symbol "->" <*>% expr
