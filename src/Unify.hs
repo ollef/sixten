@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings, ViewPatterns #-}
 module Unify where
 
 import Control.Monad.Except
@@ -9,6 +9,7 @@ import Data.Monoid
 import qualified Data.Set as Set
 import qualified Data.Vector as Vector
 import Data.STRef
+import Text.Trifecta.Result
 
 import qualified Builtin
 import Meta
@@ -85,9 +86,12 @@ unify' type1 type2
     (App e1 a1 e1', App e2 a2 e2') | a1 == a2 -> do
       unify e1  e2
       unify e1' e2'
-    _ -> throwError
-      $ "Can't unify types: "
-      ++ show (pretty (show <$> type1, show <$> type2))
+    _ -> do
+      locs <- currentLocation
+      throwError
+        $ "Can't unify types: "
+        ++ show (pretty (show <$> type1, show <$> type2))
+        ++ show (explain locs $ Err (Just "Can't unify types") mempty mempty)
   where
     absCase h p a b s1 s2 = do
       unify a b

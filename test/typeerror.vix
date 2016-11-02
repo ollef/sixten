@@ -2,4 +2,7 @@ data Bool where
   False : Bool
   True : Bool
 
-test = addSize True 1
+the : (a : Type) -> a -> a
+the _ x = x
+
+test = addSize (the Bool True) 1

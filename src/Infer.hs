@@ -195,7 +195,7 @@ tcRho expr expected = case expr of
     f <- instExpected expected t
     x <- existsVar mempty t
     f x
-  Concrete.SourceLoc _ e -> tcRho e expected
+  Concrete.SourceLoc loc e -> located loc $ tcRho e expected
 
 tcBranches
   :: ConcreteM
@@ -292,7 +292,7 @@ resolveConstrType cs expected = do
       headType' <- whnf headType
       case headType' of
         Abstract.Global v -> do
-          (d, (_ :: AbstractM)) <- definition v
+          (d, _ :: AbstractM) <- definition v
           return $ case d of
             DataDefinition _ -> [Set.singleton v]
             _ -> mempty
