@@ -1,0 +1,18 @@
+data Bool where
+  False True : Bool
+
+data Bool2 where
+  False True : Bool2
+
+data Bool3 where
+  False True : Bool3
+
+data Sausage where
+  saus saus2 : Sausage
+
+the : (a : Type) -> a -> a
+the _ x = x
+
+false x = case x of
+  True -> 1
+  False -> 0

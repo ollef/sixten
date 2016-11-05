@@ -1,0 +1,10 @@
+data List a where
+  Nil : List a
+  Cons : a -> List a -> List a
+
+data Bool where
+  False : Bool
+  True : Bool
+
+test : List Size
+test = Cons True (Ref Nil)
