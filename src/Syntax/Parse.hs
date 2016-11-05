@@ -325,9 +325,11 @@ def
 
 dataDef :: Parser (TopLevelParsed Name)
 dataDef = mkDataDef <$ reserved "data" <*>% constructor <*> manyBindings
-    <*% reserved "where" <*> manyIndentedSameCol conDef
+    <*% reserved "where" <*> (concat <$> manyIndentedSameCol conDef)
   where
-    conDef = ConstrDef <$> constructor <*% symbol ":" <*>% expr
+    conDef = constrDefs <$> ((:) <$> constructor <*>% manySI constructor)
+      <*% symbol ":" <*>% expr
+    constrDefs cs t = [ConstrDef c t | c <- cs]
     mkDataDef tc bs cs
       = ParsedData tc (bindingsTelescope bs) (DataDef $ map abstrConstrDef cs)
       where

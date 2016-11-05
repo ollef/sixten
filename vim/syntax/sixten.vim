@@ -22,7 +22,7 @@ highlight def link sixtenTodo Todo
 
 syn match sixtenIdentifier "[_a-z][a-zA-Z0-9_']*" contained
 syn match sixtenType "\<[A-Z][a-zA-Z0-9_']*\>"
-syn match sixtenDefinition "^\s*\([_a-zA-Z][a-zA-Z0-9_']*\)\_s*:"
+syn match sixtenDefinition "^\s*\([_a-zA-Z][a-zA-Z0-9_']*\_s*\)\+:"
 syn match sixtenNumber "\<[0-9]\+\>"
 syn keyword sixtenDataKeyword data where
 syn keyword sixtenCaseKeyword case of

@@ -25,7 +25,6 @@ Error messages
   Make scope checking report locations
   Make error message footnotes contain metavars
 Language
-  Allow e.g. `True False : Bool` in data decls
   Add new Int type -- overloaded literals
   * Let(rec) definitions
   * Mutually recursive top-level definitions
