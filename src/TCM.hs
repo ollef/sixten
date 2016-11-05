@@ -22,7 +22,6 @@ import System.IO
 import qualified Builtin
 import Syntax
 import Syntax.Abstract
-import qualified Syntax.Concrete as Concrete
 import qualified Syntax.Converted as Converted
 import Util
 
@@ -33,7 +32,7 @@ instance Pretty Level where
   pretty (Level i) = pretty i
 
 data State = State
-  { tcLocation :: Concrete.SourceLoc
+  { tcLocation :: SourceLoc
   , tcContext :: Program ExprP Void
   , tcConstrs :: HashMap Constr (Set (Name, TypeP Void))
   , tcErasableContext :: Program ExprE Void
@@ -97,7 +96,7 @@ enterLevel x = do
   modify $ \s -> s {tcLevel = l}
   return r
 
-located :: Concrete.SourceLoc -> TCM a -> TCM a
+located :: SourceLoc -> TCM a -> TCM a
 located loc m = do
   oldLoc <- gets tcLocation
   modify $ \s -> s { tcLocation = loc }
@@ -105,7 +104,7 @@ located loc m = do
   modify $ \s -> s { tcLocation = oldLoc }
   return res
 
-currentLocation :: TCM Concrete.SourceLoc
+currentLocation :: TCM SourceLoc
 currentLocation = gets tcLocation
 
 -------------------------------------------------------------------------------

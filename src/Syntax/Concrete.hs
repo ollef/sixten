@@ -12,8 +12,6 @@ import qualified Data.HashSet as HS
 import Syntax
 import Util
 
-type SourceLoc = Rendering
-
 data Expr v
   = Var v
   | Global Name  -- ^ Really just a variable, but it's often annoying to not have it

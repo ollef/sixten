@@ -4,6 +4,7 @@ module Syntax.Hint where
 import Control.Applicative
 import Data.String
 
+import Text.Trifecta.Rendering
 import Syntax.Name
 
 -- | Something that is just a decoration, and not e.g. considered in
@@ -32,3 +33,5 @@ instance Monoid NameHint where
 
 instance IsString NameHint where
   fromString = NameHint . Hint . Just . fromString
+
+type SourceLoc = Rendering
