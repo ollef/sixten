@@ -96,10 +96,13 @@ showMeta x = do
   let vsl = S.toList vs
   pvs <- T.mapM p vsl
   let sv v = "$" ++ fromMaybe "" (fromText <$> unNameHint (metaHint v)) ++ (if isJust $ metaRef v then "∃" else "")
-          ++ show (metaId v) -- ++ ":"
-          -- ++ show (pretty $ sv <$> metaType v) ++ ">"
+          ++ show (metaId v)
   let solutions = [(sv v, pretty $ sv <$> metaType v, pretty $ fmap sv <$> msol) | (v, msol) <- zip vsl pvs]
-  return $ pretty (sv <$> x) <> text ", vars: " <> pretty solutions
+  return
+    $ pretty (sv <$> x)
+    <> if null solutions
+      then mempty
+      else text ", metavars: " <> pretty solutions
 
 logMeta :: (Functor e, Foldable e, Functor f, Foldable f, Pretty (f String), Pretty (e String))
    => Int

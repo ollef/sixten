@@ -6,10 +6,12 @@ import Control.Monad.ST.Class
 import Data.Bifunctor
 import Data.Foldable
 import Data.Monoid
+import Data.List
 import qualified Data.Set as Set
-import qualified Data.Vector as Vector
 import Data.STRef
-import Text.Trifecta.Result
+import qualified Data.Vector as Vector
+import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
+import Text.Trifecta.Result(Err(Err), explain)
 
 import qualified Builtin
 import Meta
@@ -33,87 +35,128 @@ existsTypeType h = do
   return $ Builtin.TypeP sz
 
 occurs
-  :: Foldable e
-  => Level
-  -> MetaVar e
-  -> e (MetaVar e)
+  :: [(AbstractM, AbstractM)]
+  -> Level
+  -> MetaVar ExprP
+  -> AbstractM
   -> TCM ()
-occurs l tv = traverse_ go
+occurs cxt l tv expr = traverse_ go expr
   where
     go tv'@(MetaVar _ typ _ mr)
-      | tv == tv' = throwError "occurs check"
+      | tv == tv' = do
+        loc <- currentLocation
+        explanation <- forM cxt $ \(t1, t2) -> do
+          t1' <- zonk t1
+          t2' <- zonk t2
+          actual <- showMeta t1'
+          expect <- showMeta t2'
+          return
+            [ ""
+            , Leijen.bold "Inferred: " <> Leijen.red actual
+            , Leijen.bold "Expected: " <> Leijen.dullgreen expect
+            ]
+        printedTv <- showMeta (pure tv' :: AbstractM)
+        expr' <- zonk expr
+        printedExpr <- showMeta expr'
+        throwError
+          $ show (explain loc
+            $ Err
+              (Just "Cannot construct the infinite type")
+              ([ Leijen.dullblue printedTv
+               , "="
+               , Leijen.dullblue printedExpr
+               , ""
+               , "while trying to unify"
+               , ""
+               ]
+                ++
+                intercalate ["", "while trying to unify"] explanation)
+              mempty)
       | otherwise = do
-        occurs l tv typ
+        occurs cxt l tv typ
         case mr of
           Nothing -> return ()
           Just r  -> do
             sol <- solution r
             case sol of
               Left l'    -> liftST $ writeSTRef r $ Left $ min l l'
-              Right typ' -> occurs l tv typ'
+              Right typ' -> occurs cxt l tv typ'
 
-unify :: AbstractM -> AbstractM -> TCM ()
-unify type1 type2 = do
+unify :: [(AbstractM, AbstractM)] -> AbstractM -> AbstractM -> TCM ()
+unify cxt type1 type2 = do
   logMeta 30 "unify t1" type1
   logMeta 30 "      t2" type2
   type1' <- whnf type1
   type2' <- whnf type2
-  unify' type1' type2'
+  unify' ((type1', type2') : cxt) type1' type2'
 
-unify' :: AbstractM -> AbstractM -> TCM ()
-unify' type1 type2
+unify' :: [(AbstractM, AbstractM)] -> AbstractM -> AbstractM -> TCM ()
+unify' cxt type1 type2
   | type1 == type2 = return ()
   | otherwise = case (type1, type2) of
     -- If we have 'unify (f xs) t', where 'f' is an existential, and 'xs' are
     -- distinct universally quantified variables, then 'f = \xs. t' is a most
     -- general solution (see Miller, Dale (1991) "A Logic programming...")
-    (appsView -> (Var v@(metaRef -> Just r), distinctForalls -> Just pvs), _) -> solveVar r v pvs type2
-    (_, appsView -> (Var v@(metaRef -> Just r), distinctForalls -> Just pvs)) -> solveVar r v pvs type1
+    (appsView -> (Var v@(metaRef -> Just r), distinctForalls -> Just pvs), _) -> solveVar unify r v pvs type2
+    (_, appsView -> (Var v@(metaRef -> Just r), distinctForalls -> Just pvs)) -> solveVar (\cxt' -> flip $ unify cxt') r v pvs type1
     (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
     (Lam h1 p1 t1 s1, Lam h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
     (Lit 0, Builtin.AddSizeE x y) -> do
-      unify (Lit 0) x
-      unify (Lit 0) y
+      unify cxt (Lit 0) x
+      unify cxt (Lit 0) y
     (Builtin.AddSizeE x y, Lit 0) -> do
-      unify x (Lit 0)
-      unify y (Lit 0)
-    (Builtin.AddSizeE (Lit m) y, Lit n) -> unify y $ Lit $ n - m
-    (Builtin.AddSizeE y (Lit m), Lit n) -> unify y $ Lit $ n - m
-    (Lit n, Builtin.AddSizeE (Lit m) y) -> unify y $ Lit $ n - m
-    (Lit n, Builtin.AddSizeE y (Lit m)) -> unify y $ Lit $ n - m
+      unify cxt x (Lit 0)
+      unify cxt y (Lit 0)
+    (Builtin.AddSizeE (Lit m) y, Lit n) -> unify cxt y $ Lit $ n - m
+    (Builtin.AddSizeE y (Lit m), Lit n) -> unify cxt y $ Lit $ n - m
+    (Lit n, Builtin.AddSizeE (Lit m) y) -> unify cxt (Lit $ n - m) y
+    (Lit n, Builtin.AddSizeE y (Lit m)) -> unify cxt (Lit $ n - m) y
     -- Since we've already tried reducing the application, we can only hope to
     -- unify it pointwise.
     (App e1 a1 e1', App e2 a2 e2') | a1 == a2 -> do
-      unify e1  e2
-      unify e1' e2'
+      unify cxt e1  e2
+      unify cxt e1' e2'
     _ -> do
-      locs <- currentLocation
+      loc <- currentLocation
+      explanation <- forM cxt $ \(t1, t2) -> do
+        t1' <- zonk t1
+        t2' <- zonk t2
+        actual <- showMeta t1'
+        expect <- showMeta t2'
+        return
+          [ ""
+          , Leijen.bold "Inferred: " <> Leijen.red actual
+          , Leijen.bold "Expected: " <> Leijen.dullgreen expect
+          ]
       throwError
-        $ "Can't unify types: "
-        ++ show (pretty (show <$> type1, show <$> type2))
-        ++ show (explain locs $ Err (Just "Can't unify types") mempty mempty)
+        $ show
+        $ explain loc
+        $ Err
+          (Just "Type mismatch")
+          (intercalate ["", "while trying to unify"] explanation)
+          mempty
   where
     absCase h p a b s1 s2 = do
-      unify a b
+      unify cxt a b
       v <- pure <$> forall h p a
-      unify (instantiate1 v s1) (instantiate1 v s2)
+      unify cxt (instantiate1 v s1) (instantiate1 v s2)
     distinctForalls pes = case traverse isForall pes of
       Just pes' | distinct pes' -> Just pes'
       _ -> Nothing
     isForall (p, Var v@(metaRef -> Nothing)) = Just (p, v)
     isForall _ = Nothing
     distinct pes = Set.size (Set.fromList es) == length es where es = map snd pes
-    solveVar r v pvs t = do
+    solveVar recurse r v pvs t = do
       let pvs' = Vector.fromList pvs
       sol <- solution r
       case sol of
         Left l -> do
-          occurs l v t
+          occurs cxt l v t
           tele <- metaTelescopeM pvs'
           let abstr = teleAbstraction $ snd <$> pvs'
           t' <- lams tele <$> abstractM abstr t
           t'Type <- fmap (pis tele) $ abstractM abstr =<< typeOfM t
-          unify (metaType v) t'Type
+          recurse cxt (metaType v) t'Type
           logMeta 30 ("solving " <> show (metaId v)) t'
           solve r t'
-        Right c -> unify (apps c $ map (second pure) pvs) t
+        Right c -> recurse cxt (apps c $ map (second pure) pvs) t

@@ -17,6 +17,7 @@ module Syntax.Pretty
   , prettyM
   , tilde
   , showWide
+  , prettyHumanList
   , withName, withHint
   , withNameHint, withNameHints
   ) where
@@ -99,6 +100,18 @@ tilde = Leijen.text "~"
 
 showWide :: Doc -> Text
 showWide d = Text.pack $ Leijen.displayS (Leijen.renderPretty 1.0 10000 d) ""
+
+prettyHumanListM :: Pretty a => Text -> [a] -> PrettyM Doc
+prettyHumanListM conjunct [x, y] = prettyM x <+> prettyM conjunct <+> prettyM y
+prettyHumanListM conjunct xs = go xs
+  where
+    go [] = "(empty)"
+    go [x] = prettyM x
+    go [x, y] = prettyM x <> "," <+> prettyM conjunct <+> prettyM y
+    go (x:xs') = prettyM x <> "," <+> go xs'
+
+prettyHumanList :: Pretty a => Text -> [a] -> Doc
+prettyHumanList conjunct = runPrettyM . prettyHumanListM conjunct
 
 -------------------------------------------------------------------------------
 -- * Working with names

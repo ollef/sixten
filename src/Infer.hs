@@ -1,4 +1,4 @@
-{-# LANGUAGE RecursiveDo, ScopedTypeVariables, TypeFamilies, ViewPatterns #-}
+{-# LANGUAGE OverloadedStrings, RecursiveDo, ScopedTypeVariables, TypeFamilies, ViewPatterns #-}
 module Infer where
 
 import Control.Monad.Except
@@ -10,10 +10,13 @@ import qualified Data.HashSet as HS
 import Data.List as List
 import Data.Maybe
 import Data.Monoid
+import Data.Set(Set)
 import qualified Data.Set as Set
 import Data.STRef
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
+import Text.Trifecta.Result(Err(Err), explain)
+import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 
 import qualified Builtin
 import Meta
@@ -287,25 +290,59 @@ resolveConstrType
   -> Expected
   -> TCM Name
 resolveConstrType cs expected = do
-  n <- case expected of
-    Check (appsView -> (headType, _)) -> do
-      headType' <- whnf headType
-      case headType' of
-        Abstract.Global v -> do
-          (d, _ :: AbstractM) <- definition v
-          return $ case d of
-            DataDefinition _ -> [Set.singleton v]
-            _ -> mempty
-        _ -> return mempty
-    _ -> return mempty
-  ns <- mapM (fmap (Set.map (fst :: (Name, Abstract.ExprP ()) -> Name)) . constructor) cs
-  case Set.toList $ List.foldl1' Set.intersection (n ++ ns) of
-    [] -> case cs of
-      [c] -> throwError $ "Not in scope: constructor " ++ show c ++ "."
-      _ -> throwError $ "No type matching the constructors " ++ show cs ++ "."
-    [x] -> return x
-    xs -> throwError $ "Ambiguous constructors: " ++ show cs ++ ". Possible types: "
-               ++ show xs
+  mExpectedType <- expectedDataType
+  possibleTypeSets <- forM cs $ \c -> do
+    possibleTypes <- constructor c
+    return $ Set.map fst (possibleTypes :: Set (Name, Abstract.ExprP ()))
+  let possibleTypes = List.foldl1' Set.intersection possibleTypeSets
+
+  when (Set.null possibleTypes) $
+    err
+      "No such data type"
+      ["There is no data type with the" Leijen.<+> constrDoc <> "."]
+
+  let candidateTypes
+        = maybe
+          possibleTypes
+          (Set.intersection possibleTypes . Set.singleton)
+          mExpectedType
+
+  case (Set.toList candidateTypes, mExpectedType) of
+    ([], Just expectedType) ->
+      err "Undefined constructor"
+        [ Leijen.dullgreen (pretty expectedType)
+        Leijen.<+> "doesn't define the"
+        Leijen.<+> constrDoc <> "."
+        ]
+    ([x], _) -> return x
+    (xs, _) -> err "Ambiguous constructor"
+      [ "Unable to infer the type for the" Leijen.<+> constrDoc <> "."
+      , "Possible data types:"
+      Leijen.<+> prettyHumanList "and" (Leijen.dullgreen . pretty <$> xs)
+      <> "."
+      ]
+  where
+    expectedDataType =
+      case expected of
+        Infer _ _ -> return Nothing
+        Check checkType -> do
+          checkType' <- whnf checkType
+          case appsView checkType' of
+            (Abstract.Global v, _) -> do
+              (d, _ :: AbstractM) <- definition v
+              return $ case d of
+                DataDefinition _ -> Just v
+                _ -> Nothing
+            _ -> return Nothing
+    err heading docs = do
+      loc <- currentLocation
+      throwError
+        $ show
+        $ explain loc
+        $ Err (Just heading) docs mempty
+    constrDoc = case either (Leijen.red . pretty) (Leijen.red . pretty) <$> cs of
+      [pc] -> "constructor" Leijen.<+> pc
+      pcs -> "constructors" Leijen.<+> prettyHumanList "and" pcs
 
 --------------------------------------------------------------------------------
 -- Prenex conversion/deep skolemisation
@@ -406,7 +443,7 @@ subtypeRho' (Abstract.Pi h Implicit t s) typ2 = do
   f <- subtypeRho (instantiate1 (pure v) s) typ2
   return $ \x -> f $ Abstract.App x Implicit $ pure v
 subtypeRho' typ1 typ2 = do
-  unify typ1 typ2
+  unify [] typ1 typ2
   return pure
 
 -- | funSubtype typ p = (typ1, typ2, f) => f : (typ1 -> typ2) -> typ
@@ -523,7 +560,7 @@ checkDataType name (DataDef cs) typ = mdo
   (cs', rets, sizes) <- fmap unzip3 $ forM cs $ \(ConstrDef c t) ->
     checkConstrDef $ ConstrDef c $ instantiateTele (pure <$> vs) t
 
-  mapM_ (unify constrRetType) rets
+  mapM_ (unify [] constrRetType) rets
 
   let addTagSize = case cs of
         [] -> id
@@ -534,7 +571,7 @@ checkDataType name (DataDef cs) typ = mdo
                $ foldr (Builtin.MaxSize Explicit Explicit) (Abstract.Lit 0) sizes
 
   let typeReturnType = Builtin.TypeP typeSize
-  unify typeReturnType =<< typeOfM constrRetType
+  unify [] typeReturnType =<< typeOfM constrRetType
 
   abstractedReturnType <- abstractM abstr typeReturnType
 
@@ -658,7 +695,7 @@ checkRecursiveDefs ds =
     flip Vector.imapM instantiatedDs $ \i (d, t) -> do
       let v = evs Vector.! i
       t' <- checkPoly t =<< existsTypeType mempty
-      unify (metaType v) t'
+      unify [] (metaType v) t'
       (d', t'') <- checkDefType v d t'
       logMeta 20 ("checkRecursiveDefs res " ++ show (metaHint v)) d'
       logMeta 20 ("checkRecursiveDefs res t " ++ show (metaHint v)) t'
