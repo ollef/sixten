@@ -27,7 +27,6 @@ Error messages
 Language
   Add new Int type -- overloaded literals
   * Let(rec) definitions
-  * Mutually recursive top-level definitions
   Named implicit arguments (maybe names should be mandatory?)
   Laziness
   Make Concrete syntax have deep patterns and desugar them

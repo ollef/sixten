@@ -1,0 +1,42 @@
+data Nat where
+  Zero : Nat
+  Succ : Ptr Nat -> Nat
+
+data Bool where
+  False True : Bool
+
+deref p = case p of
+  Ref x -> x
+
+not b = case b of
+  False -> True
+  True -> False
+
+odd x = case deref x of
+  Zero -> False
+  Succ n -> even n
+
+even x = case deref x of
+  Zero -> True
+  Succ n -> odd n
+
+boolToSize b = case b of
+  False -> 0
+  True -> 1
+
+zero = Ref Zero
+one = Ref (Succ zero)
+two = Ref (Succ one)
+three = Ref (Succ two)
+
+data List a where
+  Nil : List a
+  Cons : a -> Ptr (List a) -> List a
+
+numbers = Ref (Cons zero (Ref (Cons one (Ref (Cons two (Ref (Cons three (Ref Nil))))))))
+
+map f xs = Ref case deref xs of
+  Nil -> Nil
+  Cons x xs' -> Cons (f x) (map f xs')
+
+result = map (\x. printSize (boolToSize (even x))) numbers
