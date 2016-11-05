@@ -41,7 +41,7 @@ optionsParser = Options
     <> action "file"
     )
   <*> optional (strOption
-    $ long "optimisation-level"
+    $ long "optimise"
     <> short 'O'
     <> metavar "LEVEL"
     <> help "Set the optimisation level to LEVEL"
