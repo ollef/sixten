@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings, ViewPatterns, PatternSynonyms #-}
 module Builtin where
 
-import qualified Bound.Scope.Simple as Simple
 import Control.Applicative
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HM
@@ -100,7 +99,7 @@ contextE = HM.fromList
     namedPi :: Name -> Erasability -> TypeE Name -> ExprE Name -> ExprE Name
     namedPi n a t e = Pi (fromText n) a t $ abstract1 n e
 
-convertedContext :: HashMap Name (Converted.SExpr Void)
+convertedContext :: HashMap Name (Converted.Expr Void)
 convertedContext = HM.fromList $ concat
   [[( SizeName
     , Converted.sized 0
@@ -118,7 +117,7 @@ convertedContext = HM.fromList $ concat
         $ Vector.fromList [ (mempty, Direct, slit 1)
                           , (mempty, Direct, slit 1)
                           ])
-      $ Simple.Scope
+      $ Scope
       $ Converted.sized 1
       $ Converted.Prim
       $ "add i64 " <> pure (Converted.Var $ B 0) <> ", " <> pure (Converted.Var $ B 1)
@@ -131,13 +130,13 @@ convertedContext = HM.fromList $ concat
         $ Vector.fromList [ (mempty, Direct, slit 1)
                           , (mempty, Direct, slit 1)
                           ])
-      $ Simple.Scope
+      $ Scope
       $ Converted.sized 1
       $ Converted.Let "lt"
       (Converted.sized 1
       $ Converted.Prim
       $ "icmp ugt i64 " <> pure (Converted.Var $ B 0) <> ", " <> pure (Converted.Var $ B 1))
-      $ Simple.Scope
+      $ toScope
       $ Converted.Prim
       $ "select i1 " <> pure (Converted.Var $ B ())
       <> ", i64 " <> pure (Converted.Var $ F $ B 0) <> ", i64 "
@@ -149,14 +148,14 @@ convertedContext = HM.fromList $ concat
         Direct
         (Telescope
         $ Vector.fromList [(mempty, Direct, slit 1)])
-      $ Simple.Scope
+      $ Scope
       $ Converted.sized 1
       $ Converted.Let "res"
       (Converted.sized 1
       $ Converted.Prim
       ("call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([6 x i8], [6 x i8]* @i64-format, i64 0, i64 0), i64 " <> pure (Converted.Var $ B 0) <> ")"))
 
-      $ Simple.Scope
+      $ Scope
       $ Converted.Prim
       $ "zext i32 " <> pure (Converted.Var $ B ()) <> " to i64"
     )
@@ -166,11 +165,11 @@ convertedContext = HM.fromList $ concat
   ]
 
 -- TODO move these
-slit :: Literal -> Simple.Scope b Converted.Expr v
-slit n = Simple.Scope $ Converted.Lit n
+slit :: Literal -> Scope b Converted.Expr v
+slit n = Scope $ Converted.Lit n
 
-svarb :: b -> Simple.Scope b Converted.Expr a
-svarb = Simple.Scope . Converted.Var . B
+svarb :: b -> Scope b Converted.Expr a
+svarb = Scope . Converted.Var . B
 
 maxArity :: Num n => n
 maxArity = 4
@@ -178,16 +177,19 @@ maxArity = 4
 deref :: Converted.Expr v -> Converted.Expr v
 deref e
   = Converted.Case (Converted.sized 1 e)
-  $ SimpleConBranches
+  $ ConBranches
   [ ( Ref
     , Telescope
-      $ pure ("dereferenced", (), Simple.Scope $ Converted.Global "Builtin.deref.UnknownSize")
-    , Simple.Scope
+      $ pure ("dereferenced", (), Scope unknownSize)
+    , toScope
     $ Converted.Var $ B 0
     )
   ]
+  unknownSize
+  where
+    unknownSize = Converted.Global "Builtin.deref.UnknownSize"
 
-apply :: Int -> Converted.SExpr Void
+apply :: Int -> Converted.Expr Void
 apply numArgs
   = Converted.sized 1
   $ Converted.Lams
@@ -196,22 +198,22 @@ apply numArgs
     $ Vector.cons ("this", Direct, slit 1)
     $ (\n -> (fromText $ "size" <> shower (unTele n), Direct, slit 1)) <$> Vector.enumFromN 0 numArgs
     <|> (\n -> (fromText $ "x" <> shower (unTele n), Indirect, svarb $ 1 + n)) <$> Vector.enumFromN 0 numArgs)
-  $ Simple.Scope
-  $ unknownSize
-  $ Converted.Case (unknownSize $ deref $ Converted.Var $ B 0)
-  $ SimpleConBranches
+  $ toScope
+  $ Converted.Case (deref $ Converted.Var $ B 0)
+  $ ConBranches
   [ ( Closure
     , Telescope
       $ Vector.fromList [("f_unknown", (), slit 1), ("n", (), slit 1)]
-    , Simple.Scope
+    , toScope
       $ Converted.Case (Converted.sized 1 $ Converted.Var $ B 1)
-      $ SimpleLitBranches
+      $ LitBranches
         [(fromIntegral arity, br arity) | arity <- [1..maxArity]]
         $ Converted.Lit 1 -- TODO fail
     )
   ]
+  unknownSize
   where
-    unknownSize = Converted.Sized $ Converted.Global "Builtin.apply.UnknownSize"
+    unknownSize = Converted.Global "Builtin.apply.UnknownSize"
     br :: Int -> Converted.Expr (Var Tele (Var Tele Void))
     br arity
       | numArgs < arity
@@ -251,19 +253,18 @@ addSizes = Vector.foldr1 go
       $ Vector.cons (Converted.Sized (Converted.Lit 1) x, Direct)
       $ pure (Converted.Sized (Converted.Lit 1) y, Direct)
 
-pap :: Int -> Int -> Converted.SExpr Void
+pap :: Int -> Int -> Converted.Expr Void
 pap k m
-  = unknownSize
+  = Converted.sized 1
   $ Converted.Lams
     Indirect
     (Telescope
     $ Vector.cons ("this", Direct, slit 1)
     $ (\n -> (fromText $ "size" <> shower (unTele n), Direct, slit 1)) <$> Vector.enumFromN 0 k
     <|> (\n -> (fromText $ "x" <> shower (unTele n), Indirect, svarb $ 1 + n)) <$> Vector.enumFromN 0 k)
-  $ Simple.Scope
-  $ unknownSize
-  $ Converted.Case (unknownSize $ deref $ Converted.Var $ B 0)
-  $ SimpleConBranches
+  $ toScope
+  $ Converted.Case (deref $ Converted.Var $ B 0)
+  $ ConBranches
     [ ( Closure
       , Telescope
         $ Vector.cons ("_", (), slit 1)
@@ -271,7 +272,7 @@ pap k m
         $ Vector.cons ("that", (), slit 1)
         $ (\n -> (fromText $ "size" <> shower (unTele n), (), slit 1)) <$> Vector.enumFromN 0 m
         <|> (\n -> (fromText $ "y" <> shower (unTele n), (), svarb $ 3 + n)) <$> Vector.enumFromN 0 m
-      , Simple.Scope
+      , toScope
         $ Converted.Call Indirect (Converted.Global $ applyName $ m + k)
         $ Vector.cons (Converted.sized 1 $ Converted.Var $ B 2, Direct)
         $ (\n -> (Converted.sized 1 $ Converted.Var $ B $ 3 + n, Direct)) <$> Vector.enumFromN 0 m
@@ -280,5 +281,6 @@ pap k m
         <|> (\n -> (Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + Tele k + n, Indirect)) <$> Vector.enumFromN 0 k
       )
     ]
+    unknownSize
   where
-    unknownSize = Converted.Sized $ Converted.Global "Builtin.pap.UnknownSize"
+    unknownSize = Converted.Global "Builtin.pap.UnknownSize"

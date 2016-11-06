@@ -9,7 +9,6 @@ Erasure
 Codegen
   Add Destructor calling convention for functions that return part of their argument
     To get rid of the memcpy from deref
-  * Can case scrutinees and tail calls explicitly be of unspecified size?
   Arity inference
   Globals
     Make literals llvm `constant`s
@@ -19,7 +18,6 @@ Compiler
   Concretise some of the Context/MetaVary nonsense
   Clean up MetaVar handling (not all modules need the full generality)
   Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
-  Make the sized IRs just have a Sized constructor instead of the layered types?
 Error messages
   Make definitions store their locations
   Make scope checking report locations

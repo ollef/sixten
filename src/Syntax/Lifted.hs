@@ -1,7 +1,8 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings #-}
 module Syntax.Lifted where
 
-import qualified Bound.Scope.Simple as Simple
+import Control.Monad
+import Data.Bifunctor
 import Data.Monoid
 import Data.String
 import qualified Data.Vector as Vector
@@ -11,26 +12,24 @@ import Prelude.Extras
 import Syntax
 import Util
 
-data SExpr v = Sized (Expr v) (Expr v)
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
-
 data Expr v
   = Var v
   | Global Name
   | Lit Literal
-  | Con QConstr (Vector (SExpr v)) -- ^ Fully applied
-  | Call Direction (Expr v) (Vector (SExpr v, Direction)) -- ^ Fully applied
-  | Let NameHint (SExpr v) (Simple.Scope () Expr v)
-  | Case (SExpr v) (SimpleBranches QConstr Expr v)
+  | Con QConstr (Vector (Expr v)) -- ^ Fully applied
+  | Call Direction (Expr v) (Vector (Expr v, Direction)) -- ^ Fully applied
+  | Let NameHint (Expr v) (Scope1 Expr v)
+  | Case (Expr v) (Branches QConstr () Expr v)
   | Prim (Primitive (Expr v))
+  | Sized (Expr v) (Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 data Function v
-  = Function Direction (Vector (NameHint, Direction)) (Simple.Scope Tele SExpr v)
+  = Function Direction (Vector (NameHint, Direction)) (Scope Tele Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 data Constant v
-  = Constant Direction (SExpr v)
+  = Constant Direction (Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 data Definition v
@@ -40,20 +39,34 @@ data Definition v
 
 -------------------------------------------------------------------------------
 -- Helpers
-sized :: Literal -> Expr v -> SExpr v
+sized :: Literal -> Expr v -> Expr v
 sized = Sized . Lit
 
-sizeOf :: SExpr v -> Expr v
+sizeOf :: Expr v -> Expr v
 sizeOf (Sized sz _) = sz
+sizeOf _ = error "Lifted.sizeOf"
 
 -------------------------------------------------------------------------------
 -- Instances
 instance Eq1 Expr
 instance Ord1 Expr
 instance Show1 Expr
-instance Eq1 SExpr
-instance Ord1 SExpr
-instance Show1 SExpr
+
+instance Applicative Expr where
+  pure = Var
+  (<*>) = ap
+
+instance Monad Expr where
+  expr >>= f = case expr of
+    Var v -> f v
+    Global g -> Global g
+    Lit l -> Lit l
+    Con c es -> Con c ((>>= f) <$> es)
+    Call retDir e es -> Call retDir (e >>= f) (first (>>= f) <$> es)
+    Let h e s -> Let h (e >>= f) (s >>>= f)
+    Case e brs -> Case (e >>= f) (brs >>>= f)
+    Prim p -> Prim $ (>>= f) <$> p
+    Sized sz e -> Sized (sz >>= f) (e >>= f)
 
 instance (Eq v, IsString v, Pretty v)
   => Pretty (Expr v) where
@@ -66,21 +79,19 @@ instance (Eq v, IsString v, Pretty v)
       prettyApps (prettyM e) (prettyM <$> es)
     Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
       "let" <+> prettyM n <+> "=" <+> prettyM e <+> "in" <+>
-        prettyM (instantiate1Var (fromText n) s)
+        prettyM (instantiate1 (pure $ fromText n) s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> indent 2 (prettyM brs)
     Prim p -> prettyM $ pretty <$> p
-
-instance (Eq v, IsString v, Pretty v) => Pretty (SExpr v) where
-  prettyM (Sized sz e) = parens `above` annoPrec $
-    prettyM e <+> ":" <+> prettyM sz
+    Sized sz e -> parens `above` annoPrec $
+      prettyM e <+> ":" <+> prettyM sz
 
 instance (Eq v, IsString v, Pretty v) => Pretty (Function v) where
   prettyM (Function retDir vs s) = parens `above` absPrec $
     withNameHints (fst <$> vs) $ \ns -> prettyM retDir <+>
       "\\" <> hsep (Vector.toList $ prettyM <$> Vector.zip ns (snd <$> vs)) <> "." <+>
-      associate absPrec (prettyM $ instantiateTeleVars (fromText <$> ns) s)
+      associate absPrec (prettyM $ instantiateTele (pure . fromText <$> ns) s)
 
 instance (Eq v, IsString v, Pretty v) => Pretty (Constant v) where
   prettyM (Constant dir e) = prettyM dir <+> prettyM e

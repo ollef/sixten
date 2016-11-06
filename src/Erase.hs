@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings, RecursiveDo, ViewPatterns #-}
 module Erase where
 
-import qualified Bound.Scope.Simple as Simple
 import Bound.Scope
 import Control.Monad.Except
 import Data.Monoid
@@ -15,7 +14,7 @@ import Meta
 import TypeOf
 import TCM
 
-eraseS :: AbstractE -> TCM SLambdaM
+eraseS :: AbstractE -> TCM LambdaM
 eraseS e = SLambda.Sized <$> (erase =<< sizeOf e) <*> erase e
 
 erase :: AbstractE -> TCM LambdaM
@@ -34,7 +33,7 @@ erase expr = do
       v <- forall h Retained t
       e <- eraseS $ instantiate1 (pure v) s
       sz <- erase =<< sizeOfType t
-      return $ SLambda.Lam h sz $ Simple.abstract1 v e
+      return $ SLambda.Lam h sz $ abstract1 v e
     (appsView -> (Abstract.Con qc, es)) -> do
       n <- constrArity qc
       case compare argsLen n of
@@ -60,7 +59,7 @@ erase expr = do
   logMeta 20 "erase res" res
   return res
 
-retainedAbstraction :: Telescope Scope Erasability expr v -> Tele -> Maybe Tele
+retainedAbstraction :: Telescope Erasability expr v -> Tele -> Maybe Tele
 retainedAbstraction tele (Tele n) = Tele <$> perm Vector.! n
   where
     perm = Vector.fromList $ reverse $ fst $
@@ -72,16 +71,17 @@ retainedAbstraction tele (Tele n) = Tele <$> perm Vector.! n
 eraseBranches
   :: Pretty c
   => Branches c Erasability Abstract.ExprE (MetaVar Abstract.ExprE)
-  -> TCM (SimpleBranchesM c SLambda.Expr)
+  -> TCM (Branches c () SLambda.Expr (MetaVar Abstract.ExprE))
 eraseBranches (ConBranches cbrs typ) = do
   logMeta 20 "eraseBranches brs" $ ConBranches cbrs typ
+  resultSize <- erase =<< sizeOfType typ
   modifyIndent succ
   cbrs' <- forM cbrs $ \(c, tele, brScope) -> mdo
     tele' <- forMTele tele $ \h a s -> do
       let t = instantiateTele pureVs s
       tsz <- erase =<< sizeOfType t
       v <- forall h a t
-      return (v, (h, a, Simple.abstract abstr tsz))
+      return (v, (h, a, abstract abstr tsz))
     let vs = fst <$> tele'
         abstr v = retainedAbstraction tele =<< teleAbstraction vs v
         pureVs = pure <$> vs
@@ -90,19 +90,19 @@ eraseBranches (ConBranches cbrs typ) = do
                $ Vector.filter (\(_, a, _) -> a == Retained)
                $ snd <$> tele'
     brScope' <- erase $ instantiateTele pureVs brScope
-    return (c, tele'', Simple.abstract abstr brScope')
+    return (c, tele'', abstract abstr brScope')
   modifyIndent pred
-  logMeta 20 "eraseBranches res" $ SimpleConBranches cbrs'
-  return $ SimpleConBranches cbrs'
+  logMeta 20 "eraseBranches res" $ ConBranches cbrs' resultSize
+  return $ ConBranches cbrs' resultSize
 eraseBranches (LitBranches lbrs d)
-  = SimpleLitBranches
+  = LitBranches
     <$> sequence [(,) l <$> erase e | (l, e) <- lbrs]
     <*> erase d
 
 eraseDef
   :: Definition Abstract.ExprE (MetaVar Abstract.ExprE)
   -> AbstractE
-  -> TCM SLambdaM
+  -> TCM LambdaM
 eraseDef (Definition e) _ = eraseS e
 eraseDef (DataDefinition _) typ = go typ
   where
@@ -110,7 +110,7 @@ eraseDef (DataDefinition _) typ = go typ
       v <- forall h Retained t
       sz <- erase =<< sizeOfType t
       e <- go $ instantiate1 (pure v) s
-      return $ SLambda.Sized (SLambda.Lit 1) $ SLambda.Lam h sz $ Simple.abstract1 v e
+      return $ SLambda.Sized (SLambda.Lit 1) $ SLambda.Lam h sz $ abstract1 v e
     go (Abstract.Pi h Erased t s) = do
       v <- forall h Erased t
       go $ instantiate1 (pure v) s

@@ -1,6 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module Lift where
-import qualified Bound.Scope.Simple as Simple
 import Control.Monad.State
 import Data.Bifunctor
 import Data.Bitraversable
@@ -36,64 +35,59 @@ liftExpr expr = case expr of
   Converted.Var v -> return $ Lifted.Var v
   Converted.Global g -> return $ Lifted.Global g
   Converted.Lit l -> return $ Lifted.Lit l
-  Converted.Con c es -> Lifted.Con c <$> mapM liftSExpr es
+  Converted.Con c es -> Lifted.Con c <$> mapM liftExpr es
   Converted.Lams d tele s -> do
-    s' <- underScope liftSExpr s
+    s' <- underScope liftExpr s
     f <- liftFunction $ Lifted.Function d (teleNamedAnnotations tele) s'
     return $ Lifted.Global f
   Converted.Call retDir e es -> Lifted.Call retDir
     <$> liftExpr e
-    <*> mapM (bitraverse liftSExpr pure) es
-  Converted.Let h e (Simple.Scope s) -> Lifted.Let h
-    <$> liftSExpr e
-    <*> fmap Simple.Scope (liftExpr s)
-  Converted.Case e brs -> Lifted.Case <$> liftSExpr e <*> liftBranches brs
+    <*> mapM (bitraverse liftExpr pure) es
+  Converted.Let h e s -> Lifted.Let h
+    <$> liftExpr e
+    <*> fmap toScope (liftExpr $ fromScope s)
+  Converted.Case e brs -> Lifted.Case <$> liftExpr e <*> liftBranches brs
   Converted.Prim p -> Lifted.Prim <$> mapM liftExpr p
+  Converted.Sized sz e -> Lifted.Sized <$> liftExpr sz <*> liftExpr e
 
 underScope
-  :: Functor m
+  :: (Functor m, Monad e, Monad e')
   => (e (Var b v) -> m (e' (Var b v)))
-  -> Simple.Scope b e v
-  -> m (Simple.Scope b e' v)
-underScope f (Simple.Scope s) = Simple.Scope <$> f s
-
-liftSExpr
-  :: Converted.SExpr v
-  -> Lift (Lifted.SExpr v)
-liftSExpr (Converted.Sized sz expr)
-  = Lifted.Sized <$> liftExpr sz <*> liftExpr expr
+  -> Scope b e v
+  -> m (Scope b e' v)
+underScope f s = toScope <$> f (fromScope s)
 
 liftBranches
-  :: SimpleBranches QConstr Converted.Expr v
-  -> Lift (SimpleBranches QConstr Lifted.Expr v)
-liftBranches (SimpleConBranches cbrs) = SimpleConBranches <$> sequence
+  :: Branches QConstr () Converted.Expr v
+  -> Lift (Branches QConstr () Lifted.Expr v)
+liftBranches (ConBranches cbrs sz) = ConBranches <$> sequence
   [ (,,) qc <$> liftTelescope tele <*> underScope liftExpr s
   | (qc, tele, s) <- cbrs
-  ]
-liftBranches (SimpleLitBranches lbrs def) = SimpleLitBranches <$> sequence
+  ] <*> liftExpr sz
+liftBranches (LitBranches lbrs def) = LitBranches <$> sequence
   [ (,) l <$> liftExpr e
   | (l, e) <- lbrs
   ] <*> liftExpr def
 
 liftTelescope
-  :: Telescope Simple.Scope () Converted.Expr v
-  -> Lift (Telescope Simple.Scope () Lifted.Expr v)
+  :: Telescope () Converted.Expr v
+  -> Lift (Telescope () Lifted.Expr v)
 liftTelescope (Telescope tele) = Telescope
   <$> mapM (\(h, (), s) -> (,,) h () <$> underScope liftExpr s) tele
 
 liftDefinitionM
-  :: Converted.SExpr Void
+  :: Converted.Expr Void
   -> Lift (Lifted.Definition Void)
 liftDefinitionM (Converted.Sized _ (Converted.Lams retDir tele s))
   = Lifted.FunctionDef Public . Lifted.Function retDir (teleNamedAnnotations tele)
-    <$> underScope liftSExpr s
+    <$> underScope liftExpr s
 liftDefinitionM sexpr
   = Lifted.ConstantDef Public . Lifted.Constant (Converted.sExprDir sexpr)
-    <$> liftSExpr sexpr
+    <$> liftExpr sexpr
 
 liftDefinition
   :: Name
-  -> Converted.SExpr Void
+  -> Converted.Expr Void
   -> (Lifted.Definition Void, [(Name, Lifted.Function Void)])
 liftDefinition name expr
   = second liftedFunctions

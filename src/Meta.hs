@@ -65,10 +65,8 @@ type ConcreteM = Concrete.Expr (MetaVar Abstract.ExprP)
 type AbstractM = Abstract.ExprP (MetaVar Abstract.ExprP)
 type AbstractE = Abstract.ExprE (MetaVar Abstract.ExprE)
 type LambdaM = SLambda.Expr (MetaVar Abstract.ExprE)
-type SLambdaM = SLambda.SExpr (MetaVar Abstract.ExprE)
 type ScopeM b f = Scope b f (MetaVar Abstract.ExprP)
 type BranchesM c a f = Branches c a f (MetaVar Abstract.ExprP)
-type SimpleBranchesM c f = SimpleBranches c f (MetaVar Abstract.ExprE)
 
 instance Eq (MetaVar e) where
   (==) = (==) `on` metaId
@@ -279,7 +277,7 @@ zonkBound = fmap (>>>= id) . traverse zonkVar
 metaTelescope
   :: Monad e
   => Vector (a, MetaVar e)
-  -> Telescope Scope a e (MetaVar e)
+  -> Telescope a e (MetaVar e)
 metaTelescope vs =
   Telescope
   $ (\(a, v) -> (metaHint v, a, abstract abstr $ metaType v))
@@ -290,7 +288,7 @@ metaTelescope vs =
 metaTelescopeM
   :: (Monad e, Traversable e, Show1 e)
   => Vector (a, MetaVar e)
-  -> TCM (Telescope Scope a e (MetaVar e))
+  -> TCM (Telescope a e (MetaVar e))
 metaTelescopeM vs =
   fmap Telescope $ forM vs $ \(a, v) -> do
     s <- abstractM abstr $ metaType v

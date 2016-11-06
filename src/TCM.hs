@@ -155,7 +155,8 @@ addContext prog = modify $ \s -> s
       return (c, Set.fromList [(n, t)])
 
 addConvertedSignatures
-  :: HashMap Name (Converted.Signature Converted.Expr b c)
+  :: Monad b
+  => HashMap Name (Converted.Signature Converted.Expr b c)
   -> TCM ()
 addConvertedSignatures p = modify $ \s -> s { tcConvertedSignatures = p' <> tcConvertedSignatures s }
   where
@@ -254,7 +255,7 @@ constrIndex
   :: QConstr
   -> TCM Int
 constrIndex qc@(QConstr n c) = do
-  (DataDefinition (DataDef cs), _) <- (definition n :: TCM (Definition ExprP Void, ExprP Void))
+  (DataDefinition (DataDef cs), _) <- definition n :: TCM (Definition ExprP Void, ExprP Void)
   case List.findIndex ((== c) . constrName) cs of
     Just i -> return i
     Nothing -> throwError $ "Can't find index for " ++ show qc

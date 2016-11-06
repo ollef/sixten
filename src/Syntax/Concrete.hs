@@ -20,6 +20,7 @@ data Expr v
   | Pi !NameHint !Plicitness (Type v) (Scope1 Expr v)  -- ^ Dependent function space
   | Lam !NameHint !Plicitness (Type v) (Scope1 Expr v)
   | App (Expr v) !Plicitness (Expr v)
+  | Let !NameHint (Expr v) (Scope1 Expr v)
   | Case (Expr v) (Branches (Either Constr QConstr) Plicitness Expr v)
   | Wildcard  -- ^ Attempt to infer it
   | SourceLoc !SourceLoc (Expr v)
@@ -37,6 +38,7 @@ constructors expr = case expr of
   Pi _ _ t s -> constructors t <> scopeConstrs s
   Lam _ _ t s -> constructors t <> scopeConstrs s
   App e1 _ e2 -> constructors e1 <> constructors e2
+  Let _ e s -> constructors e <> scopeConstrs s
   Case e brs -> constructors e <> case brs of
     ConBranches cbrs def -> Foldable.fold
       [HS.singleton c <> teleConstrs tele <> scopeConstrs s | (c, tele, s) <- cbrs]
@@ -73,6 +75,7 @@ instance Eq v => Eq (Expr v) where
   Pi h1 p1 t1 s1 == Pi h2 p2 t2 s2 = and [h1 == h2, p1 == p2, t1 == t2, s1 == s2]
   Lam h1 p1 t1 s1 == Lam h2 p2 t2 s2 = and [h1 == h2, p1 == p2, t1 == t2, s1 == s2]
   App e1 p1 e1' == App e2 p2 e2' = e1 == e2 && p1 == p2 && e1' == e2'
+  Let h1 e1 s1 == Let h2 e2 s2 = h1 == h2 && e1 == e2 && s1 == s2
   Case e1 brs1 == Case e2 brs2 = e1 == e2 && brs1 == brs2
   Wildcard == Wildcard = True
   SourceLoc _ e1 == e2 = e1 == e2
@@ -114,6 +117,7 @@ instance Monad Expr where
     Pi  n p t s -> Pi n p (t >>= f) (s >>>= f)
     Lam n p t s -> Lam n p (t >>= f) (s >>>= f)
     App e1 p e2 -> App (e1 >>= f) p (e2 >>= f)
+    Let h e s -> Let h (e >>= f) (s >>>= f)
     Case e brs -> Case (e >>= f) (brs >>>= f)
     SourceLoc r e -> SourceLoc r (e >>= f)
     Wildcard -> Wildcard
@@ -140,6 +144,9 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
       prettyM (instantiateTele (pure . fromText <$> ns) s)
     Lam {} -> error "impossible prettyPrec lam"
     App e1 p e2 -> prettyApp (prettyM e1) (prettyAnnotation p $ prettyM e2)
+    Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
+      "let" <+> prettyM n <+> "=" <+> inviolable (prettyM e) <+>
+      "in" <+> prettyM (instantiate1 (pure $ fromText n) s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (prettyM brs)
     Wildcard -> "_"

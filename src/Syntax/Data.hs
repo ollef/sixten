@@ -60,7 +60,7 @@ instance Bound DataDef where
 
 prettyDataDef
   :: (Eq1 typ, Eq v, IsString v, Monad typ, Pretty (typ v), Eq (Annotation typ), PrettyAnnotation (Annotation typ))
-  => Telescope Scope (Annotation typ) typ v
+  => Telescope (Annotation typ) typ v
   -> DataDef typ v
   -> PrettyM Doc
 prettyDataDef ps (DataDef cs) = "data" <+> "_" <+> withTeleHints ps (\ns ->

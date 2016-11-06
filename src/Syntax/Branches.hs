@@ -2,7 +2,6 @@
 module Syntax.Branches where
 import Bound
 import Bound.Scope
-import qualified Bound.Scope.Simple as Simple
 import Data.Bifoldable
 import Data.Bifunctor
 import Data.Bitraversable
@@ -17,7 +16,7 @@ import Syntax.Telescope
 import Util
 
 data Branches c a expr v
-  = ConBranches [(c, Telescope Scope a expr v, Scope Tele expr v)] (expr v) -- ^ Return type
+  = ConBranches [(c, Telescope a expr v, Scope Tele expr v)] (expr v) -- ^ Return type
   | LitBranches [(Literal, expr v)] (expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
@@ -46,27 +45,6 @@ instance (Eq v, Eq1 f, Monad f, Pretty c, Pretty (f v), IsString v, Eq a, Pretty
         "->" <+> prettyM (instantiate (pure . fromText . (ns Vector.!) . unTele) s)
     | (c, tele, s) <- cbrs ]
   prettyM (LitBranches lbrs def) = vcat $
-    [ prettyM l <+> "->" <+> prettyM e
-    | (l, e) <- lbrs] ++
-    ["_" <+> "->" <+> prettyM def]
-
-data SimpleBranches c expr v
-  = SimpleConBranches [(c, Telescope Simple.Scope () expr v, Simple.Scope Tele expr v)]
-  | SimpleLitBranches [(Literal, expr v)] (expr v)
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
-
-instance Bound (SimpleBranches c) where
-  SimpleConBranches cbrs >>>= f = SimpleConBranches [(c, t >>>= f, s >>>= f) | (c, t, s) <- cbrs]
-  SimpleLitBranches lbrs d >>>= f = SimpleLitBranches [(l, e >>= f) | (l, e) <- lbrs] (d >>= f)
-
-instance (Eq v, Eq1 f, Functor f, Pretty c, Pretty (f v), IsString v)
-  => Pretty (SimpleBranches c f v) where
-  prettyM (SimpleConBranches cbrs) = vcat
-    [ withTeleHints tele $ \ns ->
-        prettyM c <+> prettySimpleTeleVarTypes ns tele <+>
-        "->" <+> prettyM (instantiateVar (fromText . (ns Vector.!) . unTele) s)
-    | (c, tele, s) <- cbrs ]
-  prettyM (SimpleLitBranches lbrs def) = vcat $
     [ prettyM l <+> "->" <+> prettyM e
     | (l, e) <- lbrs] ++
     ["_" <+> "->" <+> prettyM def]

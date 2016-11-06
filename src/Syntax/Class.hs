@@ -43,28 +43,28 @@ usedPiView
 usedPiView (piView -> Just (n, p, e, s@(unusedScope -> Nothing))) = Just (n, p, e, s)
 usedPiView _ = Nothing
 
-usedPisViewM :: Syntax e => e v -> Maybe (Telescope Scope (Annotation e) e v, Scope Tele e v)
+usedPisViewM :: Syntax e => e v -> Maybe (Telescope (Annotation e) e v, Scope Tele e v)
 usedPisViewM = bindingsViewM usedPiView
 
-telescope :: Syntax e => e v -> Telescope Scope (Annotation e) e v
+telescope :: Syntax e => e v -> Telescope (Annotation e) e v
 telescope (pisView -> (tele, _)) = tele
 
-pisView :: Syntax e => e v -> (Telescope Scope (Annotation e) e v, Scope Tele e v)
+pisView :: Syntax e => e v -> (Telescope (Annotation e) e v, Scope Tele e v)
 pisView = bindingsView piView
 
-pisViewM :: Syntax e => e v -> Maybe (Telescope Scope (Annotation e) e v, Scope Tele e v)
+pisViewM :: Syntax e => e v -> Maybe (Telescope (Annotation e) e v, Scope Tele e v)
 pisViewM = bindingsViewM piView
 
-lamsView :: Syntax e => e v -> (Telescope Scope (Annotation e) e v, Scope Tele e v)
+lamsView :: Syntax e => e v -> (Telescope (Annotation e) e v, Scope Tele e v)
 lamsView = bindingsView lamView
 
-lamsViewM :: Syntax e => e v -> Maybe (Telescope Scope (Annotation e) e v, Scope Tele e v)
+lamsViewM :: Syntax e => e v -> Maybe (Telescope (Annotation e) e v, Scope Tele e v)
 lamsViewM = bindingsViewM lamView
 
-lams :: Syntax e => Telescope Scope (Annotation e) e v -> Scope Tele e v -> e v
+lams :: Syntax e => Telescope (Annotation e) e v -> Scope Tele e v -> e v
 lams tele s = quantify lam s tele
 
-pis :: Syntax e => Telescope Scope (Annotation e) e v -> Scope Tele e v -> e v
+pis :: Syntax e => Telescope (Annotation e) e v -> Scope Tele e v -> e v
 pis tele s = quantify pi_ s tele
 
 arrow :: Syntax e => Annotation e -> e v -> e v -> e v

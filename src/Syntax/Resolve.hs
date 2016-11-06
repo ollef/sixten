@@ -25,9 +25,9 @@ program xs = snd <$> foldlM resolveName (Nothing, mempty) xs >>= matchTypes
   where
     resolveName
       :: (Hashable v, Eq v, Show v)
-      => (Maybe v, (HashMap v (Expr v), HashMap v (Type v), HashMap v (Telescope Scope Plicitness Type v, DataDef Type v)))
+      => (Maybe v, (HashMap v (Expr v), HashMap v (Type v), HashMap v (Telescope Plicitness Type v, DataDef Type v)))
       -> TopLevelParsed v
-      -> Either Text (Maybe v, (HashMap v (Expr v), HashMap v (Type v), HashMap v (Telescope Scope Plicitness Type v, DataDef Type v)))
+      -> Either Text (Maybe v, (HashMap v (Expr v), HashMap v (Type v), HashMap v (Telescope Plicitness Type v, DataDef Type v)))
     resolveName (prevName, (defs, types, datas)) (ParsedDefLine mn e) = case mn <|> prevName of
       Nothing -> throwError "not sure what a wildcard definition refers to"
       Just n  -> do
@@ -43,7 +43,7 @@ program xs = snd <$> foldlM resolveName (Nothing, mempty) xs >>= matchTypes
       (Just _, _)   -> err
       (Nothing, m') -> return m'
     matchTypes
-      :: (HashMap Name (Expr Name), HashMap Name (Type Name), HashMap Name (Telescope Scope Plicitness Type Name, DataDef Type Name))
+      :: (HashMap Name (Expr Name), HashMap Name (Type Name), HashMap Name (Telescope Plicitness Type Name, DataDef Type Name))
       -> Either Text (Program Expr Name)
     matchTypes (defs, types, datas) = case HM.keys $ HM.difference types defs of
       [] -> do

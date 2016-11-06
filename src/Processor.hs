@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Processor where
 
-import qualified Bound.Scope.Simple as Simple
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Bifunctor
@@ -76,7 +75,7 @@ processAbstractGroup
   >=> processConvertedGroup
 
 processConvertedGroup
-  :: [(Name, Converted.SExpr Void)]
+  :: [(Name, Converted.Expr Void)]
   -> TCM [(Name, LLVM.B)]
 processConvertedGroup
   = liftGroup
@@ -204,7 +203,7 @@ addErasableGroupToContext defs = do
 
 eraseGroup
   :: [(Name, Definition Abstract.ExprE Void, Abstract.ExprE Void)] 
-  -> TCM [(Name, SLambda.SExpr Void)]
+  -> TCM [(Name, SLambda.Expr Void)]
 eraseGroup defs = sequence
   [ do
       d' <- eraseDef (vacuous d) (vacuous t)
@@ -214,16 +213,16 @@ eraseGroup defs = sequence
   ]
 
 closeGroup
-  :: [(Name, SLambda.SExpr Void)]
-  -> TCM [(Name, Closed.SExpr Void)]
+  :: [(Name, SLambda.Expr Void)]
+  -> TCM [(Name, Closed.Expr Void)]
 closeGroup defs = forM defs $ \(x, e) -> do
-  e' <- closeSExpr $ vacuous e
+  e' <- closeExpr $ vacuous e
   e'' <- traverse (throwError . ("closeGroup " ++) . show) e'
   return (x, e'')
 
 closureConvertGroup
-  :: [(Name, Closed.SExpr Void)]
-  -> TCM [(Name, Converted.SExpr Void)]
+  :: [(Name, Closed.Expr Void)]
+  -> TCM [(Name, Converted.Expr Void)]
 closureConvertGroup defs = do
   sigs <- forM defs $ \(x, e) -> (,) x <$> ClosureConvert.createSignature (vacuous e)
   addConvertedSignatures $ HM.fromList sigs
@@ -231,7 +230,7 @@ closureConvertGroup defs = do
     (,) x . fmap (error "closureConvertGroup conv") <$> ClosureConvert.convertSignature (error "closureConvertGroup sig" <$> sig)
 
 liftGroup
-  :: [(Name, Converted.SExpr Void)]
+  :: [(Name, Converted.Expr Void)]
   -> TCM [(Name, Lifted.Definition Void)]
 liftGroup defs = fmap concat $ forM defs $ \(name, e) -> do
   let (e', fs) = liftDefinition name e
@@ -245,8 +244,8 @@ liftGroup defs = fmap concat $ forM defs $ \(name, e) -> do
     fakeSignature (Lifted.Function retDir tele _body)
       = Converted.Function
         retDir
-        (Telescope $ (\(h, d) -> (h, d, Simple.Scope $ Converted.Lit 0)) <$> tele)
-        $ Simple.Scope Unit
+        (Telescope $ (\(h, d) -> (h, d, Scope $ Converted.Lit 0)) <$> tele)
+        $ Scope Unit
 
 generateGroup
   :: [(Name, Lifted.Definition Void)]

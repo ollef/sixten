@@ -1,7 +1,8 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings, RankNTypes #-}
 module Syntax.Converted where
 
-import qualified Bound.Scope.Simple as Simple
+import Control.Monad
+import Data.Bifunctor
 import Data.Monoid
 import Data.String
 import Data.Vector(Vector)
@@ -12,48 +13,49 @@ import Prelude.Extras
 import Syntax
 import Util
 
-data SExpr v = Sized (Expr v) (Expr v)
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
-
 data Expr v
   = Var v
   | Global Name
   | Lit Literal
-  | Con QConstr (Vector (SExpr v)) -- ^ Fully applied
-  | Lams Direction (Telescope Simple.Scope Direction Expr Void) (Simple.Scope Tele SExpr Void)
-  | Call Direction (Expr v) (Vector (SExpr v, Direction))
-  | Let NameHint (SExpr v) (Simple.Scope () Expr v)
-  | Case (SExpr v) (SimpleBranches QConstr Expr v)
+  | Con QConstr (Vector (Expr v)) -- ^ Fully applied
+  | Lams Direction (Telescope Direction Expr Void) (Scope Tele Expr Void)
+  | Call Direction (Expr v) (Vector (Expr v, Direction))
+  | Let NameHint (Expr v) (Scope1 Expr v)
+  | Case (Expr v) (Branches QConstr () Expr v)
   | Prim (Primitive (Expr v))
+  | Sized (Expr v) (Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 data Signature expr expr' v
-  = Function Direction (Telescope Simple.Scope Direction expr Void) (Simple.Scope Tele expr' Void)
+  = Function Direction (Telescope Direction expr Void) (Scope Tele expr' Void)
   | Constant Direction (expr' v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-signature :: SExpr v -> Signature Expr SExpr v
+signature :: Expr v -> Signature Expr Expr v
+signature (Lams retDir tele s) = Function retDir tele s
 signature (Sized _ (Lams retDir tele s)) = Function retDir tele s
 signature e = Constant (sExprDir e) e
 
 hoistSignature
-  :: (forall v'. expr1 v' -> expr2 v')
+  :: (Monad expr1, Monad expr2)
+  => (forall v'. expr1 v' -> expr2 v')
   -> Signature expr expr1 v
   -> Signature expr expr2 v
-hoistSignature f (Function d tele (Simple.Scope e))
-  = Function d tele $ Simple.Scope $ f e
+hoistSignature f (Function d tele s)
+  = Function d tele $ toScope $ f $ fromScope s
 hoistSignature f (Constant d e)
   = Constant d $ f e
 
 -------------------------------------------------------------------------------
 -- Helpers
-sized :: Literal -> Expr v -> SExpr v
+sized :: Literal -> Expr v -> Expr v
 sized = Sized . Lit
 
-sizeOf :: SExpr v -> Expr v
+sizeOf :: Expr v -> Expr v
 sizeOf (Sized sz _) = sz
+sizeOf _ = error "sizeOf"
 
-sizedSizesOf :: Functor f => f (SExpr v) -> f (SExpr v)
+sizedSizesOf :: Functor f => f (Expr v) -> f (Expr v)
 sizedSizesOf = fmap (sized 1 . sizeOf)
 
 sizeDir :: Expr v -> Direction
@@ -61,17 +63,33 @@ sizeDir (Lit 0) = Void
 sizeDir (Lit 1) = Direct
 sizeDir _ = Indirect
 
-sExprDir :: SExpr v -> Direction
+sExprDir :: Expr v -> Direction
 sExprDir (Sized sz _) = sizeDir sz
+sExprDir _ = error "sExprDir"
 
 -------------------------------------------------------------------------------
 -- Instances
 instance Eq1 Expr
 instance Ord1 Expr
 instance Show1 Expr
-instance Eq1 SExpr
-instance Ord1 SExpr
-instance Show1 SExpr
+
+instance Applicative Expr where
+  pure = Var
+  (<*>) = ap
+
+instance Monad Expr where
+  return = Var
+  expr >>= f = case expr of
+    Var v -> f v
+    Global g -> Global g
+    Lit l -> Lit l
+    Con c es -> Con c ((>>= f) <$> es)
+    Lams d tele s -> Lams d tele s
+    Call retDir e es -> Call retDir (e >>= f) (first (>>= f) <$> es)
+    Let h e s -> Let h (e >>= f) (s >>>= f)
+    Case e brs -> Case (e >>= f) (brs >>>= f)
+    Prim p -> Prim $ (>>= f) <$> p
+    Sized sz e -> Sized (sz >>= f) (e >>= f)
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Expr v) where
@@ -83,17 +101,15 @@ instance (Eq v, IsString v, Pretty v)
     Lams d tele s -> parens `above` absPrec $
       withTeleHints tele $ \ns ->
         prettyM d <+> "\\" <> hsep (map prettyM $ Vector.toList ns) <> "." <+>
-          associate absPrec (prettyM $ instantiateVar (fromText . (ns Vector.!) . unTele) $ show <$> s)
+          associate absPrec (prettyM $ instantiate (pure . fromText . (ns Vector.!) . unTele) $ show <$> s)
     Call _retDir e es -> parens `above` annoPrec $ -- TODO dir
       prettyApps (prettyM e) (prettyM <$> es)
     Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
       "let" <+> prettyM n <+> "=" <+> prettyM e <+> "in" <+>
-        prettyM (instantiate1Var (fromText n) s)
+        prettyM (instantiate1 (pure $ fromText n) s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> indent 2 (prettyM brs)
     Prim p -> prettyM $ pretty <$> p
-
-instance (Eq v, IsString v, Pretty v) => Pretty (SExpr v) where
-  prettyM (Sized sz e) = parens `above` annoPrec $
-    prettyM e <+> ":" <+> prettyM sz
+    Sized sz e -> parens `above` annoPrec $
+      prettyM e <+> ":" <+> prettyM sz
