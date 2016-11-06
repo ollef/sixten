@@ -168,7 +168,7 @@ prettyTeleVarTypes
   -> PrettyM Doc
 prettyTeleVarTypes ns (Telescope v) = hcat $ map go grouped
   where
-    inst = instantiate $ pure . fromText . (ns Vector.!) . unTele
+    inst = instantiateTele $ pure . fromText <$> ns
     vlist = Vector.toList v
     grouped = [ (n : [n' | (Hint n', _) <- vlist'], a, t)
               | (Hint n, (_, a, t)):vlist' <- List.group $ zip (map Hint [(0 :: Int)..]) vlist]

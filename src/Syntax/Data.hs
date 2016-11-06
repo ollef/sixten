@@ -7,7 +7,6 @@ import Bound.Scope
 import Data.Bifunctor
 import Data.Bitraversable
 import Data.String
-import qualified Data.Vector as Vector
 import Prelude.Extras
 
 import Syntax.Annotation
@@ -64,7 +63,7 @@ prettyDataDef
   -> DataDef typ v
   -> PrettyM Doc
 prettyDataDef ps (DataDef cs) = "data" <+> "_" <+> withTeleHints ps (\ns ->
-    let inst = instantiate $ pure . fromText . (ns Vector.!) . unTele in
+    let inst = instantiateTele $ pure . fromText <$> ns in
         prettyTeleVarTypes ns ps <+> "where" <$$>
           indent 2 (vcat (map (prettyM . fmap inst) cs))
     )

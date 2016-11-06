@@ -50,11 +50,11 @@ closeLambda tele lamScope = mdo
     return $ Vector.fromList $ impure <$> topoSort deps
 
   vs <- forMTele tele $ \h () s -> do
-    let e = instantiate (pure . (vs Vector.!) . unTele) s
+    let e = instantiateTele (pure <$> vs) s
     e' <- closeExpr e
     forall h () e'
 
-  let lamExpr = instantiate (pure . (vs Vector.!) . unTele) lamScope
+  let lamExpr = instantiateTele (pure <$> vs) lamScope
       vs' = sortedFvs <> vs
       abstr = teleAbstraction vs'
       tele'' = Telescope $ (\v -> (metaHint v, (), abstract abstr $ metaType v)) <$> vs'
@@ -80,10 +80,10 @@ closeBranches (ConBranches cbrs sz) = do
   fmap (flip ConBranches sz') $
     forM cbrs $ \(qc, tele, brScope) -> mdo
       vs <- forMTele tele $ \h () s -> do
-        let e = instantiate (pure . (vs Vector.!) . unTele) s
+        let e = instantiateTele (pure <$> vs) s
         e' <- closeExpr e
         forall h () e'
-      let brExpr = instantiate (pure . (vs Vector.!) . unTele) brScope
+      let brExpr = instantiateTele (pure <$> vs) brScope
           abstr = teleAbstraction vs
           tele'' = Telescope $ (\v -> (metaHint v, (), abstract abstr $ metaType v)) <$> vs
       brExpr' <- closeExpr brExpr

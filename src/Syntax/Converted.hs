@@ -101,7 +101,7 @@ instance (Eq v, IsString v, Pretty v)
     Lams d tele s -> parens `above` absPrec $
       withTeleHints tele $ \ns ->
         prettyM d <+> "\\" <> hsep (map prettyM $ Vector.toList ns) <> "." <+>
-          associate absPrec (prettyM $ instantiate (pure . fromText . (ns Vector.!) . unTele) $ show <$> s)
+          associate absPrec (prettyM $ instantiateTele (pure . fromText <$> ns) $ show <$> s)
     Call _retDir e es -> parens `above` annoPrec $ -- TODO dir
       prettyApps (prettyM e) (prettyM <$> es)
     Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->

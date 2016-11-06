@@ -42,7 +42,7 @@ createLambdaSignature
     )
 createLambdaSignature tele lamScope = mdo
   tele' <- forMTele tele $ \h () s -> do
-    let e = instantiate (pure . (vs Vector.!) . unTele) $ vacuous s
+    let e = instantiateTele (pure <$> vs) $ vacuous s
     v <- forall h () Unit
     e' <- convertExpr e
     return (v, e')
@@ -57,7 +57,7 @@ convertSignature
 convertSignature sig = case sig of
   Converted.Function retDir tele lamScope -> do
     vs <- forMTele tele $ \h _ _ -> forall h () Unit
-    let lamExpr = instantiate (pure . (vs Vector.!) . unTele) $ vacuous lamScope
+    let lamExpr = instantiateTele (pure <$> vs) $ vacuous lamScope
         abstr = teleAbstraction vs
     lamExpr' <- convertExpr lamExpr
     let lamScope' = abstract abstr lamExpr'
@@ -76,12 +76,12 @@ convertLambda
     )
 convertLambda tele lamScope = mdo
   tele' <- forMTele tele $ \h () s -> do
-    let e = instantiate (pure . (vs Vector.!) . unTele) $ vacuous s
+    let e = instantiateTele (pure <$> vs) $ vacuous s
     v <- forall h () Unit
     e' <- convertExpr e
     return (v, e')
   let vs = fst <$> tele'
-      lamExpr = instantiate (pure . (vs Vector.!) . unTele) $ vacuous lamScope
+      lamExpr = instantiateTele (pure <$> vs) $ vacuous lamScope
       abstr = teleAbstraction vs
       tele'' = error "convertLambda" <$> Telescope ((\(v, e) -> (metaHint v, Converted.sizeDir e, abstract abstr e)) <$> tele')
   lamExpr' <- convertExpr lamExpr
@@ -192,7 +192,7 @@ convertBranches (ConBranches cbrs sz) = do
   fmap (flip ConBranches sz') $
     forM cbrs $ \(qc, tele, brScope) -> mdo
       tele' <- forMTele tele $ \h () s -> do
-        let e = instantiate (pure . (vs Vector.!) . unTele) s
+        let e = instantiateTele (pure <$> vs) s
         v <- forall h () Unit
         e' <- convertExpr e
         return (v, e')

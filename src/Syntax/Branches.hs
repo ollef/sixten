@@ -7,7 +7,6 @@ import Data.Bifunctor
 import Data.Bitraversable
 import Data.Monoid
 import Data.String
-import qualified Data.Vector as Vector
 import Prelude.Extras
 
 import Syntax.Annotation
@@ -42,7 +41,7 @@ instance (Eq v, Eq1 f, Monad f, Pretty c, Pretty (f v), IsString v, Eq a, Pretty
   prettyM (ConBranches cbrs _) = vcat
     [ withTeleHints tele $ \ns ->
         prettyM c <+> prettyTeleVarTypes ns tele <+>
-        "->" <+> prettyM (instantiate (pure . fromText . (ns Vector.!) . unTele) s)
+        "->" <+> prettyM (instantiateTele (pure . fromText <$> ns) s)
     | (c, tele, s) <- cbrs ]
   prettyM (LitBranches lbrs def) = vcat $
     [ prettyM l <+> "->" <+> prettyM e
