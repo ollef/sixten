@@ -207,6 +207,14 @@ instantiateTele
   -> f a
 instantiateTele vs = instantiate ((vs Vector.!) . unTele)
 
+instantiateTele'
+  :: Monad f
+  => (v -> f a)
+  -> Vector v
+  -> Scope Tele f a
+  -> f a
+instantiateTele' f vs = instantiate (f . (vs Vector.!) . unTele)
+
 teleAbstraction :: Eq a => Vector a -> a -> Maybe Tele
 teleAbstraction vs = fmap Tele . (`Vector.elemIndex` vs)
 

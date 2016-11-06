@@ -42,7 +42,7 @@ createLambdaSignature
     )
 createLambdaSignature tele lamScope = mdo
   tele' <- forMTele tele $ \h () s -> do
-    let e = instantiateTele (pure <$> vs) $ vacuous s
+    let e = instantiateTele' pure vs $ vacuous s
     v <- forall h () Unit
     e' <- convertExpr e
     return (v, e')
@@ -76,7 +76,7 @@ convertLambda
     )
 convertLambda tele lamScope = mdo
   tele' <- forMTele tele $ \h () s -> do
-    let e = instantiateTele (pure <$> vs) $ vacuous s
+    let e = instantiateTele' pure vs $ vacuous s
     v <- forall h () Unit
     e' <- convertExpr e
     return (v, e')
@@ -192,7 +192,7 @@ convertBranches (ConBranches cbrs sz) = do
   fmap (flip ConBranches sz') $
     forM cbrs $ \(qc, tele, brScope) -> mdo
       tele' <- forMTele tele $ \h () s -> do
-        let e = instantiateTele (pure <$> vs) s
+        let e = instantiateTele' pure vs s
         v <- forall h () Unit
         e' <- convertExpr e
         return (v, e')

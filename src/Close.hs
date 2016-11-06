@@ -29,7 +29,7 @@ closeExpr expr = case expr of
   SLambda.Case e brs -> Closed.Case <$> closeExpr e <*> closeBranches brs
   SLambda.Sized sz e -> Closed.Sized <$> closeExpr sz <*> closeExpr e
   (bindingsViewM SLambda.lamView -> Just (tele, s)) -> closeLambda tele s
-  SLambda.Lam {} -> throwError "Lambda2Lambda Lam"
+  SLambda.Lam {} -> throwError "closeExpr Lam"
 
 closeLambda
   :: Telescope () SLambda.Expr Meta
@@ -50,7 +50,7 @@ closeLambda tele lamScope = mdo
     return $ Vector.fromList $ impure <$> topoSort deps
 
   vs <- forMTele tele $ \h () s -> do
-    let e = instantiateTele (pure <$> vs) s
+    let e = instantiateTele' pure vs s
     e' <- closeExpr e
     forall h () e'
 
@@ -80,7 +80,7 @@ closeBranches (ConBranches cbrs sz) = do
   fmap (flip ConBranches sz') $
     forM cbrs $ \(qc, tele, brScope) -> mdo
       vs <- forMTele tele $ \h () s -> do
-        let e = instantiateTele (pure <$> vs) s
+        let e = instantiateTele' pure vs s
         e' <- closeExpr e
         forall h () e'
       let brExpr = instantiateTele (pure <$> vs) brScope
