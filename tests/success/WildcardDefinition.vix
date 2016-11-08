@@ -1,0 +1,3 @@
+test : Size
+_ = printSize 123
+
