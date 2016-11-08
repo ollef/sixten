@@ -685,7 +685,7 @@ checkRecursiveDefs
 checkRecursiveDefs ds =
   generaliseDefs <=< enterLevel $ do
     evs <- Vector.forM ds $ \(v, _, _) -> do
-      let h = fromText v
+      let h = fromName v
       t <- existsType h
       forall h Explicit (t :: AbstractM)
     let instantiatedDs = flip Vector.map ds $ \(_, e, t) ->

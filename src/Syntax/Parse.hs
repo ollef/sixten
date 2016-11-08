@@ -162,13 +162,13 @@ identOrWildcard = Just <$> ident
                <|> Nothing <$ wildcard
 
 symbol :: String -> Parser Name
-symbol = fmap Text.pack . Trifecta.token . Trifecta.symbol
+symbol = fmap (Name . Text.pack) . Trifecta.token . Trifecta.symbol
 
 literal :: Parser Literal
 literal = Trifecta.token $ Trifecta.try Trifecta.integer
 
 constructor :: Parser Constr
-constructor = ident
+constructor = nameToConstr <$> ident
 
 data Binding
   = Plain Plicitness [Maybe Name]
@@ -325,7 +325,7 @@ def
     mkDef f = (\e n -> ParsedDefLine (f n) e) <$> (abstractBindings Concrete.tlam <$> manyBindings <*% symbol "=" <*>% expr)
 
 dataDef :: Parser (TopLevelParsed Name)
-dataDef = mkDataDef <$ reserved "data" <*>% constructor <*> manyBindings
+dataDef = mkDataDef <$ reserved "data" <*>% ident <*> manyBindings
     <*% reserved "where" <*> (concat <$> manyIndentedSameCol conDef)
   where
     conDef = constrDefs <$> ((:) <$> constructor <*>% manySI constructor)

@@ -17,6 +17,7 @@ import Prelude.Extras
 import Syntax.Annotation
 import Syntax.Class
 import Syntax.Data
+import Syntax.GlobalBind
 import Syntax.Name
 import Syntax.Pretty
 import TopoSort
@@ -43,14 +44,9 @@ definitionFirst
 definitionFirst f (Definition d) = Definition $ first f d
 definitionFirst f (DataDefinition d) = DataDefinition $ dataDefFirst f d
 
-bindDefinitionGlobals
-  :: Monad e
-  => (forall x. (n -> e x) -> e x -> e x)
-  -> (n -> e v)
-  -> Definition e v
-  -> Definition e v
-bindDefinitionGlobals expr f (Definition e) = Definition $ expr f e
-bindDefinitionGlobals expr f (DataDefinition e) = DataDefinition $ bindDataDefGlobals expr f e
+instance GlobalBound Definition where
+  bound f g (Definition e) = Definition $ bind f g e
+  bound f g (DataDefinition d) = DataDefinition $ bound f g d
 
 prettyTypedDef
   :: (Eq1 expr, Eq v, IsString v, Monad expr, Pretty (expr v), Syntax expr, Eq (Annotation expr), PrettyAnnotation (Annotation expr))
@@ -68,8 +64,11 @@ abstractDef
 abstractDef f (Definition d) = Definition $ fromScope $ abstract f d
 abstractDef f (DataDefinition d) = DataDefinition $ abstractDataDef f d
 
-instantiateDef :: Monad expr
-               => (b -> expr a) -> Definition expr (Var b a) -> Definition expr a
+instantiateDef
+  :: Monad expr
+  => (b -> expr a)
+  -> Definition expr (Var b a)
+  -> Definition expr a
 instantiateDef f (Definition d) = Definition $ instantiate f $ toScope d
 instantiateDef f (DataDefinition d) = DataDefinition $ instantiateDataDef f d
 
@@ -93,7 +92,7 @@ type Program expr v = HashMap Name (Definition expr v, expr v)
 
 dependencies
   :: (Foldable e, Monad e)
-  => (forall v. e v -> HashSet Constr)
+  => (forall v. e v -> HashSet Name)
   -> Program e Name
   -> HashMap Name (HashSet Name)
 dependencies constrs prog =
@@ -105,7 +104,7 @@ dependencies constrs prog =
   where
     union = HM.unionWith HS.union
     constrMappings = HM.fromListWith mappend
-      [ (c, HS.singleton n)
+      [ (constrToName c, HS.singleton n)
       | (n, (DataDefinition d, _)) <- HM.toList prog
       , c <- constrNames d
       ]
@@ -127,7 +126,7 @@ programConstrNames prog
 
 dependencyOrder
   :: (Foldable e, Monad e)
-  => (forall v. e v -> HashSet Constr)
+  => (forall v. e v -> HashSet Name)
   -> Program e Name
   -> [[(Name, (Definition e Name, e Name))]]
 dependencyOrder constrs prog

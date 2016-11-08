@@ -1,0 +1,24 @@
+deref : {a : Type} -> Ptr a -> a
+deref ptr = case ptr of
+  Ref a -> a
+
+data List a where
+  Nil : List a
+  Cons : a -> Ptr (List a) -> List a
+
+error = error
+
+head : {a : Type} -> Ptr (List a) -> a
+head xs = case deref xs of
+  Cons a _ -> a
+  Nil -> error
+
+tail : {a : Type} -> Ptr (List a) -> List a
+tail xs = case deref xs of
+  Cons _ xs -> deref xs
+  Nil -> error
+
+aList = Ref (Cons 1 (Ref (Cons 2 (Ref Nil))))
+
+val1 = printSize (head aList)
+val2 = printSize (head (Ref (tail aList)))

@@ -36,11 +36,6 @@ apps e es = Call e es
 sized :: Literal -> Expr v -> Expr v
 sized = Sized . Lit
 
-{-
-sizeOf :: SExpr v -> Expr v
-sizeOf (Sized sz _) = sz
--}
-
 sizeDir :: Expr v -> Direction
 sizeDir (Lit 0) = Void
 sizeDir (Lit 1) = Direct
@@ -84,12 +79,12 @@ instance (Eq v, IsString v, Pretty v)
     Lams tele s -> parens `above` absPrec $
       withTeleHints tele $ \ns ->
         "\\" <> prettyTeleVarTypes ns (show <$> tele) <> "." <+>
-        associate absPrec (prettyM $ instantiateTele (pure . fromText <$> ns) $ show <$> s)
+        associate absPrec (prettyM $ instantiateTele (pure . fromName <$> ns) $ show <$> s)
     Call e es -> parens `above` annoPrec $
       prettyApps (prettyM e) (prettyM <$> es)
     Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
       "let" <+> prettyM n <+> "=" <+> prettyM e <+> "in" <+>
-        prettyM (instantiate1 (pure $ fromText n) s)
+        prettyM (instantiate1 (pure $ fromName n) s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> indent 2 (prettyM brs)

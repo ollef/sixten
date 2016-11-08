@@ -13,13 +13,13 @@ import Util
 
 data LiftState = LiftState
   { freshNames :: [Name]
-  , liftedFunctions :: [(Name, Lifted.Function Void)]
+  , liftedFunctions :: [(Name, Lifted.Function (Maybe Direction) (Lifted.Expr (Maybe Direction)) Void)]
   }
 
 newtype Lift a = Lift { unLifted :: State LiftState a }
   deriving (Functor, Applicative, Monad, MonadState LiftState)
 
-liftFunction :: Lifted.Function Void -> Lift Name
+liftFunction :: Lifted.Function (Maybe Direction) (Lifted.Expr (Maybe Direction)) Void -> Lift Name
 liftFunction f = do
   name:names <- gets freshNames
   modify $ \s -> s
@@ -30,7 +30,7 @@ liftFunction f = do
 
 liftExpr
   :: Converted.Expr v
-  -> Lift (Lifted.Expr v)
+  -> Lift (Lifted.Expr (Maybe Direction) v)
 liftExpr expr = case expr of
   Converted.Var v -> return $ Lifted.Var v
   Converted.Global g -> return $ Lifted.Global g
@@ -59,7 +59,7 @@ underScope f s = toScope <$> f (fromScope s)
 
 liftBranches
   :: Branches QConstr () Converted.Expr v
-  -> Lift (Branches QConstr () Lifted.Expr v)
+  -> Lift (Branches QConstr () (Lifted.Expr (Maybe Direction)) v)
 liftBranches (ConBranches cbrs sz) = ConBranches <$> sequence
   [ (,,) qc <$> liftTelescope tele <*> underScope liftExpr s
   | (qc, tele, s) <- cbrs
@@ -71,13 +71,13 @@ liftBranches (LitBranches lbrs def) = LitBranches <$> sequence
 
 liftTelescope
   :: Telescope () Converted.Expr v
-  -> Lift (Telescope () Lifted.Expr v)
+  -> Lift (Telescope () (Lifted.Expr (Maybe Direction)) v)
 liftTelescope (Telescope tele) = Telescope
   <$> mapM (\(h, (), s) -> (,,) h () <$> underScope liftExpr s) tele
 
 liftDefinitionM
   :: Converted.Expr Void
-  -> Lift (Lifted.Definition Void)
+  -> Lift (Lifted.Definition (Maybe Direction) (Lifted.Expr (Maybe Direction)) Void)
 liftDefinitionM (Converted.Sized _ (Converted.Lams retDir tele s))
   = Lifted.FunctionDef Public . Lifted.Function retDir (teleNamedAnnotations tele)
     <$> underScope liftExpr s
@@ -88,7 +88,7 @@ liftDefinitionM sexpr
 liftDefinition
   :: Name
   -> Converted.Expr Void
-  -> (Lifted.Definition Void, [(Name, Lifted.Function Void)])
+  -> (Lifted.Definition (Maybe Direction) (Lifted.Expr (Maybe Direction)) Void, [(Name, Lifted.Function (Maybe Direction) (Lifted.Expr (Maybe Direction)) Void)])
 liftDefinition name expr
   = second liftedFunctions
   $ runState (unLifted $ liftDefinitionM expr) LiftState

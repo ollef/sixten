@@ -93,7 +93,7 @@ showMeta x = do
       p _                   = return $ Left $ Level (-1)
   let vsl = S.toList vs
   pvs <- T.mapM p vsl
-  let sv v = "$" ++ fromMaybe "" (fromText <$> unNameHint (metaHint v)) ++ (if isJust $ metaRef v then "∃" else "")
+  let sv v = "$" ++ fromMaybe "" (fromName <$> unNameHint (metaHint v)) ++ (if isJust $ metaRef v then "∃" else "")
           ++ show (metaId v)
   let solutions = [(sv v, pretty $ sv <$> metaType v, pretty $ fmap sv <$> msol) | (v, msol) <- zip vsl pvs]
   return

@@ -18,8 +18,8 @@ data Expr v
   | Global Name
   | Lit Literal
   | Con QConstr (Vector (Expr v)) -- ^ Fully applied
-  | Lams Direction (Telescope Direction Expr Void) (Scope Tele Expr Void)
-  | Call Direction (Expr v) (Vector (Expr v, Direction))
+  | Lams (Maybe Direction) (Telescope Direction Expr Void) (Scope Tele Expr Void)
+  | Call (Maybe Direction) (Expr v) (Vector (Expr v, Direction))
   | Let NameHint (Expr v) (Scope1 Expr v)
   | Case (Expr v) (Branches QConstr () Expr v)
   | Prim (Primitive (Expr v))
@@ -27,13 +27,13 @@ data Expr v
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 data Signature expr expr' v
-  = Function Direction (Telescope Direction expr Void) (Scope Tele expr' Void)
+  = Function (Maybe Direction) (Telescope Direction expr Void) (Scope Tele expr' Void)
   | Constant Direction (expr' v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 signature :: Expr v -> Signature Expr Expr v
-signature (Lams retDir tele s) = Function retDir tele s
-signature (Sized _ (Lams retDir tele s)) = Function retDir tele s
+signature (Lams dir tele s) = Function dir tele s
+signature (Sized _ (Lams dir tele s)) = Function dir tele s
 signature e = Constant (sExprDir e) e
 
 hoistSignature
@@ -41,8 +41,8 @@ hoistSignature
   => (forall v'. expr1 v' -> expr2 v')
   -> Signature expr expr1 v
   -> Signature expr expr2 v
-hoistSignature f (Function d tele s)
-  = Function d tele $ toScope $ f $ fromScope s
+hoistSignature f (Function dir tele s)
+  = Function dir tele $ toScope $ f $ fromScope s
 hoistSignature f (Constant d e)
   = Constant d $ f e
 
@@ -84,8 +84,8 @@ instance Monad Expr where
     Global g -> Global g
     Lit l -> Lit l
     Con c es -> Con c ((>>= f) <$> es)
-    Lams d tele s -> Lams d tele s
-    Call retDir e es -> Call retDir (e >>= f) (first (>>= f) <$> es)
+    Lams dir tele s -> Lams dir tele s
+    Call d e es -> Call d (e >>= f) (first (>>= f) <$> es)
     Let h e s -> Let h (e >>= f) (s >>>= f)
     Case e brs -> Case (e >>= f) (brs >>>= f)
     Prim p -> Prim $ (>>= f) <$> p
@@ -98,15 +98,15 @@ instance (Eq v, IsString v, Pretty v)
     Global g -> prettyM g
     Lit l -> prettyM l
     Con c es -> prettyApps (prettyM c) $ prettyM <$> es
-    Lams d tele s -> parens `above` absPrec $
+    Lams dir tele s -> parens `above` absPrec $
       withTeleHints tele $ \ns ->
-        prettyM d <+> "\\" <> hsep (map prettyM $ Vector.toList ns) <> "." <+>
-          associate absPrec (prettyM $ instantiateTele (pure . fromText <$> ns) $ show <$> s)
-    Call _retDir e es -> parens `above` annoPrec $ -- TODO dir
-      prettyApps (prettyM e) (prettyM <$> es)
+        prettyM dir <+> "\\" <> hsep (map prettyM $ Vector.toList ns) <> "." <+>
+          associate absPrec (prettyM $ instantiateTele (pure . fromName <$> ns) $ show <$> s)
+    Call d e es ->
+      prettyApp (brackets $ prettyM d) $ prettyApps (prettyM e) (prettyM <$> es)
     Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
       "let" <+> prettyM n <+> "=" <+> prettyM e <+> "in" <+>
-        prettyM (instantiate1 (pure $ fromText n) s)
+        prettyM (instantiate1 (pure $ fromName n) s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> indent 2 (prettyM brs)

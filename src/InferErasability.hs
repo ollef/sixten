@@ -10,7 +10,6 @@ import Data.Hashable
 import Data.Monoid
 import qualified Data.Set as Set
 import Data.STRef
-import qualified Data.Text as Text
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
@@ -39,17 +38,13 @@ minMetaErasability MErased _ = return MErased
 minMetaErasability _ MErased = return MErased
 minMetaErasability x MRetained = return x
 minMetaErasability MRetained x = return x
+minMetaErasability m@(MRef ref1) (MRef ref2) | ref1 == ref2 = return m
 minMetaErasability m@(MRef ref1) (MRef ref2) = do
   liftST $ writeSTRef ref2 $ Just $ MRef ref1
   return m
 
 showMetaErasability :: MetaErasability -> TCM String
-showMetaErasability m = do
-  m' <- normaliseMetaErasability m
-  return $ case m' of
-    MErased -> "MErased"
-    MRetained -> "MRetained"
-    MRef _ -> "MRef"
+showMetaErasability = fmap show . normaliseMetaErasability
 
 instance PrettyAnnotation MetaErasability where
   prettyAnnotation MErased = prettyTightApp "~"
@@ -101,7 +96,7 @@ instance Ord MetaVar where
   compare = compare `on` metaId
 
 instance Show MetaVar where
-  show (MetaVar i _ h _) = "$" ++ show i ++ maybe mempty Text.unpack (unNameHint h)
+  show (MetaVar i _ h _) = "$" ++ show i ++ maybe mempty fromName (unNameHint h)
 
 instance Meta.MetaVary (Expr MetaErasability) MetaVar where
   type MetaData (Expr MetaErasability) MetaVar = MetaErasability
@@ -134,10 +129,10 @@ subErasability' (MRef ref) MRetained = liftST $ writeSTRef ref $ Just MRetained
 subErasability' (MRef ref1) (MRef ref2) | ref1 == ref2 = return ()
 subErasability' (MRef ref1) (MRef ref2) = liftST $ writeSTRef ref2 $ Just $ MRef ref1
 
-tre :: String -> ErasableM -> TCM ()
-tre s e = do
+logErasable :: Int -> String -> ErasableM -> TCM ()
+logErasable v s e = whenVerbose v $ do
   e' <- bitraverse normaliseMetaErasability pure e
-  logPretty 20 s $ show <$> e'
+  logPretty v s $ show <$> e'
 
 check :: PrettyAnnotation a => MetaErasability -> AbstractM a -> ErasableM -> TCM ErasableM
 check er expr typ = do
@@ -149,7 +144,7 @@ check er expr typ = do
   f <- subtype exprType typ
   modifyIndent pred
   let res = f expr'
-  tre "check res e" res
+  logErasable 20 "check res e" res
   return res
 
 inferType
@@ -173,7 +168,7 @@ inferType er typ = do
       return (Pi h argEr argType' $ abstract1 x retType', first fromErasability $ Builtin.TypeE $ Lit 1)
     _ -> infer er typ
   modifyIndent pred
-  tre "inferType res" resType
+  logErasable 20 "inferType res" resType
   return (resType, resTypeType)
 
 inferArgType
@@ -257,8 +252,8 @@ infer er expr = do
       (brs', typ) <- inferBranches er brs
       return (Case e' brs', typ)
   modifyIndent pred
-  tre "infer res" resExpr
-  tre "      res" resType
+  logErasable 20 "infer res" resExpr
+  logErasable 20 "      res" resType
   return (resExpr, resType)
 
 inferBranches
@@ -296,8 +291,8 @@ subtype :: ErasableM -> ErasableM -> TCM (ErasableM -> ErasableM)
 subtype e1 e2 = do
   e1' <- whnf e1
   e2' <- whnf e2
-  tre "subtype e1" e1'
-  tre "subtype e2" e2'
+  logErasable 30 "subtype e1" e1'
+  logErasable 30 "subtype e2" e2'
   case (e1', e2') of
     _ | e1' == e2' -> return id
     (Pi h1 er1 argType1 retScope1, Pi h2 er2 argType2 retScope2) -> do
@@ -383,9 +378,9 @@ inferRecursiveDefs
          )
 inferRecursiveDefs ds = mdo
   evs <- Vector.forM ds $ \(v, _, t) -> do
-    logPretty 20 "inferRecursiveDefs" v
+    logPretty 20 "InferErasability.inferRecursiveDefs" v
     (t', _) <- inferType MErased $ instantiate (pure . (evs Vector.!)) t
-    let h = fromText v
+    let h = fromName v
     forall h MRetained t'
   let instantiatedDs = flip Vector.map ds $ \(_, e, _) ->
         instantiateDef (pure . (evs Vector.!)) e

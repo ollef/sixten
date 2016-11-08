@@ -29,7 +29,7 @@ createSignature
 createSignature sizedExpr@(Closed.Sized sz expr)  = case expr of
   Closed.Lams tele lamScope -> do
     (retDir, tele') <- createLambdaSignature tele lamScope
-    return $ Converted.Function retDir tele' lamScope
+    return $ Converted.Function (Just retDir) tele' lamScope
   _ -> return $ Converted.Constant (Closed.sizeDir sz) sizedExpr
 createSignature _ = throwError "createSignature sizeless definition"
 
@@ -100,7 +100,7 @@ convertExpr expr = case expr of
   Closed.Con qc es -> Converted.Con qc <$> mapM convertExpr es
   Closed.Lams tele s -> do
     (retDir, tele', s') <- convertLambda tele s
-    return $ knownCall (Converted.Lams retDir tele' s') retDir tele' mempty
+    return $ knownCall (Converted.Lams (Just retDir) tele' s') (Just retDir) tele' mempty
   Closed.Call (Closed.Global g) es -> do
     es' <- mapM convertExpr es
     sig <- convertedSignature g
@@ -110,7 +110,7 @@ convertExpr expr = case expr of
   Closed.Call (Closed.Lams tele s) es -> do
     (retDir, tele', s') <- convertLambda tele s
     es' <- mapM convertExpr es
-    return $ knownCall (Converted.Lams retDir tele' s') retDir tele' es'
+    return $ knownCall (Converted.Lams (Just retDir) tele' s') (Just retDir) tele' es'
   Closed.Call e es -> do
     e' <- convertExpr e
     es' <- mapM convertExpr es
@@ -131,12 +131,12 @@ unknownCall
   -> Vector CExprM
   -> CExprM
 unknownCall e es
-  = Converted.Call Indirect (Converted.Global $ Builtin.applyName $ Vector.length es)
+  = Converted.Call Nothing (Converted.Global $ Builtin.applyName $ Vector.length es)
   $ Vector.cons (Converted.sized 1 e, Direct) $ (\sz -> (sz, Direct)) <$> Converted.sizedSizesOf es <|> (\arg -> (arg, Indirect)) <$> es
 
 knownCall
   :: Converted.Expr Void
-  -> Direction
+  -> Maybe Direction
   -> Telescope Direction Converted.Expr Void
   -> Vector CExprM
   -> CExprM
@@ -157,7 +157,7 @@ knownCall f retDir tele args
     numArgs = Vector.length args
     arity = teleLength tele
     fNumArgs
-      = Converted.Lams Indirect tele'
+      = Converted.Lams Nothing tele'
       $ toScope
       $ fmap B
       $ Converted.Case (Builtin.deref $ Converted.Var 0)

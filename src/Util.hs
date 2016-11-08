@@ -46,12 +46,19 @@ toMonoid = foldMap pure
 toHashSet ::  (Eq a, Foldable f, Hashable a) => f a -> HashSet a
 toHashSet = foldMap HS.singleton
 
-bimapScope :: Bifunctor f => (x -> x') -> (y -> y') -> Scope b (f x) y -> Scope b (f x') y'
+bimapScope
+  :: Bifunctor f
+  => (x -> x')
+  -> (y -> y')
+  -> Scope b (f x) y
+  -> Scope b (f x') y'
 bimapScope f g (Scope s) = Scope $ bimap f (fmap (bimap f g)) s
 
-bifoldMapScope :: (Bifoldable expr, Monoid m)
-               => (x -> m) -> (y -> m)
-               -> Scope b (expr x) y -> m
+bifoldMapScope
+  :: (Bifoldable expr, Monoid m)
+  => (x -> m)
+  -> (y -> m)
+  -> Scope b (expr x) y -> m
 bifoldMapScope f g (Scope s) = bifoldMap f (unvar mempty $ bifoldMap f g) s
 
 exposeScope
@@ -61,8 +68,10 @@ exposeScope
   -> Scope b expr (Var e a)
 exposeScope f (Scope s) = Scope $ fmap (unvar (F . pure . B) id) $ f $ fmap f <$> s
 
-recursiveAbstract :: (Eq v, Foldable t, Functor t, Hashable v, Monad f)
-                  => t (v, f v) -> t (Scope Int f v)
+recursiveAbstract
+  :: (Eq v, Foldable t, Functor t, Hashable v, Monad f)
+  => t (v, f v)
+  -> t (Scope Int f v)
 recursiveAbstract es = (abstract (`HM.lookup` vs) . snd) <$> es
   where
     vs = HM.fromList $ zip (toList $ fst <$> es) [(0 :: Int)..]
@@ -91,11 +100,3 @@ instance Applicative Unit where
 instance Monad Unit where
   return _ = Unit
   _ >>= _ = Unit
-
-bindScopeGlobals
-  :: Monad e
-  => (forall x. (n -> e x) -> e x -> e x)
-  -> (n -> e v)
-  -> Scope b e v
-  -> Scope b e v
-bindScopeGlobals expr f s = toScope $ expr (fmap F . f) $ fromScope s

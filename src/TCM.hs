@@ -37,6 +37,7 @@ data State = State
   , tcConstrs :: HashMap Constr (Set (Name, TypeP Void))
   , tcErasableContext :: Program ExprE Void
   , tcConvertedSignatures :: HashMap Name (Converted.Signature Converted.Expr Unit Void)
+  , tcReturnDirections :: HashMap Name RetDir
   , tcIndent :: !Int -- This has no place here, but is useful for debugging
   , tcFresh :: !Int
   , tcLevel :: !Level
@@ -51,6 +52,7 @@ emptyState handle verbosity = State
   , tcConstrs = mempty
   , tcErasableContext = mempty
   , tcConvertedSignatures = mempty
+  , tcReturnDirections = mempty
   , tcIndent = 0
   , tcFresh = 0
   , tcLevel = Level 1
@@ -231,6 +233,22 @@ convertedSignature name = do
   maybe (throwError $ "Not in scope: converted " ++ show name)
         return
         mres
+
+-------------------------------------------------------------------------------
+-- Return directions
+returnDirection
+  :: Name
+  -> TCM RetDir
+returnDirection name = do
+  mres <- gets $ HM.lookup name . tcReturnDirections
+  maybe (throwError $ "Not in scope: lifted " ++ show name)
+        return
+        mres
+
+addReturnDirections :: [(Name, RetDir)] -> TCM ()
+addReturnDirections dirs = modify $ \s -> s
+  { tcReturnDirections = HM.fromList dirs <> tcReturnDirections s
+  }
 
 -------------------------------------------------------------------------------
 -- General constructor queries

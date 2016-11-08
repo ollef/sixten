@@ -73,7 +73,7 @@ contextP = HM.fromList
     opaque t = (DataDefinition $ DataDef mempty, cl t)
     dataType t xs = (DataDefinition $ DataDef xs, cl t)
     namedPi :: Name -> Plicitness -> TypeP Name -> ExprP Name -> ExprP Name
-    namedPi n p t e = Pi (fromText n) p t $ abstract1 n e
+    namedPi n p t e = Pi (fromName n) p t $ abstract1 n e
 
 contextE :: Program ExprE Void
 contextE = HM.fromList
@@ -97,7 +97,7 @@ contextE = HM.fromList
     opaque t = (DataDefinition $ DataDef mempty, cl t)
     dataType t xs = (DataDefinition $ DataDef xs, cl t)
     namedPi :: Name -> Erasability -> TypeE Name -> ExprE Name -> ExprE Name
-    namedPi n a t e = Pi (fromText n) a t $ abstract1 n e
+    namedPi n a t e = Pi (fromName n) a t $ abstract1 n e
 
 convertedContext :: HashMap Name (Converted.Expr Void)
 convertedContext = HM.fromList $ concat
@@ -112,7 +112,7 @@ convertedContext = HM.fromList $ concat
   , ( AddSizeName
     , Converted.sized 1
       $ Converted.Lams
-        Direct
+        (Just Direct)
         (Telescope
         $ Vector.fromList [ (mempty, Direct, slit 1)
                           , (mempty, Direct, slit 1)
@@ -125,7 +125,7 @@ convertedContext = HM.fromList $ concat
   , ( MaxSizeName
     , Converted.sized 1
       $ Converted.Lams
-        Direct
+        (Just Direct)
         (Telescope
         $ Vector.fromList [ (mempty, Direct, slit 1)
                           , (mempty, Direct, slit 1)
@@ -145,7 +145,7 @@ convertedContext = HM.fromList $ concat
   , ( PrintSizeName
     , Converted.sized 1
       $ Converted.Lams
-        Direct
+        (Just Direct)
         (Telescope
         $ Vector.fromList [(mempty, Direct, slit 1)])
       $ Scope
@@ -193,7 +193,7 @@ apply :: Int -> Converted.Expr Void
 apply numArgs
   = Converted.sized 1
   $ Converted.Lams
-    Indirect
+    (Just Indirect)
     (Telescope
     $ Vector.cons ("this", Direct, slit 1)
     $ (\n -> (fromText $ "size" <> shower (unTele n), Direct, slit 1)) <$> Vector.enumFromN 0 numArgs
@@ -230,15 +230,15 @@ apply numArgs
         $ (\n -> Converted.sized 1 $ Converted.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs
         <|> (\n -> Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + Tele numArgs + n) <$> Vector.enumFromN 0 numArgs
       | numArgs == arity
-        = Converted.Call Indirect (Converted.Var $ B 0)
+        = Converted.Call (Just Indirect) (Converted.Var $ B 0)
         $ Vector.cons (Converted.sized 1 $ Converted.Var $ F $ B 0, Direct)
         $ (\n -> (Converted.sized 1 $ Converted.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN 0 numArgs
         <|> (\n -> (Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + Tele numArgs + n, Indirect)) <$> Vector.enumFromN 0 numArgs
       | otherwise
-        = Converted.Call Indirect (Converted.Global $ applyName $ numArgs - arity)
+        = Converted.Call (Just Indirect) (Converted.Global $ applyName $ numArgs - arity)
         $ Vector.cons
           (Converted.sized 1
-          $ Converted.Call Indirect (Converted.Var $ B 0)
+          $ Converted.Call (Just Indirect) (Converted.Var $ B 0)
           $ Vector.cons (Converted.sized 1 $ Converted.Var $ F $ B 0, Direct)
           $ (\n -> (Converted.sized 1 $ Converted.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN 0 arity
           <|> (\n -> (Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + fromIntegral numArgs + n, Indirect)) <$> Vector.enumFromN 0 arity, Direct)
@@ -249,7 +249,7 @@ addSizes :: Vector (Converted.Expr v) -> Converted.Expr v
 addSizes = Vector.foldr1 go
   where
     go x y
-      = Converted.Call Direct (Converted.Global AddSizeName)
+      = Converted.Call (Just Direct) (Converted.Global AddSizeName)
       $ Vector.cons (Converted.Sized (Converted.Lit 1) x, Direct)
       $ pure (Converted.Sized (Converted.Lit 1) y, Direct)
 
@@ -257,7 +257,7 @@ pap :: Int -> Int -> Converted.Expr Void
 pap k m
   = Converted.sized 1
   $ Converted.Lams
-    Indirect
+    Nothing
     (Telescope
     $ Vector.cons ("this", Direct, slit 1)
     $ (\n -> (fromText $ "size" <> shower (unTele n), Direct, slit 1)) <$> Vector.enumFromN 0 k
@@ -273,7 +273,7 @@ pap k m
         $ (\n -> (fromText $ "size" <> shower (unTele n), (), slit 1)) <$> Vector.enumFromN 0 m
         <|> (\n -> (fromText $ "y" <> shower (unTele n), (), svarb $ 3 + n)) <$> Vector.enumFromN 0 m
       , toScope
-        $ Converted.Call Indirect (Converted.Global $ applyName $ m + k)
+        $ Converted.Call (Just Indirect) (Converted.Global $ applyName $ m + k)
         $ Vector.cons (Converted.sized 1 $ Converted.Var $ B 2, Direct)
         $ (\n -> (Converted.sized 1 $ Converted.Var $ B $ 3 + n, Direct)) <$> Vector.enumFromN 0 m
         <|> (\n -> (Converted.sized 1 $ Converted.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN 0 k

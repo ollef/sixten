@@ -19,6 +19,7 @@ import qualified Data.Vector as Vector
 import Util
 import Syntax.Direction
 import Syntax.Hint
+import Syntax.Name
 
 type B = Text
 
@@ -100,7 +101,7 @@ freshName = do
   freshenName name
 
 freshWithHint :: MonadState LLVMState m => NameHint -> m B
-freshWithHint (NameHint (Hint (Just name))) = freshenName name
+freshWithHint (NameHint (Hint (Just (Name name)))) = freshenName name
 freshWithHint (NameHint (Hint Nothing)) = freshName
 
 -------------------------------------------------------------------------------
@@ -129,8 +130,8 @@ voidT = "void"
 ptrSize :: Operand Int
 ptrSize = "8"
 
-global :: B -> Operand a
-global b = Operand $ "@" <> escape b
+global :: Name -> Operand a
+global (Name b) = Operand $ "@" <> escape b
 
 integer :: Operand Int -> B
 integer (Operand b) = integerT <+> b
@@ -249,27 +250,29 @@ phiInt xs = Instr
   $ "phi" <+> integerT
   <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> unOperand v <> "," <+> unOperand l <> "]") <$> xs)
 
-bitcastToFun :: Operand Ptr -> Direction -> Vector Direction -> Instr Fun
+bitcastToFun :: Operand Ptr -> RetDir -> Vector Direction -> Instr Fun
 bitcastToFun i retDir ds = Instr
   $ "bitcast" <+> pointer i <+> "to"
   <+> retType <+> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList ds <|> [retArg]) <> ")*"
   where
     (retType, retArg) = case retDir of
-      Void -> (voidT, mempty)
-      Direct -> (integerT, mempty)
-      Indirect -> (voidT, pure pointerT)
+      ReturnVoid -> (voidT, mempty)
+      ReturnDirect -> (integerT, mempty)
+      ReturnIndirect OutParam -> (voidT, pure pointerT)
+      ReturnIndirect Projection -> (pointerT, mempty)
     go Void = []
     go Direct = [integerT]
     go Indirect = [pointerT]
 
-bitcastFunToPtrExpr :: Operand Fun -> Direction -> Vector Direction -> Operand Ptr
+bitcastFunToPtrExpr :: Operand Fun -> RetDir -> Vector Direction -> Operand Ptr
 bitcastFunToPtrExpr i retDir ds = Operand
   $ "bitcast" <+> "(" <> retType <+> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList ds <|> [retArg]) <> ")*" <+> unOperand i <+> "to" <+> pointerT <> ")"
   where
     (retType, retArg) = case retDir of
-      Void -> (voidT, mempty)
-      Direct -> (integerT, mempty)
-      Indirect -> (voidT, pure pointerT)
+      ReturnVoid -> (voidT, mempty)
+      ReturnDirect -> (integerT, mempty)
+      ReturnIndirect OutParam -> (voidT, pure pointerT)
+      ReturnIndirect Projection -> (pointerT, mempty)
     go Void = []
     go Direct = [integerT]
     go Indirect = [pointerT]
@@ -282,6 +285,9 @@ returnVoid = Instr $ "ret" <+> voidT
 
 returnInt :: Operand Int -> Instr ()
 returnInt o = Instr $ "ret" <+> integer o
+
+returnPtr :: Operand Ptr -> Instr ()
+returnPtr o = Instr $ "ret" <+> pointer o
 
 unreachable :: Instr ()
 unreachable = Instr "unreachable"

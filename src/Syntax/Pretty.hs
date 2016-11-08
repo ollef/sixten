@@ -200,6 +200,8 @@ instance Pretty Float   where pretty = fromString . show
 instance Pretty Double  where pretty = fromString . show
 instance Pretty Doc     where pretty = id
 instance Pretty Text    where pretty = fromString . Text.unpack
+instance Pretty Name    where pretty (Name n) = pretty n
+instance Pretty Constr  where pretty (Constr c) = pretty c
 instance Pretty Void    where pretty = absurd
 
 instance Pretty QConstr where

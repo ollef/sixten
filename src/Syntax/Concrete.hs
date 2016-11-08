@@ -103,24 +103,28 @@ instance Syntax Expr where
   appView (App e1 p e2) = Just (e1, p, e2)
   appView _ = Nothing
 
+instance GlobalBind Expr where
+  global = Global
+  bind f g expr = case expr of
+    Var v -> f v
+    Global v -> g v
+    Lit l -> Lit l
+    Con c -> Con c
+    Pi  n p t s -> Pi n p (bind f g t) (bound f g s)
+    Lam n p t s -> Lam n p (bind f g t) (bound f g s)
+    App e1 p e2 -> App (bind f g e1) p (bind f g e2)
+    Let h e s -> Let h (bind f g e) (bound f g s)
+    Case e brs -> Case (bind f g e) (bound f g brs)
+    SourceLoc r e -> SourceLoc r (bind f g e)
+    Wildcard -> Wildcard
+
 instance Applicative Expr where
   pure = return
   (<*>) = ap
 
 instance Monad Expr where
   return = Var
-  expr >>= f = case expr of
-    Var v -> f v
-    Global g -> Global g
-    Lit l -> Lit l
-    Con c -> Con c
-    Pi  n p t s -> Pi n p (t >>= f) (s >>>= f)
-    Lam n p t s -> Lam n p (t >>= f) (s >>>= f)
-    App e1 p e2 -> App (e1 >>= f) p (e2 >>= f)
-    Let h e s -> Let h (e >>= f) (s >>>= f)
-    Case e brs -> Case (e >>= f) (brs >>>= f)
-    SourceLoc r e -> SourceLoc r (e >>= f)
-    Wildcard -> Wildcard
+  expr >>= f = bind f Global expr
 
 instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
   prettyM expr = case expr of
@@ -136,17 +140,17 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
     (usedPisViewM -> Just (tele, s)) -> withTeleHints tele $ \ns ->
       parens `above` absPrec $
       prettyTeleVarTypes ns tele <+> "->" <+>
-      associate arrPrec (prettyM $ instantiateTele (pure . fromText <$> ns) s)
+      associate arrPrec (prettyM $ instantiateTele (pure . fromName <$> ns) s)
     Pi {} -> error "impossible prettyPrec pi"
     (lamsViewM -> Just (tele, s)) -> withTeleHints tele $ \ns ->
       parens `above` absPrec $
       "\\" <> prettyTeleVarTypes ns tele <> "." <+>
-      prettyM (instantiateTele (pure . fromText <$> ns) s)
+      prettyM (instantiateTele (pure . fromName <$> ns) s)
     Lam {} -> error "impossible prettyPrec lam"
     App e1 p e2 -> prettyApp (prettyM e1) (prettyAnnotation p $ prettyM e2)
     Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
       "let" <+> prettyM n <+> "=" <+> inviolable (prettyM e) <+>
-      "in" <+> prettyM (instantiate1 (pure $ fromText n) s)
+      "in" <+> prettyM (instantiate1 (pure $ fromName n) s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (prettyM brs)
     Wildcard -> "_"

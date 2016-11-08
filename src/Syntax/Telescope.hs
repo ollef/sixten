@@ -28,6 +28,7 @@ import qualified Data.Vector as Vector
 import Prelude.Extras
 
 import Syntax.Annotation
+import Syntax.GlobalBind
 import Syntax.Hint
 import Syntax.Name
 import Syntax.Pretty
@@ -46,32 +47,59 @@ newtype Telescope anno expr v = Telescope
 mapAnnotations :: (a -> a') -> Telescope a e v -> Telescope a' e v
 mapAnnotations f (Telescope xs) = Telescope $ (\(h, a, s) -> (h, f a, s)) <$> xs
 
-bimapTelescope
+bimapAnnotatedTelescope
   :: Bifunctor e
   => (a -> a')
   -> (v -> v')
   -> Telescope a (e a) v
   -> Telescope a' (e a') v'
-bimapTelescope f g (Telescope xs)
+bimapAnnotatedTelescope f g (Telescope xs)
   = Telescope $ (\(h, a, s) -> (h, f a, bimapScope f g s)) <$> xs
 
-bifoldMapTelescope
+bifoldMapAnnotatedTelescope
   :: (Bifoldable e, Monoid m)
   => (a -> m)
   -> (v -> m)
   -> Telescope a (e a) v
   -> m
-bifoldMapTelescope f g (Telescope xs)
+bifoldMapAnnotatedTelescope f g (Telescope xs)
   = Foldable.fold $ (\(_, a, s) -> f a <> bifoldMapScope f g s) <$> xs
 
-bitraverseTelescope
+bitraverseAnnotatedTelescope
   :: (Bitraversable e, Applicative f)
   => (a -> f a')
   -> (v -> f v')
   -> Telescope a (e a) v
   -> f (Telescope a' (e a') v')
-bitraverseTelescope f g (Telescope xs)
+bitraverseAnnotatedTelescope f g (Telescope xs)
   = Telescope <$> traverse (\(h, a, s) -> (,,) h <$> f a <*> bitraverseScope f g s) xs
+
+bimapTelescope
+  :: Bifunctor e
+  => (a -> a')
+  -> (v -> v')
+  -> Telescope p (e a) v
+  -> Telescope p (e a') v'
+bimapTelescope f g (Telescope xs)
+  = Telescope $ (\(h, p, s) -> (h, p, bimapScope f g s)) <$> xs
+
+bifoldMapTelescope
+  :: (Bifoldable e, Monoid m)
+  => (a -> m)
+  -> (v -> m)
+  -> Telescope p (e a) v
+  -> m
+bifoldMapTelescope f g (Telescope xs)
+  = Foldable.fold $ (\(_, _, s) -> bifoldMapScope f g s) <$> xs
+
+bitraverseTelescope
+  :: (Bitraversable e, Applicative f)
+  => (a -> f a')
+  -> (v -> f v')
+  -> Telescope p (e a) v
+  -> f (Telescope p (e a') v')
+bitraverseTelescope f g (Telescope xs)
+  = Telescope <$> traverse (\(h, p, s) -> (,,) h p <$> bitraverseScope f g s) xs
 
 hoistTelescope
   :: Functor e
@@ -142,6 +170,10 @@ quantify pifun s (Telescope ps) =
     abstr _ _ = Nothing
     err = error "quantify Telescope"
 
+instance GlobalBound (Telescope a) where
+  bound f g (Telescope tele)
+    = Telescope $ (\(h, a, s) -> (h, a, bound f g s)) <$> tele
+
 instance Bound (Telescope a) where
   Telescope t >>>= f = Telescope $ second (>>>= f) <$> t
 
@@ -168,7 +200,7 @@ prettyTeleVarTypes
   -> PrettyM Doc
 prettyTeleVarTypes ns (Telescope v) = hcat $ map go grouped
   where
-    inst = instantiateTele $ pure . fromText <$> ns
+    inst = instantiateTele $ pure . fromName <$> ns
     vlist = Vector.toList v
     grouped = [ (n : [n' | (Hint n', _) <- vlist'], a, t)
               | (Hint n, (_, a, t)):vlist' <- List.group $ zip (map Hint [(0 :: Int)..]) vlist]

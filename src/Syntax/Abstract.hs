@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, TypeFamilies, ViewPatterns, OverloadedStrings #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings, TypeFamilies, ViewPatterns #-}
 module Syntax.Abstract where
 
 import Control.Monad
@@ -32,19 +32,20 @@ type ExprE = Expr Erasability
 type TypeP = ExprP
 type TypeE = ExprE
 
-bindGlobals :: (Name -> Expr a v) -> Expr a v -> Expr a v
-bindGlobals f expr = case expr of
-  Var _ -> expr
-  Global g -> f g
-  Con _ -> expr
-  Lit _ -> expr
-  Pi h a t s -> Pi h a (bindGlobals f t) (bindScopeGlobals bindGlobals f s)
-  Lam h a t s -> Lam h a (bindGlobals f t) (bindScopeGlobals bindGlobals f s)
-  App e1 a e2 -> App (bindGlobals f e1) a (bindGlobals f e2)
-  Case e brs -> Case (bindGlobals f e) (bindBranchesGlobals bindGlobals f brs)
-
 -------------------------------------------------------------------------------
 -- Instances
+instance GlobalBind (Expr a) where
+  global = Global
+  bind f g expr = case expr of
+    Var v -> f v
+    Global v -> g v
+    Con c -> Con c
+    Lit l -> Lit l
+    Pi h a t s -> Pi h a (bind f g t) (bound f g s)
+    Lam h a t s -> Lam h a (bind f g t) (bound f g s)
+    App e1 a e2 -> App (bind f g e1) a (bind f g e2)
+    Case e brs -> Case (bind f g e) (bound f g brs)
+
 instance Syntax (Expr a) where
   type Annotation (Expr a) = a
 
@@ -73,15 +74,7 @@ instance Applicative (Expr a) where
 
 instance Monad (Expr a) where
   return = Var
-  expr >>= f = case expr of
-    Var v -> f v
-    Global g -> Global g
-    Con c -> Con c
-    Lit l -> Lit l
-    Pi h a t s -> Pi h a (t >>= f) (s >>>= f)
-    Lam h a t s -> Lam h a (t >>= f) (s >>>= f)
-    App e1 a e2 -> App (e1 >>= f) a (e2 >>= f)
-    Case e brs -> Case (e >>= f) (brs >>>= f)
+  expr >>= f = bind f Global expr
 
 instance Bifunctor Expr where
   bimap = bimapDefault
@@ -98,7 +91,7 @@ instance Bitraversable Expr where
     Pi h a t s -> Pi h <$> f a <*> bitraverse f g t <*> bitraverseScope f g s
     Lam h a t s -> Lam h <$> f a <*> bitraverse f g t <*> bitraverseScope f g s
     App e1 a e2 -> App <$> bitraverse f g e1 <*> f a <*> bitraverse f g e2
-    Case e brs  -> Case <$> bitraverse f g e <*> bitraverseBranches f g brs
+    Case e brs  -> Case <$> bitraverse f g e <*> bitraverseAnnotatedBranches f g brs
 
 instance (Eq v, IsString v, Pretty v, Eq a, PrettyAnnotation a) => Pretty (Expr a v) where
   prettyM expr = case expr of
@@ -113,12 +106,12 @@ instance (Eq v, IsString v, Pretty v, Eq a, PrettyAnnotation a) => Pretty (Expr 
     (usedPisViewM -> Just (tele, s)) -> withTeleHints tele $ \ns ->
       parens `above` absPrec $
       prettyTeleVarTypes ns tele <+> "->" <+>
-      associate arrPrec (prettyM $ instantiateTele (pure . fromText <$> ns) s)
+      associate arrPrec (prettyM $ instantiateTele (pure . fromName <$> ns) s)
     Pi {} -> error "impossible prettyPrec pi"
     (lamsViewM -> Just (tele, s)) -> withTeleHints tele $ \ns ->
       parens `above` absPrec $
       "\\" <> prettyTeleVarTypes ns tele <> "." <+>
-      prettyM (instantiateTele (pure . fromText <$> ns) s)
+      prettyM (instantiateTele (pure . fromName <$> ns) s)
     Lam {} -> error "impossible prettyPrec lam"
     App e1 a e2 -> prettyApp (prettyM e1) (prettyAnnotation a $ prettyM e2)
     Case e brs -> parens `above` casePrec $

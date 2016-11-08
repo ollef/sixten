@@ -27,6 +27,7 @@ executable sixten
                        Generate
                        Infer
                        InferErasability
+                       InferDirection
                        LLVM
                        Lift
                        Meta
@@ -45,6 +46,7 @@ executable sixten
                        Syntax.Data
                        Syntax.Definition
                        Syntax.Direction
+                       Syntax.GlobalBind
                        Syntax.Hint
                        Syntax.Lifted
                        Syntax.Name

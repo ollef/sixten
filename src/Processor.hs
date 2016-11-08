@@ -26,6 +26,7 @@ import ClosureConvert
 import Erase
 import qualified Generate
 import qualified Infer
+import qualified InferDirection
 import qualified InferErasability
 import Lift
 import qualified LLVM
@@ -46,7 +47,7 @@ import Util
 
 processGroup
   :: [(Name, Definition Concrete.Expr Name, Concrete.Expr Name)]
-  -> TCM [(Name, LLVM.B)]
+  -> TCM [(LLVM.B, LLVM.B)]
 processGroup
   = prettyTypedGroup "Concrete syntax" id
   >=> exposeConcreteGroup
@@ -58,7 +59,7 @@ processGroup
 
 processAbstractGroup
   :: [(Name, Definition Abstract.ExprP Void, Abstract.ExprP Void)]
-  -> TCM [(Name, LLVM.B)]
+  -> TCM [(LLVM.B, LLVM.B)]
 processAbstractGroup
   = addGroupToContext
   >=> inferGroupErasability
@@ -76,10 +77,13 @@ processAbstractGroup
 
 processConvertedGroup
   :: [(Name, Converted.Expr Void)]
-  -> TCM [(Name, LLVM.B)]
+  -> TCM [(LLVM.B, LLVM.B)]
 processConvertedGroup
   = liftGroup
   >=> prettyGroup "Lambda-lifted" absurd
+  >=> inferGroupDirections
+  >=> addReturnDirectionsToContext
+  >=> prettyGroup "Directed (lifted)" absurd
   >=> generateGroup
 
 prettyTypedGroup
@@ -126,8 +130,8 @@ exposeConcreteGroup
   -> TCM [(Name, Definition Concrete.Expr (Var Int v), Scope Int Concrete.Expr v)]
 exposeConcreteGroup defs = return
   [ ( n
-    , s >>>= unvar (pure . B) Concrete.Global
-    , t >>>= Concrete.Global
+    , s >>>= unvar (pure . B) global
+    , t >>>= global
     )
   | ((s, t), (n, _, _)) <- zip (zip abstractedScopes abstractedTypes) defs]
   where
@@ -146,8 +150,8 @@ typeCheckGroup defs = do
   let names = V.fromList [n | (n, _, _) <- defs]
       instDefs =
         [ ( names V.! i
-          , instantiateDef (Abstract.Global . (names V.!)) d
-          , instantiate (Abstract.Global . (names V.!)) t
+          , instantiateDef (global . (names V.!)) d
+          , instantiate (global . (names V.!)) t
           )
         | (i, (d, t)) <- zip [0..] $ V.toList checkedDefs'
         ]
@@ -173,11 +177,11 @@ inferGroupErasability
   -> TCM [(Name, Definition Abstract.ExprE Void, Abstract.ExprE Void)]
 inferGroupErasability defs = do
   let names = V.fromList [n | (n, _, _) <- defs]
-      glob n = maybe (Abstract.Global n) (pure . B) $ V.elemIndex n names
+      glob n = maybe (global n) (pure . B) $ V.elemIndex n names
       exposedDefs = V.fromList
         [ ( n
-          , bindDefinitionGlobals Abstract.bindGlobals glob $ vacuous d
-          , toScope $ Abstract.bindGlobals glob $ vacuous t
+          , bound absurd glob d
+          , toScope $ bind absurd glob t
           )
         | (n, d, t) <- defs]
   inferredDefs <- InferErasability.inferRecursiveDefs exposedDefs
@@ -187,8 +191,8 @@ inferGroupErasability defs = do
   inferredDefs' <- traverse (bitraverse (traverse $ traverse vf) (traverse vf)) inferredDefs
   let instDefs =
         [ ( names V.! i
-          , instantiateDef (Abstract.Global . (names V.!)) d
-          , instantiate (Abstract.Global . (names V.!)) t
+          , instantiateDef (global . (names V.!)) d
+          , instantiate (global . (names V.!)) t
           )
         | (i, (d, t)) <- zip [0..] $ V.toList inferredDefs'
         ]
@@ -231,7 +235,7 @@ closureConvertGroup defs = do
 
 liftGroup
   :: [(Name, Converted.Expr Void)]
-  -> TCM [(Name, Lifted.Definition Void)]
+  -> TCM [(Name, Lifted.Definition (Maybe Direction) (Lifted.Expr (Maybe Direction)) Void)]
 liftGroup defs = fmap concat $ forM defs $ \(name, e) -> do
   let (e', fs) = liftDefinition name e
   addConvertedSignatures $ HM.fromList $ fmap fakeSignature <$> fs
@@ -239,7 +243,7 @@ liftGroup defs = fmap concat $ forM defs $ \(name, e) -> do
   where
     -- TODO this isn't a very nice way to do this
     fakeSignature
-      :: Lifted.Function Void
+      :: Lifted.Function (Maybe Direction) (Lifted.Expr (Maybe Direction)) Void
       -> Converted.Signature Converted.Expr Unit Void
     fakeSignature (Lifted.Function retDir tele _body)
       = Converted.Function
@@ -247,13 +251,45 @@ liftGroup defs = fmap concat $ forM defs $ \(name, e) -> do
         (Telescope $ (\(h, d) -> (h, d, Scope $ Converted.Lit 0)) <$> tele)
         $ Scope Unit
 
+inferGroupDirections
+  :: [(Name, Lifted.Definition (Maybe Direction) (Lifted.Expr (Maybe Direction)) Void)]
+  -> TCM [(Name, Lifted.Definition RetDir (Lifted.Expr RetDir) Void)]
+inferGroupDirections defs = do
+  let names = V.fromList $ fst <$> defs
+      glob n = maybe (global n) (pure . B) $ V.elemIndex n names
+      exposedDefs = V.fromList
+        [ ( n
+          , bound absurd glob d
+          )
+        | (n, d) <- defs]
+  inferredDefs <- InferDirection.inferRecursiveDefs exposedDefs
+
+  let vf :: InferDirection.MetaVar -> TCM b
+      vf v = throwError $ "inferGroupDirections " ++ show v
+  inferredDefs' <- traverse (traverse $ traverse vf) inferredDefs
+  let instDefs =
+        [ ( names V.! i
+          , Lifted.instantiateDef (global . (names V.!)) d
+          )
+        | (i, d) <- zip [0..] $ V.toList inferredDefs'
+        ]
+  return instDefs
+
+addReturnDirectionsToContext
+  :: [(Name, Lifted.Definition RetDir (Lifted.Expr RetDir) Void)]
+  -> TCM [(Name, Lifted.Definition RetDir (Lifted.Expr RetDir) Void)]
+addReturnDirectionsToContext defs = do
+  addReturnDirections [(n, retDir) | (n, Lifted.FunctionDef _ (Lifted.Function retDir _ _)) <- defs]
+  return defs
+
 generateGroup
-  :: [(Name, Lifted.Definition Void)]
+  :: [(Name, Lifted.Definition RetDir (Lifted.Expr RetDir) Void)]
   -> TCM [(LLVM.B, LLVM.B)]
 generateGroup defs = do
   qcindex <- qconstructorIndex
-  cxt <- gets tcConvertedSignatures
-  let env = Generate.GenEnv qcindex (`HM.lookup` cxt)
+  sigs <- gets tcConvertedSignatures
+  retDirs <- gets tcReturnDirections
+  let env = Generate.GenEnv qcindex (`HM.lookup` sigs) (`HM.lookup` retDirs)
   return $ flip map defs $ \(x, e) ->
     second (fold . intersperse "\n")
       $ Generate.runGen env
@@ -294,13 +330,13 @@ processFile file output logHandle verbosity = do
     Trifecta.Success (Left err) -> return $ Error $ ResolveError err
     Trifecta.Success (Right resolved) -> do
       let groups = filter (not . null) $ dependencyOrder
-            (HS.map (either id (\(QConstr n _) -> n)) . Concrete.constructors) resolved
+            (HS.map (either constrToName (\(QConstr n _) -> n)) . Concrete.constructors) resolved
           constrs = HS.fromList
                   $ programConstrNames Builtin.contextP
                   <> programConstrNames resolved
-          instCon v
-            | v `HS.member` constrs = Concrete.Con $ Left v
-            | otherwise = pure v
+          instCon (Name v)
+            | Constr v `HS.member` constrs = Concrete.Con $ Left (Constr v)
+            | otherwise = pure $ Name v
           groups' = fmap (fmap $ bimap (>>>= instCon) (>>= instCon)) <$> groups
       procRes <- runTCM (process groups') logHandle verbosity
       case procRes of

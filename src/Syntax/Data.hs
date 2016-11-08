@@ -11,6 +11,7 @@ import Prelude.Extras
 
 import Syntax.Annotation
 import Syntax.Class
+import Syntax.GlobalBind
 import Syntax.Name
 import Syntax.Pretty
 import Syntax.Telescope
@@ -18,6 +19,9 @@ import Util
 
 newtype DataDef typ v = DataDef { dataConstructors :: [ConstrDef (Scope Tele typ v)] }
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+instance GlobalBound DataDef where
+  bound f g (DataDef cs) = DataDef $ fmap (bound f g) <$> cs
 
 traverseDataDefFirst
   :: (Bitraversable typ, Applicative f)
@@ -32,14 +36,6 @@ dataDefFirst
   -> DataDef (typ a) v
   -> DataDef (typ a') v
 dataDefFirst f (DataDef cs) = DataDef $ map (fmap $ bimapScope f id) cs
-
-bindDataDefGlobals
-  :: Monad e
-  => (forall x. (n -> e x) -> e x -> e x)
-  -> (n -> e v)
-  -> DataDef e v
-  -> DataDef e v
-bindDataDefGlobals expr f (DataDef cs) = DataDef $ fmap (bindScopeGlobals expr f) <$> cs
 
 quantifiedConstrTypes
   :: Syntax typ
@@ -63,7 +59,7 @@ prettyDataDef
   -> DataDef typ v
   -> PrettyM Doc
 prettyDataDef ps (DataDef cs) = "data" <+> "_" <+> withTeleHints ps (\ns ->
-    let inst = instantiateTele $ pure . fromText <$> ns in
+    let inst = instantiateTele $ pure . fromName <$> ns in
         prettyTeleVarTypes ns ps <+> "where" <$$>
           indent 2 (vcat (map (prettyM . fmap inst) cs))
     )

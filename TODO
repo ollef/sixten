@@ -7,17 +7,18 @@ Erasure
   Make sure that we don't transform functions to non-functions by erasing all arguments.
     e.g. `loop x = loop x : Void` should not have its argument removed.
 Codegen
-  Add Destructor calling convention for functions that return part of their argument
-    To get rid of the memcpy from deref
+  Return dir: Change the Maybe Direction to something more concrete
   Arity inference
   Globals
     Make literals llvm `constant`s
     Add error message for circular globals, e.g. `a = a`
   Should things of known size > 1 be passed as LLVM arrays?
+  Make the generated code word-size independent (e.g. use a trick to do sizeof?)
+  Make the Lift pass sort lifted functions output in dependency order
 Compiler
+  Add printing to compiler passes that are not TCM (make a MonadLog class?)
   Concretise some of the Context/MetaVary nonsense
   Clean up MetaVar handling (not all modules need the full generality)
-  Clean up Syntax.{Telescope,Class,Branches,Data,Definition}
 Error messages
   Make definitions store their locations
   Make scope checking report locations
