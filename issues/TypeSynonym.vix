@@ -1,0 +1,5 @@
+data Void where
+
+Void2 = Void
+
+Int = Size
