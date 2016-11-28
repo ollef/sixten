@@ -38,3 +38,11 @@ toReturnDirection _ Void = ReturnVoid
 toReturnDirection _ Direct = ReturnDirect
 toReturnDirection d Indirect = ReturnIndirect d
 
+data ClosureDir
+  = NonClosureDir Direction
+  | ClosureDir
+  deriving (Eq, Ord, Show)
+
+instance Pretty ClosureDir where
+  prettyM (NonClosureDir d) = prettyM d
+  prettyM ClosureDir = "closure"

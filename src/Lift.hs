@@ -13,13 +13,13 @@ import Util
 
 data LiftState = LiftState
   { freshNames :: [Name]
-  , liftedFunctions :: [(Name, Lifted.Function (Maybe Direction) (Lifted.Expr (Maybe Direction)) Void)]
+  , liftedFunctions :: [(Name, Lifted.Function ClosureDir (Lifted.Expr ClosureDir) Void)]
   }
 
 newtype Lift a = Lift { unLifted :: State LiftState a }
   deriving (Functor, Applicative, Monad, MonadState LiftState)
 
-liftFunction :: Lifted.Function (Maybe Direction) (Lifted.Expr (Maybe Direction)) Void -> Lift Name
+liftFunction :: Lifted.Function ClosureDir (Lifted.Expr ClosureDir) Void -> Lift Name
 liftFunction f = do
   name:names <- gets freshNames
   modify $ \s -> s
@@ -30,7 +30,7 @@ liftFunction f = do
 
 liftExpr
   :: Converted.Expr v
-  -> Lift (Lifted.Expr (Maybe Direction) v)
+  -> Lift (Lifted.Expr ClosureDir v)
 liftExpr expr = case expr of
   Converted.Var v -> return $ Lifted.Var v
   Converted.Global g -> return $ Lifted.Global g
@@ -59,7 +59,7 @@ underScope f s = toScope <$> f (fromScope s)
 
 liftBranches
   :: Branches QConstr () Converted.Expr v
-  -> Lift (Branches QConstr () (Lifted.Expr (Maybe Direction)) v)
+  -> Lift (Branches QConstr () (Lifted.Expr ClosureDir) v)
 liftBranches (ConBranches cbrs sz) = ConBranches <$> sequence
   [ (,,) qc <$> liftTelescope tele <*> underScope liftExpr s
   | (qc, tele, s) <- cbrs
@@ -71,13 +71,13 @@ liftBranches (LitBranches lbrs def) = LitBranches <$> sequence
 
 liftTelescope
   :: Telescope () Converted.Expr v
-  -> Lift (Telescope () (Lifted.Expr (Maybe Direction)) v)
+  -> Lift (Telescope () (Lifted.Expr ClosureDir) v)
 liftTelescope (Telescope tele) = Telescope
   <$> mapM (\(h, (), s) -> (,,) h () <$> underScope liftExpr s) tele
 
 liftDefinitionM
   :: Converted.Expr Void
-  -> Lift (Lifted.Definition (Maybe Direction) (Lifted.Expr (Maybe Direction)) Void)
+  -> Lift (Lifted.Definition ClosureDir (Lifted.Expr ClosureDir) Void)
 liftDefinitionM (Converted.Sized _ (Converted.Lams retDir tele s))
   = Lifted.FunctionDef Public . Lifted.Function retDir (teleNamedAnnotations tele)
     <$> underScope liftExpr s
@@ -88,7 +88,7 @@ liftDefinitionM sexpr
 liftDefinition
   :: Name
   -> Converted.Expr Void
-  -> (Lifted.Definition (Maybe Direction) (Lifted.Expr (Maybe Direction)) Void, [(Name, Lifted.Function (Maybe Direction) (Lifted.Expr (Maybe Direction)) Void)])
+  -> (Lifted.Definition ClosureDir (Lifted.Expr ClosureDir) Void, [(Name, Lifted.Function ClosureDir (Lifted.Expr ClosureDir) Void)])
 liftDefinition name expr
   = second liftedFunctions
   $ runState (unLifted $ liftDefinitionM expr) LiftState

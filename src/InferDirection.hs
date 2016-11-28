@@ -104,7 +104,7 @@ instance Hashable MetaVar where
   hashWithSalt s = hashWithSalt s . metaId
 
 infer
-  :: Expr (Maybe Direction) MetaVar
+  :: Expr ClosureDir MetaVar
   -> TCM (Expr RetDirM MetaVar, Location)
 infer expr = case expr of
   Var v -> return (Var v, metaLocation v)
@@ -113,10 +113,10 @@ infer expr = case expr of
   Con c es -> do
     es' <- mapM infer es
     return (Con c $ fst <$> es', MOutParam)  -- TODO: Can be improved.
-  Call Nothing f es -> locatedCall MOutParam (ReturnIndirect MOutParam) f es
-  Call (Just Void) f es -> directCall ReturnVoid f es
-  Call (Just Direct) f es -> directCall ReturnDirect f es
-  Call (Just Indirect) f es -> do
+  Call ClosureDir f es -> locatedCall MOutParam (ReturnIndirect MOutParam) f es
+  Call (NonClosureDir Void) f es -> directCall ReturnVoid f es
+  Call (NonClosureDir Direct) f es -> directCall ReturnDirect f es
+  Call (NonClosureDir Indirect) f es -> do
     returnDir <- inferIndirectReturnDir f
     (f', _) <- infer f
     locatedEs <- mapM (bitraverse infer pure) es
@@ -150,7 +150,7 @@ infer expr = case expr of
 
 inferBranches
   :: Location
-  -> Branches c () (Expr (Maybe Direction)) MetaVar
+  -> Branches c () (Expr ClosureDir) MetaVar
   -> TCM (Branches c () (Expr RetDirM) MetaVar, Location)
 inferBranches loc (ConBranches cbrs retType) = do
   locatedCBrs <- forM cbrs $ \(c, tele, brScope) -> do
@@ -181,7 +181,7 @@ inferBranches _loc (LitBranches lbrs def) = do
   return (LitBranches lbrs' def', loc)
 
 inferIndirectReturnDir
-  :: Expr (Maybe Direction) MetaVar
+  :: Expr ClosureDir MetaVar
   -> TCM MetaReturnIndirect
 inferIndirectReturnDir expr = case expr of
   Var v -> return $ metaReturnIndirect v
@@ -194,17 +194,17 @@ inferIndirectReturnDir expr = case expr of
 
 inferDefinition
   :: MetaVar
-  -> Definition (Maybe Direction) (Expr (Maybe Direction)) MetaVar
+  -> Definition ClosureDir (Expr ClosureDir) MetaVar
   -> TCM (Definition RetDirM (Expr RetDirM) MetaVar)
 inferDefinition v (FunctionDef vis (Function mretDir args s)) = do
   args' <- forM args $ \(h, _) -> exists h MProjection MOutParam
   let e = instantiateTele (pure <$> args') s
       vdir = metaReturnIndirect v
   retDir <- case mretDir of
-    Nothing -> do
+    ClosureDir -> do
       unifyMetaReturnIndirect MOutParam vdir
       return Indirect
-    Just retDir -> return retDir
+    NonClosureDir retDir -> return retDir
   (e', loc) <- infer e
   glbdir <- maxMetaReturnIndirect loc vdir
   unifyMetaReturnIndirect glbdir vdir
@@ -222,7 +222,7 @@ generaliseDefs ds = do
   return $ recursiveAbstractDefs ds'
 
 inferRecursiveDefs
-  :: Vector (Name, Definition (Maybe Direction) (Expr (Maybe Direction)) (Var Int MetaVar))
+  :: Vector (Name, Definition ClosureDir (Expr ClosureDir) (Var Int MetaVar))
   -> TCM (Vector (Definition RetDir (Expr RetDir) (Var Int MetaVar)))
 inferRecursiveDefs ds = do
   evs <- Vector.forM ds $ \(v, d) -> do

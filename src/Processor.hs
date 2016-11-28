@@ -235,7 +235,7 @@ closureConvertGroup defs = do
 
 liftGroup
   :: [(Name, Converted.Expr Void)]
-  -> TCM [(Name, Lifted.Definition (Maybe Direction) (Lifted.Expr (Maybe Direction)) Void)]
+  -> TCM [(Name, Lifted.Definition ClosureDir (Lifted.Expr ClosureDir) Void)]
 liftGroup defs = fmap concat $ forM defs $ \(name, e) -> do
   let (e', fs) = liftDefinition name e
   addConvertedSignatures $ HM.fromList $ fmap fakeSignature <$> fs
@@ -243,7 +243,7 @@ liftGroup defs = fmap concat $ forM defs $ \(name, e) -> do
   where
     -- TODO this isn't a very nice way to do this
     fakeSignature
-      :: Lifted.Function (Maybe Direction) (Lifted.Expr (Maybe Direction)) Void
+      :: Lifted.Function ClosureDir (Lifted.Expr ClosureDir) Void
       -> Converted.Signature Converted.Expr Unit Void
     fakeSignature (Lifted.Function retDir tele _body)
       = Converted.Function
@@ -252,7 +252,7 @@ liftGroup defs = fmap concat $ forM defs $ \(name, e) -> do
         $ Scope Unit
 
 inferGroupDirections
-  :: [(Name, Lifted.Definition (Maybe Direction) (Lifted.Expr (Maybe Direction)) Void)]
+  :: [(Name, Lifted.Definition ClosureDir (Lifted.Expr ClosureDir) Void)]
   -> TCM [(Name, Lifted.Definition RetDir (Lifted.Expr RetDir) Void)]
 inferGroupDirections defs = do
   let names = V.fromList $ fst <$> defs

@@ -18,8 +18,8 @@ data Expr v
   | Global Name
   | Lit Literal
   | Con QConstr (Vector (Expr v)) -- ^ Fully applied
-  | Lams (Maybe Direction) (Telescope Direction Expr Void) (Scope Tele Expr Void)
-  | Call (Maybe Direction) (Expr v) (Vector (Expr v, Direction))
+  | Lams ClosureDir (Telescope Direction Expr Void) (Scope Tele Expr Void)
+  | Call ClosureDir (Expr v) (Vector (Expr v, Direction))
   | Let NameHint (Expr v) (Scope1 Expr v)
   | Case (Expr v) (Branches QConstr () Expr v)
   | Prim (Primitive (Expr v))
@@ -27,7 +27,7 @@ data Expr v
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 data Signature expr expr' v
-  = Function (Maybe Direction) (Telescope Direction expr Void) (Scope Tele expr' Void)
+  = Function ClosureDir (Telescope Direction expr Void) (Scope Tele expr' Void)
   | Constant Direction (expr' v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 

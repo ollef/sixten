@@ -7,7 +7,6 @@ Erasure
   Make sure that we don't transform functions to non-functions by erasing all arguments.
     e.g. `loop x = loop x : Void` should not have its argument removed.
 Codegen
-  Return dir: Change the Maybe Direction to something more concrete
   Arity inference
   Globals
     Make literals llvm `constant`s
