@@ -1,0 +1,17 @@
+data List a where
+  Nil : List a
+  Cons : a -> Ptr (List a) -> List a
+
+data List2 a where
+  Nil : List2 a
+  Cons : a -> Ptr (List2 a) -> List2 a
+
+the : (A : Type) -> A -> A
+the _ a = a
+
+test = the (_ -> _ -> List _) Cons 1 (Ref Nil)
+
+test2 = the (List2 Size) (Cons 1 (Ref Nil))
+
+test3 : List2 Size
+test3 = Cons 1 (Ref Nil)

@@ -70,20 +70,20 @@ checkPoly' expr polyType = do
     <$> metaTelescopeM vs
     <*> abstractM (teleAbstraction $ snd <$> vs) e
 
-inferPoly :: ConcreteM -> Plicitness -> TCM (AbstractM, Polytype)
-inferPoly expr maxPlicitness = do
-  logMeta 20 "inferPoly expr" expr
-  modifyIndent succ
-  (resExpr, resType) <- inferPoly' expr maxPlicitness
-  modifyIndent pred
-  logMeta 20 "inferPoly res expr" resExpr
-  logMeta 20 "inferPoly res typ" resType
-  return (resExpr, resType)
+-- inferPoly :: ConcreteM -> Plicitness -> TCM (AbstractM, Polytype)
+-- inferPoly expr maxPlicitness = do
+--   logMeta 20 "inferPoly expr" expr
+--   modifyIndent succ
+--   (resExpr, resType) <- inferPoly' expr maxPlicitness
+--   modifyIndent pred
+--   logMeta 20 "inferPoly res expr" resExpr
+--   logMeta 20 "inferPoly res typ" resType
+--   return (resExpr, resType)
 
-inferPoly' :: ConcreteM -> Plicitness -> TCM (AbstractM, Polytype)
-inferPoly' expr maxPlicitness = do
-  (expr', exprType) <- inferRho expr maxPlicitness
-  generalise expr' exprType
+-- inferPoly' :: ConcreteM -> Plicitness -> TCM (AbstractM, Polytype)
+-- inferPoly' expr maxPlicitness = do
+--   (expr', exprType) <- inferRho expr maxPlicitness
+--   generalise expr' exprType
 
 instantiateForalls :: Polytype -> Plicitness -> TCM (Rhotype, AbstractM -> TCM AbstractM)
 instantiateForalls typ maxPlicitness = do
@@ -112,27 +112,27 @@ checkRho expr typ = do
   return res
 
 checkRho' :: ConcreteM -> Rhotype -> TCM AbstractM
-checkRho' expr ty = tcRho expr (Check ty)
+checkRho' expr ty = tcRho expr (Check ty) (Just ty)
 
-inferRho :: ConcreteM -> Plicitness -> TCM (AbstractM, Rhotype)
-inferRho expr maxPlicitness = do
+inferRho :: ConcreteM -> Plicitness -> Maybe Rhotype -> TCM (AbstractM, Rhotype)
+inferRho expr maxPlicitness expectedAppResult = do
   logMeta 20 "inferRho" expr
   modifyIndent succ
-  (resExpr, resType) <- inferRho' expr maxPlicitness
+  (resExpr, resType) <- inferRho' expr maxPlicitness expectedAppResult
   modifyIndent pred
   logMeta 20 "inferRho res expr" resExpr
   logMeta 20 "inferRho res typ" resType
   return (resExpr, resType)
 
-inferRho' :: ConcreteM -> Plicitness -> TCM (AbstractM, Rhotype)
-inferRho' expr maxPlicitness = do
+inferRho' :: ConcreteM -> Plicitness -> Maybe Rhotype -> TCM (AbstractM, Rhotype)
+inferRho' expr maxPlicitness expectedAppResult = do
   ref <- liftST $ newSTRef $ error "inferRho: empty result"
-  expr' <- tcRho expr $ Infer ref maxPlicitness
+  expr' <- tcRho expr (Infer ref maxPlicitness) expectedAppResult
   typ <- liftST $ readSTRef ref
   return (expr', typ)
 
-tcRho :: ConcreteM -> Expected -> TCM AbstractM
-tcRho expr expected = case expr of
+tcRho :: ConcreteM -> Expected -> Maybe Rhotype -> TCM AbstractM
+tcRho expr expected expectedAppResult = case expr of
   Concrete.Var v -> do
     f <- instExpected expected $ metaType v
     f $ Abstract.Var v
@@ -144,7 +144,7 @@ tcRho expr expected = case expr of
     f <- instExpected expected Builtin.Size
     f $ Abstract.Lit l
   Concrete.Con con -> do
-    typeName <- resolveConstrType [con] expected
+    typeName <- resolveConstrType [con] expectedAppResult
     let qc = qualify typeName con
     typ <- qconstructor qc
     f <- instExpected expected typ
@@ -172,13 +172,13 @@ tcRho expr expected = case expr of
       Infer _ _ -> do
         x <- forall h p varType'
         let body = instantiate1 (pure x) bodyScope
-        (body', bodyType) <- enterLevel $ inferRho body Explicit
+        (body', bodyType) <- enterLevel $ inferRho body Explicit Nothing
         bodyScope' <- abstract1M x body'
         bodyTypeScope <- abstract1M x bodyType
         f <- instExpected expected $ Abstract.Pi h p varType' bodyTypeScope
         f $ Abstract.Lam h p varType' bodyScope'
   Concrete.App fun p arg -> do
-    (fun', funType) <- inferRho fun p
+    (fun', funType) <- inferRho fun p expectedAppResult
     (argType, resTypeScope, f1) <- subtypeFun funType p
     case unusedScope resTypeScope of
       Nothing -> do
@@ -198,7 +198,7 @@ tcRho expr expected = case expr of
     f <- instExpected expected t
     x <- existsVar mempty t
     f x
-  Concrete.SourceLoc loc e -> located loc $ tcRho e expected
+  Concrete.SourceLoc loc e -> located loc $ tcRho e expected expectedAppResult
 
 tcBranches
   :: ConcreteM
@@ -206,8 +206,8 @@ tcBranches
   -> Expected
   -> TCM AbstractM
 tcBranches expr (ConBranches cbrs _) expected = do
-  (expr', exprType) <- inferRho expr Explicit
-  typeName <- resolveConstrType ((\(c, _, _) -> c) <$> cbrs) $ Check exprType
+  (expr', exprType) <- inferRho expr Explicit Nothing
+  typeName <- resolveConstrType ((\(c, _, _) -> c) <$> cbrs) $ Just exprType
   (_dataType, params) <- instantiateDataType typeName
 
   instantiatedBranches <- forM cbrs $ \(c, tele, sbr) -> mdo
@@ -239,7 +239,7 @@ tcBranches expr (ConBranches cbrs _) expected = do
     Infer _ maxPlicitness -> do
       -- TODO Arm-less cases
       let (headQc, headVs, headBr) = head inferredPatBranches
-      (headBr', resType) <- inferRho headBr maxPlicitness
+      (headBr', resType) <- inferRho headBr maxPlicitness Nothing
       brs' <- forM (tail inferredPatBranches) $ \(qc, vs, br) -> do
         br' <- checkRho br resType
         return (qc, vs, br')
@@ -260,7 +260,7 @@ tcBranches expr (LitBranches lbrs d) expected = do
     Check resType -> do
       d' <- checkRho d resType
       return (d', resType)
-    Infer _ maxPlicitness -> inferRho d maxPlicitness
+    Infer _ maxPlicitness -> inferRho d maxPlicitness Nothing
   lbrs' <- forM lbrs $ \(l, e) -> do
     e' <- checkRho e resType
     return (l, e')
@@ -287,7 +287,7 @@ instantiateDataType typeName = mdo
 -- Constrs
 resolveConstrType
   :: [Either Constr QConstr]
-  -> Expected
+  -> Maybe Rhotype
   -> TCM Name
 resolveConstrType cs expected = do
   mExpectedType <- expectedDataType
@@ -318,22 +318,25 @@ resolveConstrType cs expected = do
     (xs, _) -> err "Ambiguous constructor"
       [ "Unable to infer the type for the" Leijen.<+> constrDoc <> "."
       , "Possible data types:"
-      Leijen.<+> prettyHumanList "and" (Leijen.dullgreen . pretty <$> xs)
+      Leijen.<+> prettyHumanList "or" (Leijen.dullgreen . pretty <$> xs)
       <> "."
       ]
   where
-    expectedDataType =
-      case expected of
-        Infer _ _ -> return Nothing
-        Check checkType -> do
-          checkType' <- whnf checkType
-          case appsView checkType' of
-            (Abstract.Global v, _) -> do
-              (d, _ :: AbstractM) <- definition v
-              return $ case d of
-                DataDefinition _ -> Just v
-                _ -> Nothing
-            _ -> return Nothing
+    expectedDataType = join <$> traverse findExpectedDataType expected
+    findExpectedDataType :: AbstractM -> TCM (Maybe Name)
+    findExpectedDataType typ = do
+      typ' <- whnf typ
+      case typ' of
+        Abstract.Pi h p t s -> do
+          v <- forall h p t
+          findExpectedDataType $ instantiate1 (pure v) s
+        Abstract.App t1 _ _ -> findExpectedDataType t1
+        Abstract.Global v -> do
+          (d, _ :: AbstractM) <- definition v
+          return $ case d of
+            DataDefinition _ -> Just v
+            _ -> Nothing
+        _ -> return Nothing
     err heading docs = do
       loc <- currentLocation
       throwError
