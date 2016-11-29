@@ -15,7 +15,6 @@ Codegen
     Add error message for circular globals, e.g. `a = a`
   Should things of known size > 1 be passed as LLVM arrays?
   Make the generated code word-size independent (e.g. use a trick to do sizeof?)
-  Make the Lift pass sort lifted functions output in dependency order
 Compiler
   Add printing to compiler passes that are not TCM (make a MonadLog class?)
   Concretise some of the Context/MetaVary nonsense

@@ -80,11 +80,15 @@ processConvertedGroup
   -> TCM [(LLVM.B, LLVM.B)]
 processConvertedGroup
   = liftGroup
-  >=> prettyGroup "Lambda-lifted" absurd
+  >>=> prettyGroup "Lambda-lifted" absurd
   >=> inferGroupDirections
   >=> addReturnDirectionsToContext
   >=> prettyGroup "Directed (lifted)" absurd
   >=> generateGroup
+
+infixr 1 >>=>
+(>>=>) :: Monad m => (a -> m [b]) -> (b -> m [c]) -> a -> m [c]
+(f >>=> g) a = concat <$> (f a >>= mapM g)
 
 prettyTypedGroup
   :: (Pretty (e Name), Functor e, Eq1 e, Syntax e, Eq (Annotation e), PrettyAnnotation (Annotation e))
@@ -235,8 +239,8 @@ closureConvertGroup defs = do
 
 liftGroup
   :: [(Name, Converted.Expr Void)]
-  -> TCM [(Name, Lifted.Definition ClosureDir (Lifted.Expr ClosureDir) Void)]
-liftGroup defs = fmap concat $ forM defs $ \(name, e) -> do
+  -> TCM [[(Name, Lifted.Definition ClosureDir (Lifted.Expr ClosureDir) Void)]]
+liftGroup defs = fmap (Lifted.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
   let (e', fs) = liftDefinition name e
   addConvertedSignatures $ HM.fromList $ fmap fakeSignature <$> fs
   return $ (name, e') : fmap (second $ Lifted.FunctionDef Private) fs

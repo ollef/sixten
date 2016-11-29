@@ -12,9 +12,11 @@ import Data.Monoid
 import Data.String
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
+import Data.Void
 import Prelude.Extras
 
 import Syntax hiding (Definition, abstractDef)
+import TopoSort
 import Util
 
 data Expr retDir v
@@ -41,6 +43,14 @@ data Definition retDir expr v
   = FunctionDef Visibility (Function retDir expr v)
   | ConstantDef Visibility (Constant expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+dependencyOrder
+  :: (GlobalBind expr, Foldable expr)
+  => [(Name, Definition retDir expr Void)]
+  -> [[(Name, Definition retDir expr Void)]]
+dependencyOrder defs = fmap (\n -> (n, m HM.! n)) <$> topoSort (second (bound absurd pure) <$> defs)
+  where
+    m = HM.fromList defs
 
 -------------------------------------------------------------------------------
 -- Helpers
