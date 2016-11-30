@@ -1,4 +1,4 @@
-module Syntax (module X, Rendering) where
+module Syntax (module X) where
 
 import Bound as X
 import Bound.Scope as X
@@ -16,4 +16,4 @@ import Syntax.Name as X
 import Syntax.Pretty as X
 import Syntax.Primitive as X
 import Syntax.Telescope as X
-import Text.Trifecta.Rendering(Rendering)
+import Syntax.SourceLoc as X

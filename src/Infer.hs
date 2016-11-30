@@ -590,13 +590,14 @@ checkDataType name (DataDef cs) typ = mdo
 checkDefType
   :: MetaVar Abstract.ExprP
   -> Definition Concrete.Expr (MetaVar Abstract.ExprP)
+  -> SourceLoc
   -> AbstractM
   -> TCM (Definition Abstract.ExprP (MetaVar Abstract.ExprP), AbstractM)
-checkDefType _ (Definition e) typ = do
-  e' <- checkPoly e typ
+checkDefType _ (Definition e) loc typ = do
+  e' <- located (render loc) $ checkPoly e typ
   return (Definition e', typ)
-checkDefType v (DataDefinition d) typ = do
-  (d', typ') <- checkDataType v d typ
+checkDefType v (DataDefinition d) loc typ = do
+  (d', typ') <- located (render loc) $ checkDataType v d typ
   return (DataDefinition d', typ')
 
 generaliseDef
@@ -678,6 +679,7 @@ generaliseDefs xs = do
 
 checkRecursiveDefs
   :: Vector ( Name
+            , SourceLoc
             , Definition Concrete.Expr (Var Int (MetaVar Abstract.ExprP))
             , ScopeM Int Concrete.Expr
             )
@@ -687,19 +689,20 @@ checkRecursiveDefs
          )
 checkRecursiveDefs ds =
   generaliseDefs <=< enterLevel $ do
-    evs <- Vector.forM ds $ \(v, _, _) -> do
+    evs <- Vector.forM ds $ \(v, _, _, _) -> do
       let h = fromName v
       t <- existsType h
       forall h Explicit (t :: AbstractM)
-    let instantiatedDs = flip Vector.map ds $ \(_, e, t) ->
+    let instantiatedDs = flip Vector.map ds $ \(_, loc, e, t) ->
           ( instantiateDef (pure . (evs Vector.!)) e
           , instantiate (pure . (evs Vector.!)) t
+          , loc
           )
-    flip Vector.imapM instantiatedDs $ \i (d, t) -> do
+    flip Vector.imapM instantiatedDs $ \i (d, t, loc) -> do
       let v = evs Vector.! i
       t' <- checkPoly t =<< existsTypeType mempty
       unify [] (metaType v) t'
-      (d', t'') <- checkDefType v d t'
+      (d', t'') <- checkDefType v d loc t'
       logMeta 20 ("checkRecursiveDefs res " ++ show (metaHint v)) d'
       logMeta 20 ("checkRecursiveDefs res t " ++ show (metaHint v)) t'
       return (v, d', t'')

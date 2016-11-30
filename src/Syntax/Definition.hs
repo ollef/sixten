@@ -20,6 +20,7 @@ import Syntax.Data
 import Syntax.GlobalBind
 import Syntax.Name
 import Syntax.Pretty
+import Syntax.SourceLoc
 import TopoSort
 import Util
 
@@ -89,6 +90,10 @@ recursiveAbstractDefs es = (abstractDef (`HM.lookup` vs) . snd) <$> es
     vs = HM.fromList $ zip (toList $ fst <$> es) [(0 :: Int)..]
 
 type Program expr v = HashMap Name (Definition expr v, expr v)
+type LocatedProgram expr v = HashMap Name (SourceLoc, Definition expr v, expr v)
+
+unlocatedProgram :: LocatedProgram expr v -> Program expr v
+unlocatedProgram = HM.map (\(_, d, e) -> (d, e))
 
 dependencies
   :: (Foldable e, Monad e)
@@ -127,8 +132,8 @@ programConstrNames prog
 dependencyOrder
   :: (Foldable e, Monad e)
   => (forall v. e v -> HashSet Name)
-  -> Program e Name
-  -> [[(Name, (Definition e Name, e Name))]]
+  -> LocatedProgram e Name
+  -> [[(Name, (SourceLoc, Definition e Name, e Name))]]
 dependencyOrder constrs prog
   = fmap (\n -> (n, prog HM.! n)) . filter (`HM.member` prog)
-  <$> topoSort (HM.toList $ dependencies constrs prog)
+  <$> topoSort (HM.toList $ dependencies constrs $ unlocatedProgram prog)

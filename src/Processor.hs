@@ -2,6 +2,7 @@
 module Processor where
 
 import Control.Monad.Except
+import Control.Monad.Identity
 import Control.Monad.State
 import Data.Bifunctor
 import Data.Bitraversable
@@ -46,10 +47,10 @@ import TCM
 import Util
 
 processGroup
-  :: [(Name, Definition Concrete.Expr Name, Concrete.Expr Name)]
+  :: [(Name, SourceLoc, Definition Concrete.Expr Name, Concrete.Expr Name)]
   -> TCM [(LLVM.B, LLVM.B)]
 processGroup
-  = prettyTypedGroup "Concrete syntax" id
+  = prettyLocatedGroup "Concrete syntax" id
   >=> exposeConcreteGroup
   >=> typeCheckGroup
   >=> prettyTypedGroup "Abstract syntax" absurd
@@ -89,6 +90,16 @@ processConvertedGroup
 infixr 1 >>=>
 (>>=>) :: Monad m => (a -> m [b]) -> (b -> m [c]) -> a -> m [c]
 (f >>=> g) a = concat <$> (f a >>= mapM g)
+
+prettyLocatedGroup
+  :: (Pretty (e Name), Functor e, Eq1 e, Syntax e, Eq (Annotation e), PrettyAnnotation (Annotation e))
+  => Text
+  -> (v -> Name)
+  -> [(Name, x, Definition e v, e v)]
+  -> TCM [(Name, x, Definition e v, e v)]
+prettyLocatedGroup x f defs = do
+  void $ prettyTypedGroup x f $ (\(n, _, d, t) -> (n, d, t)) <$> defs
+  return defs
 
 prettyTypedGroup
   :: (Pretty (e Name), Functor e, Eq1 e, Syntax e, Eq (Annotation e), PrettyAnnotation (Annotation e))
@@ -130,20 +141,21 @@ prettyGroup str f defs = do
   return defs
 
 exposeConcreteGroup
-  :: [(Name, Definition Concrete.Expr Name, Concrete.Expr Name)]
-  -> TCM [(Name, Definition Concrete.Expr (Var Int v), Scope Int Concrete.Expr v)]
+  :: [(Name, SourceLoc, Definition Concrete.Expr Name, Concrete.Expr Name)]
+  -> TCM [(Name, SourceLoc, Definition Concrete.Expr (Var Int v), Scope Int Concrete.Expr v)]
 exposeConcreteGroup defs = return
   [ ( n
+    , loc
     , s >>>= unvar (pure . B) global
     , t >>>= global
     )
-  | ((s, t), (n, _, _)) <- zip (zip abstractedScopes abstractedTypes) defs]
+  | ((s, t), (n, loc, _, _)) <- zip (zip abstractedScopes abstractedTypes) defs]
   where
-    abstractedScopes = recursiveAbstractDefs [(n, d) | (n, d, _) <- defs]
-    abstractedTypes = recursiveAbstract [(n, t) | (n, _, t) <- defs]
+    abstractedScopes = recursiveAbstractDefs [(n, d) | (n, _, d, _) <- defs]
+    abstractedTypes = recursiveAbstract [(n, t) | (n, _, _, t) <- defs]
 
 typeCheckGroup
-  :: [(Name, Definition Concrete.Expr (Var Int (MetaVar Abstract.ExprP)), ScopeM Int Concrete.Expr)]
+  :: [(Name, SourceLoc, Definition Concrete.Expr (Var Int (MetaVar Abstract.ExprP)), ScopeM Int Concrete.Expr)]
   -> TCM [(Name, Definition Abstract.ExprP Void, Abstract.ExprP Void)]
 typeCheckGroup defs = do
   checkedDefs <- Infer.checkRecursiveDefs $ V.fromList defs
@@ -151,7 +163,7 @@ typeCheckGroup defs = do
   let vf :: MetaVar Abstract.ExprP -> TCM b
       vf v = throwError $ "typeCheckGroup " ++ show v
   checkedDefs' <- traverse (bitraverse (traverse $ traverse vf) (traverse vf)) checkedDefs
-  let names = V.fromList [n | (n, _, _) <- defs]
+  let names = V.fromList [n | (n, _, _, _) <- defs]
       instDefs =
         [ ( names V.! i
           , instantiateDef (global . (names V.!)) d
@@ -331,13 +343,13 @@ processFile file output logHandle verbosity = do
   let resolveResult = Resolve.program <$> parseResult
   case resolveResult of
     Trifecta.Failure xs -> return $ Error $ SyntaxError xs
-    Trifecta.Success (Left err) -> return $ Error $ ResolveError err
-    Trifecta.Success (Right resolved) -> do
+    Trifecta.Success (ExceptT (Identity (Left err))) -> return $ Error $ ResolveError err
+    Trifecta.Success (ExceptT (Identity (Right resolved))) -> do
       let groups = filter (not . null) $ dependencyOrder
             (HS.map (either constrToName (\(QConstr n _) -> n)) . Concrete.constructors) resolved
           constrs = HS.fromList
                   $ programConstrNames Builtin.contextP
-                  <> programConstrNames resolved
+                  <> programConstrNames (unlocatedProgram resolved)
           instCon (Name v)
             | Constr v `HS.member` constrs = Concrete.Con $ Left (Constr v)
             | otherwise = pure $ Name v
@@ -367,5 +379,5 @@ processFile file output logHandle verbosity = do
       addErasableContext Builtin.contextE
       addConvertedSignatures $ Converted.signature <$> Builtin.convertedContext
       builtins <- processConvertedGroup $ HM.toList Builtin.convertedContext
-      results <- mapM (processGroup . fmap (\(n, (d, t)) -> (n, d, t))) groups
+      results <- mapM (processGroup . fmap (\(n, (d, t, loc)) -> (n, d, t, loc))) groups
       return $ builtins : results

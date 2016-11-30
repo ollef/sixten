@@ -4,13 +4,12 @@ module Syntax.Hint where
 import Control.Applicative
 import Data.String
 
-import Text.Trifecta.Rendering
 import Syntax.Name
 
 -- | Something that is just a decoration, and not e.g. considered in
 --   comparisons.
 newtype Hint a = Hint a
-  deriving (Foldable, Functor, Show, Traversable)
+  deriving (Foldable, Functor, Show, Traversable, Monoid)
 
 unHint :: Hint a -> a
 unHint (Hint x) = x
@@ -33,5 +32,3 @@ instance Monoid NameHint where
 
 instance IsString NameHint where
   fromString = NameHint . Hint . Just . fromString
-
-type SourceLoc = Rendering

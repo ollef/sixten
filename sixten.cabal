@@ -78,6 +78,7 @@ executable sixten
                        process,
                        temporary,
                        text,
+                       transformers,
                        trifecta,
                        unordered-containers,
                        vector,

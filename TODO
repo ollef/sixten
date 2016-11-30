@@ -19,8 +19,6 @@ Compiler
   Concretise some of the Context/MetaVary nonsense
   Clean up MetaVar handling (not all modules need the full generality)
 Error messages
-  Make definitions store their locations
-  Make scope checking report locations
   Make error message footnotes contain metavars
 Language
   Add new Int type -- overloaded literals

@@ -313,8 +313,8 @@ data TopLevelParsed v
   | ParsedData v (Telescope Plicitness Type v) (DataDef Type v)
   deriving (Eq, Foldable, Functor, Show, Traversable)
 
-topLevel :: Parser (TopLevelParsed Name)
-topLevel = dataDef <|> def
+topLevel :: Parser (TopLevelParsed Name, Span)
+topLevel = (\(d Trifecta.:~ s) -> (d, s)) <$> Trifecta.spanned (dataDef <|> def)
 
 def :: Parser (TopLevelParsed Name)
 def
@@ -338,5 +338,5 @@ dataDef = mkDataDef <$ reserved "data" <*>% ident <*> manyBindings
           = ConstrDef name
           $ abstract (fmap Tele . (`Vector.elemIndex` bindingNames bs) . Just) typ
 
-program :: Parser [TopLevelParsed Name]
+program :: Parser [(TopLevelParsed Name, Span)]
 program = Trifecta.whiteSpace >> dropAnchor (manySameCol $ dropAnchor topLevel)
