@@ -7,7 +7,12 @@ stack install
 
 for file in tests/success/*.vix
 do
-  sixten test $file --expected $file-expected
+  if [ -f $file-expected ];
+  then
+    sixten test $file --expected $file-expected
+  else
+    sixten test $file
+  fi
 done
 
 for file in tests/syntax-error/*.vix
