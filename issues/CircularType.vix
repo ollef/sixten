@@ -1,0 +1,5 @@
+const : {a b : Type} -> a -> b -> a
+const x y = x
+
+X : const Size X
+X = 12
