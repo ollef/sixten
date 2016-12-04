@@ -242,6 +242,7 @@ generateGlobal :: Name -> Gen Var
 generateGlobal g = do
   mdef <- asks (($ g) . signatures)
   case mdef of
+    Just (Converted.Constant Void _) -> return VoidVar
     Just (Converted.Constant Direct _) ->
       return $ IndirectVar $ global g
     Just (Converted.Constant Indirect _) -> do
