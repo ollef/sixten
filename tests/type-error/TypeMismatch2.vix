@@ -1,0 +1,2 @@
+test : Size
+test x = x
