@@ -33,6 +33,7 @@ import Lift
 import qualified LLVM
 import Meta
 import Paths_sixten
+import qualified Resolve
 import Simplify
 import Syntax
 import qualified Syntax.Abstract as Abstract
@@ -41,7 +42,6 @@ import qualified Syntax.Concrete as Concrete
 import qualified Syntax.Converted as Converted
 import qualified Syntax.Lifted as Lifted
 import qualified Syntax.Parse as Parse
-import qualified Syntax.Resolve as Resolve
 import qualified Syntax.SLambda as SLambda
 import TCM
 import Util

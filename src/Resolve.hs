@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 -- | Resolving of names
-module Syntax.Resolve where
+module Resolve where
 
 import Bound
 import Control.Applicative
