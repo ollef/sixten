@@ -144,9 +144,9 @@ p <**>% q = p <**> (sameLineOrIndented >> q)
 idStyle :: Trifecta.CharParsing m => Trifecta.IdentifierStyle m
 idStyle = Trifecta.IdentifierStyle "Dependent" start letter res Highlight.Identifier Highlight.ReservedIdentifier
   where
-    start  = Trifecta.satisfy isAlpha    <|> Trifecta.oneOf "_"
+    start = Trifecta.satisfy isAlpha <|> Trifecta.oneOf "_"
     letter = Trifecta.satisfy isAlphaNum <|> Trifecta.oneOf "_'"
-    res    = HS.fromList ["forall", "_", "case", "of", "where"]
+    res = HS.fromList ["forall", "_", "case", "of", "where"]
 
 ident :: Parser Name
 ident = Trifecta.token $ Trifecta.ident idStyle
@@ -325,12 +325,15 @@ def
     mkDef f = (\e n -> ParsedDefLine (f n) e) <$> (abstractBindings Concrete.tlam <$> manyBindings <*% symbol "=" <*>% expr)
 
 dataDef :: Parser (TopLevelParsed Name)
-dataDef = mkDataDef <$ reserved "data" <*>% ident <*> manyBindings
-    <*% reserved "where" <*> (concat <$> manyIndentedSameCol conDef)
+dataDef = mkDataDef <$ reserved "data" <*>% ident <*> manyBindings <*>%
+  (concat <$% reserved "where" <*> manyIndentedSameCol conDef
+  <|> id <$% symbol "=" <*>% sepBySI adtConDef (symbol "|"))
   where
-    conDef = constrDefs <$> ((:) <$> constructor <*>% manySI constructor)
+    conDef = constrDefs <$> ((:) <$> constructor <*> manySI constructor)
       <*% symbol ":" <*>% expr
     constrDefs cs t = [ConstrDef c t | c <- cs]
+    adtConDef = ConstrDef <$> constructor <*> (adtConType <$> manySI atomicExpr)
+    adtConType es = pis (Telescope $ (\e -> (mempty, Explicit, abstractNone e)) <$> Vector.fromList es) $ Scope Wildcard
     mkDataDef tc bs cs
       = ParsedData tc (bindingsTelescope bs) (DataDef $ map abstrConstrDef cs)
       where
