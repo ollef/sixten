@@ -57,6 +57,7 @@ executable sixten
                        Syntax.SLambda
                        Syntax.SourceLoc
                        Syntax.Telescope
+                       Target
                        TCM
                        TopoSort
                        TypeOf

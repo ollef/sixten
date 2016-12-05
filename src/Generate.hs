@@ -26,6 +26,7 @@ import Syntax.Name
 import Syntax.Primitive
 import Syntax.Lifted
 import Syntax.Telescope
+import Target
 import Util
 
 -------------------------------------------------------------------------------
@@ -38,7 +39,7 @@ data GenEnv = GenEnv
 
 type Gen = ReaderT GenEnv (State LLVMState)
 
-runGen :: GenEnv -> Gen a -> (a, [B])
+runGen :: GenEnv -> Gen a -> Target -> (a, [B])
 runGen f m = runLLVM $ runReaderT m f
 
 constrIndex :: QConstr -> Gen (Maybe Int)
@@ -50,7 +51,6 @@ data Var
   = VoidVar
   | IndirectVar (Operand Ptr)
   | DirectVar (Operand Int)
-  deriving Show
 
 varDir :: Var -> Direction
 varDir VoidVar = Void
@@ -77,7 +77,7 @@ varcpy dst (IndirectVar src) sz = wordcpy dst src sz
 
 varCall
   :: (Foldable f, Functor f)
-  => B
+  => C
   -> Operand Fun
   -> f Var
   -> Instr a
@@ -263,9 +263,9 @@ generateBranches
   :: Expr RetDir Var
   -> Branches QConstr () (Expr RetDir) Var
   -> (Expr RetDir Var -> Gen a)
-  -> Gen [(a, LLVM.Operand Label)]
+  -> Gen [(a, Operand Label)]
 generateBranches caseExpr branches brCont = do
-  postLabel <- LLVM.Operand <$> freshenName "after-branch"
+  postLabel <- Operand . text <$> freshenName "after-branch"
   case branches of
     ConBranches [] _ -> mdo
       void $ generateExpr Nothing caseExpr
@@ -274,7 +274,7 @@ generateBranches caseExpr branches brCont = do
     ConBranches [(Builtin.Ref, tele, brScope)] _ -> mdo
       exprInt <- loadVar "case-expr-int" =<< generateExpr Nothing caseExpr
       expr <- "case-expr" =: intToPtr exprInt
-      branchLabel <- LLVM.Operand <$> freshenName Builtin.RefName
+      branchLabel <- Operand . text <$> freshenName Builtin.RefName
 
       emit $ branch branchLabel
       emitLabel branchLabel
@@ -298,7 +298,7 @@ generateBranches caseExpr branches brCont = do
 
     ConBranches [(QConstr _ (Constr constrName), tele, brScope)] _ -> mdo
       expr <- indirect "case-expr" =<< generateExpr Nothing caseExpr
-      branchLabel <- LLVM.Operand <$> freshenName constrName
+      branchLabel <- Operand . text <$> freshenName constrName
 
       emit $ branch branchLabel
       emitLabel branchLabel
@@ -327,10 +327,10 @@ generateBranches caseExpr branches brCont = do
 
       branchLabels <- Traversable.forM cbrs $ \(qc@(QConstr _ (Constr constrName)), _, _) -> do
         Just qcIndex <- constrIndex qc
-        branchLabel <- LLVM.Operand <$> freshenName constrName
+        branchLabel <- Operand . text <$> freshenName constrName
         return (qcIndex, branchLabel)
 
-      failLabel <- LLVM.Operand <$> freshenName "pattern-match-failed"
+      failLabel <- Operand . text <$> freshenName "pattern-match-failed"
       emit $ switch e0 failLabel branchLabels
 
       contResults <- Traversable.forM (zip cbrs branchLabels) $ \((_, tele, brScope), (_, branchLabel)) -> mdo
@@ -363,10 +363,10 @@ generateBranches caseExpr branches brCont = do
       e0 <- loadVar "lit" =<< generateExpr (Just "1") caseExpr
 
       branchLabels <- Traversable.forM lbrs $ \(l, _) -> do
-        branchLabel <- LLVM.Operand <$> freshenName (shower l)
+        branchLabel <- Operand . text <$> freshenName (shower l)
         return (fromIntegral l, branchLabel)
 
-      defaultLabel <- LLVM.Operand <$> freshenName "default"
+      defaultLabel <- Operand . text <$> freshenName "default"
       emit $ switch e0 defaultLabel branchLabels
 
       contResults <- Traversable.forM (zip lbrs branchLabels) $ \((_, br), (_, brLabel)) -> do
@@ -393,7 +393,7 @@ generatePrim (Primitive xs) = do
   ret <- "prim" =: Instr (Foldable.fold strs)
   return $ DirectVar ret
 
-generateConstant :: Visibility -> Name -> Constant (Expr RetDir) Var -> Gen B
+generateConstant :: Visibility -> Name -> Constant (Expr RetDir) Var -> Gen C
 generateConstant visibility name (Constant dir e) = do
   let gname = unOperand $ global name
       initName = gname <> "-init"
@@ -420,11 +420,11 @@ generateConstant visibility name (Constant dir e) = do
 generateFunction :: Visibility -> Name -> Function RetDir (Expr RetDir) Var -> Gen ()
 generateFunction visibility name (Function retDir hs funScope) = do
   vs <- Traversable.forM hs $ \(h, d) -> do
-    n <- freshWithHint h
+    n <- text <$> freshWithHint h
     return $ case d of
       Void -> VoidVar
-      Direct -> DirectVar $ LLVM.Operand n
-      Indirect -> IndirectVar $ LLVM.Operand n
+      Direct -> DirectVar $ Operand n
+      Indirect -> IndirectVar $ Operand n
   let funExpr = instantiateTele (pure <$> vs) funScope
       vis | visibility == Private = "private"
           | otherwise = ""
@@ -432,10 +432,10 @@ generateFunction visibility name (Function retDir hs funScope) = do
     ReturnVoid -> do
       emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> voidT <+> unOperand (global name)
         <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList vs) <> ") {"
-      storeExpr Nothing funExpr $ LLVM.Operand "null"
+      storeExpr Nothing funExpr $ Operand "null"
       emit returnVoid
     ReturnIndirect OutParam -> do
-      ret <- LLVM.Operand <$> freshenName "return"
+      ret <- Operand . text <$> freshenName "return"
       emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> voidT <+> unOperand (global name)
         <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList vs <> pure (IndirectVar ret)) <> ") {"
       storeExpr Nothing funExpr ret
@@ -456,7 +456,7 @@ generateFunction visibility name (Function retDir hs funScope) = do
     go (DirectVar n) = [integer n]
     go (IndirectVar n) = [pointer n]
 
-generateDefinition :: Name -> Definition RetDir (Expr RetDir) Var -> Gen B
+generateDefinition :: Name -> Definition RetDir (Expr RetDir) Var -> Gen C
 generateDefinition name def = case def of
   ConstantDef v c -> generateConstant v name c
   FunctionDef v f -> do

@@ -12,7 +12,6 @@ Codegen
     Make literals llvm `constant`s
     Add error message for circular globals, e.g. `a = a`
   Should things of known size > 1 be passed as LLVM arrays?
-  Make the generated code word-size independent (e.g. use a trick to do sizeof?)
 Compiler
   Add printing to compiler passes that are not TCM (make a MonadLog class?)
   Concretise some of the Context/MetaVary nonsense
@@ -24,7 +23,7 @@ Language
   * Let(rec) definitions
   Named implicit arguments (maybe names should be mandatory?)
   Laziness
-  Make Concrete syntax have deep patterns and desugar them
+  * Make Concrete syntax have deep patterns and desugar them
   Type classes
   Row polymorphism
     r : Row : Type
@@ -41,7 +40,7 @@ Optimisations
   Inlining
   Common subexpressions
   Case of known
-  Tagged pointers
+  * Tagged pointers
     Reorder data to enable more?
   App of lambda -> let
   Join point let bindings

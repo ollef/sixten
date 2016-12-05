@@ -43,6 +43,7 @@ import qualified Syntax.Converted as Converted
 import qualified Syntax.Lifted as Lifted
 import qualified Syntax.Parse as Parse
 import qualified Syntax.SLambda as SLambda
+import Target
 import TCM
 import Util
 
@@ -302,20 +303,23 @@ generateGroup
   :: [(Name, Lifted.Definition RetDir (Lifted.Expr RetDir) Void)]
   -> TCM [(LLVM.B, LLVM.B)]
 generateGroup defs = do
+  target <- gets tcTarget
   qcindex <- qconstructorIndex
   sigs <- gets tcConvertedSignatures
   retDirs <- gets tcReturnDirections
   let env = Generate.GenEnv qcindex (`HM.lookup` sigs) (`HM.lookup` retDirs)
   return $ flip map defs $ \(x, e) ->
-    second (fold . intersperse "\n")
-      $ Generate.runGen env
-      $ Generate.generateDefinition x
-      $ vacuous e
+    bimap (($ LLVM.targetConfig target) . LLVM.unC) (fold . intersperse "\n")
+      $ Generate.runGen
+        env
+        (Generate.generateDefinition x $ vacuous e)
+        target
 
 data Error
   = SyntaxError Doc
   | ResolveError Text
   | TypeError Text
+  | CommandLineError Doc
   deriving Show
 
 printError :: Error -> IO ()
@@ -331,14 +335,19 @@ printError err = case err of
   TypeError s -> do
     Text.putStrLn "Type error"
     Text.putStrLn s
+  CommandLineError doc -> do
+    Text.putStrLn "Command-line error"
+    Leijen.displayIO stdout
+      $ Leijen.renderPretty 0.8 80
+      $ doc <> Leijen.linebreak
 
 data Result
   = Error Error
   | Success
   deriving Show
 
-processFile :: FilePath -> FilePath -> Handle -> Int -> IO Result
-processFile file output logHandle verbosity = do
+processFile :: FilePath -> FilePath -> Target -> Handle -> Int -> IO Result
+processFile file output target logHandle verbosity = do
   parseResult <- Parse.parseFromFileEx Parse.program file
   let resolveResult = Resolve.program <$> parseResult
   case resolveResult of
@@ -354,7 +363,7 @@ processFile file output logHandle verbosity = do
             | Constr v `HS.member` constrs = Concrete.Con $ Left (Constr v)
             | otherwise = pure $ Name v
           groups' = fmap (fmap $ bimap (>>>= instCon) (>>= instCon)) <$> groups
-      procRes <- runTCM (process groups') logHandle verbosity
+      procRes <- runTCM (process groups') target logHandle verbosity
       case procRes of
         Left err -> return $ Error $ TypeError $ Text.pack err
         Right res -> do

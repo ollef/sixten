@@ -52,6 +52,7 @@ test opts = Compile.compile (compileOptions opts) onCompileError onCompileSucces
       Processor.TypeError _
         | expectTypeError opts -> success
         | otherwise -> failed "No type error" $ Processor.printError err
+      Processor.CommandLineError _ -> failed "No command-line error error" $ Processor.printError err
     onCompileSuccess f
       | expectSyntaxError opts = failed "Syntax error" $ putStrLn "Successful compilation"
       | expectTypeError opts = failed "Type error" $ putStrLn "Successful compilation"

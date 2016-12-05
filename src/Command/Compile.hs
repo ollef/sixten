@@ -10,10 +10,12 @@ import System.IO.Temp
 import System.Process
 
 import qualified Processor
+import qualified Target
 
 data Options = Options
   { inputFile :: FilePath
   , maybeOutputFile :: Maybe FilePath
+  , target :: Maybe String
   , optimisation :: Maybe String
   , assemblyDir :: Maybe FilePath
   , verbosity :: Int
@@ -39,6 +41,13 @@ optionsParser = Options
     <> metavar "FILE"
     <> help "Write output to FILE"
     <> action "file"
+    )
+  <*> optional (strOption
+    $ long "target"
+    <> short 't'
+    <> metavar "TARGET"
+    <> help "Compile for CPU architecture TARGET"
+    <> completeWith Target.architectures
     )
   <*> optional (strOption
     $ long "optimise"
@@ -70,27 +79,29 @@ optionsParser = Options
     )
 
 compile :: Options -> (Processor.Error -> IO a) -> (FilePath -> IO a) -> IO a
-compile opts onError onSuccess =
-  withAssemblyDir (assemblyDir opts) $ \asmDir ->
-  withOutputFile (maybeOutputFile opts) $ \outputFile ->
-  withLogHandle (logFile opts) $ \logHandle -> do
-    let llFile = asmDir </> fileName <.> "ll"
-    procResult <- Processor.processFile (inputFile opts) llFile logHandle $ verbosity opts
-    case procResult of
-      Processor.Error err -> onError err
-      Processor.Success -> do
-        (optLlFile, optFlag) <- case optimisation opts of
-          Nothing -> return (llFile, id)
-          Just optLevel -> do
-            let optFlag = ("-O" <> optLevel :)
-                optLlFile = asmDir </> fileName <> "-opt" <.> "ll"
-            callProcess "opt" $ optFlag ["-S", llFile, "-o", optLlFile]
-            return (optLlFile, optFlag)
-        let asmFile = asmDir </> fileName <.> "s"
-        callProcess "llc" $ optFlag ["-march=x86-64", optLlFile, "-o", asmFile]
-        ldFlags <- readProcess "pkg-config" ["--libs", "--static", "bdw-gc"] ""
-        callProcess "gcc" $ concatMap words (lines ldFlags) ++ optFlag [asmFile, "-o", outputFile]
-        onSuccess outputFile
+compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.findTarget $ target opts of
+  Left err -> onError $ Processor.CommandLineError err
+  Right tgt ->
+    withAssemblyDir (assemblyDir opts) $ \asmDir ->
+    withOutputFile (maybeOutputFile opts) $ \outputFile ->
+    withLogHandle (logFile opts) $ \logHandle -> do
+      let llFile = asmDir </> fileName <.> "ll"
+      procResult <- Processor.processFile (inputFile opts) llFile tgt logHandle $ verbosity opts
+      case procResult of
+        Processor.Error err -> onError err
+        Processor.Success -> do
+          (optLlFile, optFlag) <- case optimisation opts of
+            Nothing -> return (llFile, id)
+            Just optLevel -> do
+              let optFlag = ("-O" <> optLevel :)
+                  optLlFile = asmDir </> fileName <> "-opt" <.> "ll"
+              callProcess "opt" $ optFlag ["-S", llFile, "-o", optLlFile]
+              return (optLlFile, optFlag)
+          let asmFile = asmDir </> fileName <.> "s"
+          callProcess "llc" $ optFlag ["-march=" <> Target.architecture tgt, optLlFile, "-o", asmFile]
+          ldFlags <- readProcess "pkg-config" ["--libs", "--static", "bdw-gc"] ""
+          callProcess "gcc" $ concatMap words (lines ldFlags) ++ optFlag [asmFile, "-o", outputFile]
+          onSuccess outputFile
   where
     (inputDir, inputFileName) = splitFileName $ inputFile opts
     fileName = dropExtension inputFileName

@@ -20,28 +20,90 @@ import Util
 import Syntax.Direction
 import Syntax.Hint
 import Syntax.Name
+import qualified Syntax.Pretty as Pretty
+import Target
 
 type B = Text
 
-(<+>) :: B -> B -> B
-x <+> y
-  | Text.null x = y
-  | Text.null y = x
-  | otherwise = x <> " " <> y
+-------------------------------------------------------------------------------
+-- * Configs
+-------------------------------------------------------------------------------
+data Config = Config { cfgAlign, cfgPtrSize, cfgIntegerT, cfgPointerT :: B }
+
+prettyConfig :: Config
+prettyConfig = Config
+  { cfgAlign = "<align>"
+  , cfgPtrSize = "<ptrSize>"
+  , cfgIntegerT = "<integer>"
+  , cfgPointerT = "<integer>*"
+  }
+
+targetConfig :: Target -> Config
+targetConfig t = cfg
+  where
+    cfg = Config
+      { cfgAlign = shower $ ptrAlign t
+      , cfgPtrSize = shower $ ptrBytes t
+      , cfgIntegerT = "i" <> shower (ptrBits t)
+      , cfgPointerT = cfgIntegerT cfg <> "*"
+      }
+
+-------------------------------------------------------------------------------
+-- * Config-dependent code
+-------------------------------------------------------------------------------
+newtype C = C (Config -> Text)
+  deriving Monoid
+
+instance Pretty.Pretty C where
+  prettyM (C f) = Pretty.prettyM $ f prettyConfig
+
+instance Eq C where
+  C f == C g = f prettyConfig == g prettyConfig
+
+instance Ord C where
+  compare (C f) (C g) = compare (f prettyConfig) (g prettyConfig)
+
+instance Show C where
+  show (C f) = show $ f prettyConfig
+
+text :: Text -> C
+text = C . const
+
+unC :: C -> Config -> Text
+unC (C f) = f
+
+instance IsString C where
+  fromString = text . fromString
+
+ptrSize :: Operand Int
+ptrSize = Operand $ C cfgPtrSize
+align, integerT, pointerT :: C
+align = C cfgAlign
+integerT = C cfgIntegerT
+pointerT = C cfgPointerT
+
+(<+>) :: C -> C -> C
+C f <+> C g = C $ \c -> case (f c, g c) of
+  (x, y)
+    | Text.null x -> y
+    | Text.null y -> x
+    | otherwise -> x <> " " <> y
 infixr 6 <+>
 
 -------------------------------------------------------------------------------
 -- * The generation type
 -------------------------------------------------------------------------------
 data LLVMState = LLVMState
-  { boundNames :: HashSet B
+  { config :: Config
+  , boundNames :: HashSet B
   , freeNames :: [B]
   , instructions :: [B]
   }
 
-runLLVM :: State LLVMState a -> (a, [B])
-runLLVM = second (reverse . instructions) . flip runState LLVMState
-  { boundNames = mempty
+runLLVM :: State LLVMState a -> Target -> (a, [B])
+runLLVM s t = second (reverse . instructions) $ runState s LLVMState
+  { config = targetConfig t
+  , boundNames = mempty
   , freeNames = do
     n <- [(0 :: Int)..]
     c <- ['a'..'z']
@@ -50,7 +112,7 @@ runLLVM = second (reverse . instructions) . flip runState LLVMState
   }
 
 emitRaw :: MonadState LLVMState m => Instr a -> m ()
-emitRaw b = modify $ \s -> s { instructions = unInstr b : instructions s }
+emitRaw i = modify $ \s -> s { instructions = unC (unInstr i) (config s) : instructions s }
 
 emit :: MonadState LLVMState m => Instr a -> m ()
 emit b = emitRaw ("  " <> b)
@@ -59,7 +121,7 @@ emitLabel :: MonadState LLVMState m => Operand Label -> m ()
 emitLabel l
   = modify
   -- Hackish way to remove the "%"
-  $ \s -> s { instructions = (Text.drop 1 (unOperand l) <> ":") : instructions s }
+  $ \s -> s { instructions = (Text.drop 1 (unC (unOperand l) (config s)) <> ":") : instructions s }
 
 -------------------------------------------------------------------------------
 -- * Working with names
@@ -107,43 +169,35 @@ freshWithHint (NameHint (Hint Nothing)) = freshName
 -------------------------------------------------------------------------------
 -- * Operands
 -------------------------------------------------------------------------------
-newtype Operand a = Operand B deriving (Show, IsString, Monoid)
-unOperand :: Operand a -> B
+newtype Operand a = Operand C deriving (IsString, Monoid)
+
+unOperand :: Operand a -> C
 unOperand (Operand b) = b
-newtype Instr a = Instr B deriving (Show, IsString, Monoid)
-unInstr :: Instr a -> B
-unInstr (Instr b) = b
+
+newtype Instr a = Instr C deriving (IsString, Monoid)
+
+unInstr :: Instr a -> C
+unInstr (Instr c) = c
+
 data Ptr
 data PtrPtr
 data Fun
 data Label
 
-align :: B
-align = "8"
-
-integerT, pointerT, pointerPointerT, voidT :: B
-integerT = "i64"
-pointerT = integerT <> "*"
-pointerPointerT = pointerT <> "*"
+voidT :: C
 voidT = "void"
 
-ptrSize :: Operand Int
-ptrSize = "8"
-
 global :: Name -> Operand a
-global (Name b) = Operand $ "@" <> escape b
+global (Name b) = Operand $ "@" <> text (escape b)
 
-integer :: Operand Int -> B
-integer (Operand b) = integerT <+> b
+integer :: Operand Int -> C
+integer o = integerT <+> unOperand o
 
-pointer :: Operand Ptr -> B
-pointer (Operand b) = pointerT <+> b
+pointer :: Operand Ptr -> C
+pointer o = pointerT <+> unOperand o
 
-pointerPointer :: Operand PtrPtr -> B
-pointerPointer (Operand b) = pointerT <+> b
-
-label :: Operand Label -> B
-label (Operand b) = "label" <+> b
+label :: Operand Label -> C
+label o = "label" <+> unOperand o
 
 -------------------------------------------------------------------------------
 -- * Instructions
@@ -156,7 +210,7 @@ mul x y = Instr $ "mul" <+> integer x <> "," <+> unOperand y
 
 (=:) :: MonadState LLVMState m => NameHint -> Instr a -> m (Operand a)
 h =: i = do
-  x <- freshWithHint h
+  x <- text <$> freshWithHint h
   emit $ Instr $ x <+> "=" <+> unInstr i
   return $ Operand x
 infixr 6 =:
@@ -181,9 +235,9 @@ memcpy dst src sz = do
   src' <- "src" =: Instr ("bitcast" <+> pointer src <+> "to i8*")
   dst' <- "dst" =: Instr ("bitcast" <+> pointer dst <+> "to i8*")
   emit $ Instr
-       $ "call" <+> voidT <+> "@llvm.memcpy.p0i8.p0i8.i64(i8*"
-       <+> unOperand dst' <> ", i8*" <+> unOperand src' <> ","
-       <+> integer sz <> ", i32" <+> align <> ", i1 false)"
+    $ "call" <+> voidT <+> "@llvm.memcpy.p0i8.p0i8." <> integerT <> "(i8*"
+    <+> unOperand dst' <> ", i8*" <+> unOperand src' <> ","
+    <+> integer sz <> ", i32" <+> align <> ", i1 false)"
 
 wordcpy
   :: MonadState LLVMState m
@@ -204,48 +258,77 @@ gcAlloc wordSize = do
   byteRef <- "byteref" =: Instr ("call i8* @GC_malloc(" <> integer byteSize <> ")")
   "ref" =: Instr ("bitcast" <+> "i8*" <+> unOperand byteRef <+> "to" <+> pointerT)
 
-getElementPtr :: Operand Ptr -> Operand Int -> Instr Ptr
+getElementPtr
+  :: Operand Ptr
+  -> Operand Int
+  -> Instr Ptr
 getElementPtr x i = Instr $ "getelementptr" <+> integerT <> "," <+> pointer x <> "," <+> integer i
 
-alloca :: Operand Int -> Instr Ptr
+alloca
+  :: Operand Int
+  -> Instr Ptr
 alloca sz = Instr $ "alloca" <+> integerT <> "," <+> integer sz <> ", align" <+> align
 
-intToPtr :: Operand Int -> Instr Ptr
+intToPtr
+  :: Operand Int
+  -> Instr Ptr
 intToPtr i = Instr $ "inttoptr" <+> integer i <+> "to" <+> pointerT
 
-ptrToInt :: Operand Ptr -> Instr Int
+ptrToInt
+  :: Operand Ptr
+  -> Instr Int
 ptrToInt p = Instr $ "ptrtoint" <+> pointer p <+> "to" <+> integerT
 
-ptrToIntExpr :: Operand Ptr -> Operand Int
+ptrToIntExpr
+  :: Operand Ptr
+  -> Operand Int
 ptrToIntExpr p = Operand $ "ptrtoint" <+> "(" <> pointer p <+> "to" <+> integerT <> ")"
 
 branch :: Operand Label -> Instr ()
 branch l = Instr $ "br" <+> label l
 
-load :: Operand Ptr -> Instr Int
+load
+  :: Operand Ptr
+  -> Instr Int
 load x = Instr $ "load" <+> integerT <> "," <+> pointer x
 
-loadPtr :: Operand PtrPtr -> Instr Ptr
+loadPtr
+  :: Operand PtrPtr
+  -> Instr Ptr
 loadPtr x = Instr $ "load" <+> pointerT <> "," <+> pointerT <> "*" <+> unOperand x
 
-store :: Operand Int -> Operand Ptr -> Instr ()
+store
+  :: Operand Int
+  -> Operand Ptr
+  -> Instr ()
 store x p = Instr $ "store" <+> integer x <> "," <+> pointer p
 
-storePtr :: Operand Ptr -> Operand PtrPtr -> Instr ()
+storePtr
+  :: Operand Ptr
+  -> Operand PtrPtr
+  -> Instr ()
 storePtr x p = Instr $ "store" <+> pointer x <> "," <+> pointerT <> "*" <+> unOperand p
 
-switch :: Operand Int -> Operand Label -> [(Int, Operand Label)] -> Instr ()
+switch
+  :: Operand Int
+  -> Operand Label
+  -> [(Int, Operand Label)]
+  -> Instr ()
 switch e def brs = Instr
   $ "switch" <+> integer e <> "," <+> label def
   <+> "[" <> Foldable.fold (intersperse " " $ (\(i, l) -> integer (shower i) <> "," <+> label l) <$> brs)
   <> "]"
 
-phiPtr :: [(Operand Ptr, Operand Label)] -> Instr Ptr
+phiPtr
+  :: [(Operand Ptr, Operand Label)]
+  -> Instr Ptr
 phiPtr xs = Instr
   $ "phi" <+> pointerT
   <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> unOperand v <> "," <+> unOperand l <> "]") <$> xs)
 
-phiInt :: [(Operand Int, Operand Label)] -> Instr Int
+phiInt
+  :: [(Operand Int, Operand Label)]
+  -> Instr Int
 phiInt xs = Instr
   $ "phi" <+> integerT
   <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> unOperand v <> "," <+> unOperand l <> "]") <$> xs)

@@ -23,6 +23,7 @@ import qualified Builtin
 import Syntax
 import Syntax.Abstract
 import qualified Syntax.Converted as Converted
+import Target
 import Util
 
 newtype Level = Level Int
@@ -43,10 +44,11 @@ data State = State
   , tcLevel :: !Level
   , tcLogHandle :: !Handle
   , tcVerbosity :: !Int
+  , tcTarget :: Target
   }
 
-emptyState :: Handle -> Int -> State
-emptyState handle verbosity = State
+emptyState :: Target -> Handle -> Int -> State
+emptyState target handle verbosity = State
   { tcLocation = mempty
   , tcContext = mempty
   , tcConstrs = mempty
@@ -58,6 +60,7 @@ emptyState handle verbosity = State
   , tcLevel = Level 1
   , tcLogHandle = handle
   , tcVerbosity = verbosity
+  , tcTarget = target
   }
 
 newtype TCM a = TCM (ExceptT String (StateT State IO) a)
@@ -74,12 +77,13 @@ unTCM (TCM x) = x
 
 runTCM
   :: TCM a
+  -> Target
   -> Handle
   -> Int
   -> IO (Either String a)
-runTCM tcm handle verbosity
+runTCM tcm target handle verbosity
   = evalStateT (runExceptT $ unTCM tcm)
-  $ emptyState handle verbosity
+  $ emptyState target handle verbosity
 
 fresh :: TCM Int
 fresh = do

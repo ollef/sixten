@@ -3,15 +3,15 @@ module Syntax.Primitive where
 
 import Control.Monad
 import Data.String
-import Data.Text(Text)
 
+import qualified LLVM
 import Syntax.Pretty
 
 newtype Primitive v = Primitive { unPrimitive :: [PrimitivePart v] }
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable, Monoid)
 
 data PrimitivePart v
-  = TextPart Text
+  = TextPart LLVM.C
   | VarPart v
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 

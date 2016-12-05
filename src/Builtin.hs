@@ -10,6 +10,7 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 
+import qualified LLVM
 import Syntax
 import Syntax.Abstract as Abstract
 import qualified Syntax.Converted as Converted
@@ -120,7 +121,7 @@ convertedContext = HM.fromList $ concat
       $ Scope
       $ Converted.sized 1
       $ Converted.Prim
-      $ "add i64 " <> pure (Converted.Var $ B 0) <> ", " <> pure (Converted.Var $ B 1)
+      $ "add " <> intT <> " " <> pure (Converted.Var $ B 0) <> ", " <> pure (Converted.Var $ B 1)
     )
   , ( MaxSizeName
     , Converted.sized 1
@@ -135,11 +136,11 @@ convertedContext = HM.fromList $ concat
       $ Converted.Let "lt"
       (Converted.sized 1
       $ Converted.Prim
-      $ "icmp ugt i64 " <> pure (Converted.Var $ B 0) <> ", " <> pure (Converted.Var $ B 1))
+      $ "icmp ugt " <> intT <> " " <> pure (Converted.Var $ B 0) <> ", " <> pure (Converted.Var $ B 1))
       $ toScope
       $ Converted.Prim
       $ "select i1 " <> pure (Converted.Var $ B ())
-      <> ", i64 " <> pure (Converted.Var $ F $ B 0) <> ", i64 "
+      <> ", " <> intT <> " " <> pure (Converted.Var $ F $ B 0) <> ", " <> intT <> " "
       <> pure (Converted.Var $ F $ B 1)
     )
   , ( PrintSizeName
@@ -153,16 +154,17 @@ convertedContext = HM.fromList $ concat
       $ Converted.Let "res"
       (Converted.sized 1
       $ Converted.Prim
-      ("call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([6 x i8], [6 x i8]* @i64-format, i64 0, i64 0), i64 " <> pure (Converted.Var $ B 0) <> ")"))
+      ("call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([5 x i8], [5 x i8]* @size_t-format, i32 0, i32 0), " <> intT <> " " <> pure (Converted.Var $ B 0) <> ")"))
 
       $ Scope
-      $ Converted.Prim
-      $ "zext i32 " <> pure (Converted.Var $ B ()) <> " to i64"
+      $ Converted.Lit 0
     )
   ]
   , [(papName left given, pap left given) | given <- [1..maxArity - 1], left <- [1..maxArity - given]]
   , [(applyName arity, apply arity) | arity <- [1..maxArity]]
   ]
+  where
+    intT = Primitive [TextPart LLVM.integerT]
 
 -- TODO move these
 slit :: Literal -> Scope b Converted.Expr v
