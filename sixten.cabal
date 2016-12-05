@@ -55,6 +55,7 @@ executable sixten
                        Syntax.Pretty
                        Syntax.Primitive
                        Syntax.SLambda
+                       Syntax.SourceLoc
                        Syntax.Telescope
                        TCM
                        TopoSort
