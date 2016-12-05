@@ -16,6 +16,7 @@ highlight def link sixtenDot Keyword
 highlight def link sixtenArrow Operator
 highlight def link sixtenEquals Operator
 highlight def link sixtenTypeAnno Operator
+highlight def link sixtenPipe Operator
 highlight def link sixtenLineComment Comment
 highlight def link sixtenBlockComment Comment
 highlight def link sixtenTodo Todo
@@ -32,6 +33,7 @@ syn match sixtenDot "\."
 syn match sixtenArrow "->"
 syn match sixtenEquals "="
 syn match sixtenTypeAnno ":"
+syn match sixtenPipe "|"
 
 syn match sixtenLineComment "---*\([^-!#$%&\*\+./<=>\?@\\^|~].*\)\?$"
   \ contains=
