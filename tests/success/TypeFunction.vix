@@ -1,0 +1,2 @@
+map : {F : Type -> Type}{A : Type}{B : Type}(m : {F : Type -> Type} -> (A -> B) -> F A -> F B) -> (A -> B) -> F A -> F B
+map m f fa = m f fa

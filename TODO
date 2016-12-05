@@ -35,8 +35,6 @@ Language
   Inductive families
   FFI & More general way to define builtins (extern LLVM, C?)
 Size types
-  How to cleanly make `(a -> b) : Type 0` when `b : Type 0`?
-    Maybe just make the usage analysis pass aware of this
   Can the size be made abstract, e.g. `List A : Type {sizeof (List A)}`?
   Can we have an Infinity size for things we can only hold in pointers?
 Optimisations

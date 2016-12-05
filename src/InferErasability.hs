@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, RecursiveDo, OverloadedStrings, TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, OverloadedStrings, RecursiveDo, TypeFamilies, ViewPatterns #-}
 module InferErasability where
 
 import Control.Monad.Except
@@ -215,9 +215,8 @@ infer er expr = do
       return (Con c, first fromErasability typ)
     Lit l -> return (Lit l, Builtin.Size)
     Pi h _ argType retTypeScope -> do
-      argEr <- case appsView argType of
-            -- TODO use piView as well?
-            (Global Builtin.TypeName, _) -> existsMetaErasability
+      argEr <- case pisView argType of
+            (_,  appsView . fromScope -> (Global Builtin.TypeName, _)) -> existsMetaErasability
             _ -> return MRetained
       argType' <- inferArgType argEr argType
       x <- forall h argEr argType'
