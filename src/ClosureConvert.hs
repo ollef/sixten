@@ -42,7 +42,7 @@ createLambdaSignature
     )
 createLambdaSignature tele lamScope = mdo
   tele' <- forMTele tele $ \h () s -> do
-    let e = instantiateTele' pure vs $ vacuous s
+    let e = instantiateTele pure vs $ vacuous s
     v <- forall h () Unit
     e' <- convertExpr e
     return (v, e')
@@ -57,7 +57,7 @@ convertSignature
 convertSignature sig = case sig of
   Converted.Function retDir tele lamScope -> do
     vs <- forMTele tele $ \h _ _ -> forall h () Unit
-    let lamExpr = instantiateTele (pure <$> vs) $ vacuous lamScope
+    let lamExpr = instantiateTele pure vs $ vacuous lamScope
         abstr = teleAbstraction vs
     lamExpr' <- convertExpr lamExpr
     let lamScope' = abstract abstr lamExpr'
@@ -76,12 +76,12 @@ convertLambda
     )
 convertLambda tele lamScope = mdo
   tele' <- forMTele tele $ \h () s -> do
-    let e = instantiateTele' pure vs $ vacuous s
+    let e = instantiateTele pure vs $ vacuous s
     v <- forall h () Unit
     e' <- convertExpr e
     return (v, e')
   let vs = fst <$> tele'
-      lamExpr = instantiateTele (pure <$> vs) $ vacuous lamScope
+      lamExpr = instantiateTele pure vs $ vacuous lamScope
       abstr = teleAbstraction vs
       tele'' = error "convertLambda" <$> Telescope ((\(v, e) -> (metaHint v, Converted.sizeDir e, abstract abstr e)) <$> tele')
   lamExpr' <- convertExpr lamExpr
@@ -120,7 +120,7 @@ convertExpr expr = case expr of
   Closed.Let h e bodyScope -> do
     e' <- convertExpr e
     v <- forall h () Unit
-    let bodyExpr = instantiate1 (pure v) bodyScope
+    let bodyExpr = Util.instantiate1 (pure v) bodyScope
     bodyExpr' <- convertExpr bodyExpr
     let bodyScope' = abstract1 v bodyExpr'
     return $ Converted.Let h e' bodyScope'
@@ -164,14 +164,13 @@ knownCall f retDir tele args
       $ fmap B
       $ Converted.Case (Builtin.deref $ Converted.Var 0)
       $ ConBranches
-      [( Builtin.Closure
-      , Telescope $ Vector.cons (mempty, (), Builtin.slit 1)
-                  $ Vector.cons (mempty, (), Builtin.slit 1) clArgs'
-      , toScope $ Converted.Call retDir (vacuous f) (Vector.zip (fArgs1 <> fArgs2) $ teleAnnotations tele)
-      )]
-      unknownSize
+      $ pure
+        ( Builtin.Closure
+        , Telescope $ Vector.cons (mempty, (), Builtin.slit 1)
+                    $ Vector.cons (mempty, (), Builtin.slit 1) clArgs'
+        , toScope $ Converted.Call retDir (vacuous f) (Vector.zip (fArgs1 <> fArgs2) $ teleAnnotations tele)
+        )
       where
-        unknownSize = Converted.Global "ClosureConvert.knownCall.UnknownSize"
         clArgs = (\(h, d, s) -> (h, d, mapBound (+ 2) s)) <$> Vector.take numArgs (unTelescope tele)
         clArgs' = (\(h, _, s) -> (h, (), vacuous s)) <$> clArgs
         fArgs1 = Vector.zipWith
@@ -189,21 +188,19 @@ knownCall f retDir tele args
           <|> (\(n, h) -> (h, Indirect, Builtin.svarb $ 1 + Tele n)) <$> Vector.indexed xs
 
 convertBranches :: LBrsM -> TCM CBrsM
-convertBranches (ConBranches cbrs sz) = do
-  sz' <- convertExpr sz
-  fmap (flip ConBranches sz') $
-    forM cbrs $ \(qc, tele, brScope) -> mdo
-      tele' <- forMTele tele $ \h () s -> do
-        let e = instantiateTele' pure vs s
-        v <- forall h () Unit
-        e' <- convertExpr e
-        return (v, e')
-      let vs = fst <$> tele'
-          brExpr = instantiateTele (pure <$> vs) brScope
-          abstr = teleAbstraction vs
-          tele'' = Telescope $ (\(v, e) -> (metaHint v, (), abstract abstr e)) <$> tele'
-      brExpr' <- convertExpr brExpr
-      let brScope' = abstract abstr brExpr'
-      return (qc, tele'', brScope')
+convertBranches (ConBranches cbrs) = fmap ConBranches $
+  forM cbrs $ \(qc, tele, brScope) -> mdo
+    tele' <- forMTele tele $ \h () s -> do
+      let e = instantiateTele pure vs s
+      v <- forall h () Unit
+      e' <- convertExpr e
+      return (v, e')
+    let vs = fst <$> tele'
+        brExpr = instantiateTele pure vs brScope
+        abstr = teleAbstraction vs
+        tele'' = Telescope $ (\(v, e) -> (metaHint v, (), abstract abstr e)) <$> tele'
+    brExpr' <- convertExpr brExpr
+    let brScope' = abstract abstr brExpr'
+    return (qc, tele'', brScope')
 convertBranches (LitBranches lbrs def) = LitBranches
   <$> mapM (\(l, e) -> (,) l <$> convertExpr e) lbrs <*> convertExpr def

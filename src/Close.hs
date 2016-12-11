@@ -50,11 +50,11 @@ closeLambda tele lamScope = mdo
     return $ Vector.fromList $ impure <$> topoSort deps
 
   vs <- forMTele tele $ \h () s -> do
-    let e = instantiateTele' pure vs s
+    let e = instantiateTele pure vs s
     e' <- closeExpr e
     forall h () e'
 
-  let lamExpr = instantiateTele (pure <$> vs) lamScope
+  let lamExpr = instantiateTele pure vs lamScope
       vs' = sortedFvs <> vs
       abstr = teleAbstraction vs'
       tele'' = Telescope $ (\v -> (metaHint v, (), abstract abstr $ metaType v)) <$> vs'
@@ -75,19 +75,18 @@ closeLambda tele lamScope = mdo
     impure _ = error "closeLambda"
 
 closeBranches :: BrsM SLambda.Expr -> TCM (BrsM Closed.Expr)
-closeBranches (ConBranches cbrs sz) = do
-  sz' <- closeExpr sz
-  fmap (flip ConBranches sz') $
-    forM cbrs $ \(qc, tele, brScope) -> mdo
-      vs <- forMTele tele $ \h () s -> do
-        let e = instantiateTele' pure vs s
-        e' <- closeExpr e
-        forall h () e'
-      let brExpr = instantiateTele (pure <$> vs) brScope
-          abstr = teleAbstraction vs
-          tele'' = Telescope $ (\v -> (metaHint v, (), abstract abstr $ metaType v)) <$> vs
-      brExpr' <- closeExpr brExpr
-      let brScope' = abstract abstr brExpr'
-      return (qc, tele'', brScope')
+closeBranches (ConBranches cbrs) = fmap ConBranches $
+  forM cbrs $ \(qc, tele, brScope) -> mdo
+    vs <- forMTele tele $ \h () s -> do
+      let e = instantiateTele pure vs s
+      e' <- closeExpr e
+      forall h () e'
+    let brExpr = instantiateTele pure vs brScope
+        abstr = teleAbstraction vs
+        tele'' = Telescope $ (\v -> (metaHint v, (), abstract abstr $ metaType v)) <$> vs
+    brExpr' <- closeExpr brExpr
+    let brScope' = abstract abstr brExpr'
+    return (qc, tele'', brScope')
 closeBranches (LitBranches lbrs def) = LitBranches
   <$> mapM (\(l, e) -> (,) l <$> closeExpr e) lbrs <*> closeExpr def
+closeBranches (NoBranches sz) = NoBranches <$> closeExpr sz

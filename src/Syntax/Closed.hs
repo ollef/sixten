@@ -79,12 +79,12 @@ instance (Eq v, IsString v, Pretty v)
     Lams tele s -> parens `above` absPrec $
       withTeleHints tele $ \ns ->
         "\\" <> prettyTeleVarTypes ns (show <$> tele) <> "." <+>
-        associate absPrec (prettyM $ instantiateTele (pure . fromName <$> ns) $ show <$> s)
+        associate absPrec (prettyM $ instantiateTele (pure . fromName) ns $ show <$> s)
     Call e es -> parens `above` annoPrec $
       prettyApps (prettyM e) (prettyM <$> es)
     Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
       "let" <+> prettyM n <+> "=" <+> prettyM e <+> "in" <+>
-        prettyM (instantiate1 (pure $ fromName n) s)
+        prettyM (Util.instantiate1 (pure $ fromName n) s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> indent 2 (prettyM brs)

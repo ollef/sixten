@@ -8,6 +8,7 @@ import Data.Bifunctor
 import Data.Bitraversable
 import qualified Data.Foldable as Foldable
 import Data.List
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.Maybe
 import Data.Monoid
 import qualified Data.Traversable as Traversable
@@ -267,11 +268,11 @@ generateBranches
 generateBranches caseExpr branches brCont = do
   postLabel <- Operand . text <$> freshenName "after-branch"
   case branches of
-    ConBranches [] _ -> mdo
+    NoBranches _ -> do
       void $ generateExpr Nothing caseExpr
       emit unreachable
       return []
-    ConBranches [(Builtin.Ref, tele, brScope)] _ -> mdo
+    ConBranches ((Builtin.Ref, tele, brScope) NonEmpty.:| []) -> mdo
       exprInt <- loadVar "case-expr-int" =<< generateExpr Nothing caseExpr
       expr <- "case-expr" =: intToPtr exprInt
       branchLabel <- Operand . text <$> freshenName Builtin.RefName
@@ -279,7 +280,7 @@ generateBranches caseExpr branches brCont = do
       emit $ branch branchLabel
       emitLabel branchLabel
       let teleVector = Vector.indexed $ unTelescope tele
-          inst = instantiateTele $ pure <$> Vector.fromList (reverse revArgs)
+          inst = instantiateTele pure $ Vector.fromList (reverse revArgs)
           go (vs, index) (i, (h, (), s)) = do
             ptr <- h =: getElementPtr expr index
             nextIndex <- if i == Vector.length teleVector - 1
@@ -296,14 +297,14 @@ generateBranches caseExpr branches brCont = do
       emitLabel postLabel
       return [(contResult, branchLabel)]
 
-    ConBranches [(QConstr _ (Constr constrName), tele, brScope)] _ -> mdo
+    ConBranches ((QConstr _ (Constr constrName), tele, brScope) NonEmpty.:| []) -> mdo
       expr <- indirect "case-expr" =<< generateExpr Nothing caseExpr
       branchLabel <- Operand . text <$> freshenName constrName
 
       emit $ branch branchLabel
       emitLabel branchLabel
       let teleVector = Vector.indexed $ unTelescope tele
-          inst = instantiateTele $ pure <$> Vector.fromList (reverse revArgs)
+          inst = instantiateTele pure $ Vector.fromList (reverse revArgs)
           go (vs, index) (i, (h, (), s)) = do
             ptr <- h =: getElementPtr expr index
             nextIndex <- if i == Vector.length teleVector - 1
@@ -320,12 +321,13 @@ generateBranches caseExpr branches brCont = do
       emitLabel postLabel
       return [(contResult, branchLabel)]
 
-    ConBranches cbrs _ -> do
+    ConBranches cbrs -> do
+      let cbrs' = NonEmpty.toList cbrs
       expr <- indirect "case-expr" =<< generateExpr Nothing caseExpr
       e0Ptr <- "tag-pointer" =: getElementPtr expr "0"
       e0 <- "tag" =: load e0Ptr
 
-      branchLabels <- Traversable.forM cbrs $ \(qc@(QConstr _ (Constr constrName)), _, _) -> do
+      branchLabels <- Traversable.forM cbrs' $ \(qc@(QConstr _ (Constr constrName)), _, _) -> do
         Just qcIndex <- constrIndex qc
         branchLabel <- Operand . text <$> freshenName constrName
         return (qcIndex, branchLabel)
@@ -333,11 +335,11 @@ generateBranches caseExpr branches brCont = do
       failLabel <- Operand . text <$> freshenName "pattern-match-failed"
       emit $ switch e0 failLabel branchLabels
 
-      contResults <- Traversable.forM (zip cbrs branchLabels) $ \((_, tele, brScope), (_, branchLabel)) -> mdo
+      contResults <- Traversable.forM (zip cbrs' branchLabels) $ \((_, tele, brScope), (_, branchLabel)) -> mdo
         emitLabel branchLabel
 
         let teleVector = Vector.indexed $ unTelescope tele
-            inst = instantiateTele $ pure <$> Vector.fromList (reverse revArgs)
+            inst = instantiateTele pure $ Vector.fromList (reverse revArgs)
             go (vs, index) (i, (h, (), s)) = do
               ptr <- h =: getElementPtr expr index
               nextIndex <- if i == Vector.length teleVector - 1
@@ -360,16 +362,17 @@ generateBranches caseExpr branches brCont = do
       return $ zip contResults $ snd <$> branchLabels
 
     LitBranches lbrs def -> do
+      let lbrs' = NonEmpty.toList lbrs
       e0 <- loadVar "lit" =<< generateExpr (Just "1") caseExpr
 
-      branchLabels <- Traversable.forM lbrs $ \(l, _) -> do
+      branchLabels <- Traversable.forM lbrs' $ \(l, _) -> do
         branchLabel <- Operand . text <$> freshenName (shower l)
         return (fromIntegral l, branchLabel)
 
       defaultLabel <- Operand . text <$> freshenName "default"
       emit $ switch e0 defaultLabel branchLabels
 
-      contResults <- Traversable.forM (zip lbrs branchLabels) $ \((_, br), (_, brLabel)) -> do
+      contResults <- Traversable.forM (zip lbrs' branchLabels) $ \((_, br), (_, brLabel)) -> do
         emitLabel brLabel
         contResult <- brCont br
         emit $ branch postLabel
@@ -425,7 +428,7 @@ generateFunction visibility name (Function retDir hs funScope) = do
       Void -> VoidVar
       Direct -> DirectVar $ Operand n
       Indirect -> IndirectVar $ Operand n
-  let funExpr = instantiateTele (pure <$> vs) funScope
+  let funExpr = instantiateTele pure vs funScope
       vis | visibility == Private = "private"
           | otherwise = ""
   case retDir of

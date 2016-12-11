@@ -21,6 +21,7 @@ data Expr a v
   | Pi !NameHint !a (Type a v) (Scope1 (Expr a) v)
   | Lam !NameHint !a (Type a v) (Scope1 (Expr a) v)
   | App (Expr a v) !a (Expr a v)
+  | Let !NameHint (Expr a v) (Scope1 (Expr a) v)
   | Case (Expr a v) (Branches QConstr a (Expr a) v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
@@ -44,11 +45,13 @@ instance GlobalBind (Expr a) where
     Pi h a t s -> Pi h a (bind f g t) (bound f g s)
     Lam h a t s -> Lam h a (bind f g t) (bound f g s)
     App e1 a e2 -> App (bind f g e1) a (bind f g e2)
+    Let h e s -> Let h (bind f g e) (bound f g s)
     Case e brs -> Case (bind f g e) (bound f g brs)
 
-instance Syntax (Expr a) where
+instance Annotated (Expr a) where
   type Annotation (Expr a) = a
 
+instance Syntax (Expr a) where
   lam = Lam
 
   lamView (Lam n a e s) = Just (n, a, e, s)
@@ -59,6 +62,7 @@ instance Syntax (Expr a) where
   piView (Pi n a e s) = Just (n, a, e, s)
   piView _ = Nothing
 
+instance AppSyntax (Expr a) where
   app = App
 
   appView (App e1 a e2) = Just (e1, a, e2)
@@ -91,7 +95,8 @@ instance Bitraversable Expr where
     Pi h a t s -> Pi h <$> f a <*> bitraverse f g t <*> bitraverseScope f g s
     Lam h a t s -> Lam h <$> f a <*> bitraverse f g t <*> bitraverseScope f g s
     App e1 a e2 -> App <$> bitraverse f g e1 <*> f a <*> bitraverse f g e2
-    Case e brs  -> Case <$> bitraverse f g e <*> bitraverseAnnotatedBranches f g brs
+    Let h e s -> Let h <$> bitraverse f g e <*> bitraverseScope f g s
+    Case e brs -> Case <$> bitraverse f g e <*> bitraverseAnnotatedBranches f g brs
 
 instance (Eq v, IsString v, Pretty v, Eq a, PrettyAnnotation a) => Pretty (Expr a v) where
   prettyM expr = case expr of
@@ -106,13 +111,16 @@ instance (Eq v, IsString v, Pretty v, Eq a, PrettyAnnotation a) => Pretty (Expr 
     (usedPisViewM -> Just (tele, s)) -> withTeleHints tele $ \ns ->
       parens `above` absPrec $
       prettyTeleVarTypes ns tele <+> "->" <+>
-      associate arrPrec (prettyM $ instantiateTele (pure . fromName <$> ns) s)
+      associate arrPrec (prettyM $ instantiateTele (pure . fromName) ns s)
     Pi {} -> error "impossible prettyPrec pi"
     (lamsViewM -> Just (tele, s)) -> withTeleHints tele $ \ns ->
       parens `above` absPrec $
       "\\" <> prettyTeleVarTypes ns tele <> "." <+>
-      prettyM (instantiateTele (pure . fromName <$> ns) s)
+      prettyM (instantiateTele (pure . fromName) ns s)
     Lam {} -> error "impossible prettyPrec lam"
     App e1 a e2 -> prettyApp (prettyM e1) (prettyAnnotation a $ prettyM e2)
+    Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
+      "let" <+> prettyM n <+> "=" <+> inviolable (prettyM e) <+> "in"
+      <+> prettyM (Util.instantiate1 (pure $ fromName n) s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (prettyM brs)

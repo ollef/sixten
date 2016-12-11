@@ -61,12 +61,15 @@ instance MetaVary Concrete.Expr (MetaVar Concrete.Expr) where
 instance MetaVary (Abstract.Expr a) (MetaVar (Abstract.Expr a)) where
   type MetaData (Abstract.Expr a) (MetaVar (Abstract.Expr a)) = a
 
-type ConcreteM = Concrete.Expr (MetaVar Abstract.ExprP)
-type AbstractM = Abstract.ExprP (MetaVar Abstract.ExprP)
+type MetaP = MetaVar Abstract.ExprP
+type MetaE = MetaVar Abstract.ExprE
+
+type ConcreteM = Concrete.Expr MetaP
+type AbstractM = Abstract.ExprP MetaP
 type AbstractE = Abstract.ExprE (MetaVar Abstract.ExprE)
-type LambdaM = SLambda.Expr (MetaVar Abstract.ExprE)
-type ScopeM b f = Scope b f (MetaVar Abstract.ExprP)
-type BranchesM c a f = Branches c a f (MetaVar Abstract.ExprP)
+type LambdaM = SLambda.Expr MetaE
+type ScopeM b f = Scope b f MetaP
+type BranchesM c a f = Branches c a f MetaP
 
 instance Eq (MetaVar e) where
   (==) = (==) `on` metaId
@@ -102,11 +105,12 @@ showMeta x = do
       then mempty
       else text ", metavars: " <> pretty solutions
 
-logMeta :: (Functor e, Foldable e, Functor f, Foldable f, Pretty (f String), Pretty (e String))
-   => Int
-   -> String
-   -> f (MetaVar e)
-   -> TCM ()
+logMeta
+  :: (Functor e, Foldable e, Functor f, Foldable f, Pretty (f String), Pretty (e String))
+  => Int
+  -> String
+  -> f (MetaVar e)
+  -> TCM ()
 logMeta v s x = whenVerbose v $ do
   i <- gets tcIndent
   r <- showMeta x
@@ -211,10 +215,10 @@ abstract1M v e = do
   abstractM (\v' -> if v == v' then Just () else Nothing) e
 
 abstractDefM
-  :: (MetaVar Abstract.ExprP -> Maybe b)
-  -> Definition Abstract.ExprP (MetaVar Abstract.ExprP)
+  :: (MetaP -> Maybe b)
+  -> Definition Abstract.ExprP MetaP
   -> AbstractM
-  -> TCM ( Definition Abstract.ExprP (Var b (MetaVar Abstract.ExprP))
+  -> TCM ( Definition Abstract.ExprP (Var b MetaP)
            , ScopeM b Abstract.ExprP
            )
 abstractDefM f (Definition e) t = do
@@ -227,12 +231,12 @@ abstractDefM f (DataDefinition e) t = do
   return (DataDefinition e', t')
 
 abstractDataDefM
-  :: (MetaVar Abstract.ExprP -> Maybe b)
-  -> DataDef Abstract.ExprP (MetaVar Abstract.ExprP)
+  :: (MetaP -> Maybe b)
+  -> DataDef Abstract.ExprP MetaP
   -> AbstractM
-  -> TCM (DataDef Abstract.ExprP (Var b (MetaVar Abstract.ExprP)))
+  -> TCM (DataDef Abstract.ExprP (Var b MetaP))
 abstractDataDefM f (DataDef cs) typ = mdo
-  let inst = instantiateTele $ pure <$> vs
+  let inst = instantiateTele pure vs
       vs = (\(_, _, _, v) -> v) <$> ps'
   typ' <- zonk typ
   ps' <- forMTele (telescope typ') $ \h a s -> do

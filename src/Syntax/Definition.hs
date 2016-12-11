@@ -1,7 +1,8 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, Rank2Types, OverloadedStrings #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, Rank2Types, OverloadedStrings #-}
 module Syntax.Definition where
 
 import Bound
+import Control.Monad
 import Data.Bifunctor
 import Data.Bifoldable
 import Data.Bitraversable
@@ -11,7 +12,9 @@ import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HM
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HS
+import Data.Monoid
 import Data.String
+import qualified Data.Vector as Vector
 import Prelude.Extras
 
 import Syntax.Annotation
@@ -19,6 +22,7 @@ import Syntax.Class
 import Syntax.Data
 import Syntax.GlobalBind
 import Syntax.Name
+import Syntax.Pattern
 import Syntax.Pretty
 import Syntax.SourceLoc
 import TopoSort
@@ -28,6 +32,10 @@ data Definition expr v
   = Definition (expr v)
   | DataDefinition (DataDef expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+instance GlobalBound Definition where
+  bound f g (Definition e) = Definition $ bind f g e
+  bound f g (DataDefinition d) = DataDefinition $ bound f g d
 
 traverseDefinitionFirst
   :: (Bitraversable expr, Applicative f)
@@ -44,10 +52,6 @@ definitionFirst
   -> Definition (expr a') v
 definitionFirst f (Definition d) = Definition $ first f d
 definitionFirst f (DataDefinition d) = DataDefinition $ dataDefFirst f d
-
-instance GlobalBound Definition where
-  bound f g (Definition e) = Definition $ bind f g e
-  bound f g (DataDefinition d) = DataDefinition $ bound f g d
 
 prettyTypedDef
   :: (Eq1 expr, Eq v, IsString v, Monad expr, Pretty (expr v), Syntax expr, Eq (Annotation expr), PrettyAnnotation (Annotation expr))

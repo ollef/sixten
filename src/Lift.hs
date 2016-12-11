@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, MonadComprehensions, OverloadedStrings #-}
 module Lift where
 import Control.Monad.State
 import Data.Bifunctor
@@ -60,10 +60,10 @@ underScope f s = toScope <$> f (fromScope s)
 liftBranches
   :: Branches QConstr () Converted.Expr v
   -> Lift (Branches QConstr () (Lifted.Expr ClosureDir) v)
-liftBranches (ConBranches cbrs sz) = ConBranches <$> sequence
+liftBranches (ConBranches cbrs) = ConBranches <$> sequence
   [ (,,) qc <$> liftTelescope tele <*> underScope liftExpr s
   | (qc, tele, s) <- cbrs
-  ] <*> liftExpr sz
+  ]
 liftBranches (LitBranches lbrs def) = LitBranches <$> sequence
   [ (,) l <$> liftExpr e
   | (l, e) <- lbrs

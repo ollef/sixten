@@ -59,7 +59,7 @@ prettyDataDef
   -> DataDef typ v
   -> PrettyM Doc
 prettyDataDef ps (DataDef cs) = "data" <+> "_" <+> withTeleHints ps (\ns ->
-    let inst = instantiateTele $ pure . fromName <$> ns in
+    let inst = instantiateTele (pure . fromName) ns in
         prettyTeleVarTypes ns ps <+> "where" <$$>
           indent 2 (vcat (map (prettyM . fmap inst) cs))
     )
@@ -76,14 +76,20 @@ instance (IsString v, Pretty (typ v), Monad typ) => Pretty (DataDef typ v) where
 instance Pretty typ => Pretty (ConstrDef typ) where
   prettyM (ConstrDef n t) = prettyM n <+> ":" <+> prettyM t
 
-abstractDataDef :: Functor typ
-                => (a -> Maybe b) -> DataDef typ a -> DataDef typ (Var b a)
+abstractDataDef
+  :: Functor typ
+  => (a -> Maybe b)
+  -> DataDef typ a
+  -> DataDef typ (Var b a)
 abstractDataDef f (DataDef cs) = DataDef (fmap (fmap f') <$> cs)
   where
     f' a = maybe (F a) B $ f a
 
-instantiateDataDef :: Monad typ
-                   => (b -> typ a) -> DataDef typ (Var b a) -> DataDef typ a
+instantiateDataDef
+  :: Monad typ
+  => (b -> typ a)
+  -> DataDef typ (Var b a)
+  -> DataDef typ a
 instantiateDataDef f (DataDef cs) = DataDef (fmap (>>>= f') <$> cs)
   where
     f' = unvar f pure

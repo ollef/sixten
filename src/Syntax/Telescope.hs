@@ -20,6 +20,7 @@ import Data.Bitraversable
 import qualified Data.Foldable as Foldable
 import Data.Hashable
 import Data.List as List
+import Data.Maybe
 import Data.Monoid
 import Data.String
 import Data.Traversable
@@ -42,7 +43,7 @@ unTele (Tele i) = i
 
 newtype Telescope anno expr v = Telescope
   { unTelescope :: Vector (NameHint, anno, Scope Tele expr v)
-  } deriving (Eq, Ord, Show, Foldable, Functor, Traversable, Monoid)
+  } deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
 
 mapAnnotations :: (a -> a') -> Telescope a e v -> Telescope a' e v
 mapAnnotations f (Telescope xs) = Telescope $ (\(h, a, s) -> (h, f a, s)) <$> xs
@@ -200,7 +201,7 @@ prettyTeleVarTypes
   -> PrettyM Doc
 prettyTeleVarTypes ns (Telescope v) = hcat $ map go grouped
   where
-    inst = instantiateTele $ pure . fromName <$> ns
+    inst = instantiateTele (pure . fromName) ns
     vlist = Vector.toList v
     grouped = [ (n : [n' | (Hint n', _) <- vlist'], a, t)
               | (Hint n, (_, a, t)):vlist' <- List.group $ zip (map Hint [(0 :: Int)..]) vlist]
@@ -234,18 +235,12 @@ iforMTele (Telescope t) f = flip Vector.imapM t $ \i (h, d, s) -> f i h d s
 
 instantiateTele
   :: Monad f
-  => Vector (f a)
-  -> Scope Tele f a
-  -> f a
-instantiateTele vs = instantiate ((vs Vector.!) . unTele)
-
-instantiateTele'
-  :: Monad f
   => (v -> f a)
   -> Vector v
   -> Scope Tele f a
   -> f a
-instantiateTele' f vs = instantiate (f . (vs Vector.!) . unTele)
+instantiateTele f vs
+  = instantiate (f . fromMaybe (error "instantiateTele") . (vs Vector.!?) . unTele)
 
 teleAbstraction :: Eq a => Vector a -> a -> Maybe Tele
 teleAbstraction vs = fmap Tele . (`Vector.elemIndex` vs)
@@ -269,5 +264,5 @@ bindingsView f expr = go 0 $ F <$> expr
   where
     go x (f -> Just (n, p, e, s)) = (Telescope $ pure (n, p, toScope e) <> ns, s')
       where
-        (Telescope ns, s') = (go $! x + 1) $ instantiate1 (return $ B x) s
-    go _ e = (mempty, toScope e)
+        (Telescope ns, s') = (go $! x + 1) $ Util.instantiate1 (return $ B x) s
+    go _ e = (Telescope mempty, toScope e)

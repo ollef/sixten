@@ -23,6 +23,9 @@ instance Ord (Hint a) where
 newtype NameHint = NameHint (Hint (Maybe Name))
   deriving (Eq, Ord, Show)
 
+nameHint :: Name -> NameHint
+nameHint = NameHint . Hint . Just
+
 unNameHint :: NameHint -> Maybe Name
 unNameHint (NameHint (Hint x)) = x
 

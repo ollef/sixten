@@ -1,4 +1,4 @@
-{-# LANGUAGE PatternSynonyms, OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms, PolyKinds, TypeFamilies, OverloadedStrings #-}
 module Syntax.Annotation where
 
 import Syntax.Pretty
@@ -7,6 +7,9 @@ class Eq a => PrettyAnnotation a where
   prettyAnnotation :: a -> PrettyM Doc -> PrettyM Doc
   prettyAnnotationParens :: a -> PrettyM Doc -> PrettyM Doc
   prettyAnnotationParens p = prettyAnnotation p . parens
+
+class Annotated (e :: k) where
+  type Annotation e :: *
 
 instance PrettyAnnotation () where
   prettyAnnotation _ = id

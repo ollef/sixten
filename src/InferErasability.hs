@@ -8,6 +8,7 @@ import Data.Bitraversable
 import Data.Function
 import Data.Hashable
 import Data.Monoid
+import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Set as Set
 import Data.STRef
 import Data.Vector(Vector)
@@ -260,7 +261,7 @@ inferBranches
   => MetaErasability
   -> Branches QConstr a (Expr a) MetaVar
   -> TCM (Branches QConstr MetaErasability (Expr MetaErasability) MetaVar, ErasableM)
-inferBranches er (ConBranches cbrs retType) = do
+inferBranches er (ConBranches cbrs) = do
   cbrs' <- forM cbrs $ \(c@(QConstr dataTypeName _), tele, brScope) -> mdo
     (_, dataTypeType) <- definition dataTypeName
     let numParams = teleLength $ telescope (dataTypeType :: ErasableM)
@@ -269,18 +270,17 @@ inferBranches er (ConBranches cbrs retType) = do
     vs <- iforMTele tele $ \i h _ s -> do
       logVerbose 30 $ shower $ teleAnnotations argTypes
       let argEr = fromErasability $ teleAnnotations argTypes Vector.! (i + numParams)
-          typ = instantiateTele pureVs s
+          typ = instantiateTele pure vs s
       typ' <- inferArgType argEr typ
       forall h argEr typ'
-    let pureVs = pure <$> vs
-        abstr = abstract $ teleAbstraction vs
-        br = instantiateTele pureVs brScope
+    let abstr = abstract $ teleAbstraction vs
+        br = instantiateTele pure vs brScope
     tele' <- forM vs $ \v -> return (metaHint v, metaErasability v, abstr $ metaType v)
-    (br', _) <- infer er br
+    (br', retType) <- infer er br
     let brScope' = abstr br'
-    return (c, Telescope tele', brScope')
-  (retType', _) <- infer MErased retType
-  return (ConBranches cbrs' retType', retType')
+    return ((c, Telescope tele', brScope'), retType)
+  let retType = snd $ NonEmpty.head cbrs'
+  return (ConBranches (fst <$> cbrs'), retType)
 inferBranches er (LitBranches lbrs def) = do
   lbrs' <- forM lbrs (\(l, br) -> (,) l . fst <$> infer er br)
   (def', typ) <- infer er def
@@ -329,13 +329,10 @@ checkDataType
 checkDataType (DataDef cs) typ = mdo
 
   vs <- forMTele (telescope typ) $ \h e s ->
-    forall h e $ instantiateTele pureVs s
-
-  let pureVs = pure <$> vs
-      pureVs' = pure <$> vs
+    forall h e $ instantiateTele pure vs s
 
   cs' <- forM cs $ \(ConstrDef c s) -> do
-    let t = instantiateTele pureVs' s
+    let t = instantiateTele pure vs s
     (t', _) <- infer MErased t
     return $ ConstrDef c $ abstract (teleAbstraction vs) t'
 

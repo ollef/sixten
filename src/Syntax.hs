@@ -1,8 +1,9 @@
-module Syntax (module X) where
+module Syntax (module X, Util.instantiate1) where
 
-import Bound as X
-import Bound.Scope as X
+import Bound as X hiding (instantiate1)
+import Bound.Scope as X hiding (instantiate1)
 import Bound.Var as X
+import qualified Util
 
 import Syntax.Annotation as X
 import Syntax.Branches as X
@@ -13,6 +14,7 @@ import Syntax.Direction as X
 import Syntax.GlobalBind as X
 import Syntax.Hint as X
 import Syntax.Name as X
+import Syntax.Pattern as X
 import Syntax.Pretty as X
 import Syntax.Primitive as X
 import Syntax.Telescope as X

@@ -72,5 +72,5 @@ instance (Eq v, IsString v, Pretty v)
     (bindingsViewM lamView -> Just (tele, s)) -> parens `above` absPrec $
       withTeleHints tele $ \ns ->
         "\\" <> prettyTeleVarTypes ns tele <> "." <+>
-        associate absPrec (prettyM $ instantiateTele (pure . fromName <$> ns) s)
+        associate absPrec (prettyM $ instantiateTele (pure . fromName) ns s)
     Lam {} -> error "impossible prettyPrec lam"

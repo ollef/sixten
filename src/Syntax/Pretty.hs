@@ -23,6 +23,7 @@ module Syntax.Pretty
   ) where
 import Bound
 import Control.Monad.Reader
+import qualified Data.Foldable as Foldable
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Monoid
@@ -83,14 +84,14 @@ runPrettyM (PrettyM p) = p PrettyEnv
 a <+> b = (Leijen.<+>) <$> a <*> b
 a <$$> b = (Leijen.<$$>) <$> a <*> b
 
-vcat :: [PrettyM Doc] -> PrettyM Doc
-vcat xs = Leijen.vcat <$> sequence xs
+vcat :: Foldable f => f (PrettyM Doc) -> PrettyM Doc
+vcat xs = Leijen.vcat <$> sequence (Foldable.toList xs)
 
-hcat :: [PrettyM Doc] -> PrettyM Doc
-hcat xs = Leijen.hcat <$> sequence xs
+hcat :: Foldable f => f (PrettyM Doc) -> PrettyM Doc
+hcat xs = Leijen.hcat <$> sequence (Foldable.toList xs)
 
-hsep :: [PrettyM Doc] -> PrettyM Doc
-hsep xs = Leijen.hsep <$> sequence xs
+hsep :: Foldable f => f (PrettyM Doc) -> PrettyM Doc
+hsep xs = Leijen.hsep <$> sequence (Foldable.toList xs)
 
 indent :: Int -> PrettyM Doc -> PrettyM Doc
 indent n = fmap $ Leijen.indent n

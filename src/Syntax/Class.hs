@@ -1,36 +1,36 @@
-{-# LANGUAGE TypeFamilies, ViewPatterns #-}
+{-# LANGUAGE ViewPatterns #-}
 module Syntax.Class where
 import Bound
 import Data.Bifunctor
 import Data.Foldable as Foldable
 
+import Syntax.Annotation
 import Syntax.Hint
 import Syntax.Telescope
 import Util
 
-class (Monad e, Traversable e) => Syntax e where
-  type Annotation e
-
+class (AppSyntax e, Annotated e, Monad e, Traversable e) => Syntax e where
   lam :: NameHint -> Annotation e -> e v -> Scope1 e v -> e v
   lamView :: e v -> Maybe (NameHint, Annotation e, e v, Scope1 e v)
 
   pi_ :: NameHint -> Annotation e -> e v -> Scope1 e v -> e v
   piView :: e v -> Maybe (NameHint, Annotation e, e v, Scope1 e v)
 
+class Annotated e => AppSyntax e where
   app :: e v -> Annotation e -> e v -> e v
   appView :: e v -> Maybe (e v, Annotation e, e v)
 
-apps :: (Syntax e, Foldable t) => e v -> t (Annotation e, e v) -> e v
-apps = Foldable.foldl (uncurry . app)
+apps :: (AppSyntax e, Foldable t) => e v -> t (Annotation e, e v) -> e v
+apps = Foldable.foldl' (uncurry . app)
 
-appsView :: Syntax e => e v -> (e v, [(Annotation e, e v)])
+appsView :: AppSyntax e => e v -> (e v, [(Annotation e, e v)])
 appsView = second reverse . go
   where
     go (appView -> Just (e1, p, e2)) = second ((p, e2) :) $ go e1
     go e = (e, [])
 
 typeApp :: Syntax e => e v -> e v -> Maybe (e v)
-typeApp (piView -> Just (_, _, _, s)) e = Just $ instantiate1 e s
+typeApp (piView -> Just (_, _, _, s)) e = Just $ Util.instantiate1 e s
 typeApp _ _ = Nothing
 
 typeApps :: (Syntax e, Foldable t) => e v -> t (e v) -> Maybe (e v)

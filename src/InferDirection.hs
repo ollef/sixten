@@ -7,6 +7,7 @@ import Data.Bitraversable
 import Data.Function
 import Data.Hashable
 import Data.STRef
+import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 
@@ -152,14 +153,13 @@ inferBranches
   :: Location
   -> Branches c () (Expr ClosureDir) MetaVar
   -> TCM (Branches c () (Expr RetDirM) MetaVar, Location)
-inferBranches loc (ConBranches cbrs retType) = do
+inferBranches loc (ConBranches cbrs) = do
   locatedCBrs <- forM cbrs $ \(c, tele, brScope) -> do
     vs <- forMTele tele $ \h _ _ -> exists h loc MOutParam
-    let pureVs = pure <$> vs
-        abstr = abstract $ teleAbstraction vs
-        br = instantiateTele pureVs brScope
+    let abstr = abstract $ teleAbstraction vs
+        br = instantiateTele pure vs brScope
     sizes <- forMTele tele $ \_ _ s -> do
-      let sz = instantiateTele pureVs s
+      let sz = instantiateTele pure vs s
       (sz', _szLoc)  <- infer sz
       return sz'
     tele' <- forM (Vector.zip vs sizes) $ \(v, sz) ->
@@ -167,18 +167,20 @@ inferBranches loc (ConBranches cbrs retType) = do
     (br', brLoc) <- infer br
     let brScope' = abstr br'
     return ((c, Telescope tele', brScope'), brLoc)
-  (retType', _) <- infer retType
-  let (cbrs', brLocs) = unzip locatedCBrs
+  let (cbrs', brLocs) = NonEmpty.unzip locatedCBrs
   brLoc <- foldM maxMetaReturnIndirect MProjection brLocs
-  return (ConBranches cbrs' retType', brLoc)
+  return (ConBranches cbrs', brLoc)
 inferBranches _loc (LitBranches lbrs def) = do
   locatedLbrs <- forM lbrs $ \(lit, e) -> do
     (e', loc) <- infer e
     return ((lit, e'), loc)
   (def', defloc) <- infer def
-  let (lbrs', locs) = unzip locatedLbrs
+  let (lbrs', locs) = NonEmpty.unzip locatedLbrs
   loc <- foldM maxMetaReturnIndirect defloc locs
   return (LitBranches lbrs' def', loc)
+inferBranches loc (NoBranches typ) = do
+  (typ', _loc) <- infer typ
+  return (NoBranches typ', loc) -- TODO Is this location correct?
 
 inferIndirectReturnDir
   :: Expr ClosureDir MetaVar
@@ -198,7 +200,7 @@ inferDefinition
   -> TCM (Definition RetDirM (Expr RetDirM) MetaVar)
 inferDefinition v (FunctionDef vis (Function mretDir args s)) = do
   args' <- forM args $ \(h, _) -> exists h MProjection MOutParam
-  let e = instantiateTele (pure <$> args') s
+  let e = instantiateTele pure args' s
       vdir = metaReturnIndirect v
   retDir <- case mretDir of
     ClosureDir -> do

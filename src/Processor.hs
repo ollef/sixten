@@ -7,8 +7,8 @@ import Control.Monad.State
 import Data.Bifunctor
 import Data.Bitraversable
 import Data.Foldable
+import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HM
-import qualified Data.HashSet as HS
 import Data.List
 import Data.Monoid
 import Data.Text(Text)
@@ -24,6 +24,7 @@ import qualified Text.Trifecta as Trifecta
 import qualified Builtin
 import Close
 import ClosureConvert
+import qualified Dry
 import Erase
 import qualified Generate
 import qualified Infer
@@ -31,7 +32,6 @@ import qualified InferDirection
 import qualified InferErasability
 import Lift
 import qualified LLVM
-import Meta
 import Paths_sixten
 import qualified Resolve
 import Simplify
@@ -43,17 +43,24 @@ import qualified Syntax.Converted as Converted
 import qualified Syntax.Lifted as Lifted
 import qualified Syntax.Parse as Parse
 import qualified Syntax.SLambda as SLambda
+import qualified Syntax.Wet as Wet
 import Target
 import TCM
 import Util
 
+processResolved
+  :: HashMap Name (SourceLoc, Wet.Definition Name, Wet.Type Name)
+  -> TCM [(LLVM.B, LLVM.B)]
+processResolved
+  = pure . Dry.dryProgram
+  >>=> processGroup
+
 processGroup
-  :: [(Name, SourceLoc, Definition Concrete.Expr Name, Concrete.Expr Name)]
+  :: [(Name, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]
   -> TCM [(LLVM.B, LLVM.B)]
 processGroup
-  = prettyLocatedGroup "Concrete syntax" id
-  >=> exposeConcreteGroup
-  >=> typeCheckGroup
+  = {- prettyLocatedGroup "Concrete syntax" id -- TODO
+  >=> -} typeCheckGroup
   >=> prettyTypedGroup "Abstract syntax" absurd
   >=> simplifyGroup
   >=> prettyTypedGroup "Simplified" absurd
@@ -141,38 +148,10 @@ prettyGroup str f defs = do
       TCM.log ""
   return defs
 
-exposeConcreteGroup
-  :: [(Name, SourceLoc, Definition Concrete.Expr Name, Concrete.Expr Name)]
-  -> TCM [(Name, SourceLoc, Definition Concrete.Expr (Var Int v), Scope Int Concrete.Expr v)]
-exposeConcreteGroup defs = return
-  [ ( n
-    , loc
-    , s >>>= unvar (pure . B) global
-    , t >>>= global
-    )
-  | ((s, t), (n, loc, _, _)) <- zip (zip abstractedScopes abstractedTypes) defs]
-  where
-    abstractedScopes = recursiveAbstractDefs [(n, d) | (n, _, d, _) <- defs]
-    abstractedTypes = recursiveAbstract [(n, t) | (n, _, _, t) <- defs]
-
 typeCheckGroup
-  :: [(Name, SourceLoc, Definition Concrete.Expr (Var Int (MetaVar Abstract.ExprP)), ScopeM Int Concrete.Expr)]
+  :: [(Name, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]
   -> TCM [(Name, Definition Abstract.ExprP Void, Abstract.ExprP Void)]
-typeCheckGroup defs = do
-  checkedDefs <- Infer.checkRecursiveDefs $ V.fromList defs
-
-  let vf :: MetaVar Abstract.ExprP -> TCM b
-      vf v = throwError $ "typeCheckGroup " ++ show v
-  checkedDefs' <- traverse (bitraverse (traverse $ traverse vf) (traverse vf)) checkedDefs
-  let names = V.fromList [n | (n, _, _, _) <- defs]
-      instDefs =
-        [ ( names V.! i
-          , instantiateDef (global . (names V.!)) d
-          , instantiate (global . (names V.!)) t
-          )
-        | (i, (d, t)) <- zip [0..] $ V.toList checkedDefs'
-        ]
-  return instDefs
+typeCheckGroup = fmap V.toList . Infer.checkRecursiveDefs . V.fromList
 
 simplifyGroup
   :: Eq a
@@ -354,16 +333,7 @@ processFile file output target logHandle verbosity = do
     Trifecta.Failure xs -> return $ Error $ SyntaxError xs
     Trifecta.Success (ExceptT (Identity (Left err))) -> return $ Error $ ResolveError err
     Trifecta.Success (ExceptT (Identity (Right resolved))) -> do
-      let groups = filter (not . null) $ dependencyOrder
-            (HS.map (either constrToName (\(QConstr n _) -> n)) . Concrete.constructors) resolved
-          constrs = HS.fromList
-                  $ programConstrNames Builtin.contextP
-                  <> programConstrNames (unlocatedProgram resolved)
-          instCon (Name v)
-            | Constr v `HS.member` constrs = Concrete.Con $ Left (Constr v)
-            | otherwise = pure $ Name v
-          groups' = fmap (fmap $ bimap (>>>= instCon) (>>= instCon)) <$> groups
-      procRes <- runTCM (process groups') target logHandle verbosity
+      procRes <- runTCM (process resolved) target logHandle verbosity
       case procRes of
         Left err -> return $ Error $ TypeError $ Text.pack err
         Right res -> do
@@ -371,22 +341,22 @@ processFile file output target logHandle verbosity = do
           withFile output WriteMode $ \handle -> do
             let outputStrLn = Text.hPutStrLn handle
             outputStrLn forwardDecls
-            forM_ (concat res) $ \(_, b) -> do
+            forM_ res $ \(_, b) -> do
               outputStrLn ""
               outputStrLn b
             outputStrLn ""
             outputStrLn "define i32 @main() {"
             outputStrLn "  call void @GC_init()"
-            forM_ (concat res) $ \(i, _) ->
+            forM_ res $ \(i, _) ->
               unless (Text.null i) $ outputStrLn i
             outputStrLn "  ret i32 0"
             outputStrLn "}"
           return Success
   where
-    process groups = do
+    process resolved = do
       addContext Builtin.contextP
       addErasableContext Builtin.contextE
       addConvertedSignatures $ Converted.signature <$> Builtin.convertedContext
       builtins <- processConvertedGroup $ HM.toList Builtin.convertedContext
-      results <- mapM (processGroup . fmap (\(n, (d, t, loc)) -> (n, d, t, loc))) groups
-      return $ builtins : results
+      results <- processResolved resolved
+      return $ builtins ++ results

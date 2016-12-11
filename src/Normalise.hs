@@ -1,7 +1,8 @@
-{-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, RecursiveDo, TypeFamilies, ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances, MonadComprehensions, MultiParamTypeClasses, RecursiveDo, TypeFamilies, ViewPatterns #-}
 module Normalise where
 
 import Control.Monad.Except
+import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Vector as Vector
 
 import qualified Builtin
@@ -35,7 +36,7 @@ whnf expr = do
       case e1' of
         Lam _ p' _ s | p == p' -> do
           e2' <- whnf e2
-          whnf $ instantiate1 e2' s
+          whnf $ Util.instantiate1 e2' s
         _ -> return expr
     Case e brs -> do
       e' <- whnf e
@@ -67,22 +68,23 @@ normaliseM expr = do
       e1' <- normaliseM e1
       e2' <- normaliseM e2
       case e1' of
-        Lam _ p' _ s | p == p' -> normaliseM $ instantiate1 e2' s
+        Lam _ p' _ s | p == p' -> normaliseM $ Util.instantiate1 e2' s
         _ -> return $ App e1' p e2'
     Case e brs -> do
       e' <- whnf e
       res <- chooseBranch e' brs whnf
       case res of
         Case e'' brs' -> Case e'' <$> case brs' of
-          ConBranches cbrs typ -> ConBranches
+          ConBranches cbrs -> ConBranches
             <$> sequence
               [ uncurry ((,,) qc) <$> normaliseTelescope tele s
               | (qc, tele, s) <- cbrs
               ]
-            <*> normaliseM typ
           LitBranches lbrs def -> LitBranches
             <$> sequence [(,) l <$> normaliseM br | (l, br) <- lbrs]
             <*> normaliseM def
+          NoBranches typ -> NoBranches
+            <$> normaliseM typ
         _ -> return res
   modifyIndent pred
   logMeta 40 "normaliseM res" res
@@ -90,14 +92,13 @@ normaliseM expr = do
   where
     normaliseTelescope tele scope = mdo
       avs <- forMTele tele $ \h a s -> do
-        t' <- normaliseM $ instantiateTele pvs s
+        t' <- normaliseM $ instantiateTele pure vs s
         v <- forall h a t'
         return (a, v)
       let vs = snd <$> avs
-          pvs = pure <$> vs
 
           abstr = teleAbstraction vs
-      e' <- normaliseM $ instantiateTele pvs scope
+      e' <- normaliseM $ instantiateTele pure vs scope
       scope' <- abstractM abstr e'
       tele' <- forM avs $ \(a, v) -> do
         s <- abstractM abstr $ metaType v
@@ -106,7 +107,7 @@ normaliseM expr = do
     normaliseScope h p c t s = do
       t' <- normaliseM t
       x <- forall h p t'
-      ns <- normaliseM $ instantiate1 (pure x) s
+      ns <- normaliseM $ Util.instantiate1 (pure x) s
       c t' <$> abstract1M x ns
 
 binOp
@@ -133,11 +134,11 @@ chooseBranch
   -> TCM (Expr a v)
 chooseBranch (Lit l) (LitBranches lbrs def) k = k chosenBranch
   where
-    chosenBranch = head $ [br | (l', br) <- lbrs, l == l'] ++ [def]
-chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs _) k =
-  k $ instantiateTele (Vector.fromList $ snd <$> args) chosenBranch
+    chosenBranch = head $ [br | (l', br) <- NonEmpty.toList lbrs, l == l'] ++ [def]
+chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs) k =
+  k $ instantiateTele snd (Vector.fromList args) chosenBranch
   where
-    chosenBranch = case [br | (qc', _, br) <- cbrs, qc == qc'] of
+    chosenBranch = case [br | (qc', _, br) <- NonEmpty.toList cbrs, qc == qc'] of
       [br] -> br
       _ -> error "Normalise.chooseBranch"
 chooseBranch e brs _ = return $ Case e brs

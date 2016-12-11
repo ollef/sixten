@@ -2,6 +2,8 @@ Type checking
   Better checking for escaped vars
   Can the special-case equations for unifying sizes be done in a principled way?
   Propagate equalities from cases
+  Sanity type-check the Abstract syntax
+  Match coverage checking
 Erasure
   Make sure that we don't transform functions to non-functions by erasing all arguments.
     e.g. `loop x = loop x : Void` should not have its argument removed.
@@ -13,10 +15,24 @@ Codegen
     Add error message for circular globals, e.g. `a = a`
   Should things of known size > 1 be passed as LLVM arrays?
 Compiler
+  Cleanups:
+    Use Vector instead of list for groups in processor?
+    Get rid of recursiveAbstract, instantiateDef
+    Get rid of Program
+    Make data parameters not accept patterns
+    Remove constrs functionality (now that we have Dry)
+    Rename Wet and Dry to unscoped and scoping?
+    Make imports always use fuller names (HashMap instead of HM etc)
+    Go through all code and remove unused things
+  Use e.g. llvm-hs-kaleidoscope for llvm?
   Add printing to compiler passes that are not TCM (make a MonadLog class?)
+  Simplify/make consistent all the type synonyms
   Concretise some of the Context/MetaVary nonsense
   Clean up MetaVar handling (not all modules need the full generality)
+  Remove Bound instances and only use GlobalBound
+  Make a version of e.g. forMTele that's not recursive, but instead gives access to the partial result (use slice cleverly?)
 Error messages
+  Write own error printer
   Make error message footnotes contain metavars
 Language
   Add new Int type -- overloaded literals
@@ -24,7 +40,12 @@ Language
   Named implicit arguments (maybe names should be mandatory?)
   Laziness
   * Make Concrete syntax have deep patterns and desugar them
-  Type classes
+    Desugar before, after, or during type checking?
+      X Before: Can't resolve constructor types.
+      V After: New AST.
+      X During: No new AST needed, but complicates checking?
+    Desugar patterns of different arity and with differing implicit args
+  * Type classes
   Row polymorphism
     r : Row : Type
     {l = A} : {l : A} : Type
@@ -35,7 +56,13 @@ Language
   FFI & More general way to define builtins (extern LLVM, C?)
 Size types
   Can the size be made abstract, e.g. `List A : Type {sizeof (List A)}`?
+  Change Size to runtime representation, which can include:
+    * Allocation strategy
+    * Size
+    * GC info (e.g. positions of pointers)
+    * Functions can be of type `Type {ClosureRep}` where ClosureRep is magic
   Can we have an Infinity size for things we can only hold in pointers?
+  ListRep : max 1 (1 + sizeof A + sizeof (Ptr (List A)))
 Optimisations
   Inlining
   Common subexpressions

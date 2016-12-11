@@ -6,7 +6,6 @@ import Control.Monad.Except
 import Control.Monad.State
 import Data.Char
 import qualified Data.HashSet as HS
-import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Text(Text)
 import qualified Data.Text as Text
@@ -17,16 +16,16 @@ import Text.Trifecta((<?>))
 import Text.Trifecta.Delta
 
 import Syntax
-import Syntax.Concrete as Concrete
+import Syntax.Concrete.Pattern
+import Syntax.Wet as Wet
 import Util
 
 type Input = Text
 newtype Parser a = Parser {runParser :: StateT Delta Trifecta.Parser a}
-  deriving ( Monad, MonadPlus, MonadState Delta
-           , Functor, Applicative, Alternative
-           , Trifecta.Parsing, Trifecta.CharParsing
-           , Trifecta.DeltaParsing
-           )
+  deriving
+    ( Monad, MonadPlus, MonadState Delta , Functor, Applicative, Alternative
+    , Trifecta.Parsing, Trifecta.CharParsing , Trifecta.DeltaParsing
+    )
 
 parseString :: Parser a -> String -> Trifecta.Result a
 parseString p = Trifecta.parseString (evalStateT (runParser p) mempty <* Trifecta.eof) mempty
@@ -60,6 +59,8 @@ multilineComment =
          <|> multilineComment *> inner
          <|> Trifecta.anyChar *> inner
 
+-------------------------------------------------------------------------------
+-- * Indentation parsing
 deltaLine :: Delta -> Int
 deltaLine Columns {}           = 0
 deltaLine Tab {}               = 0
@@ -117,7 +118,7 @@ manyIndentedSameCol p
 -- | One or more on the same line or a successive but indented line.
 someSI :: Parser a -> Parser [a]
 someSI p = Trifecta.some (sameLineOrIndented >> p)
---
+
 -- | Zero or more on the same line or a successive but indented line.
 manySI :: Parser a -> Parser [a]
 manySI p = Trifecta.many (sameLineOrIndented >> p)
@@ -141,6 +142,8 @@ p *>% q = p *>  (sameLineOrIndented >> q)
 (<**>%) :: Parser a -> Parser (a -> b) -> Parser b
 p <**>% q = p <**> (sameLineOrIndented >> q)
 
+-------------------------------------------------------------------------------
+-- * Tokens
 idStyle :: Trifecta.CharParsing m => Trifecta.IdentifierStyle m
 idStyle = Trifecta.IdentifierStyle "Dependent" start letter res Highlight.Identifier Highlight.ReservedIdentifier
   where
@@ -170,148 +173,119 @@ literal = Trifecta.token $ Trifecta.try Trifecta.integer
 constructor :: Parser Constr
 constructor = nameToConstr <$> ident
 
-data Binding
-  = Plain Plicitness [Maybe Name]
-  | Typed Plicitness [Maybe Name] (Expr Name)
-  deriving (Eq, Show)
+-------------------------------------------------------------------------------
+-- * Patterns
+locatedPat :: Parser (Pat typ v) -> Parser (Pat typ v)
+locatedPat p = (\(pat Trifecta.:~ s) -> PatLoc (Trifecta.render s) pat) <$> Trifecta.spanned p
 
+pattern :: Parser (Pat (Type Name) Name)
+pattern = locatedPat $
+  ( Trifecta.try (ConPat <$> (Left <$> constructor) <*> (Vector.fromList <$> someSI plicitPattern))
+    <|> atomicPattern
+  ) <**>
+  ( AnnoPat <$% symbol ":" <*> expr
+    <|> pure id
+  ) <?> "pattern"
+
+plicitPattern :: Parser (Plicitness, Pat (Type Name) Name)
+plicitPattern = (,) Implicit <$ symbol "{" <*>% pattern <*% symbol "}"
+  <|> (,) Explicit <$> atomicPattern
+  <?> "explicit or implicit pattern"
+
+atomicPattern :: Parser (Pat (Type Name) Name)
+atomicPattern = locatedPat
+  $ symbol "(" *>% pattern <*% symbol ")"
+  <|> (\v -> VarPat (NameHint $ Hint $ Just v) v) <$> ident
+  <|> WildcardPat <$ wildcard
+  <|> LitPat <$> literal
+  <?> "atomic pattern"
+
+patternBinding :: Parser [(Plicitness, Pat (Type Name) Name)]
+patternBinding
+  = go Implicit <$ symbol "{" <*> someSI atomicPattern <*% symbol ":" <*>% expr <*% symbol "}"
+  <|> go Explicit <$ symbol "(" <*> someSI atomicPattern <*% symbol ":" <*>% expr <*% symbol ")"
+  <?> "typed pattern"
+  where
+    go p pats t = [(p, AnnoPat t pat) | pat <- pats]
+
+somePatternBindings :: Parser [(Plicitness, Pat (Type Name) Name)]
+somePatternBindings = concat <$> someSI patternBinding
+
+somePatterns :: Parser [(Plicitness, Pat (Type Name) Name)]
+somePatterns = concat <$> someSI (Trifecta.try patternBinding <|> pure <$> plicitPattern)
+
+manyPatterns :: Parser [(Plicitness, Pat (Type Name) Name)]
+manyPatterns = concat <$> manySI (Trifecta.try patternBinding <|> pure <$> plicitPattern)
+
+plicitBinding :: Parser (Plicitness, Name)
+plicitBinding
+  = (,) Implicit <$ symbol "{" <*>% ident <*% symbol "}"
+  <|> (,) Explicit <$> ident
+  <?> "variable binding"
+
+plicitBinding' :: Parser [(Plicitness, Name, Type Name)]
+plicitBinding'
+  = (\(p, n) -> [(p, n, Wildcard)])<$> plicitBinding
+
+typedBinding :: Parser [(Plicitness, Name, Type Name)]
+typedBinding = fmap flatten
+  $ (,,) Implicit <$ symbol "{" <*> someSI ident <*% symbol ":" <*>% expr <*% symbol "}"
+  <|> (,,) Explicit <$ symbol "(" <*> someSI ident <*% symbol ":" <*>% expr <*% symbol ")"
+  <?> "typed variable binding"
+  where
+    flatten (p, names, t) = [(p, name, t) | name <- names]
+
+manyTypedBindings :: Parser [(Plicitness, Name, Type Name)]
+manyTypedBindings = concat <$> manySI (Trifecta.try typedBinding <|> plicitBinding')
+
+-------------------------------------------------------------------------------
+-- * Expressions
 located :: Parser (Expr v) -> Parser (Expr v)
 located p = (\(e Trifecta.:~ s) -> SourceLoc (Trifecta.render s) e) <$> Trifecta.spanned p
 
-abstractBindings
-  :: (NameHint -> Plicitness -> Maybe (Expr Name) -> Scope1 Expr Name -> Expr Name)
-  -> [Binding]
-  -> Expr Name -> Expr Name
-abstractBindings c = flip $ foldr f
-  where
-    f (Plain p xs)   e = foldr (\x -> c (h x) p Nothing  . abstractMaybe1 x) e xs
-    f (Typed p xs t) e = foldr (\x -> c (h x) p (Just t) . abstractMaybe1 x) e xs
-    abstractMaybe1 = maybe abstractNone abstract1
-    h = NameHint . Hint
-
-bindingNames :: [Binding] -> Vector (Maybe Name)
-bindingNames bs = Vector.fromList $ bs >>= flatten
-  where
-    flatten (Plain _ names) = names
-    flatten (Typed _ names _) = names
-
-bindingHints :: [Binding] -> Vector (NameHint, Plicitness)
-bindingHints bs = Vector.fromList $ bs >>= flatten
-  where
-    flatten (Plain p names) = [(NameHint $ Hint n, p) | n <- names]
-    flatten (Typed p names _type) = [(NameHint $ Hint n, p) | n <- names]
-
-bindingsTelescope :: [Binding] -> Telescope Plicitness Expr Name
-bindingsTelescope bs = Telescope $
-  Vector.imap (\i (n, p, t) -> (NameHint $ Hint n, p, abstract (abstr i) t)) unabstracted
-  where
-    unabstracted = Vector.fromList $ bs >>= flatten
-    abstr i v = case Vector.elemIndex (Just v) $ bindingNames bs of
-      Just n | n < i -> Just $ Tele n
-      _ -> Nothing
-    flatten (Plain p names) = [(name, p, Wildcard) | name <- names]
-    flatten (Typed p names t) = [(name, p, t) | name <- names]
-
-typedBinding :: Parser Binding
-typedBinding
-  = Typed Explicit <$ symbol "(" <*>% someSI identOrWildcard
-    <*% symbol ":" <*>% expr <*% symbol ")"
-  <|> Typed Implicit <$ symbol "{" <*>% someSI identOrWildcard
-    <*% symbol ":" <*>% expr <*% symbol "}"
-  <?> "typed variable binding"
-
-someTypedBindings :: Parser [Binding]
-someTypedBindings
-  = someSI typedBinding
- <?> "typed variable bindings"
-
-atomicBinding :: Parser Binding
-atomicBinding
-  = explicit <$> identOrWildcard
-  <|> Typed Explicit <$ symbol "(" <*>% someSI identOrWildcard
-    <*% symbol ":" <*>% expr <*% symbol ")"
-  <|> implicit <$ symbol "{" <*>% someSI identOrWildcard
-    <*> Trifecta.optional (id <$% symbol ":" *> expr)
-    <*% symbol "}"
-  <?> "atomic variable binding"
- where
-  explicit x = Plain Explicit [x]
-  implicit xs Nothing  = Plain Implicit xs
-  implicit xs (Just t) = Typed Implicit xs t
-
-someBindings :: Parser [Binding]
-someBindings
-  = someSI atomicBinding
- <?> "variable bindings"
-
-manyBindings :: Parser [Binding]
-manyBindings
-  = manySI atomicBinding
- <?> "variable bindings"
-
-caseBinding :: Parser [(Maybe Name, Plicitness)]
-caseBinding
-  = implicits <$ symbol "{" <*>% someSI identOrWildcard <*% symbol "}"
-  <|> explicit <$> identOrWildcard
-  where
-    implicits xs = [(x, Implicit) | x <- xs]
-    explicit x = [(x, Explicit)]
-
 atomicExpr :: Parser (Expr Name)
 atomicExpr = located
- $ Lit <$> literal
- <|> Wildcard <$ wildcard
- <|> Var <$> ident
- <|> abstr (reserved "forall") piType
- <|> abstr (symbol   "\\")     Concrete.tlam
- <|> Case <$ reserved "case" <*>% expr <*% reserved "of" <*> branches
- -- <|> lett <$ reserved "let" <*>% manyIndentedSamecol def <*% reserved "in" <*> expr
- <|> symbol "(" *>% expr <*% symbol ")"
- <?> "atomic expression"
+  $ Lit <$> literal
+  <|> Wildcard <$ wildcard
+  <|> Var <$> ident
+  <|> abstr (reserved "forall") Wet.pis
+  <|> abstr (symbol   "\\") Wet.lams
+  <|> Case <$ reserved "case" <*>% expr <*% reserved "of" <*> branches
+  -- <|> lett <$ reserved "let" <*>% manyIndentedSamecol def <*% reserved "in" <*> expr
+  <|> symbol "(" *>% expr <*% symbol ")"
+  <?> "atomic expression"
   where
-    abstr t c = abstractBindings c <$ t <*>% someBindings <*% symbol "." <*>% expr
+    abstr t c = c <$ t <*>% somePatterns <*% symbol "." <*>% expr
 
-branches :: Parser (Branches (Either Constr QConstr) Plicitness Expr Name)
-branches
-  = ConBranches <$> manyIndentedSameCol conBranch <*> pure Wildcard
- <|> LitBranches <$> manyIndentedSameCol litBranch
-                 <*> (sameCol >> (reserved "_" *>% symbol "->" *>% expr))
+branches :: Parser [(Pat (Type Name) Name, Expr Name)]
+branches = manyIndentedSameCol branch
   where
-    litBranch = (,) <$> literal <*% symbol "->" <*>% expr
-    conBranch = con <$> constructor <*> manyBindings <*% symbol "->" <*>% expr
-    con c bs e = (Left c, bindingsTelescope bs, abstract (fmap Tele . (`Vector.elemIndex` ns) . Just) e)
-      where
-        ns = unNameHint . fst <$> bindingHints bs
+    branch = (,) <$> pattern <*% symbol "->" <*>% expr
 
 expr :: Parser (Expr Name)
 expr = located
- $ abstractBindings piType <$> Trifecta.try someTypedBindings <*% symbol "->" <*>% expr
- <|> apps <$> atomicExpr <*> manySI argument
-   <**> ((\f t -> f (Explicit, t)) <$> arr <|> pure id)
- <|> abstractBindings piType <$> funArgType <*% symbol "->" <*>% expr
- <?> "expression"
+  $ Wet.pis <$> Trifecta.try (somePatternBindings <*% symbol "->") <*>% expr
+  <|> plicitPi Implicit <$ symbol "{" <*>% expr <*% symbol "}" <*% symbol "->" <*>% expr
+  <|> Wet.apps <$> atomicExpr <*> manySI argument <**> (arr <|> pure id)
+  <?> "expression"
   where
-    arr = (\e' (a, e) -> Pi mempty a e $ abstractNone e')
-           <$% symbol "->" <*>% expr
+    plicitPi p argType retType = Pi p (AnnoPat argType WildcardPat) retType
+
+    arr = flip (plicitPi Explicit) <$% symbol "->" <*>% expr
 
     argument :: Parser (Plicitness, Expr Name)
     argument
       = (,) Implicit <$ symbol "{" <*>% expr <*% symbol "}"
       <|> (,) Explicit <$> atomicExpr
 
-    funArgType :: Parser [Binding]
-    funArgType
-      = f Implicit <$ symbol "{" <*>% expr <*% symbol "}"
-      <|> f Explicit <$> atomicExpr
-      where
-        f p t = [Typed p [Nothing] t]
-
+-------------------------------------------------------------------------------
+-- * Definitions
 -- | A definition or type declaration on the top-level
 data TopLevelParsed v
-  = ParsedDefLine (Maybe v) (Expr v) -- ^ Maybe v means that we can use wildcard names that refer e.g. to the previous top-level thing
+  = ParsedDefLine (Maybe v) (Wet.DefLine v)
   | ParsedTypeDecl v (Type v)
-  | ParsedData v (Telescope Plicitness Type v) (DataDef Type v)
-  deriving (Eq, Foldable, Functor, Show, Traversable)
+  | ParsedData v [(Plicitness, v, Type v)] [ConstrDef (Type v)]
+  deriving (Show)
 
 topLevel :: Parser (TopLevelParsed Name, Span)
 topLevel = (\(d Trifecta.:~ s) -> (d, s)) <$> Trifecta.spanned (dataDef <|> def)
@@ -319,13 +293,13 @@ topLevel = (\(d Trifecta.:~ s) -> (d, s)) <$> Trifecta.spanned (dataDef <|> def)
 def :: Parser (TopLevelParsed Name)
 def
   = ident <**>% (typeDecl <|> mkDef Just)
- <|> wildcard <**>% mkDef (const Nothing)
+  <|> wildcard <**>% mkDef (const Nothing)
   where
     typeDecl = flip ParsedTypeDecl <$ symbol ":" <*>% expr
-    mkDef f = (\e n -> ParsedDefLine (f n) e) <$> (abstractBindings Concrete.tlam <$> manyBindings <*% symbol "=" <*>% expr)
+    mkDef f = (\ps e n -> ParsedDefLine (f n) (Wet.DefLine ps e)) <$> manyPatterns <*% symbol "=" <*>% expr
 
 dataDef :: Parser (TopLevelParsed Name)
-dataDef = mkDataDef <$ reserved "data" <*>% ident <*> manyBindings <*>%
+dataDef = ParsedData <$ reserved "data" <*>% ident <*> manyTypedBindings <*>%
   (concat <$% reserved "where" <*> manyIndentedSameCol conDef
   <|> id <$% symbol "=" <*>% sepBySI adtConDef (symbol "|"))
   where
@@ -333,13 +307,7 @@ dataDef = mkDataDef <$ reserved "data" <*>% ident <*> manyBindings <*>%
       <*% symbol ":" <*>% expr
     constrDefs cs t = [ConstrDef c t | c <- cs]
     adtConDef = ConstrDef <$> constructor <*> (adtConType <$> manySI atomicExpr)
-    adtConType es = pis (Telescope $ (\e -> (mempty, Explicit, abstractNone e)) <$> Vector.fromList es) $ Scope Wildcard
-    mkDataDef tc bs cs
-      = ParsedData tc (bindingsTelescope bs) (DataDef $ map abstrConstrDef cs)
-      where
-        abstrConstrDef (ConstrDef name typ)
-          = ConstrDef name
-          $ abstract (fmap Tele . (`Vector.elemIndex` bindingNames bs) . Just) typ
+    adtConType es = Wet.pis ((\e -> (Explicit, AnnoPat e WildcardPat)) <$> es) Wildcard
 
 program :: Parser [(TopLevelParsed Name, Span)]
 program = Trifecta.whiteSpace >> dropAnchor (manySameCol $ dropAnchor topLevel)

@@ -174,7 +174,7 @@ instance (Eq v, IsString v, Pretty v, Eq retDir, Pretty retDir)
     Call retDir e es -> prettyApps (prettyM (e, retDir)) (prettyM <$> es)
     Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
       "let" <+> prettyM n <+> "=" <+> prettyM e <+> "in" <+>
-        prettyM (instantiate1 (pure $ fromName n) s)
+        prettyM (Util.instantiate1 (pure $ fromName n) s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> indent 2 (prettyM brs)
@@ -187,7 +187,7 @@ instance (Eq v, IsString v, Pretty v, Eq retDir, Pretty retDir, Pretty (expr v),
   prettyM (Function retDir vs s) = parens `above` absPrec $
     withNameHints (fst <$> vs) $ \ns -> prettyM retDir <+>
       "\\" <> hsep (Vector.toList $ prettyM <$> Vector.zip ns (snd <$> vs)) <> "." <+>
-      associate absPrec (prettyM $ instantiateTele (pure . fromName <$> ns) s)
+      associate absPrec (prettyM $ instantiateTele (pure . fromName) ns s)
 
 instance (Eq v, IsString v, Pretty v, Pretty (expr v))
   => Pretty (Constant expr v) where

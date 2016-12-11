@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE ViewPatterns, MonadComprehensions #-}
 module Simplify where
 
 import Bound
@@ -30,15 +30,16 @@ simplifyBranches
   => Bool
   -> Branches c a (Expr a) v
   -> Branches c a (Expr a) v
-simplifyBranches applied (ConBranches cbrs typ) = ConBranches
+simplifyBranches applied (ConBranches cbrs) = ConBranches
   [ let tele' = Telescope $ forTele tele $ \h a fieldScope -> (h, a, simplifyScope False fieldScope)
         s' = simplifyScope applied s
     in (c, tele', s')
   | (c, tele, s) <- cbrs
-  ] typ
+  ]
 simplifyBranches applied (LitBranches lbrs def) = LitBranches
   [(l, simplifyExpr applied e) | (l, e) <- lbrs]
   $ simplifyExpr applied def
+simplifyBranches _ (NoBranches typ) = NoBranches $ simplifyExpr False typ
 
 simplifyDef
   :: Eq a
@@ -78,11 +79,11 @@ etaLam applied _ a _ (fromScope -> App e a' (Var (B ())))
 etaLam _ h p t s = Lam h p t s
 
 betaApp :: Eq a => Expr a v -> a -> Expr a v -> Expr a v
-betaApp e1@(lamView -> Just (_, a1, _, s)) a2 e2
+betaApp e1@(Lam _ a1 _ s) a2 e2
   | a1 == a2 = case bindings s of
-    _ | duplicable e2 -> instantiate1 e2 s
-    []  -> instantiate1 e2 s
-    [_] -> instantiate1 e2 s
+    _ | duplicable e2 -> Util.instantiate1 e2 s
+    []  -> Util.instantiate1 e2 s
+    [_] -> Util.instantiate1 e2 s
     _   -> app e1 a1 e2
 betaApp e1 a e2 = app e1 a e2
 

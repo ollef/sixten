@@ -1,0 +1,19 @@
+data Tuple a b = tuple a b
+
+fun1 : Tuple Size Size -> Size
+fun1 (tuple sz1 sz2) = addSize sz1 sz2
+
+fun2 : ((tuple sz1 sz2) (tuple sz3 sz4) : Tuple Size Size) -> Size
+fun2 (tuple sz1 sz2) (tuple sz3 sz4) = addSize sz1 (addSize sz2 (addSize sz3 sz4))
+
+fun3 = \(tuple sz1 sz2). addSize sz1 sz2
+fun3' = \(tuple sz1 sz2) (tuple sz3 sz4). addSize sz1 sz2
+
+fun4 = \((tuple sz1 sz2) : Tuple _ _). addSize sz1 sz2
+fun4' = \((tuple sz1 sz2) (tuple sz3 sz4) : Tuple _ _). addSize sz1 (addSize sz2 (addSize sz3 sz4))
+
+fun5 = \{(tuple sz1 sz2) : Tuple _ _}. addSize sz1 sz2
+fun5' = \{(tuple sz1 sz2) (tuple sz3 sz4) : Tuple _ _}. addSize sz1 (addSize sz2 (addSize sz3 sz4))
+
+fun6 = \{(tuple sz1 sz2) : Tuple _ _}. addSize sz1 sz2
+fun6' = \{(tuple sz1 sz2) (tuple sz3 sz4) : Tuple _ _}. addSize sz1 (addSize sz2 (addSize sz3 sz4))

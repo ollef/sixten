@@ -23,6 +23,7 @@ executable sixten
                        Command.Compile
                        Command.Run
                        Command.Test
+                       Dry
                        Erase
                        Generate
                        Infer
@@ -30,6 +31,7 @@ executable sixten
                        InferDirection
                        LLVM
                        Lift
+                       Match
                        Meta
                        Normalise
                        Paths_sixten
@@ -43,6 +45,8 @@ executable sixten
                        Syntax.Class
                        Syntax.Closed
                        Syntax.Concrete
+                       Syntax.Concrete.Definition
+                       Syntax.Concrete.Pattern
                        Syntax.Converted
                        Syntax.Data
                        Syntax.Definition
@@ -52,11 +56,13 @@ executable sixten
                        Syntax.Lifted
                        Syntax.Name
                        Syntax.Parse
+                       Syntax.Pattern
                        Syntax.Pretty
                        Syntax.Primitive
                        Syntax.SLambda
                        Syntax.SourceLoc
                        Syntax.Telescope
+                       Syntax.Wet
                        Target
                        TCM
                        TopoSort
@@ -78,6 +84,7 @@ executable sixten
                        parsers,
                        prelude-extras,
                        process,
+                       semigroups,
                        temporary,
                        text,
                        transformers,

@@ -1,8 +1,9 @@
-{-# LANGUAGE FlexibleContexts, TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts, RecursiveDo, TypeFamilies #-}
 module TypeOf where
 
 import Control.Monad
 import Control.Monad.Except
+import qualified Data.List.NonEmpty as NonEmpty
 
 import Meta
 import Syntax
@@ -36,8 +37,12 @@ typeOfM expr = do
       case e1type' of
         Pi _ a' _ resType | a == a' -> return $ instantiate1 e2 resType
         _ -> throwError $ "typeOfM: expected pi type " ++ show e1type'
-    Case _ (ConBranches _ t) -> return t -- TODO do this properly to get rid of the ConBranches type field
+    Case _ (ConBranches ((_, tele, brScope) NonEmpty.:| _)) -> mdo
+      vs <- forMTele tele $ \h a s ->
+        forall h a $ instantiateTele pure vs s
+      typeOfM $ instantiateTele pure vs brScope
     Case _ (LitBranches _ def) -> typeOfM def
+    Case _ (NoBranches t) -> return t
   modifyIndent pred
   -- logMeta "typeOfM res" =<< zonk t
   return t
@@ -68,8 +73,12 @@ typeOf expr = do
       case e1type' of
         Pi _ a' _ resType | a == a' -> return $ instantiate1 e2 resType
         _ -> throwError $ "typeOf: expected pi type " ++ show e1type'
-    Case _ (ConBranches _ t) -> return t -- TODO do this properly to get rid of the ConBranches type field
+    Case _ (ConBranches ((_, tele, brScope) NonEmpty.:| _)) -> mdo
+      vs <- forMTele tele $ \h a s ->
+        forall h a $ instantiateTele pure vs s
+      typeOf $ instantiateTele pure vs brScope
     Case _ (LitBranches _ def) -> typeOf def
+    Case _ (NoBranches t) -> return t
   modifyIndent pred
   -- logMeta "typeOf res" =<< zonk t
   return t

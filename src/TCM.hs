@@ -2,7 +2,7 @@
 module TCM where
 
 import Control.Monad.Except
-import Control.Monad.State(MonadState, evalStateT, StateT, gets, modify)
+import Control.Monad.State
 import Control.Monad.ST
 import Control.Monad.ST.Class
 import Data.Bifunctor
@@ -32,7 +32,7 @@ newtype Level = Level Int
 instance Pretty Level where
   pretty (Level i) = pretty i
 
-data State = State
+data TCMState = TCMState
   { tcLocation :: SourceLoc
   , tcContext :: Program ExprP Void
   , tcConstrs :: HashMap Constr (Set (Name, TypeP Void))
@@ -47,8 +47,8 @@ data State = State
   , tcTarget :: Target
   }
 
-emptyState :: Target -> Handle -> Int -> State
-emptyState target handle verbosity = State
+emptyTCMState :: Target -> Handle -> Int -> TCMState
+emptyTCMState target handle verbosity = TCMState
   { tcLocation = mempty
   , tcContext = mempty
   , tcConstrs = mempty
@@ -63,8 +63,8 @@ emptyState target handle verbosity = State
   , tcTarget = target
   }
 
-newtype TCM a = TCM (ExceptT String (StateT State IO) a)
-  deriving (Functor, Applicative, Monad, MonadFix, MonadError String, MonadState State, MonadIO)
+newtype TCM a = TCM (ExceptT String (StateT TCMState IO) a)
+  deriving (Functor, Applicative, Monad, MonadFix, MonadError String, MonadState TCMState, MonadIO)
 
 instance MonadST TCM where
   type World TCM = RealWorld
@@ -72,7 +72,7 @@ instance MonadST TCM where
 
 unTCM
   :: TCM a
-  -> ExceptT String (StateT State IO) a
+  -> ExceptT String (StateT TCMState IO) a
 unTCM (TCM x) = x
 
 runTCM
@@ -83,7 +83,7 @@ runTCM
   -> IO (Either String a)
 runTCM tcm target handle verbosity
   = evalStateT (runExceptT $ unTCM tcm)
-  $ emptyState target handle verbosity
+  $ emptyTCMState target handle verbosity
 
 fresh :: TCM Int
 fresh = do

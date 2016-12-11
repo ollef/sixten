@@ -34,6 +34,17 @@ abstractNone = Scope . return . F
 boundJoin :: (Monad f, Bound t) => t f (f a) -> t f a
 boundJoin = (>>>= id)
 
+instantiate1 :: Monad f => f a -> Scope1 f a -> f a
+instantiate1 = Bound.instantiate1
+
+instantiateSome
+  :: Monad f
+  => (b -> f (Var b' a))
+  -> Scope b f a
+  -> Scope b' f a
+instantiateSome f s
+  = toScope $ fromScope s >>= unvar f (pure . pure)
+
 toSet ::  (Ord a, Foldable f) => f a -> Set a
 toSet = foldMap S.singleton
 
@@ -60,13 +71,6 @@ bifoldMapScope
   -> (y -> m)
   -> Scope b (expr x) y -> m
 bifoldMapScope f g (Scope s) = bifoldMap f (unvar mempty $ bifoldMap f g) s
-
-exposeScope
-  :: Applicative expr
-  => (forall x. expr x -> expr (Var e x))
-  -> Scope b expr a
-  -> Scope b expr (Var e a)
-exposeScope f (Scope s) = Scope $ fmap (unvar (F . pure . B) id) $ f $ fmap f <$> s
 
 recursiveAbstract
   :: (Eq v, Foldable t, Functor t, Hashable v, Monad f)
@@ -100,3 +104,12 @@ instance Applicative Unit where
 instance Monad Unit where
   return _ = Unit
   _ >>= _ = Unit
+
+fst3 :: (a, b, c) -> a
+fst3 (a, _, _) = a
+
+snd3 :: (a, b, c) -> b
+snd3 (_, b, _) = b
+
+thd3 :: (a, b, c) -> c
+thd3 (_, _, c) = c

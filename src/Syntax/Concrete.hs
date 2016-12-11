@@ -1,66 +1,49 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings, TypeFamilies, ViewPatterns #-}
-module Syntax.Concrete where
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings, TypeFamilies #-}
+module Syntax.Concrete
+  ( module Definition
+  , module Pattern
+  , Expr(..), Type
+  , Syntax.Concrete.piView --, pisView
+  ) where
 
 import Control.Monad
-import qualified Data.Foldable as Foldable
+import Data.Bifunctor
+import Data.Bitraversable
+import Data.Traversable
 import Data.Monoid
 import Data.String
 import Prelude.Extras
-import Data.HashSet(HashSet)
-import qualified Data.HashSet as HS
 
 import Syntax
+import Syntax.Concrete.Definition as Definition
+import Syntax.Concrete.Pattern as Pattern
 import Util
+
+type Con = Either Constr QConstr
 
 data Expr v
   = Var v
   | Global Name  -- ^ Really just a variable, but it's often annoying to not have it
   | Lit Literal
-  | Con (Either Constr QConstr)
-  | Pi !NameHint !Plicitness (Type v) (Scope1 Expr v)  -- ^ Dependent function space
-  | Lam !NameHint !Plicitness (Type v) (Scope1 Expr v)
+  | Con Con
+  | Pi !Plicitness (Pat (PatternScope Type v) ()) (PatternScope Expr v)
+  | Lam !Plicitness (Pat (PatternScope Type v) ()) (PatternScope Expr v)
   | App (Expr v) !Plicitness (Expr v)
   | Let !NameHint (Expr v) (Scope1 Expr v)
-  | Case (Expr v) (Branches (Either Constr QConstr) Plicitness Expr v)
+  | Case (Expr v) [(Pat (PatternScope Type v) (), PatternScope Expr v)]
   | Wildcard  -- ^ Attempt to infer it
   | SourceLoc !SourceLoc (Expr v)
-  deriving (Foldable, Functor, Show, Traversable)
+  deriving (Show)
 
 -- | Synonym for documentation purposes
 type Type = Expr
 
-constructors :: Expr v -> HashSet (Either Constr QConstr)
-constructors expr = case expr of
-  Var _ -> mempty
-  Global _ -> mempty
-  Lit _ -> mempty
-  Con c -> HS.singleton c
-  Pi _ _ t s -> constructors t <> scopeConstrs s
-  Lam _ _ t s -> constructors t <> scopeConstrs s
-  App e1 _ e2 -> constructors e1 <> constructors e2
-  Let _ e s -> constructors e <> scopeConstrs s
-  Case e brs -> constructors e <> case brs of
-    ConBranches cbrs def -> Foldable.fold
-      [HS.singleton c <> teleConstrs tele <> scopeConstrs s | (c, tele, s) <- cbrs]
-      <> constructors def
-    LitBranches lbrs def -> Foldable.fold
-      [constructors s | (_, s) <- lbrs]
-      <> constructors def
-  Wildcard -> mempty
-  SourceLoc _ e -> constructors e
-  where
-    teleConstrs = Foldable.fold . fmap scopeConstrs . teleTypes
-    scopeConstrs :: Scope b Expr v -> HashSet (Either Constr QConstr)
-    scopeConstrs = constructors . fromScope
+piView :: Expr v -> Maybe (Plicitness, Pat (PatternScope Type v) (), PatternScope Expr v)
+piView (Pi p pat s) = Just (p, pat, s)
+piView _ = Nothing
 
--- * Smart constructors
-tlam :: NameHint -> Plicitness -> Maybe (Type v) -> Scope1 Expr v -> Expr v
-tlam x p Nothing  = Lam x p Wildcard
-tlam x p (Just t) = Lam x p t
-
-piType :: NameHint -> Plicitness -> Maybe (Type v) -> Scope1 Expr v -> Expr v
-piType x p Nothing  = Pi x p Wildcard
-piType x p (Just t) = Pi x p t
+-- pisView :: Expr v -> (PatternTelescope Con Expr v, Scope PatternVar Expr v)
+-- pisView = patBindingsView Syntax.Concrete.piView
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -72,8 +55,8 @@ instance Eq v => Eq (Expr v) where
   Global g1 == Global g2 = g1 == g2
   Lit l1 == Lit l2 = l1 == l2
   Con c1 == Con c2 = c1 == c2
-  Pi h1 p1 t1 s1 == Pi h2 p2 t2 s2 = and [h1 == h2, p1 == p2, t1 == t2, s1 == s2]
-  Lam h1 p1 t1 s1 == Lam h2 p2 t2 s2 = and [h1 == h2, p1 == p2, t1 == t2, s1 == s2]
+  Pi p1 pat1 s1 == Pi p2 pat2 s2 = and [p1 == p2, pat1 == pat2, s1 == s2]
+  Lam p1 pat1 s1 == Lam p2 pat2 s2 = and [p1 == p2, pat1 == pat2, s1 == s2]
   App e1 p1 e1' == App e2 p2 e2' = e1 == e2 && p1 == p2 && e1' == e2'
   Let h1 e1 s1 == Let h2 e2 s2 = h1 == h2 && e1 == e2 && s1 == s2
   Case e1 brs1 == Case e2 brs2 = e1 == e2 && brs1 == brs2
@@ -82,26 +65,14 @@ instance Eq v => Eq (Expr v) where
   e1 == SourceLoc _ e2 = e1 == e2
   _ == _ = False
 
-instance Syntax Expr where
-  type Annotation Expr = Plicitness
-
-  lam = Lam
-
-  lamView (SourceLoc _ e) = lamView e
-  lamView (Lam n p t s) = Just (n, p, t, s)
-  lamView _ = Nothing
-
-  pi_ = Pi
-
-  piView (SourceLoc _ e) = piView e
-  piView (Pi n p e s) = Just (n, p, e, s)
-  piView _ = Nothing
-
+instance AppSyntax Expr where
   app = App
 
-  appView (SourceLoc _ e) = appView e
   appView (App e1 p e2) = Just (e1, p, e2)
   appView _ = Nothing
+
+instance Annotated Expr where
+  type Annotation Expr = Plicitness
 
 instance GlobalBind Expr where
   global = Global
@@ -110,11 +81,11 @@ instance GlobalBind Expr where
     Global v -> g v
     Lit l -> Lit l
     Con c -> Con c
-    Pi  n p t s -> Pi n p (bind f g t) (bound f g s)
-    Lam n p t s -> Lam n p (bind f g t) (bound f g s)
+    Pi p pat s -> Pi p (first (bound f g) pat) (bound f g s)
+    Lam p pat s -> Lam p (first (bound f g) pat) (bound f g s)
     App e1 p e2 -> App (bind f g e1) p (bind f g e2)
     Let h e s -> Let h (bind f g e) (bound f g s)
-    Case e brs -> Case (bind f g e) (bound f g brs)
+    Case e brs -> Case (bind f g e) (bimap (first (bound f g)) (bound f g) <$> brs)
     SourceLoc r e -> SourceLoc r (bind f g e)
     Wildcard -> Wildcard
 
@@ -126,6 +97,25 @@ instance Monad Expr where
   return = Var
   expr >>= f = bind f Global expr
 
+instance Functor Expr where fmap = fmapDefault
+instance Foldable Expr where foldMap = foldMapDefault
+
+instance Traversable Expr where
+  traverse f expr = case expr of
+    Var v -> Var <$> f v
+    Global v -> pure $ Global v
+    Lit l -> pure $ Lit l
+    Con c -> pure $ Con c
+    Pi p pat s -> Pi p <$> bitraverse (traverse f) pure pat <*> traverse f s
+    Lam p pat s -> Lam p <$> bitraverse (traverse f) pure pat <*> traverse f s
+    App e1 p e2 -> App <$> traverse f e1 <*> pure p <*> traverse f e2
+    Let h e s -> Let h <$> traverse f e <*> traverse f s
+    Case e brs -> Case
+      <$> traverse f e
+      <*> traverse (bitraverse (bitraverse (traverse f) pure) (traverse f)) brs
+    SourceLoc r e -> SourceLoc r <$> traverse f e
+    Wildcard -> pure Wildcard
+
 instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
   prettyM expr = case expr of
     Var v -> prettyM v
@@ -133,25 +123,25 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
     Lit l -> prettyM l
     Con (Left c) -> prettyM c
     Con (Right qc) -> prettyM qc
-    Pi _ p t (unusedScope -> Just e) -> parens `above` arrPrec $
-      prettyAnnotation p (prettyM t)
-      <+> "->" <+>
-      associate arrPrec (prettyM e)
-    (usedPisViewM -> Just (tele, s)) -> withTeleHints tele $ \ns ->
+    Pi p pat s -> withNameHints (nameHints pat) $ \ns -> do
+      let inst = instantiatePatternVec (pure . fromName) ns
       parens `above` absPrec $
-      prettyTeleVarTypes ns tele <+> "->" <+>
-      associate arrPrec (prettyM $ instantiateTele (pure . fromName <$> ns) s)
-    Pi {} -> error "impossible prettyPrec pi"
-    (lamsViewM -> Just (tele, s)) -> withTeleHints tele $ \ns ->
+        prettyAnnotation p (prettyPattern ns $ first inst pat) <+> "->" <+>
+          associate absPrec (prettyM $ inst s)
+    Lam p pat s -> withNameHints (nameHints pat) $ \ns -> do
+      let inst = instantiatePatternVec (pure . fromName) ns
       parens `above` absPrec $
-      "\\" <> prettyTeleVarTypes ns tele <> "." <+>
-      prettyM (instantiateTele (pure . fromName <$> ns) s)
-    Lam {} -> error "impossible prettyPrec lam"
+        "\\" <> prettyAnnotation p (prettyPattern ns $ first inst pat) <> "." <+>
+          associate absPrec (prettyM $ inst s)
     App e1 p e2 -> prettyApp (prettyM e1) (prettyAnnotation p $ prettyM e2)
     Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
       "let" <+> prettyM n <+> "=" <+> inviolable (prettyM e) <+>
-      "in" <+> prettyM (instantiate1 (pure $ fromName n) s)
+      "in" <+> prettyM (Util.instantiate1 (pure $ fromName n) s)
     Case e brs -> parens `above` casePrec $
-      "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (prettyM brs)
+      "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (vcat $ prettyBranch <$> brs)
     Wildcard -> "_"
     SourceLoc _ e -> prettyM e
+    where
+      prettyBranch (pat, br) = withNameHints (nameHints pat) $ \ns -> do
+        let inst = instantiatePatternVec (pure . fromName) ns
+        prettyPattern ns (first inst pat) <+> "->" <+> prettyM (inst br)

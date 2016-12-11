@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, ViewPatterns, PatternSynonyms #-}
+{-# LANGUAGE OverloadedStrings, ViewPatterns, MonadComprehensions, PatternSynonyms #-}
 module Builtin where
 
 import Control.Applicative
@@ -6,6 +6,7 @@ import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HM
 import Data.Maybe
 import Data.Monoid
+import Data.List.NonEmpty
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
@@ -180,14 +181,13 @@ deref :: Converted.Expr v -> Converted.Expr v
 deref e
   = Converted.Case (Converted.sized 1 e)
   $ ConBranches
-  [ ( Ref
+  $ pure
+    ( Ref
     , Telescope
       $ pure ("dereferenced", (), Scope unknownSize)
     , toScope
     $ Converted.Var $ B 0
     )
-  ]
-  unknownSize
   where
     unknownSize = Converted.Global "Builtin.deref.UnknownSize"
 
@@ -203,19 +203,17 @@ apply numArgs
   $ toScope
   $ Converted.Case (deref $ Converted.Var $ B 0)
   $ ConBranches
-  [ ( Closure
+  $ pure
+    ( Closure
     , Telescope
       $ Vector.fromList [("f_unknown", (), slit 1), ("n", (), slit 1)]
     , toScope
       $ Converted.Case (Converted.sized 1 $ Converted.Var $ B 1)
       $ LitBranches
-        [(fromIntegral arity, br arity) | arity <- [1..maxArity]]
+        [(fromIntegral arity, br arity) | arity <- 1 :| [2..maxArity]]
         $ Converted.Lit 1 -- TODO fail
     )
-  ]
-  unknownSize
   where
-    unknownSize = Converted.Global "Builtin.apply.UnknownSize"
     br :: Int -> Converted.Expr (Var Tele (Var Tele Void))
     br arity
       | numArgs < arity
@@ -267,22 +265,19 @@ pap k m
   $ toScope
   $ Converted.Case (deref $ Converted.Var $ B 0)
   $ ConBranches
-    [ ( Closure
-      , Telescope
-        $ Vector.cons ("_", (), slit 1)
-        $ Vector.cons ("_", (), slit 1)
-        $ Vector.cons ("that", (), slit 1)
-        $ (\n -> (fromText $ "size" <> shower (unTele n), (), slit 1)) <$> Vector.enumFromN 0 m
-        <|> (\n -> (fromText $ "y" <> shower (unTele n), (), svarb $ 3 + n)) <$> Vector.enumFromN 0 m
-      , toScope
-        $ Converted.Call (NonClosureDir Indirect) (Converted.Global $ applyName $ m + k)
-        $ Vector.cons (Converted.sized 1 $ Converted.Var $ B 2, Direct)
-        $ (\n -> (Converted.sized 1 $ Converted.Var $ B $ 3 + n, Direct)) <$> Vector.enumFromN 0 m
-        <|> (\n -> (Converted.sized 1 $ Converted.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN 0 k
-        <|> (\n -> (Converted.Sized (Converted.Var $ B $ 3 + n) $ Converted.Var $ B $ 3 + Tele m + n, Indirect)) <$> Vector.enumFromN 0 m
-        <|> (\n -> (Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + Tele k + n, Indirect)) <$> Vector.enumFromN 0 k
-      )
-    ]
-    unknownSize
-  where
-    unknownSize = Converted.Global "Builtin.pap.UnknownSize"
+  $ pure
+    ( Closure
+    , Telescope
+      $ Vector.cons ("_", (), slit 1)
+      $ Vector.cons ("_", (), slit 1)
+      $ Vector.cons ("that", (), slit 1)
+      $ (\n -> (fromText $ "size" <> shower (unTele n), (), slit 1)) <$> Vector.enumFromN 0 m
+      <|> (\n -> (fromText $ "y" <> shower (unTele n), (), svarb $ 3 + n)) <$> Vector.enumFromN 0 m
+    , toScope
+      $ Converted.Call (NonClosureDir Indirect) (Converted.Global $ applyName $ m + k)
+      $ Vector.cons (Converted.sized 1 $ Converted.Var $ B 2, Direct)
+      $ (\n -> (Converted.sized 1 $ Converted.Var $ B $ 3 + n, Direct)) <$> Vector.enumFromN 0 m
+      <|> (\n -> (Converted.sized 1 $ Converted.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN 0 k
+      <|> (\n -> (Converted.Sized (Converted.Var $ B $ 3 + n) $ Converted.Var $ B $ 3 + Tele m + n, Indirect)) <$> Vector.enumFromN 0 m
+      <|> (\n -> (Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + Tele k + n, Indirect)) <$> Vector.enumFromN 0 k
+    )

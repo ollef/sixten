@@ -1,7 +1,7 @@
-{-# LANGUAGE OverloadedStrings, RecursiveDo, ViewPatterns #-}
+{-# LANGUAGE MonadComprehensions, OverloadedStrings, RecursiveDo, ViewPatterns #-}
 module Erase where
 
-import Bound.Scope
+import Bound.Scope hiding (instantiate1)
 import Control.Monad.Except
 import Data.Monoid
 import qualified Data.Vector as Vector
@@ -70,37 +70,35 @@ retainedAbstraction tele (Tele n) = Tele <$> perm Vector.! n
 
 eraseBranches
   :: Pretty c
-  => Branches c Erasability Abstract.ExprE (MetaVar Abstract.ExprE)
-  -> TCM (Branches c () SLambda.Expr (MetaVar Abstract.ExprE))
-eraseBranches (ConBranches cbrs typ) = do
-  logMeta 20 "eraseBranches brs" $ ConBranches cbrs typ
-  resultSize <- erase =<< sizeOfType typ
+  => Branches c Erasability Abstract.ExprE MetaE
+  -> TCM (Branches c () SLambda.Expr MetaE)
+eraseBranches (ConBranches cbrs) = do
+  logMeta 20 "eraseBranches brs" $ ConBranches cbrs
   modifyIndent succ
   cbrs' <- forM cbrs $ \(c, tele, brScope) -> mdo
     tele' <- forMTele tele $ \h a s -> do
-      let t = instantiateTele pureVs s
+      let t = instantiateTele pure vs s
       tsz <- erase =<< sizeOfType t
       v <- forall h a t
       return (v, (h, a, abstract abstr tsz))
     let vs = fst <$> tele'
         abstr v = retainedAbstraction tele =<< teleAbstraction vs v
-        pureVs = pure <$> vs
         tele'' = Telescope
                $ fmap (\(h, _, t) -> (h, (), t))
                $ Vector.filter (\(_, a, _) -> a == Retained)
                $ snd <$> tele'
-    brScope' <- erase $ instantiateTele pureVs brScope
+    brScope' <- erase $ instantiateTele pure vs brScope
     return (c, tele'', abstract abstr brScope')
   modifyIndent pred
-  logMeta 20 "eraseBranches res" $ ConBranches cbrs' resultSize
-  return $ ConBranches cbrs' resultSize
+  logMeta 20 "eraseBranches res" $ ConBranches cbrs'
+  return $ ConBranches cbrs'
 eraseBranches (LitBranches lbrs d)
   = LitBranches
     <$> sequence [(,) l <$> erase e | (l, e) <- lbrs]
     <*> erase d
 
 eraseDef
-  :: Definition Abstract.ExprE (MetaVar Abstract.ExprE)
+  :: Definition Abstract.ExprE MetaE
   -> AbstractE
   -> TCM LambdaM
 eraseDef (Definition e) _ = eraseS e
