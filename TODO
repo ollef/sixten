@@ -19,7 +19,6 @@ Compiler
     Use Vector instead of list for groups in processor?
     Get rid of recursiveAbstract, instantiateDef
     Get rid of Program
-    Make data parameters not accept patterns
     Remove constrs functionality (now that we have Dry)
     Rename Wet and Dry to unscoped and scoping?
     Make imports always use fuller names (HashMap instead of HM etc)
@@ -39,12 +38,7 @@ Language
   * Let(rec) definitions
   Named implicit arguments (maybe names should be mandatory?)
   Laziness
-  * Make Concrete syntax have deep patterns and desugar them
-    Desugar before, after, or during type checking?
-      X Before: Can't resolve constructor types.
-      V After: New AST.
-      X During: No new AST needed, but complicates checking?
-    Desugar patterns of different arity and with differing implicit args
+  Desugar patterns of different arity and with differing implicit args
   * Type classes
   Row polymorphism
     r : Row : Type
