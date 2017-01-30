@@ -7,7 +7,7 @@ import Control.Monad.Except
 import Data.Hashable
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HM
-import Data.Monoid
+import Data.Semigroup
 import Data.Text(Text)
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import Text.Trifecta.Result(Err(Err), explain)
@@ -32,12 +32,12 @@ resolveName (prog, prevName) (parsedDef, loc) = case parsedDef of
       "Unresolved wildcard"
       ["Wildcard definitions refer to the first named definition or type declaration above the current line."]
     Just name -> do
-      prog' <- insertWithM dupDef name
+      prog' <- insertWithM mergeTypedDef name
         (Just (Definition $ pure $ Wet.DefLine pats expr, loc), Nothing)
         prog
       return (prog', Just name)
   ParsedTypeDecl name typ -> do
-    prog' <- insertWithM dupDef name
+    prog' <- insertWithM mergeTypedDef name
       (Nothing, Just (typ, loc))
       prog
     return (prog', Just name)
@@ -45,61 +45,57 @@ resolveName (prog, prevName) (parsedDef, loc) = case parsedDef of
     let pats = (\(p, n, t) -> (p, AnnoPat t $ VarPat (nameHint n) n)) <$> params
         typ = Wet.pis pats (App (Global Builtin.TypeName) Implicit Wildcard)
         tele = (\(p, n, t) -> (p, n, t)) <$> params
-    prog' <- insertWithM dupDef name
+    prog' <- insertWithM mergeTypedDef name
       (Just (DataDefinition tele dataDef, loc), Just (typ, loc))
       prog
     return (prog', Nothing)
-  where
-    dupDef :: MaybeTypedDef -> MaybeTypedDef -> Except Text MaybeTypedDef
-    dupDef new old = case new of
-      (Nothing, Nothing) -> return old
-      (Nothing, newType@(Just (_, newLoc))) -> case old of
-        (Just (DataDefinition _ _, oldLoc), _) -> do
-          let r = render oldLoc
-          err
-            newLoc
-            "Superfluous type signature"
-            [ "Data definitions cannot have free-standing type declarations."
-            , "Previous definition at " <> Leijen.pretty (delta r) <> ":"
-            , Leijen.pretty r
-            ]
-        (oldDef, Nothing) -> return (oldDef, newType)
-        (_oldDef, Just (_, oldLoc)) -> do
-          let r = render oldLoc
-          err
-            newLoc
-            "Duplicate type signature"
-            [ "Previous signature at " <> Leijen.pretty (delta r) <> ":"
-            , Leijen.pretty r
-            ]
-      (newDef@(Just (_, newLoc)), Nothing) -> case old of
-        (Nothing, oldType) -> return (newDef, oldType)
-        (Just (_, oldLoc), _oldType) -> do
-          let r = render oldLoc
-          err
-            newLoc
-            "Duplicate definition"
-            [ "Previous definition at " <> Leijen.pretty (delta r) <> ":"
-            , Leijen.pretty r
-            ]
-      (Just (_, newLoc), Just _) -> case old of
-        (Nothing, Nothing) -> return new
-        (Just (_, oldLoc), _oldType) -> do
-          let r = render oldLoc
-          err
-            newLoc
-            "Duplicate definition"
-            [ "Previous definition at " <> Leijen.pretty (delta r) <> ":"
-            , Leijen.pretty r
-            ]
-        (_oldDef, Just (_, oldLoc)) -> do
-          let r = render oldLoc
-          err
-            newLoc
-            "Duplicate type signature"
-            [ "Previous signature at " <> Leijen.pretty (delta r) <> ":"
-            , Leijen.pretty r
-            ]
+
+mergeTypedDef
+  :: MaybeTypedDef
+  -> MaybeTypedDef
+  -> Except Text MaybeTypedDef
+mergeTypedDef (Nothing, Nothing) old = return old
+mergeTypedDef new (Nothing, Nothing) = return new
+mergeTypedDef (Nothing, mnewType) (moldDef, Nothing) = return (moldDef, mnewType)
+mergeTypedDef (mnewDef, Nothing) (Nothing, moldType) = return (mnewDef, moldType)
+mergeTypedDef (Just newDef, mnewType) (Just oldDef, Nothing) = do
+  d <- mergeDef newDef oldDef
+  return (Just d, mnewType)
+mergeTypedDef (Just newDef, Nothing) (Just oldDef, moldType) = do
+  d <- mergeDef newDef oldDef
+  return (Just d, moldType)
+mergeTypedDef (_, Just (_, newLoc)) (Just (DataDefinition _ _, oldLoc), _) = do
+  let r = render oldLoc
+  err
+    newLoc
+    "Superfluous type signature"
+    [ "Data definitions cannot have free-standing type declarations."
+    , "Previous definition at " <> Leijen.pretty (delta r) <> ":"
+    , Leijen.pretty r
+    ]
+mergeTypedDef (_, Just (_, newLoc)) (_, Just (_, oldLoc)) = do
+  let r = render oldLoc
+  err
+    newLoc
+    "Duplicate type signature"
+    [ "Previous signature at " <> Leijen.pretty (delta r) <> ":"
+    , Leijen.pretty r
+    ]
+
+mergeDef
+  :: (Definition v, Span)
+  -> (Definition v, Span)
+  -> Except Text (Definition v, Span)
+mergeDef (Definition newDefLines, newLoc) (Definition oldDefLines, oldLoc)
+  = return (Definition $ newDefLines <> oldDefLines, addSpan newLoc oldLoc)
+mergeDef (_, newLoc) (_, oldLoc) = do
+  let r = render oldLoc
+  err
+    newLoc
+    "Duplicate definition"
+    [ "Previous definition at " <> Leijen.pretty (delta r) <> ":"
+    , Leijen.pretty r
+    ]
 
 insertWithM
   :: (Eq k, Hashable k, Monad m)
