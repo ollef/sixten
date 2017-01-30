@@ -1,0 +1,5 @@
+data List A = Nil | Cons A (Ptr (List A))
+
+zipWith f (Ref Nil) (Ref _) = Ref Nil
+zipWith f (Ref _) (Ref Nil) = Ref Nil
+zipWith f (Ref (Cons x xs)) (Ref (Cons y ys)) = Ref (Cons (f x y) (zipWith f xs ys))
