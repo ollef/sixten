@@ -293,9 +293,10 @@ generateBranches caseExpr branches brCont = do
 
       (revArgs, _) <- Foldable.foldlM go (mempty, "0") teleVector
       contResult <- brCont $ inst brScope
+      afterBranchLabel <- gets currentLabel
       emit $ branch postLabel
       emitLabel postLabel
-      return [(contResult, branchLabel)]
+      return [(contResult, afterBranchLabel)]
 
     ConBranches ((QConstr _ (Constr constrName), tele, brScope) NonEmpty.:| []) -> mdo
       expr <- indirect "case-expr" =<< generateExpr Nothing caseExpr
@@ -317,9 +318,10 @@ generateBranches caseExpr branches brCont = do
 
       (revArgs, _) <- Foldable.foldlM go (mempty, "0") teleVector
       contResult <- brCont $ inst brScope
+      afterBranchLabel <- gets currentLabel
       emit $ branch postLabel
       emitLabel postLabel
-      return [(contResult, branchLabel)]
+      return [(contResult, afterBranchLabel)]
 
     ConBranches cbrs -> do
       let cbrs' = NonEmpty.toList cbrs
@@ -352,14 +354,15 @@ generateBranches caseExpr branches brCont = do
 
         (revArgs, _) <- Foldable.foldlM go (mempty, "1") teleVector
         contResult <- brCont $ inst brScope
+        afterBranchLabel <- gets currentLabel
         emit $ branch postLabel
-        return contResult
+        return (contResult, afterBranchLabel)
 
       emitLabel failLabel
       -- emit $ exit 1
       emit unreachable
       emitLabel postLabel
-      return $ zip contResults $ snd <$> branchLabels
+      return contResults
 
     LitBranches lbrs def -> do
       let lbrs' = NonEmpty.toList lbrs
@@ -375,14 +378,15 @@ generateBranches caseExpr branches brCont = do
       contResults <- Traversable.forM (zip lbrs' branchLabels) $ \((_, br), (_, brLabel)) -> do
         emitLabel brLabel
         contResult <- brCont br
+        afterBranchLabel <- gets currentLabel
         emit $ branch postLabel
-        return contResult
+        return (contResult, afterBranchLabel)
 
       emitLabel defaultLabel
       defaultContResult <- brCont def
       emit $ branch postLabel
       emitLabel postLabel
-      return $ (defaultContResult, defaultLabel) : zip contResults (snd <$> branchLabels)
+      return $ (defaultContResult, defaultLabel) : contResults
 
 generatePrim
   :: Primitive (Expr RetDir Var)

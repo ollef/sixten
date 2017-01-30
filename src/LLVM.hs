@@ -97,6 +97,7 @@ data LLVMState = LLVMState
   { config :: Config
   , boundNames :: HashSet B
   , freeNames :: [B]
+  , currentLabel :: Operand Label
   , instructions :: [B]
   }
 
@@ -108,6 +109,7 @@ runLLVM s t = second (reverse . instructions) $ runState s LLVMState
     n <- [(0 :: Int)..]
     c <- ['a'..'z']
     return $ fromString (c : if n == 0 then "" else show n)
+  , currentLabel = error "no label"
   , instructions = mempty
   }
 
@@ -121,7 +123,11 @@ emitLabel :: MonadState LLVMState m => Operand Label -> m ()
 emitLabel l
   = modify
   -- Hackish way to remove the "%"
-  $ \s -> s { instructions = (Text.drop 1 (unC (unOperand l) (config s)) <> ":") : instructions s }
+  $ \s -> s
+  { instructions = (Text.drop 1 (unC (unOperand l) (config s)) <> ":") : instructions s
+  , currentLabel = l
+  }
+
 
 -------------------------------------------------------------------------------
 -- * Working with names
