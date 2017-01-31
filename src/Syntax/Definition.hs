@@ -3,14 +3,10 @@ module Syntax.Definition where
 
 import Bound
 import Data.Bifunctor
-import Data.Bifoldable
 import Data.Bitraversable
 import Data.Foldable
 import Data.Hashable
-import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HM
-import Data.HashSet(HashSet)
-import qualified Data.HashSet as HS
 import Data.String
 import Prelude.Extras
 
@@ -18,11 +14,7 @@ import Syntax.Annotation
 import Syntax.Class
 import Syntax.Data
 import Syntax.GlobalBind
-import Syntax.Name
 import Syntax.Pretty
-import Syntax.SourceLoc
-import TopoSort
-import Util
 
 data Definition expr v
   = Definition (expr v)
@@ -88,9 +80,6 @@ recursiveAbstractDefs
 recursiveAbstractDefs es = (abstractDef (`HM.lookup` vs) . snd) <$> es
   where
     vs = HM.fromList $ zip (toList $ fst <$> es) [(0 :: Int)..]
-
-type Program expr v = HashMap Name (Definition expr v, expr v)
-type LocatedProgram expr v = HashMap Name (SourceLoc, Definition expr v, expr v)
 
 foldMapDefinition
   :: (Monoid m, Monad expr)

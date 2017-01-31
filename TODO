@@ -16,9 +16,7 @@ Codegen
   Should things of known size > 1 be passed as LLVM arrays?
 Compiler
   Cleanups:
-    Use Vector instead of list for groups in processor?
     Get rid of recursiveAbstract, instantiateDef
-    Get rid of Program
     Rename Wet and Dry to unscoped and scoping?
     Make imports always use fuller names (HashMap instead of HM etc)
     Go through all code and remove unused things

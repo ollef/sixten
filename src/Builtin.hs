@@ -53,7 +53,7 @@ applyName n = "apply_" <> shower n
 papName :: Int -> Int -> Name
 papName k m = "pap_" <> shower k <> "_" <> shower m
 
-contextP :: Program ExprP Void
+contextP :: HashMap Name (Definition ExprP Void, TypeP Void)
 contextP = HM.fromList
   [ (SizeName, opaque $ TypeP $ Lit 1)
   , (AddSizeName, opaque $ arrow Explicit Size $ arrow Explicit Size Size)
@@ -77,7 +77,7 @@ contextP = HM.fromList
     namedPi :: Name -> Plicitness -> TypeP Name -> ExprP Name -> ExprP Name
     namedPi n p t e = Pi (fromName n) p t $ abstract1 n e
 
-contextE :: Program ExprE Void
+contextE :: HashMap Name (Definition ExprE Void, TypeE Void)
 contextE = HM.fromList
   [ (SizeName, opaque $ TypeE $ Lit 1)
   , (AddSizeName, opaque $ arrow Retained Size $ arrow Retained Size Size)

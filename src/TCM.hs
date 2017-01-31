@@ -34,9 +34,9 @@ instance Pretty Level where
 
 data TCMState = TCMState
   { tcLocation :: SourceLoc
-  , tcContext :: Program ExprP Void
+  , tcContext :: HashMap Name (Definition ExprP Void, TypeP Void)
   , tcConstrs :: HashMap Constr (Set (Name, TypeP Void))
-  , tcErasableContext :: Program ExprE Void
+  , tcErasableContext :: HashMap Name (Definition ExprE Void, TypeE Void)
   , tcConvertedSignatures :: HashMap Name (Converted.Signature Converted.Expr Unit Void)
   , tcReturnDirections :: HashMap Name RetDir
   , tcIndent :: !Int -- This has no place here, but is useful for debugging
@@ -150,7 +150,7 @@ class Context e where
 
 -------------------------------------------------------------------------------
 -- Working with abstract syntax
-addContext :: Program ExprP Void -> TCM ()
+addContext :: HashMap Name (Definition ExprP Void, TypeP Void) -> TCM ()
 addContext prog = modify $ \s -> s
   { tcContext = prog <> tcContext s
   , tcConstrs = HM.unionWith (<>) cs $ tcConstrs s
@@ -202,7 +202,7 @@ constructor (Left c)
 
 -------------------------------------------------------------------------------
 -- Erasable
-addErasableContext :: Program ExprE Void -> TCM ()
+addErasableContext :: HashMap Name (Definition ExprE Void, TypeE Void) -> TCM ()
 addErasableContext prog = modify $ \s -> s
   { tcErasableContext = prog <> tcErasableContext s
   }
