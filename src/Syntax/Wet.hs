@@ -30,16 +30,16 @@ data Expr v
 type Type = Expr
 
 data Definition v
-  = Definition (NonEmpty (Syntax.Wet.DefLine v))
+  = Definition (NonEmpty (Syntax.Wet.Clause v))
   | DataDefinition [(Plicitness, Name, Type v)] [ConstrDef (Expr v)]
   deriving (Show)
 
 -- TODO vector?
-data DefLine v = DefLine [(Plicitness, Pat (Type v) Name)] (Expr v)
+data Clause v = Clause [(Plicitness, Pat (Type v) Name)] (Expr v)
   deriving (Show)
 
-defLineArity :: Syntax.Wet.DefLine v -> Int
-defLineArity (Syntax.Wet.DefLine pats _) = length pats
+clauseArity :: Syntax.Wet.Clause v -> Int
+clauseArity (Syntax.Wet.Clause pats _) = length pats
 
 -------------------------------------------------------------------------------
 -- Smart constructors

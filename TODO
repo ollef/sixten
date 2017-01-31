@@ -19,7 +19,6 @@ Compiler
     Get rid of recursiveAbstract, instantiateDef
     Rename Wet and Dry to unscoped and scoping?
     Go through all code and remove unused things
-    Rename defline to clause?
   Use e.g. llvm-hs-kaleidoscope for llvm?
   Add printing to compiler passes that are not TCM (make a MonadLog class?)
   Simplify/make consistent all the type synonyms

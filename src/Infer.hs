@@ -732,30 +732,30 @@ checkDataType name (DataDef cs) typ = mdo
 
   return (DataDef abstractedCs, typ'')
 
-checkDefLines
-  :: NonEmpty (Concrete.DefLine Concrete.Expr MetaP)
+checkClauses
+  :: NonEmpty (Concrete.Clause Concrete.Expr MetaP)
   -> Polytype
   -> TCM AbstractM
-checkDefLines defLines polyType = do
+checkClauses clauses polyType = do
 
   -- TODO check plicitness of first pat before this?
   (vs, rhoType, f) <- prenexConvert polyType
 
-  res <- checkDefLinesRho defLines rhoType
+  res <- checkClausesRho clauses rhoType
 
   f =<< lams
     <$> metaTelescopeM vs
     <*> abstractM (teleAbstraction $ snd <$> vs) res
 
-checkDefLinesRho
-  :: NonEmpty (Concrete.DefLine Concrete.Expr MetaP)
+checkClausesRho
+  :: NonEmpty (Concrete.Clause Concrete.Expr MetaP)
   -> Rhotype
   -> TCM AbstractM
-checkDefLinesRho defLines rhoType = do
+checkClausesRho clauses rhoType = do
 
   let ps = fst <$> pats
         where
-          Concrete.DefLine pats _ = NonEmpty.head defLines
+          Concrete.Clause pats _ = NonEmpty.head clauses
   (argTele, returnTypeScope, fs) <- funSubtypes rhoType ps
   argVars <- mdo
     -- TODO get namehints from the patterns
@@ -764,15 +764,15 @@ checkDefLinesRho defLines rhoType = do
 
   let returnType = instantiateTele pure argVars returnTypeScope
 
-  defLines' <- forM defLines $ \(Concrete.DefLine pats bodyScope) -> do
+  clauses' <- forM clauses $ \(Concrete.Clause pats bodyScope) -> do
     (pats', patVars) <- checkPats (snd <$> pats) $ metaType <$> argVars
     let body = instantiatePatternVec pure patVars bodyScope
     body' <- checkRho body returnType
     return (pats', body')
 
-  body <- matchDefLines
+  body <- matchClauses
     (Vector.toList $ pure <$> argVars)
-    (NonEmpty.toList $ first Vector.toList <$> defLines')
+    (NonEmpty.toList $ first Vector.toList <$> clauses')
 
   foldrM
     (\(p, (f, v)) e ->
@@ -788,8 +788,8 @@ checkDefType
   -> AbstractM
   -> TCM (Definition Abstract.ExprP MetaP, AbstractM)
 checkDefType v def loc typ = located (render loc) $ case def of
-  Concrete.PatDefinition defLines -> do
-    e' <- checkDefLines defLines typ
+  Concrete.PatDefinition clauses -> do
+    e' <- checkClauses clauses typ
     return (Definition e', typ)
   Concrete.PatDataDefinition d -> do
     (d', typ') <- checkDataType v d typ

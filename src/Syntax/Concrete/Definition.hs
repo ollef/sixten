@@ -15,25 +15,25 @@ import Syntax.Concrete.Pattern
 import Util
 
 data PatDefinition expr v
-  = PatDefinition (NonEmpty (DefLine expr v))
+  = PatDefinition (NonEmpty (Clause expr v))
   | PatDataDefinition (DataDef expr v)
   deriving (Foldable, Functor, Show, Traversable)
 
-data DefLine expr v
-  = DefLine
+data Clause expr v
+  = Clause
     (Vector (Plicitness, Pat (PatternScope expr v) ()))
     (PatternScope expr v)
   deriving (Show)
 
 -- TODO handle plicitness
-etaExpandDefLine
+etaExpandClause
   :: (Monad expr, AppSyntax expr, Annotation expr ~ Plicitness)
   => Int
   -> Annotation expr
-  -> DefLine expr v
-  -> DefLine expr v
-etaExpandDefLine n anno (DefLine pats (Scope s))
-  = DefLine pats' (Scope $ apps s $ (\i -> (anno, pure $ B i)) <$> Vector.enumFromN startIndex n)
+  -> Clause expr v
+  -> Clause expr v
+etaExpandClause n anno (Clause pats (Scope s))
+  = Clause pats' (Scope $ apps s $ (\i -> (anno, pure $ B i)) <$> Vector.enumFromN startIndex n)
   where
     startIndex = fromIntegral $ Vector.length patVars
     patVars = join $ toVector . snd <$> pats
@@ -41,18 +41,18 @@ etaExpandDefLine n anno (DefLine pats (Scope s))
 
 -------------------------------------------------------------------------------
 -- Instances
-instance Traversable expr => Functor (DefLine expr) where fmap = fmapDefault
-instance Traversable expr => Foldable (DefLine expr) where foldMap = foldMapDefault
+instance Traversable expr => Functor (Clause expr) where fmap = fmapDefault
+instance Traversable expr => Foldable (Clause expr) where foldMap = foldMapDefault
 
-instance Traversable expr => Traversable (DefLine expr) where
-  traverse f (DefLine pats s)
-    = DefLine
+instance Traversable expr => Traversable (Clause expr) where
+  traverse f (Clause pats s)
+    = Clause
     <$> traverse (traverse (bitraverse (traverse f) pure)) pats
     <*> traverse f s
 
 instance GlobalBound PatDefinition where
-  bound f g (PatDefinition defLines) = PatDefinition $ bound f g <$> defLines
+  bound f g (PatDefinition clauses) = PatDefinition $ bound f g <$> clauses
   bound f g (PatDataDefinition dataDef) = PatDataDefinition $ bound f g dataDef
 
-instance GlobalBound DefLine where
-  bound f g (DefLine pats s) = DefLine (fmap (first (bound f g)) <$> pats) (bound f g s)
+instance GlobalBound Clause where
+  bound f g (Clause pats s) = Clause (fmap (first (bound f g)) <$> pats) (bound f g s)

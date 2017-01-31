@@ -282,7 +282,7 @@ expr = located
 -- * Definitions
 -- | A definition or type declaration on the top-level
 data TopLevelParsed v
-  = ParsedDefLine (Maybe v) (Wet.DefLine v)
+  = ParsedClause (Maybe v) (Wet.Clause v)
   | ParsedTypeDecl v (Type v)
   | ParsedData v [(Plicitness, v, Type v)] [ConstrDef (Type v)]
   deriving (Show)
@@ -296,7 +296,7 @@ def
   <|> wildcard <**>% mkDef (const Nothing)
   where
     typeDecl = flip ParsedTypeDecl <$ symbol ":" <*>% expr
-    mkDef f = (\ps e n -> ParsedDefLine (f n) (Wet.DefLine ps e)) <$> manyPatterns <*% symbol "=" <*>% expr
+    mkDef f = (\ps e n -> ParsedClause (f n) (Wet.Clause ps e)) <$> manyPatterns <*% symbol "=" <*>% expr
 
 dataDef :: Parser (TopLevelParsed Name)
 dataDef = ParsedData <$ reserved "data" <*>% ident <*> manyTypedBindings <*>%

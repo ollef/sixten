@@ -27,13 +27,13 @@ resolveName
   -> (TopLevelParsed Name, Span)
   -> Except Text Resolve
 resolveName (prog, prevName) (parsedDef, loc) = case parsedDef of
-  ParsedDefLine mName (Wet.DefLine pats expr) -> case mName <|> prevName of
+  ParsedClause mName (Wet.Clause pats expr) -> case mName <|> prevName of
     Nothing -> err loc
       "Unresolved wildcard"
       ["Wildcard definitions refer to the first named definition or type declaration above the current line."]
     Just name -> do
       prog' <- insertWithM mergeTypedDef name
-        (Just (Definition $ pure $ Wet.DefLine pats expr, loc), Nothing)
+        (Just (Definition $ pure $ Wet.Clause pats expr, loc), Nothing)
         prog
       return (prog', Just name)
   ParsedTypeDecl name typ -> do
@@ -86,8 +86,8 @@ mergeDef
   :: (Definition v, Span)
   -> (Definition v, Span)
   -> Except Text (Definition v, Span)
-mergeDef (Definition newDefLines, newLoc) (Definition oldDefLines, oldLoc)
-  = return (Definition $ newDefLines <> oldDefLines, addSpan newLoc oldLoc)
+mergeDef (Definition newClauses, newLoc) (Definition oldClauses, oldLoc)
+  = return (Definition $ oldClauses <> newClauses, addSpan newLoc oldLoc)
 mergeDef (_, newLoc) (_, oldLoc) = do
   let r = render oldLoc
   err

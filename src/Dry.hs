@@ -60,20 +60,20 @@ dryProgram defs = do
 dryDefinition
   :: Wet.Definition Name
   -> Dry (Concrete.PatDefinition Concrete.Expr Name)
-dryDefinition (Wet.Definition defLines) = do
-  let defLinesWithArity = [(defLine, Wet.defLineArity defLine) | defLine <- defLines]
-      arity = maximum $ snd <$> defLinesWithArity
-  Concrete.PatDefinition <$> mapM (dryDefLine arity) defLinesWithArity
+dryDefinition (Wet.Definition clauses) = do
+  let clausesWithArity = [(clause, Wet.clauseArity clause) | clause <- clauses]
+      arity = maximum $ snd <$> clausesWithArity
+  Concrete.PatDefinition <$> mapM (dryClause arity) clausesWithArity
 dryDefinition (Wet.DataDefinition params cs) = do
   let paramNames = (\(_, n, _) -> n) <$> params
       abstr = abstract $ teleAbstraction $ Vector.fromList paramNames
   Concrete.PatDataDefinition . DataDef <$> mapM (mapM (fmap abstr . dryExpr)) cs
 
-dryDefLine
+dryClause
   :: Int
-  -> (Wet.DefLine Name, Int)
-  -> Dry (Concrete.DefLine Concrete.Expr Name)
-dryDefLine arity (Wet.DefLine plicitPats e, patsArity) = do
+  -> (Wet.Clause Name, Int)
+  -> Dry (Concrete.Clause Concrete.Expr Name)
+dryClause arity (Wet.Clause plicitPats e, patsArity) = do
   plicitPats' <- traverse (traverse dryPat) plicitPats
 
   let pats = snd <$> plicitPats'
@@ -82,8 +82,8 @@ dryDefLine arity (Wet.DefLine plicitPats e, patsArity) = do
         $ second void <$> abstractPatternsTypes vars plicitPats'
 
   -- TODO handle different plicitness in eta expansion
-  Concrete.etaExpandDefLine (patsArity - arity) Explicit
-    . Concrete.DefLine typedPats''
+  Concrete.etaExpandClause (patsArity - arity) Explicit
+    . Concrete.Clause typedPats''
     . abstract (patternAbstraction vars) <$> dryExpr e
 
 dryExpr

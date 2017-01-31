@@ -105,13 +105,13 @@ matchCase expr pats = do
   result <- match [expr] (bimap pure (fmap F) <$> pats) (pure $ B Fail)
   traverse (unvar (const $ throwError "matchCase is not allowed to fail") pure) result
 
-matchDefLines
+matchClauses
   :: [AbstractM]
   -> [([PatM], AbstractM)]
   -> TCM AbstractM
-matchDefLines exprs pats = do
+matchClauses exprs pats = do
   result <- match exprs (fmap (fmap F) <$> pats) (pure $ B Fail)
-  traverse (unvar (const $ throwError "matchDefLines is not allowed to fail") pure) result
+  traverse (unvar (const $ throwError "matchClauses is not allowed to fail") pure) result
 
 type Match
   = [AbstractM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
