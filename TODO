@@ -19,10 +19,10 @@ Compiler
     Use Vector instead of list for groups in processor?
     Get rid of recursiveAbstract, instantiateDef
     Get rid of Program
-    Remove constrs functionality (now that we have Dry)
     Rename Wet and Dry to unscoped and scoping?
     Make imports always use fuller names (HashMap instead of HM etc)
     Go through all code and remove unused things
+    Rename defline to clause?
   Use e.g. llvm-hs-kaleidoscope for llvm?
   Add printing to compiler passes that are not TCM (make a MonadLog class?)
   Simplify/make consistent all the type synonyms

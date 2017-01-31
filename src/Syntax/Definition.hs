@@ -2,7 +2,6 @@
 module Syntax.Definition where
 
 import Bound
-import Control.Monad
 import Data.Bifunctor
 import Data.Bifoldable
 import Data.Bitraversable
@@ -12,9 +11,7 @@ import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HM
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HS
-import Data.Monoid
 import Data.String
-import qualified Data.Vector as Vector
 import Prelude.Extras
 
 import Syntax.Annotation
@@ -22,7 +19,6 @@ import Syntax.Class
 import Syntax.Data
 import Syntax.GlobalBind
 import Syntax.Name
-import Syntax.Pattern
 import Syntax.Pretty
 import Syntax.SourceLoc
 import TopoSort
@@ -96,28 +92,6 @@ recursiveAbstractDefs es = (abstractDef (`HM.lookup` vs) . snd) <$> es
 type Program expr v = HashMap Name (Definition expr v, expr v)
 type LocatedProgram expr v = HashMap Name (SourceLoc, Definition expr v, expr v)
 
-unlocatedProgram :: LocatedProgram expr v -> Program expr v
-unlocatedProgram = HM.map (\(_, d, e) -> (d, e))
-
-dependencies
-  :: (Foldable e, Monad e)
-  => (forall v. e v -> HashSet Name)
-  -> Program e Name
-  -> HashMap Name (HashSet Name)
-dependencies constrs prog =
-  HM.map (bifoldMap toHashSet toHashSet) prog
-  `union`
-  HM.map (bifoldMap (foldMapDefinition constrs) constrs) prog
-  `union`
-  constrMappings
-  where
-    union = HM.unionWith HS.union
-    constrMappings = HM.fromListWith mappend
-      [ (constrToName c, HS.singleton n)
-      | (n, (DataDefinition d, _)) <- HM.toList prog
-      , c <- constrNames d
-      ]
-
 foldMapDefinition
   :: (Monoid m, Monad expr)
   => (forall v. expr v -> m)
@@ -125,19 +99,3 @@ foldMapDefinition
   -> m
 foldMapDefinition f (Definition e) = f e
 foldMapDefinition f (DataDefinition (DataDef cs)) = foldMap (foldMap $ f . fromScope) cs
-
-programConstrNames :: Program e v -> [Constr]
-programConstrNames prog
-  = [ c
-    | (_, (DataDefinition d, _)) <- HM.toList prog
-    , c <- constrNames d
-    ]
-
-dependencyOrder
-  :: (Foldable e, Monad e)
-  => (forall v. e v -> HashSet Name)
-  -> LocatedProgram e Name
-  -> [[(Name, (SourceLoc, Definition e Name, e Name))]]
-dependencyOrder constrs prog
-  = fmap (\n -> (n, prog HM.! n)) . filter (`HM.member` prog)
-  <$> topoSort (HM.toList $ dependencies constrs $ unlocatedProgram prog)
