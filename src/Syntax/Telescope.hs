@@ -175,9 +175,6 @@ instance GlobalBound (Telescope a) where
   bound f g (Telescope tele)
     = Telescope $ (\(h, a, s) -> (h, a, bound f g s)) <$> tele
 
-instance Bound (Telescope a) where
-  Telescope t >>>= f = Telescope $ second (>>>= f) <$> t
-
 withTeleHints
   :: Telescope a expr v
   -> (Vector Name -> PrettyM p)

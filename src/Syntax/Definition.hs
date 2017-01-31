@@ -69,10 +69,6 @@ instance (Monad expr, Pretty (expr v), IsString v) => Pretty (Definition expr v)
   prettyM (Definition e) = prettyM e
   prettyM (DataDefinition d) = prettyM d
 
-instance Bound Definition where
-  Definition d >>>= f = Definition $ d >>= f
-  DataDefinition d >>>= f = DataDefinition $ d >>>= f
-
 recursiveAbstractDefs
   :: (Eq v, Monad f, Functor t, Foldable t, Hashable v)
   => t (v, Definition f v)

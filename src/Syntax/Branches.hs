@@ -25,11 +25,6 @@ data Branches c a expr v
   | NoBranches (expr v) -- ^ Return type
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-instance Bound (Branches c a) where
-  ConBranches cbrs >>>= f = ConBranches [(c, t >>>= f, s >>>= f) | (c, t, s) <- cbrs]
-  LitBranches lbrs d >>>= f = LitBranches [(l, e >>= f) | (l, e) <- lbrs] (d >>= f)
-  NoBranches typ >>>= f = NoBranches $ typ >>= f
-
 instance GlobalBound (Branches c a) where
   bound f g (ConBranches cbrs) = ConBranches
     [(c, bound f g a, bound f g s) | (c, a, s) <- cbrs]

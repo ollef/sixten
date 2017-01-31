@@ -45,15 +45,19 @@ instance Applicative Expr where
 
 instance Monad Expr where
   return = Var
-  expr >>= f = case expr of
+  expr >>= f = bind f Global expr
+
+instance GlobalBind Expr where
+  global = Global
+  bind f g expr = case expr of
     Var v -> f v
-    Global n -> Global n
+    Global v -> g v
     Lit l -> Lit l
-    Con qc es -> Con qc ((>>= f) <$> es)
-    Lam h e s -> Lam h (e >>= f) (s >>>= f)
-    App e1 e2 -> App (e1 >>= f) (e2 >>= f)
-    Case e brs -> Case (e >>= f) (brs >>>= f)
-    Sized sz e -> Sized (sz >>= f) (e >>= f)
+    Con qc es -> Con qc (bind f g <$> es)
+    Lam h e s -> Lam h (bind f g e) (bound f g s)
+    App e1 e2 -> App (bind f g e1) (bind f g e2)
+    Case e brs -> Case (bind f g e) (bound f g brs)
+    Sized sz e -> Sized (bind f g sz) (bind f g e)
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Expr v) where

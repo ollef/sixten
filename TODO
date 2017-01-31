@@ -3,7 +3,9 @@ Type checking
   Can the special-case equations for unifying sizes be done in a principled way?
   Propagate equalities from cases
   Sanity type-check the Abstract syntax
-  Match coverage checking
+Matching
+  Coverage and overlap checking
+  Parse and typecheck view patterns
 Erasure
   Make sure that we don't transform functions to non-functions by erasing all arguments.
     e.g. `loop x = loop x : Void` should not have its argument removed.
@@ -14,17 +16,16 @@ Codegen
     Make literals llvm `constant`s
     Add error message for circular globals, e.g. `a = a`
   Should things of known size > 1 be passed as LLVM arrays?
+  Use e.g. llvm-hs-kaleidoscope for llvm?
 Compiler
   Cleanups:
     Get rid of recursiveAbstract, instantiateDef
     Rename Wet and Dry to unscoped and scoping?
     Go through all code and remove unused things
-  Use e.g. llvm-hs-kaleidoscope for llvm?
   Add printing to compiler passes that are not TCM (make a MonadLog class?)
   Simplify/make consistent all the type synonyms
   Concretise some of the Context/MetaVary nonsense
   Clean up MetaVar handling (not all modules need the full generality)
-  Remove Bound instances and only use GlobalBound
   Make a version of e.g. forMTele that's not recursive, but instead gives access to the partial result (use slice cleverly?)
 Error messages
   Write own error printer

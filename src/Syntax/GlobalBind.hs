@@ -30,3 +30,6 @@ class Monad e => GlobalBind e where
     -> (Name -> e v')
     -> e v
     -> e v'
+
+boundJoin :: (GlobalBind f, GlobalBound t) => t f (f a) -> t f a
+boundJoin = bound id global

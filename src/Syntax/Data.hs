@@ -50,9 +50,6 @@ quantifiedConstrTypes (DataDef cs) typ anno = map (fmap $ pis ps) cs
 constrNames :: DataDef typ v -> [Constr]
 constrNames = map constrName . dataConstructors
 
-instance Bound DataDef where
-  DataDef cs >>>= f = DataDef (fmap (>>>= f) <$> cs)
-
 prettyDataDef
   :: (Eq1 typ, Eq v, IsString v, Monad typ, Pretty (typ v), Eq (Annotation typ), PrettyAnnotation (Annotation typ))
   => Telescope (Annotation typ) typ v

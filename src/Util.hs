@@ -31,9 +31,6 @@ unusedScope = unusedVar . fromScope
 abstractNone :: Monad f => f a -> Scope b f a
 abstractNone = Scope . return . F
 
-boundJoin :: (Monad f, Bound t) => t f (f a) -> t f a
-boundJoin = (>>>= id)
-
 instantiate1 :: Monad f => f a -> Scope1 f a -> f a
 instantiate1 = Bound.instantiate1
 
