@@ -10,10 +10,9 @@ import Data.Function
 import Data.Hashable
 import Data.Maybe
 import Data.Monoid
-import qualified Data.Set as S
+import qualified Data.Set as Set
 import Data.STRef
 import Data.String
-import qualified Data.Traversable as T
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Prelude.Extras
@@ -91,11 +90,11 @@ showMeta
   => f (MetaVar e)
   -> TCM Doc
 showMeta x = do
-  vs <- foldMapM S.singleton x
+  vs <- foldMapM Set.singleton x
   let p (metaRef -> Just r) = solution r
       p _                   = return $ Left $ Level (-1)
-  let vsl = S.toList vs
-  pvs <- T.mapM p vsl
+  let vsl = Set.toList vs
+  pvs <- mapM p vsl
   let sv v = "$" ++ fromMaybe "" (fromName <$> unNameHint (metaHint v)) ++ (if isJust $ metaRef v then "∃" else "")
           ++ show (metaId v)
   let solutions = [(sv v, pretty $ sv <$> metaType v, pretty $ fmap sv <$> msol) | (v, msol) <- zip vsl pvs]
@@ -185,9 +184,9 @@ abstractM f e = do
       liftST $ writeSTRef changed True
       return $ pure $ B b
     go changed (v'@(metaRef -> Just r)) = do
-      tfvs <- foldMapM S.singleton $ metaType v'
-      let mftfvs = S.filter (isJust . f) tfvs
-      unless (S.null mftfvs)
+      tfvs <- foldMapM Set.singleton $ metaType v'
+      let mftfvs = Set.filter (isJust . f) tfvs
+      unless (Set.null mftfvs)
         $ throwError $ "cannot abstract, " ++ show mftfvs ++ " would escape from the type of "
         ++ show v'
       sol <- solution r

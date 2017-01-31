@@ -5,7 +5,7 @@ import Control.Applicative((<**>), (<|>), Alternative)
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Char
-import qualified Data.HashSet as HS
+import qualified Data.HashSet as HashSet
 import qualified Data.Vector as Vector
 import Data.Text(Text)
 import qualified Data.Text as Text
@@ -149,7 +149,7 @@ idStyle = Trifecta.IdentifierStyle "Dependent" start letter res Highlight.Identi
   where
     start = Trifecta.satisfy isAlpha <|> Trifecta.oneOf "_"
     letter = Trifecta.satisfy isAlphaNum <|> Trifecta.oneOf "_'"
-    res = HS.fromList ["forall", "_", "case", "of", "where"]
+    res = HashSet.fromList ["forall", "_", "case", "of", "where"]
 
 ident :: Parser Name
 ident = Trifecta.token $ Trifecta.ident idStyle

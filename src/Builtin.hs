@@ -3,7 +3,7 @@ module Builtin where
 
 import Control.Applicative
 import Data.HashMap.Lazy(HashMap)
-import qualified Data.HashMap.Lazy as HM
+import qualified Data.HashMap.Lazy as HashMap
 import Data.Maybe
 import Data.Monoid
 import Data.List.NonEmpty
@@ -54,7 +54,7 @@ papName :: Int -> Int -> Name
 papName k m = "pap_" <> shower k <> "_" <> shower m
 
 contextP :: HashMap Name (Definition ExprP Void, TypeP Void)
-contextP = HM.fromList
+contextP = HashMap.fromList
   [ (SizeName, opaque $ TypeP $ Lit 1)
   , (AddSizeName, opaque $ arrow Explicit Size $ arrow Explicit Size Size)
   , (MaxSizeName, opaque $ arrow Explicit Size $ arrow Explicit Size Size)
@@ -78,7 +78,7 @@ contextP = HM.fromList
     namedPi n p t e = Pi (fromName n) p t $ abstract1 n e
 
 contextE :: HashMap Name (Definition ExprE Void, TypeE Void)
-contextE = HM.fromList
+contextE = HashMap.fromList
   [ (SizeName, opaque $ TypeE $ Lit 1)
   , (AddSizeName, opaque $ arrow Retained Size $ arrow Retained Size Size)
   , (MaxSizeName, opaque $ arrow Retained Size $ arrow Retained Size Size)
@@ -102,7 +102,7 @@ contextE = HM.fromList
     namedPi n a t e = Pi (fromName n) a t $ abstract1 n e
 
 convertedContext :: HashMap Name (Converted.Expr Void)
-convertedContext = HM.fromList $ concat
+convertedContext = HashMap.fromList $ concat
   [[( SizeName
     , Converted.sized 0
     $ Converted.Con Builtin.Unit mempty

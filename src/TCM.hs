@@ -6,7 +6,7 @@ import Control.Monad.State
 import Control.Monad.ST
 import Control.Monad.ST.Class
 import Data.Bifunctor
-import qualified Data.HashMap.Lazy as HM
+import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
 import Data.List as List
 import Data.Monoid
@@ -153,10 +153,10 @@ class Context e where
 addContext :: HashMap Name (Definition ExprP Void, TypeP Void) -> TCM ()
 addContext prog = modify $ \s -> s
   { tcContext = prog <> tcContext s
-  , tcConstrs = HM.unionWith (<>) cs $ tcConstrs s
+  , tcConstrs = HashMap.unionWith (<>) cs $ tcConstrs s
   } where
-    cs = HM.fromList $ do
-      (n, (DataDefinition d, defType)) <- HM.toList prog
+    cs = HashMap.fromList $ do
+      (n, (DataDefinition d, defType)) <- HashMap.toList prog
       ConstrDef c t <- quantifiedConstrTypes d defType $ const Implicit
       return (c, Set.fromList [(n, t)])
 
@@ -171,7 +171,7 @@ addConvertedSignatures p = modify $ \s -> s { tcConvertedSignatures = p' <> tcCo
 
 instance Context (Expr Plicitness) where
   definition name = do
-    mres <- gets $ HM.lookup name . tcContext
+    mres <- gets $ HashMap.lookup name . tcContext
     maybe (throwError $ "Not in scope: " ++ show name)
           (return . bimap vacuous vacuous)
           mres
@@ -197,7 +197,7 @@ constructor (Right qc@(QConstr n _)) = Set.singleton . (,) n <$> qconstructor qc
 constructor (Left c) 
   = gets
   $ maybe mempty (Set.map $ second vacuous)
-  . HM.lookup c
+  . HashMap.lookup c
   . tcConstrs
 
 -------------------------------------------------------------------------------
@@ -209,7 +209,7 @@ addErasableContext prog = modify $ \s -> s
 
 instance Context (Expr Erasability) where
   definition name = do
-    mres <- gets $ HM.lookup name . tcErasableContext
+    mres <- gets $ HashMap.lookup name . tcErasableContext
     maybe (throwError $ "Not in scope: " ++ show name)
           (return . bimap vacuous vacuous)
           mres
@@ -233,7 +233,7 @@ convertedSignature
   :: Name
   -> TCM (Converted.Signature Converted.Expr Unit Void)
 convertedSignature name = do
-  mres <- gets $ HM.lookup name . tcConvertedSignatures
+  mres <- gets $ HashMap.lookup name . tcConvertedSignatures
   maybe (throwError $ "Not in scope: converted " ++ show name)
         return
         mres
@@ -244,14 +244,14 @@ returnDirection
   :: Name
   -> TCM RetDir
 returnDirection name = do
-  mres <- gets $ HM.lookup name . tcReturnDirections
+  mres <- gets $ HashMap.lookup name . tcReturnDirections
   maybe (throwError $ "Not in scope: lifted " ++ show name)
         return
         mres
 
 addReturnDirections :: [(Name, RetDir)] -> TCM ()
 addReturnDirections dirs = modify $ \s -> s
-  { tcReturnDirections = HM.fromList dirs <> tcReturnDirections s
+  { tcReturnDirections = HashMap.fromList dirs <> tcReturnDirections s
   }
 
 -------------------------------------------------------------------------------
@@ -260,7 +260,7 @@ qconstructorIndex :: TCM (QConstr -> Maybe Int)
 qconstructorIndex = do
   cxt <- gets tcContext
   return $ \(QConstr n c) -> do
-    (DataDefinition (DataDef constrDefs), _) <- HM.lookup n cxt
+    (DataDefinition (DataDef constrDefs), _) <- HashMap.lookup n cxt
     case constrDefs of
       [] -> Nothing
       [_] -> Nothing

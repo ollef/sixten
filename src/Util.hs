@@ -8,11 +8,11 @@ import Data.Bifoldable
 import Data.Bifunctor
 import Data.Foldable
 import Data.Hashable
-import qualified Data.HashMap.Lazy as HM
+import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
-import qualified Data.HashSet as HS
+import qualified Data.HashSet as HashSet
 import Data.Set(Set)
-import qualified Data.Set as S
+import qualified Data.Set as Set
 import Data.String
 import Data.Text(Text)
 import qualified Data.Text as Text
@@ -46,7 +46,7 @@ instantiateSome f s
   = toScope $ fromScope s >>= unvar f (pure . pure)
 
 toSet ::  (Ord a, Foldable f) => f a -> Set a
-toSet = foldMap S.singleton
+toSet = foldMap Set.singleton
 
 toVector :: Foldable f => f a -> Vector a
 toVector = Vector.fromList . toList
@@ -55,7 +55,7 @@ toMonoid ::  (Foldable f, Monoid (g a), Applicative g) => f a -> g a
 toMonoid = foldMap pure
 
 toHashSet ::  (Eq a, Foldable f, Hashable a) => f a -> HashSet a
-toHashSet = foldMap HS.singleton
+toHashSet = foldMap HashSet.singleton
 
 bimapScope
   :: Bifunctor f
@@ -76,9 +76,9 @@ recursiveAbstract
   :: (Eq v, Foldable t, Functor t, Hashable v, Monad f)
   => t (v, f v)
   -> t (Scope Int f v)
-recursiveAbstract es = (abstract (`HM.lookup` vs) . snd) <$> es
+recursiveAbstract es = (abstract (`HashMap.lookup` vs) . snd) <$> es
   where
-    vs = HM.fromList $ zip (toList $ fst <$> es) [(0 :: Int)..]
+    vs = HashMap.fromList $ zip (toList $ fst <$> es) [(0 :: Int)..]
 
 fromText :: IsString a => Text -> a
 fromText = fromString . Text.unpack

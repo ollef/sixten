@@ -7,7 +7,7 @@ import Data.Bifunctor
 import Data.Bitraversable
 import qualified Data.Foldable as Foldable
 import Data.Hashable
-import qualified Data.HashMap.Lazy as HM
+import qualified Data.HashMap.Lazy as HashMap
 import Data.Monoid
 import Data.String
 import qualified Data.Vector as Vector
@@ -48,9 +48,9 @@ dependencyOrder
   :: (GlobalBind expr, Foldable expr)
   => [(Name, Definition retDir expr Void)]
   -> [[(Name, Definition retDir expr Void)]]
-dependencyOrder defs = fmap (\n -> (n, m HM.! n)) <$> topoSort (second (bound absurd pure) <$> defs)
+dependencyOrder defs = fmap (\n -> (n, m HashMap.! n)) <$> topoSort (second (bound absurd pure) <$> defs)
   where
-    m = HM.fromList defs
+    m = HashMap.fromList defs
 
 -------------------------------------------------------------------------------
 -- Helpers
@@ -90,9 +90,9 @@ recursiveAbstractDefs
   :: (Eq v, Monad f, Functor t, Foldable t, Hashable v)
   => t (v, Definition a f v)
   -> t (Definition a f (Var Int v))
-recursiveAbstractDefs es = (abstractDef (`HM.lookup` vs) . snd) <$> es
+recursiveAbstractDefs es = (abstractDef (`HashMap.lookup` vs) . snd) <$> es
   where
-    vs = HM.fromList $ zip (Foldable.toList $ fst <$> es) [(0 :: Int)..]
+    vs = HashMap.fromList $ zip (Foldable.toList $ fst <$> es) [(0 :: Int)..]
 
 instantiateDef
   :: Monad expr

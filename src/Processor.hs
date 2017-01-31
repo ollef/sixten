@@ -8,13 +8,13 @@ import Data.Bifunctor
 import Data.Bitraversable
 import Data.Foldable
 import Data.HashMap.Lazy(HashMap)
-import qualified Data.HashMap.Lazy as HM
+import qualified Data.HashMap.Lazy as HashMap
 import Data.List
 import Data.Monoid
 import Data.Text(Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
-import qualified Data.Vector as V
+import qualified Data.Vector as Vector
 import Data.Void
 import Prelude.Extras
 import System.IO
@@ -151,7 +151,7 @@ prettyGroup str f defs = do
 typeCheckGroup
   :: [(Name, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]
   -> TCM [(Name, Definition Abstract.ExprP Void, Abstract.ExprP Void)]
-typeCheckGroup = fmap V.toList . Infer.checkRecursiveDefs . V.fromList
+typeCheckGroup = fmap Vector.toList . Infer.checkRecursiveDefs . Vector.fromList
 
 simplifyGroup
   :: Eq a
@@ -164,7 +164,7 @@ addGroupToContext
   :: [(Name, Definition Abstract.ExprP Void, Abstract.ExprP Void)]
   -> TCM [(Name, Definition Abstract.ExprP Void, Abstract.ExprP Void)]
 addGroupToContext defs = do
-  addContext $ HM.fromList $ (\(n, d, t) -> (n, (d, t))) <$> defs
+  addContext $ HashMap.fromList $ (\(n, d, t) -> (n, (d, t))) <$> defs
   return defs
 
 inferGroupErasability
@@ -172,9 +172,9 @@ inferGroupErasability
   => [(Name, Definition (Abstract.Expr a) Void, Abstract.Expr a Void)]
   -> TCM [(Name, Definition Abstract.ExprE Void, Abstract.ExprE Void)]
 inferGroupErasability defs = do
-  let names = V.fromList [n | (n, _, _) <- defs]
-      glob n = maybe (global n) (pure . B) $ V.elemIndex n names
-      exposedDefs = V.fromList
+  let names = Vector.fromList [n | (n, _, _) <- defs]
+      glob n = maybe (global n) (pure . B) $ Vector.elemIndex n names
+      exposedDefs = Vector.fromList
         [ ( n
           , bound absurd glob d
           , toScope $ bind absurd glob t
@@ -186,11 +186,11 @@ inferGroupErasability defs = do
       vf v = throwError $ "inferGroupErasability " ++ show v
   inferredDefs' <- traverse (bitraverse (traverse $ traverse vf) (traverse vf)) inferredDefs
   let instDefs =
-        [ ( names V.! i
-          , instantiateDef (global . (names V.!)) d
-          , instantiate (global . (names V.!)) t
+        [ ( names Vector.! i
+          , instantiateDef (global . (names Vector.!)) d
+          , instantiate (global . (names Vector.!)) t
           )
-        | (i, (d, t)) <- zip [0..] $ V.toList inferredDefs'
+        | (i, (d, t)) <- zip [0..] $ Vector.toList inferredDefs'
         ]
   return instDefs
 
@@ -198,7 +198,7 @@ addErasableGroupToContext
   :: [(Name, Definition Abstract.ExprE Void, Abstract.ExprE Void)]
   -> TCM [(Name, Definition Abstract.ExprE Void, Abstract.ExprE Void)]
 addErasableGroupToContext defs = do
-  addErasableContext $ HM.fromList $ (\(n, d, t) -> (n, (d, t))) <$> defs
+  addErasableContext $ HashMap.fromList $ (\(n, d, t) -> (n, (d, t))) <$> defs
   return defs
 
 eraseGroup
@@ -225,7 +225,7 @@ closureConvertGroup
   -> TCM [(Name, Converted.Expr Void)]
 closureConvertGroup defs = do
   sigs <- forM defs $ \(x, e) -> (,) x <$> ClosureConvert.createSignature (vacuous e)
-  addConvertedSignatures $ HM.fromList sigs
+  addConvertedSignatures $ HashMap.fromList sigs
   forM sigs $ \(x, sig) ->
     (,) x . fmap (error "closureConvertGroup conv") <$> ClosureConvert.convertSignature (error "closureConvertGroup sig" <$> sig)
 
@@ -234,7 +234,7 @@ liftGroup
   -> TCM [[(Name, Lifted.Definition ClosureDir (Lifted.Expr ClosureDir) Void)]]
 liftGroup defs = fmap (Lifted.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
   let (e', fs) = liftDefinition name e
-  addConvertedSignatures $ HM.fromList $ fmap fakeSignature <$> fs
+  addConvertedSignatures $ HashMap.fromList $ fmap fakeSignature <$> fs
   return $ (name, e') : fmap (second $ Lifted.FunctionDef Private) fs
   where
     -- TODO this isn't a very nice way to do this
@@ -251,9 +251,9 @@ inferGroupDirections
   :: [(Name, Lifted.Definition ClosureDir (Lifted.Expr ClosureDir) Void)]
   -> TCM [(Name, Lifted.Definition RetDir (Lifted.Expr RetDir) Void)]
 inferGroupDirections defs = do
-  let names = V.fromList $ fst <$> defs
-      glob n = maybe (global n) (pure . B) $ V.elemIndex n names
-      exposedDefs = V.fromList
+  let names = Vector.fromList $ fst <$> defs
+      glob n = maybe (global n) (pure . B) $ Vector.elemIndex n names
+      exposedDefs = Vector.fromList
         [ ( n
           , bound absurd glob d
           )
@@ -264,10 +264,10 @@ inferGroupDirections defs = do
       vf v = throwError $ "inferGroupDirections " ++ show v
   inferredDefs' <- traverse (traverse $ traverse vf) inferredDefs
   let instDefs =
-        [ ( names V.! i
-          , Lifted.instantiateDef (global . (names V.!)) d
+        [ ( names Vector.! i
+          , Lifted.instantiateDef (global . (names Vector.!)) d
           )
-        | (i, d) <- zip [0..] $ V.toList inferredDefs'
+        | (i, d) <- zip [0..] $ Vector.toList inferredDefs'
         ]
   return instDefs
 
@@ -286,7 +286,7 @@ generateGroup defs = do
   qcindex <- qconstructorIndex
   sigs <- gets tcConvertedSignatures
   retDirs <- gets tcReturnDirections
-  let env = Generate.GenEnv qcindex (`HM.lookup` sigs) (`HM.lookup` retDirs)
+  let env = Generate.GenEnv qcindex (`HashMap.lookup` sigs) (`HashMap.lookup` retDirs)
   return $ flip map defs $ \(x, e) ->
     bimap (($ LLVM.targetConfig target) . LLVM.unC) (fold . intersperse "\n")
       $ Generate.runGen
@@ -357,6 +357,6 @@ processFile file output target logHandle verbosity = do
       addContext Builtin.contextP
       addErasableContext Builtin.contextE
       addConvertedSignatures $ Converted.signature <$> Builtin.convertedContext
-      builtins <- processConvertedGroup $ HM.toList Builtin.convertedContext
+      builtins <- processConvertedGroup $ HashMap.toList Builtin.convertedContext
       results <- processResolved resolved
       return $ builtins ++ results

@@ -6,7 +6,7 @@ import Control.Applicative
 import Control.Monad.Except
 import Data.Hashable
 import Data.HashMap.Lazy(HashMap)
-import qualified Data.HashMap.Lazy as HM
+import qualified Data.HashMap.Lazy as HashMap
 import Data.Semigroup
 import Data.Text(Text)
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
@@ -100,11 +100,11 @@ mergeDef (_, newLoc) (_, oldLoc) = do
 insertWithM
   :: (Eq k, Hashable k, Monad m)
   => (v -> v -> m v) -> k -> v -> HashMap k v -> m (HashMap k v)
-insertWithM f k new m = case HM.lookup k m of
+insertWithM f k new m = case HashMap.lookup k m of
   Just old -> do
     new' <- f new old
-    return $ HM.insert k new' m
-  Nothing -> return $ HM.insert k new m
+    return $ HashMap.insert k new' m
+  Nothing -> return $ HashMap.insert k new m
 
 err :: MonadError Text m => Span -> Doc -> [Doc] -> m a
 err loc heading docs

@@ -6,7 +6,7 @@ import Data.Bifunctor
 import Data.Bitraversable
 import Data.Foldable
 import Data.Hashable
-import qualified Data.HashMap.Lazy as HM
+import qualified Data.HashMap.Lazy as HashMap
 import Data.String
 import Prelude.Extras
 
@@ -77,9 +77,9 @@ recursiveAbstractDefs
   :: (Eq v, Monad f, Functor t, Foldable t, Hashable v)
   => t (v, Definition f v)
   -> t (Definition f (Var Int v))
-recursiveAbstractDefs es = (abstractDef (`HM.lookup` vs) . snd) <$> es
+recursiveAbstractDefs es = (abstractDef (`HashMap.lookup` vs) . snd) <$> es
   where
-    vs = HM.fromList $ zip (toList $ fst <$> es) [(0 :: Int)..]
+    vs = HashMap.fromList $ zip (toList $ fst <$> es) [(0 :: Int)..]
 
 foldMapDefinition
   :: (Monoid m, Monad expr)

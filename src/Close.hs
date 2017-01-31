@@ -2,7 +2,7 @@
 module Close where
 
 import Control.Monad.Except
-import qualified Data.HashSet as HS
+import qualified Data.HashSet as HashSet
 import Data.Monoid
 import qualified Data.Vector as Vector
 
@@ -41,10 +41,10 @@ closeLambda tele lamScope = mdo
     -- TODO do we need to use foldMapM here?
     teleFvs <- foldMapM (:[]) tele
     scopeFvs <- foldMapM (:[]) lamScope
-    let fvs = HS.fromList teleFvs <> HS.fromList scopeFvs
+    let fvs = HashSet.fromList teleFvs <> HashSet.fromList scopeFvs
 
-    deps <- forM (HS.toList fvs) $ \x -> do
-      ds <- foldMapM HS.singleton $ metaType x
+    deps <- forM (HashSet.toList fvs) $ \x -> do
+      ds <- foldMapM HashSet.singleton $ metaType x
       return (x, ds)
 
     return $ Vector.fromList $ impure <$> topoSort deps

@@ -5,8 +5,8 @@ import Control.Monad.Except
 import Control.Monad.ST()
 import Control.Monad.ST.Class
 import Data.Bifunctor
-import Data.Foldable as F
-import qualified Data.HashSet as HS
+import Data.Foldable as Foldable
+import qualified Data.HashSet as HashSet
 import Data.List as List
 import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
@@ -652,10 +652,10 @@ generalise expr typ = do
   l <- level
   let p (metaRef -> Just r) = either (> l) (const False) <$> solution r
       p _                   = return False
-  fvs' <- HS.fromList <$> filterM p fvs
+  fvs' <- HashSet.fromList <$> filterM p fvs
 
-  deps <- forM (HS.toList fvs') $ \x -> do
-    ds <- foldMapM HS.singleton $ metaType x
+  deps <- forM (HashSet.toList fvs') $ \x -> do
+    ds <- foldMapM HashSet.singleton $ metaType x
     return (x, ds)
 
   let sorted = map go $ topoSort deps
@@ -807,7 +807,7 @@ generaliseDef vs (Definition e) t = do
   gt <- go pi_ t
   return (Definition ge, gt)
   where
-    go c b = F.foldrM
+    go c b = Foldable.foldrM
       (\a s -> c (metaHint a) Implicit (metaType a) <$> abstract1M a s)
       b
       vs
@@ -838,10 +838,10 @@ generaliseDefs xs = do
   l <- level
   let p (metaRef -> Just r) = either (> l) (const False) <$> solution r
       p _                   = return False
-  fvs' <- HS.fromList <$> filterM p fvs
+  fvs' <- HashSet.fromList <$> filterM p fvs
 
-  deps <- forM (HS.toList fvs') $ \x -> do
-    ds <- foldMapM HS.singleton $ metaType x
+  deps <- forM (HashSet.toList fvs') $ \x -> do
+    ds <- foldMapM HashSet.singleton $ metaType x
     return (x, ds)
 
   let sortedFvs = map impure $ topoSort deps
