@@ -8,7 +8,7 @@ highlight def link sixtenIdentifier Identifier
 highlight def link sixtenType Type
 highlight def link sixtenDefinition Function
 highlight def link sixtenNumber Number
-highlight def link sixtenDataKeyword Structure
+highlight def link sixtenDataKeyword Keyword
 highlight def link sixtenCaseKeyword Conditional
 highlight def link sixtenForall Keyword
 highlight def link sixtenLambda Keyword
