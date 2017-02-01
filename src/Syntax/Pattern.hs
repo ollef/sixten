@@ -73,6 +73,25 @@ indexedPattern = flip evalState 0 . traverse inc
       put $! n + 1
       pure (n, b)
 
+indexedPatterns
+  :: (Traversable f, Traversable pat)
+  => f (p, pat b)
+  -> f (p, pat (PatternVar, b))
+indexedPatterns = flip evalState 0 . traverse (traverse $ traverse inc)
+  where
+    inc b = do
+      n <- get
+      put $! n + 1
+      pure (n, b)
+
+renamePatterns
+  :: (Traversable f, Traversable pat)
+  => Vector v
+  -> f (p, pat b)
+  -> f (p, pat v)
+renamePatterns vs pats
+  = fmap (fmap (\(v, _) -> vs Vector.! unPatternVar v)) <$> indexedPatterns pats
+
 instantiatePattern
   :: (Monad f, Foldable pat)
   => (v -> f v')

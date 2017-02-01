@@ -23,6 +23,7 @@ import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 
 import qualified Builtin
 import Match
+import Match.Pattern as Match
 import Meta
 import Normalise
 import Simplify
@@ -299,7 +300,7 @@ tcPat pat vs expected = do
   modifyIndent succ
   (pat', vs') <- tcPat' pat vs expected
   modifyIndent pred
-  -- logMeta 20 "tcPat res" pat'
+  logMeta 20 "tcPat res" (first (const ()) pat')
   return (pat', vs')
 
 tcPat'
@@ -764,10 +765,14 @@ checkClausesRho clauses rhoType = do
 
   let returnType = instantiateTele pure argVars returnTypeScope
 
-  clauses' <- forM clauses $ \(Concrete.Clause pats bodyScope) -> do
+  clauses' <- forM clauses $ \clause@(Concrete.Clause pats bodyScope) -> do
+    logMeta 20 "checkClauseRho clause" clause
+    modifyIndent succ
     (pats', patVars) <- checkPats (snd <$> pats) $ metaType <$> argVars
     let body = instantiatePatternVec pure patVars bodyScope
     body' <- checkRho body returnType
+    modifyIndent pred
+    logMeta 20 "checkClauseRho res body" body'
     return (pats', body')
 
   body <- matchClauses
@@ -779,7 +784,6 @@ checkClausesRho clauses rhoType = do
       f =<< Abstract.Lam (metaHint v) p (metaType v) <$> abstract1M v e)
     body
     (Vector.zip ps $ Vector.zip fs argVars)
-
 
 checkDefType
   :: MetaP

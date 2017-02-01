@@ -32,6 +32,7 @@ executable sixten
                        LLVM
                        Lift
                        Match
+                       Match.Pattern
                        Meta
                        Normalise
                        Paths_sixten
