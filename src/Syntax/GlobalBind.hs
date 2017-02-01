@@ -1,4 +1,3 @@
-{-# LANGUAGE TypeFamilies #-}
 module Syntax.GlobalBind where
 
 import Bound
