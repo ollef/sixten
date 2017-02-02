@@ -1,10 +1,9 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, MonadComprehensions, ScopedTypeVariables #-}
+{-# LANGUAGE RecursiveDo, ScopedTypeVariables, ViewPatterns #-}
 module Match where
 
 import Control.Monad.Except
 import Data.Bifoldable
 import Data.Bifunctor
-import Data.Bitraversable
 import Data.Foldable
 import Data.Function
 import Data.List.NonEmpty(NonEmpty)
@@ -16,11 +15,12 @@ import Data.Vector(Vector)
 import Builtin
 import Match.Pattern
 import Meta
+import Normalise
 import Syntax
 import Syntax.Abstract
 import TCM
+import TypeOf
 import Util
-
 type PatM = Pat AbstractM MetaP
 type Clause =
   ( [PatM]
@@ -109,7 +109,8 @@ matchCon expr exprs clauses expr0 = do
 
   cbrs <- forM cs $ \c -> do
     let clausesStartingWithC = NonEmpty.filter ((== c) . firstCon) clauses
-        ConPat _ ps = firstPattern $ head clausesStartingWithC
+    ps <- conPatArgs c =<< typeOf expr
+
     ys <- forM ps $ \(p, pat, typ) -> forall (patternHint pat) p typ
     let exprs' = (pure <$> Vector.toList ys) ++ exprs
     rest <- match exprs' (decon clausesStartingWithC) (pure $ B Fail)
@@ -130,6 +131,24 @@ matchCon expr exprs clauses expr0 = do
     constructors typeName = do
       (DataDefinition (DataDef cs), _ :: ExprP ()) <- definition typeName
       return $ QConstr typeName . constrName <$> cs
+
+conPatArgs
+  :: QConstr
+  -> AbstractM
+  -> TCM (Vector (Plicitness, PatM, AbstractM))
+conPatArgs c typ = do
+  typ' <- whnf typ
+  let (_, args) = appsView typ'
+  ctype <- qconstructor c
+  let (tele, _) = pisView (ctype :: AbstractM)
+      tele' = instantiatePrefix (snd <$> Vector.fromList args) tele
+  vs <- mdo
+    vs <- forMTele tele' $ \h p s ->
+      forall h p $ instantiateTele pure vs s
+    return vs
+  return
+    $ (\(p, v) -> (p, VarPat mempty v, metaType v))
+    <$> Vector.zip (teleAnnotations tele') vs
 
 patternTelescope
   :: Vector (a, Pat typ b, Expr a v)
