@@ -297,10 +297,12 @@ tcPat
   -> TCM (Match.Pat AbstractM MetaP, Vector MetaP)
 tcPat pat vs expected = do
   logPretty 20 "tcPat" $ first (show . instantiatePatternVec pure vs) pat
+  logShow 20 "tcPat vs" vs
   modifyIndent succ
   (pat', vs') <- tcPat' pat vs expected
   modifyIndent pred
   logMeta 20 "tcPat res" (first (const ()) pat')
+  logShow 20 "tcPat vs res" vs'
   return (pat', vs')
 
 tcPat'
@@ -318,7 +320,7 @@ tcPat' pat vs expected = case pat of
       Check varType -> return varType
     v <- forall h Explicit varType
     return (Match.VarPat h v, vs <> pure v)
-  Concrete.WildcardPat -> return (Match.WildcardPat, mempty)
+  Concrete.WildcardPat -> return (Match.WildcardPat, vs)
   Concrete.LitPat lit -> do
     (expectedType, f) <- instPatExpected expected Builtin.Size
     p <- viewPat expectedType f $ Match.LitPat lit
@@ -350,7 +352,9 @@ tcPat' pat vs expected = case pat of
           return ((p, pat'', metaType v) : revPats, vs'')
           -- TODO unify the var with the pat
 
-    (revPats, vs') <- foldlM go (mempty, vs) $ Vector.zip pats $ Vector.drop numParams typeVars
+    (revPats, vs') <- foldlM go (mempty, vs)
+      $ Vector.zip pats
+      $ Vector.drop numParams typeVars
     let pats' = Vector.fromList $ reverse revPats
 
     (expectedType, f) <- instPatExpected expected retType
@@ -365,7 +369,7 @@ tcPat' pat vs expected = case pat of
     p'' <- viewPat expectedType f p'
     return (p'', vs')
   Concrete.ViewPat s p -> throwError "tcPat ViewPat undefined TODO"
-  Concrete.PatLoc loc p -> located loc $ tcPat p vs expected
+  Concrete.PatLoc loc p -> located loc $ tcPat' p vs expected
 
 viewPat
   :: AbstractM -- ^ expectedType
@@ -753,6 +757,7 @@ checkClausesRho
   -> Rhotype
   -> TCM AbstractM
 checkClausesRho clauses rhoType = do
+  forM_ clauses $ logMeta 20 "checkClauseRho clause"
 
   let ps = fst <$> pats
         where
@@ -765,25 +770,30 @@ checkClausesRho clauses rhoType = do
 
   let returnType = instantiateTele pure argVars returnTypeScope
 
-  clauses' <- forM clauses $ \clause@(Concrete.Clause pats bodyScope) -> do
-    logMeta 20 "checkClauseRho clause" clause
-    modifyIndent succ
+  modifyIndent succ
+
+  clauses' <- forM clauses $ \(Concrete.Clause pats bodyScope) -> do
     (pats', patVars) <- checkPats (snd <$> pats) $ metaType <$> argVars
+    logShow 20 "checkClauseRho clause patVars" patVars
     let body = instantiatePatternVec pure patVars bodyScope
     body' <- checkRho body returnType
-    modifyIndent pred
-    logMeta 20 "checkClauseRho res body" body'
+    logMeta 20 "checkClauseRho clause body" body'
     return (pats', body')
+
+  modifyIndent pred
 
   body <- matchClauses
     (Vector.toList $ pure <$> argVars)
     (NonEmpty.toList $ first Vector.toList <$> clauses')
 
-  foldrM
+  result <- foldrM
     (\(p, (f, v)) e ->
       f =<< Abstract.Lam (metaHint v) p (metaType v) <$> abstract1M v e)
     body
     (Vector.zip ps $ Vector.zip fs argVars)
+
+  logMeta 20 "checkClauseRho res" result
+  return result
 
 checkDefType
   :: MetaP
