@@ -1,15 +1,15 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, GeneralizedNewtypeDeriving #-}
-module Syntax.Parse where
+module Frontend.Parse where
 
 import Control.Applicative((<**>), (<|>), Alternative)
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Char
 import qualified Data.HashSet as HashSet
-import qualified Data.Vector as Vector
+import Data.Ord
 import Data.Text(Text)
 import qualified Data.Text as Text
-import Data.Ord
+import qualified Data.Vector as Vector
 import qualified Text.Parser.Token.Highlight as Highlight
 import qualified Text.Trifecta as Trifecta
 import Text.Trifecta((<?>))
@@ -17,7 +17,7 @@ import Text.Trifecta.Delta
 
 import Syntax
 import Syntax.Concrete.Pattern
-import Syntax.Wet as Wet
+import Syntax.Concrete.Unscoped as Unscoped
 import Util
 
 type Input = Text
@@ -248,8 +248,8 @@ atomicExpr = located
   $ Lit <$> literal
   <|> Wildcard <$ wildcard
   <|> Var <$> ident
-  <|> abstr (reserved "forall") Wet.pis
-  <|> abstr (symbol   "\\") Wet.lams
+  <|> abstr (reserved "forall") Unscoped.pis
+  <|> abstr (symbol   "\\") Unscoped.lams
   <|> Case <$ reserved "case" <*>% expr <*% reserved "of" <*> branches
   -- <|> lett <$ reserved "let" <*>% manyIndentedSamecol def <*% reserved "in" <*> expr
   <|> symbol "(" *>% expr <*% symbol ")"
@@ -264,9 +264,9 @@ branches = manyIndentedSameCol branch
 
 expr :: Parser (Expr Name)
 expr = located
-  $ Wet.pis <$> Trifecta.try (somePatternBindings <*% symbol "->") <*>% expr
+  $ Unscoped.pis <$> Trifecta.try (somePatternBindings <*% symbol "->") <*>% expr
   <|> plicitPi Implicit <$ symbol "{" <*>% expr <*% symbol "}" <*% symbol "->" <*>% expr
-  <|> Wet.apps <$> atomicExpr <*> manySI argument <**> (arr <|> pure id)
+  <|> Unscoped.apps <$> atomicExpr <*> manySI argument <**> (arr <|> pure id)
   <?> "expression"
   where
     plicitPi p argType retType = Pi p (AnnoPat argType WildcardPat) retType
@@ -282,7 +282,7 @@ expr = located
 -- * Definitions
 -- | A definition or type declaration on the top-level
 data TopLevelParsed v
-  = ParsedClause (Maybe v) (Wet.Clause v)
+  = ParsedClause (Maybe v) (Unscoped.Clause v)
   | ParsedTypeDecl v (Type v)
   | ParsedData v [(Plicitness, v, Type v)] [ConstrDef (Type v)]
   deriving (Show)
@@ -296,7 +296,7 @@ def
   <|> wildcard <**>% mkDef (const Nothing)
   where
     typeDecl = flip ParsedTypeDecl <$ symbol ":" <*>% expr
-    mkDef f = (\ps e n -> ParsedClause (f n) (Wet.Clause ps e)) <$> manyPatterns <*% symbol "=" <*>% expr
+    mkDef f = (\ps e n -> ParsedClause (f n) (Unscoped.Clause ps e)) <$> manyPatterns <*% symbol "=" <*>% expr
 
 dataDef :: Parser (TopLevelParsed Name)
 dataDef = ParsedData <$ reserved "data" <*>% ident <*> manyTypedBindings <*>%
@@ -307,7 +307,7 @@ dataDef = ParsedData <$ reserved "data" <*>% ident <*> manyTypedBindings <*>%
       <*% symbol ":" <*>% expr
     constrDefs cs t = [ConstrDef c t | c <- cs]
     adtConDef = ConstrDef <$> constructor <*> (adtConType <$> manySI atomicExpr)
-    adtConType es = Wet.pis ((\e -> (Explicit, AnnoPat e WildcardPat)) <$> es) Wildcard
+    adtConType es = Unscoped.pis ((\e -> (Explicit, AnnoPat e WildcardPat)) <$> es) Wildcard
 
 program :: Parser [(TopLevelParsed Name, Span)]
 program = Trifecta.whiteSpace >> dropAnchor (manySameCol $ dropAnchor topLevel)

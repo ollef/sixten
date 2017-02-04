@@ -1,9 +1,9 @@
 {-# LANGUAGE OverloadedStrings, RecursiveDo #-}
-module Generate where
+module Backend.Generate where
 
 import qualified Bound
-import Control.Monad.State
 import Control.Monad.Reader
+import Control.Monad.State
 import Data.Bifunctor
 import Data.Bitraversable
 import qualified Data.Foldable as Foldable
@@ -16,18 +16,18 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 
+import Backend.LLVM
+import Backend.Target
 import Builtin
-import LLVM
 import Syntax.Annotation
 import Syntax.Branches
-import qualified Syntax.Converted as Converted
 import Syntax.Direction
 import Syntax.Hint
 import Syntax.Name
 import Syntax.Primitive
-import Syntax.Lifted
+import qualified Syntax.Sized.Converted as Converted
+import Syntax.Sized.Lifted
 import Syntax.Telescope
-import Target
 import Util
 
 -------------------------------------------------------------------------------

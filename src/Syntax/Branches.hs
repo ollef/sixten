@@ -5,17 +5,17 @@ import Bound.Scope
 import Data.Bifoldable
 import Data.Bifunctor
 import Data.Bitraversable
+import Data.List.NonEmpty(NonEmpty)
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.Monoid as Monoid
 import Data.Semigroup as Semigroup
 import Data.String
 import Prelude.Extras
-import Data.List.NonEmpty(NonEmpty)
-import qualified Data.List.NonEmpty as NonEmpty
 
+import Pretty
 import Syntax.Annotation
 import Syntax.GlobalBind
 import Syntax.Name
-import Syntax.Pretty
 import Syntax.Telescope
 import Util
 

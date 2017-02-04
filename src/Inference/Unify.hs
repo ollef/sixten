@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings, ViewPatterns #-}
-module Unify where
+module Inference.Unify where
 
 import Control.Monad.Except
 import Control.Monad.ST.Class
@@ -14,12 +14,12 @@ import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import Text.Trifecta.Result(Err(Err), explain)
 
 import qualified Builtin
+import Inference.Normalise
+import Inference.TypeOf
 import Meta
-import Normalise
 import Syntax
 import Syntax.Abstract
 import TCM
-import TypeOf
 
 existsSize :: Monad e => NameHint -> TCM (e (MetaVar ExprP))
 existsSize n = existsVar n Builtin.Size

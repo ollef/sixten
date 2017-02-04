@@ -1,4 +1,4 @@
-module InferDirection where
+module Analysis.ReturnDirection where
 
 import Control.Monad
 import Control.Monad.Except
@@ -6,13 +6,13 @@ import Control.Monad.ST.Class
 import Data.Bitraversable
 import Data.Function
 import Data.Hashable
-import Data.STRef
 import qualified Data.List.NonEmpty as NonEmpty
+import Data.STRef
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 
 import Syntax hiding (Definition, traverseDefinitionFirst, recursiveAbstractDefs, instantiateDef) -- TODO cleanup name conflicts
-import Syntax.Lifted
+import Syntax.Sized.Lifted
 import TCM
 
 data MetaReturnIndirect

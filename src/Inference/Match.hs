@@ -1,5 +1,5 @@
 {-# LANGUAGE RecursiveDo, ScopedTypeVariables, ViewPatterns #-}
-module Match where
+module Inference.Match where
 
 import Control.Monad.Except
 import Data.Bifoldable
@@ -13,13 +13,13 @@ import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 
 import Builtin
-import Match.Pattern
+import Inference.Normalise
+import Inference.TypeOf
 import Meta
-import Normalise
 import Syntax
 import Syntax.Abstract
+import Syntax.Abstract.Pattern
 import TCM
-import TypeOf
 import Util
 type PatM = Pat AbstractM MetaP
 type Clause =

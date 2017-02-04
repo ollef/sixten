@@ -1,7 +1,7 @@
 {-# LANGUAGE PatternSynonyms, PolyKinds, TypeFamilies, OverloadedStrings #-}
 module Syntax.Annotation where
 
-import Syntax.Pretty
+import Pretty
 
 class Eq a => PrettyAnnotation a where
   prettyAnnotation :: a -> PrettyM Doc -> PrettyM Doc

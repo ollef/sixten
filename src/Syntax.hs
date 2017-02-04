@@ -5,6 +5,7 @@ import Bound.Scope as X hiding (instantiate1)
 import Bound.Var as X
 import qualified Util
 
+import Pretty as X
 import Syntax.Annotation as X
 import Syntax.Branches as X
 import Syntax.Class as X
@@ -15,7 +16,6 @@ import Syntax.GlobalBind as X
 import Syntax.Hint as X
 import Syntax.Name as X
 import Syntax.Pattern as X
-import Syntax.Pretty as X
 import Syntax.Primitive as X
-import Syntax.Telescope as X
 import Syntax.SourceLoc as X
+import Syntax.Telescope as X

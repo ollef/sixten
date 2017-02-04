@@ -1,9 +1,9 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings, TypeFamilies #-}
-module Syntax.Concrete
+module Syntax.Concrete.Scoped
   ( module Definition
   , module Pattern
   , Expr(..), Type
-  , Syntax.Concrete.piView --, pisView
+  , piView --, pisView
   ) where
 
 import Control.Monad
@@ -14,7 +14,7 @@ import Data.Monoid
 import Data.String
 import Prelude.Extras
 
-import Syntax
+import Syntax hiding (piView)
 import Syntax.Concrete.Definition as Definition
 import Syntax.Concrete.Pattern as Pattern
 import Util

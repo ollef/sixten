@@ -1,5 +1,5 @@
 {-# LANGUAGE GADTs, GeneralizedNewtypeDeriving, OverloadedStrings #-}
-module Syntax.Pretty
+module Pretty
   ( module Text.PrettyPrint.ANSI.Leijen
   , Pretty, PrettyM
   , runPrettyM

@@ -1,5 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, MonadComprehensions, OverloadedStrings #-}
-module Lift where
+module Backend.Lift where
 import Control.Monad.State
 import Data.Bifunctor
 import Data.Bitraversable
@@ -7,8 +7,8 @@ import Data.Monoid
 import Data.Void
 
 import Syntax
-import qualified Syntax.Converted as Converted
-import qualified Syntax.Lifted as Lifted
+import qualified Syntax.Sized.Converted as Converted
+import qualified Syntax.Sized.Lifted as Lifted
 import Util
 
 data LiftState = LiftState

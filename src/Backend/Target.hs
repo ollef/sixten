@@ -1,11 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Target where
+module Backend.Target where
 
 import Data.Monoid
 import qualified Data.List as List
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 
-import Syntax.Pretty
+import Pretty
 
 data Target = Target
   { architecture :: String

@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, FlexibleInstances, MonadComprehensions, MultiParamTypeClasses, RecursiveDo, TypeFamilies, ViewPatterns #-}
-module Normalise where
+module Inference.Normalise where
 
 import Control.Monad.Except
 import qualified Data.List.NonEmpty as NonEmpty

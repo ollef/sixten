@@ -2,9 +2,9 @@
 module TCM where
 
 import Control.Monad.Except
-import Control.Monad.State
 import Control.Monad.ST
 import Control.Monad.ST.Class
+import Control.Monad.State
 import Data.Bifunctor
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
@@ -19,11 +19,11 @@ import qualified Data.Vector as Vector
 import Data.Void
 import System.IO
 
+import Backend.Target
 import qualified Builtin
 import Syntax
 import Syntax.Abstract
-import qualified Syntax.Converted as Converted
-import Target
+import qualified Syntax.Sized.Converted as Converted
 import Util
 
 newtype Level = Level Int

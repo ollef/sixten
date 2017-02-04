@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Syntax.Wet where
+module Syntax.Concrete.Unscoped where
 
 import Control.Monad
 import Data.Bifunctor
@@ -30,7 +30,7 @@ data Expr v
 type Type = Expr
 
 data Definition v
-  = Definition (NonEmpty (Syntax.Wet.Clause v))
+  = Definition (NonEmpty (Syntax.Concrete.Unscoped.Clause v))
   | DataDefinition [(Plicitness, Name, Type v)] [ConstrDef (Expr v)]
   deriving (Show)
 
@@ -38,8 +38,8 @@ data Definition v
 data Clause v = Clause [(Plicitness, Pat (Type v) Name)] (Expr v)
   deriving (Show)
 
-clauseArity :: Syntax.Wet.Clause v -> Int
-clauseArity (Syntax.Wet.Clause pats _) = length pats
+clauseArity :: Clause v -> Int
+clauseArity (Clause pats _) = length pats
 
 -------------------------------------------------------------------------------
 -- Smart constructors

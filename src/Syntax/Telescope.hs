@@ -28,11 +28,11 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Prelude.Extras
 
+import Pretty
 import Syntax.Annotation
 import Syntax.GlobalBind
 import Syntax.Hint
 import Syntax.Name
-import Syntax.Pretty
 import Util
 
 newtype Tele = Tele Int

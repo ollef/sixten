@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, RecursiveDo, ScopedTypeVariables, TypeFamilies, ViewPatterns #-}
-module Infer where
+module Inference.TypeCheck where
 
 import Control.Monad.Except
 import Control.Monad.ST()
@@ -19,22 +19,22 @@ import Data.STRef
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
-import Text.Trifecta.Result(Err(Err), explain)
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
+import Text.Trifecta.Result(Err(Err), explain)
 
+import Analysis.Simplify
 import qualified Builtin
-import Match
-import Match.Pattern as Match
+import Inference.Match
+import Inference.Normalise
+import Inference.TypeOf
+import Inference.Unify
 import Meta
-import Normalise
-import Simplify
 import Syntax
 import qualified Syntax.Abstract as Abstract
-import qualified Syntax.Concrete as Concrete
+import Syntax.Abstract.Pattern as Abstract
+import qualified Syntax.Concrete.Scoped as Concrete
 import TCM
 import TopoSort
-import TypeOf
-import Unify
 import Util
 
 type Polytype = AbstractM
@@ -266,13 +266,13 @@ checkPat
   :: Concrete.Pat (PatternScope Concrete.Expr MetaP) ()
   -> Vector MetaP
   -> Polytype
-  -> TCM (Match.Pat AbstractM MetaP, Vector MetaP)
+  -> TCM (Abstract.Pat AbstractM MetaP, Vector MetaP)
 checkPat pat vs expectedType = tcPat pat vs $ Check expectedType
 
 checkPats
   :: Vector (Concrete.Pat (PatternScope Concrete.Expr MetaP) ())
   -> Vector Polytype
-  -> TCM (Vector (Match.Pat AbstractM MetaP), Vector MetaP)
+  -> TCM (Vector (Abstract.Pat AbstractM MetaP), Vector MetaP)
 checkPats pats types = do
   unless (Vector.length pats == Vector.length types)
     $ throwError "checkPats length mismatch"
@@ -286,7 +286,7 @@ checkPats pats types = do
 inferPat
   :: Concrete.Pat (PatternScope Concrete.Expr MetaP) ()
   -> Vector MetaP
-  -> TCM (Match.Pat AbstractM MetaP, Vector MetaP, Polytype)
+  -> TCM (Abstract.Pat AbstractM MetaP, Vector MetaP, Polytype)
 inferPat pat vs = do
   ref <- liftST $ newSTRef $ error "inferPat: empty result"
   (pat', vs') <- tcPat pat vs $ Infer ref $ InstBelow Explicit -- TODO instBelow?
@@ -297,7 +297,7 @@ tcPat
   :: Concrete.Pat (PatternScope Concrete.Expr MetaP) ()
   -> Vector MetaP
   -> Expected Polytype
-  -> TCM (Match.Pat AbstractM MetaP, Vector MetaP)
+  -> TCM (Abstract.Pat AbstractM MetaP, Vector MetaP)
 tcPat pat vs expected = do
   whenVerbose 20 $ do
     shownPat <- bitraverse (showMeta . instantiatePatternVec pure vs) pure pat
@@ -314,7 +314,7 @@ tcPat'
   :: Concrete.Pat (PatternScope Concrete.Expr MetaP) ()
   -> Vector MetaP
   -> Expected Polytype
-  -> TCM (Match.Pat AbstractM MetaP, Vector MetaP)
+  -> TCM (Abstract.Pat AbstractM MetaP, Vector MetaP)
 tcPat' pat vs expected = case pat of
   Concrete.VarPat h () -> do
     varType <- case expected of
@@ -324,11 +324,11 @@ tcPat' pat vs expected = case pat of
         return varType
       Check varType -> return varType
     v <- forall h Explicit varType
-    return (Match.VarPat h v, vs <> pure v)
-  Concrete.WildcardPat -> return (Match.WildcardPat, vs)
+    return (Abstract.VarPat h v, vs <> pure v)
+  Concrete.WildcardPat -> return (Abstract.WildcardPat, vs)
   Concrete.LitPat lit -> do
     (expectedType, f) <- instPatExpected expected Builtin.Size
-    p <- viewPat expectedType f $ Match.LitPat lit
+    p <- viewPat expectedType f $ Abstract.LitPat lit
     return (p, vs)
   Concrete.ConPat c pats -> do
     typeName <- resolveConstrType [c] $ case expected of
@@ -363,7 +363,7 @@ tcPat' pat vs expected = case pat of
     let pats' = Vector.fromList $ reverse revPats
 
     (expectedType, f) <- instPatExpected expected retType
-    p <- viewPat expectedType f $ Match.ConPat qc pats'
+    p <- viewPat expectedType f $ Abstract.ConPat qc pats'
 
     return (p, vs')
   Concrete.AnnoPat s p -> do
@@ -379,8 +379,8 @@ tcPat' pat vs expected = case pat of
 viewPat
   :: AbstractM -- ^ expectedType
   -> (AbstractM -> TCM AbstractM) -- ^ expectedType -> patType
-  -> Match.Pat AbstractM MetaP
-  -> TCM (Match.Pat AbstractM MetaP) -- ^ expectedType
+  -> Abstract.Pat AbstractM MetaP
+  -> TCM (Abstract.Pat AbstractM MetaP) -- ^ expectedType
 viewPat expectedType f p = do
   x <- forall mempty Explicit expectedType
   fx <- f $ pure x
@@ -388,7 +388,7 @@ viewPat expectedType f p = do
     return p
   else do
     fExpr <- Abstract.Lam mempty Explicit expectedType <$> abstract1M x fx
-    return $ Match.ViewPat fExpr p
+    return $ Abstract.ViewPat fExpr p
 
 {-
 instantiateDataType

@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, OverloadedStrings, RecursiveDo, TypeFamilies, ViewPatterns #-}
-module Close where
+module Backend.Close where
 
 import Control.Monad.Except
 import qualified Data.HashSet as HashSet
@@ -8,8 +8,8 @@ import qualified Data.Vector as Vector
 
 import Meta
 import Syntax
-import qualified Syntax.SLambda as SLambda
-import qualified Syntax.Closed as Closed
+import qualified Syntax.Sized.Closed as Closed
+import qualified Syntax.Sized.SLambda as SLambda
 import TCM
 import TopoSort
 

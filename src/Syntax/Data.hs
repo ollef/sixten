@@ -2,18 +2,18 @@
 module Syntax.Data where
 
 import Bound
-import Bound.Var
 import Bound.Scope
+import Bound.Var
 import Data.Bifunctor
 import Data.Bitraversable
 import Data.String
 import Prelude.Extras
 
+import Pretty
 import Syntax.Annotation
 import Syntax.Class
 import Syntax.GlobalBind
 import Syntax.Name
-import Syntax.Pretty
 import Syntax.Telescope
 import Util
 

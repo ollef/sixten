@@ -10,11 +10,11 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.String
 import Prelude.Extras
 
+import Pretty
 import Syntax.Annotation
 import Syntax.Class
 import Syntax.Data
 import Syntax.GlobalBind
-import Syntax.Pretty
 
 data Definition expr v
   = Definition (expr v)

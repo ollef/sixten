@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings #-}
-module Syntax.Lifted where
+module Syntax.Sized.Lifted where
 
 import Control.Monad
 import Data.Bifoldable
@@ -194,6 +194,6 @@ instance (Eq v, IsString v, Pretty v, Pretty (expr v))
   prettyM (Constant dir e) = prettyM dir <+> prettyM e
 
 instance (Eq v, IsString v, Pretty v, Eq retDir, Pretty retDir, Pretty (expr v), Monad expr)
-  => Pretty (Syntax.Lifted.Definition retDir expr v) where
+  => Pretty (Syntax.Sized.Lifted.Definition retDir expr v) where
   prettyM (ConstantDef v c) = prettyM v <+> prettyM c
   prettyM (FunctionDef v f) = prettyM v <+> prettyM f

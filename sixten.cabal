@@ -17,58 +17,58 @@ executable sixten
   ghc-options:         -Wall -funbox-strict-fields
   main-is:             Main.hs
   other-modules:
+                       Analysis.Erasability
+                       Analysis.Erase
+                       Analysis.ReturnDirection
+                       Analysis.Simplify
+                       Backend.Close
+                       Backend.ClosureConvert
+                       Backend.Generate
+                       Backend.LLVM
+                       Backend.Lift
+                       Backend.Target
                        Builtin
-                       Close
-                       ClosureConvert
                        Command.Compile
                        Command.Run
                        Command.Test
-                       Dry
-                       Erase
-                       Generate
-                       Infer
-                       InferErasability
-                       InferDirection
-                       LLVM
-                       Lift
-                       Match
-                       Match.Pattern
+                       Frontend.Parse
+                       Frontend.Resolve
+                       Frontend.ScopeCheck
+                       Inference.Match
+                       Inference.Normalise
+                       Inference.TypeCheck
+                       Inference.TypeOf
+                       Inference.Unify
                        Meta
-                       Normalise
                        Paths_sixten
+                       Pretty
                        Processor
-                       Resolve
-                       Simplify
                        Syntax
                        Syntax.Abstract
+                       Syntax.Abstract.Pattern
                        Syntax.Annotation
                        Syntax.Branches
                        Syntax.Class
-                       Syntax.Closed
-                       Syntax.Concrete
                        Syntax.Concrete.Definition
                        Syntax.Concrete.Pattern
-                       Syntax.Converted
+                       Syntax.Concrete.Scoped
+                       Syntax.Concrete.Unscoped
                        Syntax.Data
                        Syntax.Definition
                        Syntax.Direction
                        Syntax.GlobalBind
                        Syntax.Hint
-                       Syntax.Lifted
                        Syntax.Name
-                       Syntax.Parse
                        Syntax.Pattern
-                       Syntax.Pretty
                        Syntax.Primitive
-                       Syntax.SLambda
+                       Syntax.Sized.Closed
+                       Syntax.Sized.Converted
+                       Syntax.Sized.Lifted
+                       Syntax.Sized.SLambda
                        Syntax.SourceLoc
                        Syntax.Telescope
-                       Syntax.Wet
-                       Target
                        TCM
                        TopoSort
-                       TypeOf
-                       Unify
                        Util
   build-depends:
                        ansi-wl-pprint,

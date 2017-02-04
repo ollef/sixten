@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, GeneralizedNewtypeDeriving, OverloadedStrings #-}
-module LLVM where
+module Backend.LLVM where
 
 import Control.Applicative
 import Control.Monad.State
@@ -16,12 +16,12 @@ import Data.Text(Text)
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import Util
+import Backend.Target
+import qualified Pretty
 import Syntax.Direction
 import Syntax.Hint
 import Syntax.Name
-import qualified Syntax.Pretty as Pretty
-import Target
+import Util
 
 type B = Text
 

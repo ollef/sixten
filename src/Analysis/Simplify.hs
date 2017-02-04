@@ -1,5 +1,5 @@
 {-# LANGUAGE ViewPatterns, MonadComprehensions #-}
-module Simplify where
+module Analysis.Simplify where
 
 import Bound
 import Data.Bifunctor

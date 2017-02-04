@@ -21,38 +21,38 @@ import System.IO
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import qualified Text.Trifecta as Trifecta
 
+import qualified Analysis.Erasability as Erasability
+import Analysis.Erase
+import qualified Analysis.ReturnDirection as ReturnDirection
+import Analysis.Simplify
+import Backend.Close
+import qualified Backend.ClosureConvert as ClosureConvert
+import qualified Backend.Generate as Generate
+import Backend.Lift
+import qualified Backend.LLVM as LLVM
+import Backend.Target
 import qualified Builtin
-import Close
-import ClosureConvert
-import qualified Dry
-import Erase
-import qualified Generate
-import qualified Infer
-import qualified InferDirection
-import qualified InferErasability
-import Lift
-import qualified LLVM
+import qualified Frontend.Parse as Parse
+import qualified Frontend.Resolve as Resolve
+import qualified Frontend.ScopeCheck as ScopeCheck
+import qualified Inference.TypeCheck as TypeCheck
 import Paths_sixten
-import qualified Resolve
-import Simplify
 import Syntax
 import qualified Syntax.Abstract as Abstract
-import qualified Syntax.Closed as Closed
-import qualified Syntax.Concrete as Concrete
-import qualified Syntax.Converted as Converted
-import qualified Syntax.Lifted as Lifted
-import qualified Syntax.Parse as Parse
-import qualified Syntax.SLambda as SLambda
-import qualified Syntax.Wet as Wet
-import Target
+import qualified Syntax.Concrete.Scoped as Concrete
+import qualified Syntax.Concrete.Unscoped as Unscoped
+import qualified Syntax.Sized.Closed as Closed
+import qualified Syntax.Sized.Converted as Converted
+import qualified Syntax.Sized.Lifted as Lifted
+import qualified Syntax.Sized.SLambda as SLambda
 import TCM
 import Util
 
 processResolved
-  :: HashMap Name (SourceLoc, Wet.Definition Name, Wet.Type Name)
+  :: HashMap Name (SourceLoc, Unscoped.Definition Name, Unscoped.Type Name)
   -> TCM [(LLVM.B, LLVM.B)]
 processResolved
-  = pure . Dry.dryProgram
+  = pure . ScopeCheck.scopeCheckProgram
   >>=> processGroup
 
 processGroup
@@ -151,7 +151,7 @@ prettyGroup str f defs = do
 typeCheckGroup
   :: [(Name, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]
   -> TCM [(Name, Definition Abstract.ExprP Void, Abstract.ExprP Void)]
-typeCheckGroup = fmap Vector.toList . Infer.checkRecursiveDefs . Vector.fromList
+typeCheckGroup = fmap Vector.toList . TypeCheck.checkRecursiveDefs . Vector.fromList
 
 simplifyGroup
   :: Eq a
@@ -180,9 +180,9 @@ inferGroupErasability defs = do
           , toScope $ bind absurd glob t
           )
         | (n, d, t) <- defs]
-  inferredDefs <- InferErasability.inferRecursiveDefs exposedDefs
+  inferredDefs <- Erasability.inferRecursiveDefs exposedDefs
 
-  let vf :: InferErasability.MetaVar -> TCM b
+  let vf :: Erasability.MetaVar -> TCM b
       vf v = throwError $ "inferGroupErasability " ++ show v
   inferredDefs' <- traverse (bitraverse (traverse $ traverse vf) (traverse vf)) inferredDefs
   let instDefs =
@@ -258,9 +258,9 @@ inferGroupDirections defs = do
           , bound absurd glob d
           )
         | (n, d) <- defs]
-  inferredDefs <- InferDirection.inferRecursiveDefs exposedDefs
+  inferredDefs <- ReturnDirection.inferRecursiveDefs exposedDefs
 
-  let vf :: InferDirection.MetaVar -> TCM b
+  let vf :: ReturnDirection.MetaVar -> TCM b
       vf v = throwError $ "inferGroupDirections " ++ show v
   inferredDefs' <- traverse (traverse $ traverse vf) inferredDefs
   let instDefs =

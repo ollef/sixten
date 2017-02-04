@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, OverloadedStrings, ViewPatterns #-}
-module Syntax.SLambda where
+module Syntax.Sized.SLambda where
 
 import Control.Monad
 import Data.Monoid

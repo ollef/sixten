@@ -4,8 +4,8 @@ module Syntax.Primitive where
 import Control.Monad
 import Data.String
 
-import qualified LLVM
-import Syntax.Pretty
+import qualified Backend.LLVM as LLVM
+import Pretty
 
 newtype Primitive v = Primitive { unPrimitive :: [PrimitivePart v] }
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable, Monoid)

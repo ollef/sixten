@@ -4,17 +4,17 @@ module Builtin where
 import Control.Applicative
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
+import Data.List.NonEmpty
 import Data.Maybe
 import Data.Monoid
-import Data.List.NonEmpty
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 
-import qualified LLVM
+import qualified Backend.LLVM as LLVM
 import Syntax
 import Syntax.Abstract as Abstract
-import qualified Syntax.Converted as Converted
+import qualified Syntax.Sized.Converted as Converted
 import Util
 
 pattern SizeName <- ((==) "Size" -> True) where SizeName = "Size"

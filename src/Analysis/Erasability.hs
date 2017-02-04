@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, OverloadedStrings, RecursiveDo, TypeFamilies, ViewPatterns #-}
-module InferErasability where
+module Analysis.Erasability where
 
 import Control.Monad.Except
 import Control.Monad.ST.Class
@@ -18,10 +18,10 @@ import qualified Builtin
 import Syntax
 import Syntax.Abstract
 import TCM
-import TypeOf
+import Inference.TypeOf
 import Util
 import Meta(MetaVary(..))
-import Normalise
+import Inference.Normalise
 
 data MetaErasability
   = MErased

@@ -1,5 +1,5 @@
 {-# LANGUAGE MonadComprehensions, OverloadedStrings, RecursiveDo, ViewPatterns #-}
-module Erase where
+module Analysis.Erase where
 
 import Bound.Scope hiding (instantiate1)
 import Control.Monad.Except
@@ -9,9 +9,9 @@ import qualified Data.Vector as Vector
 import qualified Builtin
 import Syntax
 import qualified Syntax.Abstract as Abstract
-import qualified Syntax.SLambda as SLambda
+import qualified Syntax.Sized.SLambda as SLambda
 import Meta
-import TypeOf
+import Inference.TypeOf
 import TCM
 
 eraseS :: AbstractE -> TCM LambdaM

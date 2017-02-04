@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, OverloadedStrings, RecursiveDo, TypeFamilies #-}
-module ClosureConvert where
+module Backend.ClosureConvert where
 
 import Control.Applicative
 import Control.Monad.Except
@@ -11,8 +11,8 @@ import Data.Void
 import qualified Builtin
 import Meta
 import Syntax
-import qualified Syntax.Closed as Closed
-import qualified Syntax.Converted as Converted
+import qualified Syntax.Sized.Closed as Closed
+import qualified Syntax.Sized.Converted as Converted
 import TCM
 import Util
 

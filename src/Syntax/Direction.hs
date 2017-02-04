@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, OverloadedStrings #-}
 module Syntax.Direction where
 
-import Syntax.Pretty
+import Pretty
 
 data Direction = Void | Direct | Indirect
   deriving (Eq, Ord, Show)

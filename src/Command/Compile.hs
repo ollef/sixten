@@ -9,8 +9,8 @@ import System.IO
 import System.IO.Temp
 import System.Process
 
+import qualified Backend.Target as Target
 import qualified Processor
-import qualified Target
 
 data Options = Options
   { inputFile :: FilePath

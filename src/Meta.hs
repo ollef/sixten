@@ -19,8 +19,8 @@ import Prelude.Extras
 
 import Syntax
 import qualified Syntax.Abstract as Abstract
-import qualified Syntax.Concrete as Concrete
-import qualified Syntax.SLambda as SLambda
+import qualified Syntax.Concrete.Scoped as Concrete
+import qualified Syntax.Sized.SLambda as SLambda
 import TCM
 import Util
 

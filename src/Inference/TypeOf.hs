@@ -1,16 +1,16 @@
 {-# LANGUAGE FlexibleContexts, RecursiveDo, TypeFamilies #-}
-module TypeOf where
+module Inference.TypeOf where
 
 import Control.Monad
 import Control.Monad.Except
 import qualified Data.List.NonEmpty as NonEmpty
 
+import qualified Builtin
+import Inference.Normalise
 import Meta
 import Syntax
 import Syntax.Abstract
 import TCM
-import qualified Builtin
-import Normalise
 
 typeOfM
   :: AbstractM
