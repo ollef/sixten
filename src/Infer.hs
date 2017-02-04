@@ -5,6 +5,7 @@ import Control.Monad.Except
 import Control.Monad.ST()
 import Control.Monad.ST.Class
 import Data.Bifunctor
+import Data.Bitraversable
 import Data.Foldable as Foldable
 import qualified Data.HashSet as HashSet
 import Data.List as List
@@ -40,14 +41,16 @@ type Polytype = AbstractM
 type Monotype = AbstractM
 type Rhotype = AbstractM -- No top-level foralls
 
+newtype InstBelow = InstBelow Plicitness
+
 data Expected typ
-  = Infer (STRef (World TCM) typ) Plicitness
+  = Infer (STRef (World TCM) typ) InstBelow
   | Check typ
 
 -- | instExpected t2 t1 = e => e : t1 -> t2
 instExpected :: Expected Rhotype -> Polytype -> TCM (AbstractM -> TCM AbstractM)
-instExpected (Infer r maxPlicitness) t = do
-  (t', f) <- instantiateForalls t maxPlicitness
+instExpected (Infer r instBelow) t = do
+  (t', f) <- instantiateForalls t instBelow
   liftST $ writeSTRef r t'
   return f
 instExpected (Check t2) t1 = subtype t1 t2
@@ -90,17 +93,17 @@ checkPoly' expr polyType = do
 --   (expr', exprType) <- inferRho expr maxPlicitness
 --   generalise expr' exprType
 
-instantiateForalls :: Polytype -> Plicitness -> TCM (Rhotype, AbstractM -> TCM AbstractM)
-instantiateForalls typ maxPlicitness = do
+instantiateForalls :: Polytype -> InstBelow -> TCM (Rhotype, AbstractM -> TCM AbstractM)
+instantiateForalls typ instBelow = do
   typ' <- whnf typ
-  instantiateForalls' typ' maxPlicitness
+  instantiateForalls' typ' instBelow
 
-instantiateForalls' :: Polytype -> Plicitness -> TCM (Rhotype, AbstractM -> TCM AbstractM)
-instantiateForalls' (Abstract.Pi h p t s) maxPlicitness
-  | p < maxPlicitness = do
+instantiateForalls' :: Polytype -> InstBelow -> TCM (Rhotype, AbstractM -> TCM AbstractM)
+instantiateForalls' (Abstract.Pi h p t s) (InstBelow p')
+  | p < p' = do
     v <- exists h t
     let typ = Util.instantiate1 (pure v) s
-    (result, f) <- instantiateForalls typ maxPlicitness
+    (result, f) <- instantiateForalls typ $ InstBelow p'
     return (result, \x -> f $ betaApp x p $ pure v)
 instantiateForalls' typ _ = return (typ, pure)
 
@@ -119,20 +122,20 @@ checkRho expr typ = do
 checkRho' :: ConcreteM -> Rhotype -> TCM AbstractM
 checkRho' expr ty = tcRho expr (Check ty) (Just ty)
 
-inferRho :: ConcreteM -> Plicitness -> Maybe Rhotype -> TCM (AbstractM, Rhotype)
-inferRho expr maxPlicitness expectedAppResult = do
+inferRho :: ConcreteM -> InstBelow -> Maybe Rhotype -> TCM (AbstractM, Rhotype)
+inferRho expr instBelow expectedAppResult = do
   logMeta 20 "inferRho" expr
   modifyIndent succ
-  (resExpr, resType) <- inferRho' expr maxPlicitness expectedAppResult
+  (resExpr, resType) <- inferRho' expr instBelow expectedAppResult
   modifyIndent pred
   logMeta 20 "inferRho res expr" resExpr
   logMeta 20 "inferRho res typ" resType
   return (resExpr, resType)
 
-inferRho' :: ConcreteM -> Plicitness -> Maybe Rhotype -> TCM (AbstractM, Rhotype)
-inferRho' expr maxPlicitness expectedAppResult = do
+inferRho' :: ConcreteM -> InstBelow -> Maybe Rhotype -> TCM (AbstractM, Rhotype)
+inferRho' expr instBelow expectedAppResult = do
   ref <- liftST $ newSTRef $ error "inferRho: empty result"
-  expr' <- tcRho expr (Infer ref maxPlicitness) expectedAppResult
+  expr' <- tcRho expr (Infer ref instBelow) expectedAppResult
   typ <- liftST $ readSTRef ref
   return (expr', typ)
 
@@ -170,7 +173,7 @@ tcRho expr expected expectedAppResult = case expr of
         (pat', vs, argType) <- inferPat pat mempty
         argVar <- forall h p argType
         let body = instantiatePatternVec pure vs bodyScope
-        (body', bodyType) <- enterLevel $ inferRho body Explicit Nothing
+        (body', bodyType) <- enterLevel $ inferRho body (InstBelow Explicit) Nothing
         body'' <- matchSingle (pure argVar) pat' body'
         bodyScope' <- abstract1M argVar body''
         bodyTypeScope <- abstract1M argVar bodyType
@@ -186,7 +189,7 @@ tcRho expr expected expectedAppResult = case expr of
         body'' <- matchSingle (pure argVar) pat' body'
         fResult =<< Abstract.Lam h p argType <$> abstract1M argVar body''
   Concrete.App fun p arg -> do
-    (fun', funType) <- inferRho fun p expectedAppResult
+    (fun', funType) <- inferRho fun (InstBelow p) expectedAppResult
     (argType, resTypeScope, f1) <- subtypeFun funType p
     case unusedScope resTypeScope of
       Nothing -> do
@@ -214,7 +217,7 @@ tcBranches
   -> Expected Rhotype
   -> TCM AbstractM
 tcBranches expr pbrs expected = do
-  (expr', exprType) <- inferRho expr Explicit Nothing
+  (expr', exprType) <- inferRho expr (InstBelow Explicit) Nothing
 
   inferredPats <- forM pbrs $ \(pat, brScope) -> do
     (pat', _) <- checkPat (void pat) mempty exprType
@@ -286,7 +289,7 @@ inferPat
   -> TCM (Match.Pat AbstractM MetaP, Vector MetaP, Polytype)
 inferPat pat vs = do
   ref <- liftST $ newSTRef $ error "inferPat: empty result"
-  (pat', vs') <- tcPat pat vs $ Infer ref Explicit -- TODO maxplicitness?
+  (pat', vs') <- tcPat pat vs $ Infer ref $ InstBelow Explicit -- TODO instBelow?
   typ <- liftST $ readSTRef ref
   return (pat', vs', typ)
 
@@ -296,13 +299,15 @@ tcPat
   -> Expected Polytype
   -> TCM (Match.Pat AbstractM MetaP, Vector MetaP)
 tcPat pat vs expected = do
-  logPretty 20 "tcPat" $ first (show . instantiatePatternVec pure vs) pat
-  logShow 20 "tcPat vs" vs
+  whenVerbose 20 $ do
+    shownPat <- bitraverse (showMeta . instantiatePatternVec pure vs) pure pat
+    logPretty 20 "tcPat" shownPat
+  logMeta 30 "tcPat vs" vs
   modifyIndent succ
   (pat', vs') <- tcPat' pat vs expected
   modifyIndent pred
   logMeta 20 "tcPat res" (first (const ()) pat')
-  logShow 20 "tcPat vs res" vs'
+  logMeta 30 "tcPat vs res" vs'
   return (pat', vs')
 
 tcPat'
@@ -368,7 +373,7 @@ tcPat' pat vs expected = case pat of
     (expectedType, f) <- instPatExpected expected patType'
     p'' <- viewPat expectedType f p'
     return (p'', vs')
-  Concrete.ViewPat s p -> throwError "tcPat ViewPat undefined TODO"
+  Concrete.ViewPat _ _ -> throwError "tcPat ViewPat undefined TODO"
   Concrete.PatLoc loc p -> located loc $ tcPat' p vs expected
 
 viewPat
@@ -531,25 +536,25 @@ subtype' (Abstract.Pi h1 p1 argType1 retScope1) (Abstract.Pi h2 p2 argType2 retS
       $ abstract1M v2 =<< f2 (Abstract.App x p1 v1)
 subtype' typ1 typ2 = do
   (as, rho, f1) <- prenexConvert typ2
-  f2 <- subtypeRho typ1 rho
+  f2 <- subtypeRho typ1 rho $ InstBelow Explicit
   return $ \x ->
     f1 =<< lams <$> metaTelescopeM as
     <*> (abstractM (teleAbstraction $ snd <$> as) =<< f2 x)
 
-subtypeRho :: Polytype -> Rhotype -> TCM (AbstractM -> TCM AbstractM)
-subtypeRho typ1 typ2 = do
+subtypeRho :: Polytype -> Rhotype -> InstBelow -> TCM (AbstractM -> TCM AbstractM)
+subtypeRho typ1 typ2 instBelow = do
   logMeta 30 "subtypeRho t1" typ1
   logMeta 30 "           t2" typ2
   modifyIndent succ
   typ1' <- whnf typ1
   typ2' <- whnf typ2
-  res <- subtypeRho' typ1' typ2'
+  res <- subtypeRho' typ1' typ2' instBelow
   modifyIndent pred
   return res
 
-subtypeRho' :: Polytype -> Rhotype -> TCM (AbstractM -> TCM AbstractM)
-subtypeRho' typ1 typ2 | typ1 == typ2 = return pure
-subtypeRho' (Abstract.Pi h1 p1 argType1 retScope1) (Abstract.Pi h2 p2 argType2 retScope2)
+subtypeRho' :: Polytype -> Rhotype -> InstBelow -> TCM (AbstractM -> TCM AbstractM)
+subtypeRho' typ1 typ2 _ | typ1 == typ2 = return pure
+subtypeRho' (Abstract.Pi h1 p1 argType1 retScope1) (Abstract.Pi h2 p2 argType2 retScope2) _
   | p1 == p2 = do
     let h = h1 <> h2
     f1 <- subtype argType2 argType1
@@ -557,15 +562,15 @@ subtypeRho' (Abstract.Pi h1 p1 argType1 retScope1) (Abstract.Pi h2 p2 argType2 r
     v1 <- f1 $ pure v2
     let retType1 = Util.instantiate1 v1 retScope1
         retType2 = Util.instantiate1 (pure v2) retScope2
-    f2 <- subtypeRho retType1 retType2
+    f2 <- subtypeRho retType1 retType2 $ InstBelow Explicit
     return
       $ \x -> fmap (lam h p2 argType2)
       $ abstract1M v2 =<< f2 (Abstract.App x p1 v1)
-subtypeRho' (Abstract.Pi h Implicit t s) typ2 = do
+subtypeRho' (Abstract.Pi h p t s) typ2 (InstBelow p') | p < p' = do
   v <- exists h t
-  f <- subtypeRho (Util.instantiate1 (pure v) s) typ2
-  return $ \x -> f $ Abstract.App x Implicit $ pure v
-subtypeRho' typ1 typ2 = do
+  f <- subtypeRho (Util.instantiate1 (pure v) s) typ2 $ InstBelow p'
+  return $ \x -> f $ Abstract.App x p $ pure v
+subtypeRho' typ1 typ2 _ = do
   unify [] typ1 typ2
   return pure
 
@@ -621,7 +626,7 @@ funSubtype' typ p = do
   argType <- existsType mempty
   resType <- existsType mempty
   let resScope = abstractNone resType
-  f <- subtypeRho' (Abstract.Pi mempty p argType resScope) typ
+  f <- subtypeRho' (Abstract.Pi mempty p argType resScope) typ $ InstBelow p
   return (argType, resScope, f)
 
 -- | subtypeFun typ p = (typ1, typ2, f) => f : typ -> (typ1 -> typ2)
@@ -757,7 +762,7 @@ checkClausesRho
   -> Rhotype
   -> TCM AbstractM
 checkClausesRho clauses rhoType = do
-  forM_ clauses $ logMeta 20 "checkClauseRho clause"
+  forM_ clauses $ logMeta 20 "checkClausesRho clause"
 
   let ps = fst <$> pats
         where
@@ -774,10 +779,10 @@ checkClausesRho clauses rhoType = do
 
   clauses' <- forM clauses $ \(Concrete.Clause pats bodyScope) -> do
     (pats', patVars) <- checkPats (snd <$> pats) $ metaType <$> argVars
-    logShow 20 "checkClauseRho clause patVars" patVars
+    logShow 20 "checkClausesRho clause patVars" patVars
     let body = instantiatePatternVec pure patVars bodyScope
     body' <- checkRho body returnType
-    logMeta 20 "checkClauseRho clause body" body'
+    logMeta 20 "checkClausesRho clause body" body'
     return (pats', body')
 
   modifyIndent pred
@@ -918,8 +923,8 @@ checkRecursiveDefs defs = do
       typ' <- checkPoly typ =<< existsTypeType (metaHint evar)
       unify [] (metaType evar) typ'
       (def', typ'') <- checkDefType evar def loc typ'
-      logMeta 20 ("checkRecursiveDefs res " ++ show (unNameHint $ metaHint evar)) def'
-      logMeta 20 ("checkRecursiveDefs res t " ++ show (unNameHint $ metaHint evar)) typ''
+      logMeta 20 ("checkRecursiveDefs res " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) def'
+      logMeta 20 ("checkRecursiveDefs res t " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) typ''
       return (evar, def', typ'')
 
     return (checkedDefs, evars)

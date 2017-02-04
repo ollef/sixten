@@ -1,0 +1,4 @@
+data Tuple a b = tuple a b
+
+fun2 : ((tuple sz1 sz2) (tuple sz3 sz4) : Tuple Size Size) -> Size
+fun2 (tuple sz1 sz2) (tuple sz3 sz4) = addSize sz1 (addSize sz2 (addSize sz3 sz4))
