@@ -65,7 +65,7 @@ instance (Pretty (expr v), Monad expr, IsString v)
       let go (p, pat)
             = prettyAnnotation p
             $ prettyM $ first (instantiatePatternVec (pure . fromName) ns) pat
-      hcat (go <$> renamePatterns ns pats)
+      hsep (go <$> renamePatterns ns pats)
       <+> "=" <+> prettyM (instantiatePatternVec (pure . fromName) ns s)
 
 instance (Pretty (expr v), Monad expr, IsString v)
