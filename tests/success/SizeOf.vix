@@ -1,0 +1,8 @@
+data List {a : Size}(A : Type {a}) where
+  Nil : List A
+  Cons : A -> Ptr (List A) -> List A
+
+sizeof : forall {n}. Type {n} -> Size
+sizeof {n} _ = n
+
+sizeOfList = printSize (sizeof (List (List Size)))
