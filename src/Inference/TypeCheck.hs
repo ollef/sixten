@@ -71,12 +71,16 @@ checkPoly' :: ConcreteM -> Polytype -> TCM AbstractM
 checkPoly' expr@(Concrete.Lam Implicit _ _) polyType
   = checkRho expr polyType
 checkPoly' expr polyType = do
-  (vs, rhoType, f) <- prenexConvert polyType
+  (vs, rhoType, f) <- prenexConvert polyType $ instBelowExpr expr
   e <- checkRho expr rhoType
   logShow 25 "checkPoly: prenexConvert vars" vs
   f =<< lams
     <$> metaTelescopeM vs
     <*> abstractM (teleAbstraction $ snd <$> vs) e
+
+instBelowExpr :: Concrete.Expr v -> InstBelow
+instBelowExpr (Concrete.Lam p _ _) = InstBelow p
+instBelowExpr _ = InstBelow Explicit
 
 -- inferPoly :: ConcreteM -> Plicitness -> TCM (AbstractM, Polytype)
 -- inferPoly expr maxPlicitness = do
@@ -477,18 +481,20 @@ resolveConstrType cs expected = do
 -- | prenexConvert t1 = (vs, t2, f) => f : t2 -> t1
 prenexConvert
   :: Polytype
+  -> InstBelow
   -> TCM (Vector (Plicitness, MetaP), Rhotype, AbstractM -> TCM AbstractM)
-prenexConvert typ = do
+prenexConvert typ instBelow = do
   typ' <- whnf typ
-  prenexConvert' typ'
+  prenexConvert' typ' instBelow
 
 prenexConvert'
   :: Polytype
+  -> InstBelow
   -> TCM (Vector (Plicitness, MetaP), Rhotype, AbstractM -> TCM AbstractM)
-prenexConvert' (Abstract.Pi h p t resScope) = do
+prenexConvert' (Abstract.Pi h p t resScope) (InstBelow p') | p < p' = do
   y <- forall h p t
   let resType = Util.instantiate1 (pure y) resScope
-  (vs, resType', f) <- prenexConvert resType
+  (vs, resType', f) <- prenexConvert resType $ InstBelow p'
   return $ case p of
     Implicit ->
       ( Vector.cons (p, y) vs
@@ -505,7 +511,7 @@ prenexConvert' (Abstract.Pi h p t resScope) = do
         <*> abstractM (teleAbstraction $ snd <$> vs)
         (betaApp (betaApps x $ second pure <$> vs) p $ pure y)
       )
-prenexConvert' typ = return (mempty, typ, pure)
+prenexConvert' typ _ = return (mempty, typ, pure)
 
 --------------------------------------------------------------------------------
 -- Subtyping/subsumption
@@ -535,7 +541,7 @@ subtype' (Abstract.Pi h1 p1 argType1 retScope1) (Abstract.Pi h2 p2 argType2 retS
       $ \x -> fmap (lam h p2 argType2)
       $ abstract1M v2 =<< f2 (Abstract.App x p1 v1)
 subtype' typ1 typ2 = do
-  (as, rho, f1) <- prenexConvert typ2
+  (as, rho, f1) <- prenexConvert typ2 $ InstBelow Explicit
   f2 <- subtypeRho typ1 rho $ InstBelow Explicit
   return $ \x ->
     f1 =<< lams <$> metaTelescopeM as
@@ -747,15 +753,25 @@ checkClauses
   -> Polytype
   -> TCM AbstractM
 checkClauses clauses polyType = do
+  forM_ clauses $ logMeta 20 "checkClauses clause"
+  logMeta 20 "checkClauses typ" polyType
+  modifyIndent succ
 
-  -- TODO check plicitness of first pat before this?
-  (vs, rhoType, f) <- prenexConvert polyType
+  (vs, rhoType, f) <- prenexConvert polyType $ instBelowClause $ NonEmpty.head clauses
 
   res <- checkClausesRho clauses rhoType
+
+  modifyIndent pred
+  logMeta 20 "checkClauses res" res
 
   f =<< lams
     <$> metaTelescopeM vs
     <*> abstractM (teleAbstraction $ snd <$> vs) res
+  where
+    instBelowClause :: Concrete.Clause Concrete.Expr v -> InstBelow
+    instBelowClause (Concrete.Clause pats s)
+      | Vector.length pats > 0 = InstBelow $ fst $ Vector.head pats
+      | otherwise = instBelowExpr $ fromScope s
 
 checkClausesRho
   :: NonEmpty (Concrete.Clause Concrete.Expr MetaP)
@@ -763,6 +779,7 @@ checkClausesRho
   -> TCM AbstractM
 checkClausesRho clauses rhoType = do
   forM_ clauses $ logMeta 20 "checkClausesRho clause"
+  logMeta 20 "checkClausesRho type" rhoType
 
   let ps = fst <$> pats
         where
