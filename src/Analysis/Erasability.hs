@@ -285,6 +285,9 @@ inferBranches er (LitBranches lbrs def) = do
   lbrs' <- forM lbrs (\(l, br) -> (,) l . fst <$> infer er br)
   (def', typ) <- infer er def
   return (LitBranches lbrs' def', typ)
+inferBranches er (NoBranches typ) = do
+  (typ', _typType) <- inferType er typ
+  return (NoBranches typ', typ')
 
 subtype :: ErasableM -> ErasableM -> TCM (ErasableM -> ErasableM)
 subtype e1 e2 = do

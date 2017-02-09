@@ -204,3 +204,4 @@ convertBranches (ConBranches cbrs) = fmap ConBranches $
     return (qc, tele'', brScope')
 convertBranches (LitBranches lbrs def) = LitBranches
   <$> mapM (\(l, e) -> (,) l <$> convertExpr e) lbrs <*> convertExpr def
+convertBranches (NoBranches sz) = NoBranches <$> convertExpr sz

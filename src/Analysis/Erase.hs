@@ -96,6 +96,7 @@ eraseBranches (LitBranches lbrs d)
   = LitBranches
     <$> sequence [(,) l <$> erase e | (l, e) <- lbrs]
     <*> erase d
+eraseBranches (NoBranches typ) = NoBranches <$> erase typ
 
 eraseDef
   :: Definition Abstract.ExprE MetaE
