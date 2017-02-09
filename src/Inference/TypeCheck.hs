@@ -82,19 +82,19 @@ instBelowExpr :: Concrete.Expr v -> InstBelow
 instBelowExpr (Concrete.Lam p _ _) = InstBelow p
 instBelowExpr _ = InstBelow Explicit
 
--- inferPoly :: ConcreteM -> Plicitness -> TCM (AbstractM, Polytype)
--- inferPoly expr maxPlicitness = do
+-- inferPoly :: ConcreteM -> InstBelow -> TCM (AbstractM, Polytype)
+-- inferPoly expr instBelow = do
 --   logMeta 20 "inferPoly expr" expr
 --   modifyIndent succ
---   (resExpr, resType) <- inferPoly' expr maxPlicitness
+--   (resExpr, resType) <- inferPoly' expr instBelow
 --   modifyIndent pred
 --   logMeta 20 "inferPoly res expr" resExpr
 --   logMeta 20 "inferPoly res typ" resType
 --   return (resExpr, resType)
 
--- inferPoly' :: ConcreteM -> Plicitness -> TCM (AbstractM, Polytype)
--- inferPoly' expr maxPlicitness = do
---   (expr', exprType) <- inferRho expr maxPlicitness
+-- inferPoly' :: ConcreteM -> InstBelow -> TCM (AbstractM, Polytype)
+-- inferPoly' expr instBelow = do
+--   (expr', exprType) <- inferRho expr instBelow
 --   generalise expr' exprType
 
 instantiateForalls :: Polytype -> InstBelow -> TCM (Rhotype, AbstractM -> TCM AbstractM)
@@ -162,7 +162,7 @@ tcRho expr expected expectedAppResult = case expr of
     f <- instExpected expected typ
     f $ Abstract.Con qc
   Concrete.Pi p pat bodyScope -> do
-    (pat', vs, patType) <- inferPat pat mempty
+    (pat', vs, patType) <- inferPat p pat mempty
     let body = instantiatePatternVec pure vs bodyScope
         h = Concrete.patternHint pat
     body' <- enterLevel $ checkPoly body =<< existsTypeType mempty
@@ -174,7 +174,7 @@ tcRho expr expected expectedAppResult = case expr of
     let h = Concrete.patternHint pat
     case expected of
       Infer _ _ -> do
-        (pat', vs, argType) <- inferPat pat mempty
+        (pat', vs, argType) <- inferPat p pat mempty
         argVar <- forall h p argType
         let body = instantiatePatternVec pure vs bodyScope
         (body', bodyType) <- enterLevel $ inferRho body (InstBelow Explicit) Nothing
@@ -234,12 +234,12 @@ tcBranches expr pbrs expected = do
         br' <- checkRho br resType
         return (pat, br')
       return (brs, resType)
-    Infer _ maxPlicitness -> case inferredPats of
+    Infer _ instBelow -> case inferredPats of
       [] -> do
         resType <- existsType mempty
         return ([], resType)
       (headPat, headBr):inferredPats' -> do
-        (headBr', resType) <- inferRho headBr maxPlicitness Nothing
+        (headBr', resType) <- inferRho headBr instBelow Nothing
         brs' <- forM inferredPats' $ \(pat, br) -> do
           br' <- checkRho br resType
           return (pat, br')
@@ -262,7 +262,7 @@ instPatExpected
 instPatExpected (Check expectedType) patType = do
   f <- subtype expectedType patType
   return (expectedType, f)
-instPatExpected (Infer r _maxPlicitness) patType = do
+instPatExpected (Infer r _instBelow) patType = do
   liftST $ writeSTRef r patType
   return (patType, return)
 
@@ -288,12 +288,13 @@ checkPats pats types = do
       return (resultPat : resultPats, vs')
 
 inferPat
-  :: Concrete.Pat (PatternScope Concrete.Expr MetaP) ()
+  :: Plicitness
+  -> Concrete.Pat (PatternScope Concrete.Expr MetaP) ()
   -> Vector MetaP
   -> TCM (Abstract.Pat AbstractM MetaP, Vector MetaP, Polytype)
-inferPat pat vs = do
+inferPat p pat vs = do
   ref <- liftST $ newSTRef $ error "inferPat: empty result"
-  (pat', vs') <- tcPat pat vs $ Infer ref $ InstBelow Explicit -- TODO instBelow?
+  (pat', vs') <- tcPat pat vs $ Infer ref $ InstBelow p
   typ <- liftST $ readSTRef ref
   return (pat', vs', typ)
 
@@ -322,7 +323,7 @@ tcPat'
 tcPat' pat vs expected = case pat of
   Concrete.VarPat h () -> do
     varType <- case expected of
-      Infer ref _maxPlicitness -> do
+      Infer ref _instBelow -> do
         varType <- existsType h
         liftST $ writeSTRef ref varType
         return varType
