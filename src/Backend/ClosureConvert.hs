@@ -168,7 +168,7 @@ knownCall f retDir tele args
         ( Builtin.Closure
         , Telescope $ Vector.cons (mempty, (), Builtin.slit 1)
                     $ Vector.cons (mempty, (), Builtin.slit 1) clArgs'
-        , toScope $ Converted.Call retDir (vacuous f) (Vector.zip (fArgs1 <> fArgs2) $ teleAnnotations tele)
+        , toScope $ Converted.Call retDir (vacuous f) (Vector.zip (fArgs1 <> fArgs2) $ teleAnnotations tele) -- TODO needs size
         )
       where
         clArgs = (\(h, d, s) -> (h, d, mapBound (+ 2) s)) <$> Vector.take numArgs (unTelescope tele)
