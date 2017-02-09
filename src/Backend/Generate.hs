@@ -185,7 +185,7 @@ storeExpr msz expr ret = case expr of
     szInt <- loadVar "size" szVar
     storeExpr (Just szInt) e ret
   where
-    sz = fromMaybe (error "storeExpr") msz
+    sz = fromMaybe (error $ "storeExpr " ++ show (const () <$> expr)) msz
 
 generateDirectedExpr
   :: Expr RetDir Var
