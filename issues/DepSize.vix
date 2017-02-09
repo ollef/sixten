@@ -1,0 +1,25 @@
+deref : forall {A}. Ptr A -> A
+deref p = case p of Ref a -> a
+
+sizeOf : forall {n}. (Type {n}) -> Size
+sizeOf {n} _ = n
+
+data Unit where
+  unit : Unit
+
+data Tuple A B where
+  tuple : A -> B -> Tuple A B
+
+data Nat where
+  Zero : Nat
+  Succ : Ptr Nat -> Nat
+
+ntupleSize : Ptr Nat -> Size
+ntupleSize n = case deref n of
+  Zero -> sizeOf Unit
+  Succ n' -> addSize (sizeOf Size) (ntupleSize n')
+
+ntuple : forall (n : Ptr Nat). Type {ntupleSize n}
+ntuple n = case deref n of
+  Zero -> Unit
+  Succ n' -> Tuple Size (ntuple n')

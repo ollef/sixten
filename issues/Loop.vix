@@ -1,0 +1,5 @@
+data Unit where
+  unit : Unit
+
+loop : Unit
+loop = loop

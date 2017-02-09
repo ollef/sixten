@@ -47,19 +47,8 @@ map4 f xs = case deref xs of
   Cons x xs' -> Ref (Cons (f x) (map4 f xs'))
   Nil -> Ref Nil
 
-sizeof : forall {n}. Type {n} -> Size
-sizeof {n} _ = n
-
-sizeOfList = printSize (sizeof (List (List Size)))
-
--- mappedList : Ptr (List Size)
--- mappedList = map (addSize 1) testList
-
 testList : Ptr (List Size)
 testList = Ref (Cons 1 (Ref (Cons 2 (Ref (Cons 3 (Ref Nil))))))
-
-testList2 : List Size
-testList2 = deref testList
 
 add3 : Size -> Size -> Size -> Size
 add3 a b c = addSize (addSize a b) c
@@ -72,11 +61,3 @@ sum xs = case deref xs of
 print1 = printSize (sum (map (add3 1 2) testList))
 print2 = printSize (sum (map (\f. f 2) (map (add3 1) testList)))
 print3 = printSize (sum (map (\f. f 2) (map (\f. f 1) (map add3 testList))))
-
--- mappedList2 = map (add3 2) testList
--- mappedList3 = map (\f. f 3) mappedList2
-
--- printSum = printSize (sum testList)
--- printMappedSum = printSize (sum mappedList)
--- printNum = printSize (add3 1 2 3)
--- printMappedSum2 = printSize (sum mappedList3)

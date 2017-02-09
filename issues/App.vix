@@ -1,0 +1,11 @@
+APP : forall {a}{b}. ((x : a) -> b x) -> (x : a) -> b x
+APP f x = f x
+
+APP2 : forall {a}{b}. ((x : a) -> b x) -> (x : a) -> b x
+APP2 f x = APP f x
+
+app : forall {a}{b}. (a -> b) -> a -> b
+app = APP
+
+app2 f x = APP f x
+

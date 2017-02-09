@@ -1,0 +1,13 @@
+Bool : Type
+Bool = {n}{a : Type {n}} -> a -> a -> a
+
+True : Bool
+True x y = x
+
+False : Bool
+False x y = y
+
+ifThenElse : {a : Type} -> Bool -> a -> a -> a
+ifThenElse b = b
+
+main = printSize (ifThenElse False 12 13)
