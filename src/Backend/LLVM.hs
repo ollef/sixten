@@ -339,6 +339,9 @@ phiInt xs = Instr
   $ "phi" <+> integerT
   <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> unOperand v <> "," <+> unOperand l <> "]") <$> xs)
 
+undef :: Operand a
+undef = Operand "undef"
+
 bitcastToFun :: Operand Ptr -> RetDir -> Vector Direction -> Instr Fun
 bitcastToFun i retDir ds = Instr
   $ "bitcast" <+> pointer i <+> "to"

@@ -140,9 +140,10 @@ generateExpr msz expr = case expr of
       return (mdirectRet, indirectRet)
     let mdirectRets = traverse (bitraverse fst pure) rets
         shouldIndirect = isNothing mdirectRets
-    case mdirectRets of
-      Just directRets -> fmap DirectVar $ "case-result" =: phiInt directRets
-      Nothing -> fmap IndirectVar $ "case-result" =: phiPtr (first snd <$> rets)
+    case (rets, mdirectRets) of
+      ([], _) -> return $ IndirectVar undef
+      (_, Just directRets) -> fmap DirectVar $ "case-result" =: phiInt directRets
+      (_, Nothing) -> fmap IndirectVar $ "case-result" =: phiPtr (first snd <$> rets)
   Prim p -> generatePrim p
   Sized size e -> do
     szVar <- generateExpr (Just "1") size
