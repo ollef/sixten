@@ -3,3 +3,4 @@
 .stack-work
 *.o
 a.out
+obj/
