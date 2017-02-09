@@ -184,14 +184,15 @@ tcRho expr expected expectedAppResult = case expr of
         f <- instExpected expected $ Abstract.Pi h p argType bodyTypeScope
         f $ Abstract.Lam h p argType bodyScope'
       Check expectedType -> do
-        (argType, bodyTypeScope, fResult) <- funSubtype expectedType p
+        (typeh, argType, bodyTypeScope, fResult) <- funSubtype expectedType p
+        let h' = h <> typeh
         (pat', vs) <- checkPat pat mempty argType
-        argVar <- forall h p argType
+        argVar <- forall h' p argType
         let body = instantiatePatternVec pure vs bodyScope
             bodyType = Util.instantiate1 (pure argVar) bodyTypeScope
         body' <- enterLevel $ checkPoly body bodyType
         body'' <- matchSingle (pure argVar) pat' body'
-        fResult =<< Abstract.Lam h p argType <$> abstract1M argVar body''
+        fResult =<< Abstract.Lam h' p argType <$> abstract1M argVar body''
   Concrete.App fun p arg -> do
     (fun', funType) <- inferRho fun (InstBelow p) expectedAppResult
     (argType, resTypeScope, f1) <- subtypeFun funType p
@@ -606,20 +607,20 @@ funSubtypes startType plics = go plics startType mempty mempty mempty
         return (Telescope tele', typeScope, funs)
       | otherwise = do
         let p = Vector.head ps
-        (argType, resScope, f) <- funSubtype typ p
+        (h, argType, resScope, f) <- funSubtype typ p
         v <- forall mempty p argType
         go
           (Vector.tail ps)
           (Util.instantiate1 (pure v) resScope)
           (v : vs)
-          ((mempty, p, argType) : tele)
+          ((h, p, argType) : tele)
           (f : fs)
 
 -- | funSubtype typ p = (typ1, typ2, f) => f : (typ1 -> typ2) -> typ
 funSubtype
   :: Rhotype
   -> Plicitness
-  -> TCM (Rhotype, Scope1 Abstract.ExprP MetaP, AbstractM -> TCM AbstractM)
+  -> TCM (NameHint, Rhotype, Scope1 Abstract.ExprP MetaP, AbstractM -> TCM AbstractM)
 funSubtype typ p = do
   typ' <- whnf typ
   funSubtype' typ' p
@@ -627,14 +628,14 @@ funSubtype typ p = do
 funSubtype'
   :: Rhotype
   -> Plicitness
-  -> TCM (Rhotype, Scope1 Abstract.ExprP MetaP, AbstractM -> TCM AbstractM)
-funSubtype' (Abstract.Pi _ p t s) p' | p == p' = return (t, s, pure)
+  -> TCM (NameHint, Rhotype, Scope1 Abstract.ExprP MetaP, AbstractM -> TCM AbstractM)
+funSubtype' (Abstract.Pi h p t s) p' | p == p' = return (h, t, s, pure)
 funSubtype' typ p = do
   argType <- existsType mempty
   resType <- existsType mempty
   let resScope = abstractNone resType
   f <- subtypeRho' (Abstract.Pi mempty p argType resScope) typ $ InstBelow p
-  return (argType, resScope, f)
+  return (mempty, argType, resScope, f)
 
 -- | subtypeFun typ p = (typ1, typ2, f) => f : typ -> (typ1 -> typ2)
 subtypeFun
