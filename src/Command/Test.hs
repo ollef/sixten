@@ -65,10 +65,10 @@ test opts = Compile.compile (compileOptions opts) onCompileError onCompileSucces
           | output == expectedOutput -> success
           | otherwise -> failed expectedOutput $ putStrLn output
     success = do
-      putStrLn $ Compile.inputFile (compileOptions opts) ++ ": SUCCESS"
+      putStrLn $ "OK: " ++ Compile.inputFile (compileOptions opts)
       exitSuccess
     failed expected actual = do
-      putStrLn $ Compile.inputFile (compileOptions opts) ++ ": FAILED"
+      putStrLn $ "FAILED: " ++ Compile.inputFile (compileOptions opts)
       putStrLn "Expected:"
       putStrLn expected
       putStrLn "But got:"
