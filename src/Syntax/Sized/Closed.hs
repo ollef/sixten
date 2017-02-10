@@ -8,7 +8,6 @@ import Data.Vector(Vector)
 import Data.Void
 import Prelude.Extras
 
-import Meta
 import Syntax hiding (lamView)
 import Util
 
@@ -95,7 +94,3 @@ instance (Eq v, IsString v, Pretty v)
     Prim p -> prettyM $ pretty <$> p
     Sized sz e -> parens `above` annoPrec $
       prettyM e <+> ":" <+> prettyM sz
-
-instance MetaVary Expr (MetaVar Expr) where
-  type MetaData Expr (MetaVar Expr) = ()
-  refineVar v _ = return $ Var v

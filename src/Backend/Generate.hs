@@ -25,6 +25,7 @@ import Syntax.Direction
 import Syntax.Hint
 import Syntax.Name
 import Syntax.Primitive
+import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.Converted as Converted
 import Syntax.Sized.Lifted
 import Syntax.Telescope
@@ -34,7 +35,7 @@ import Util
 -- Generation environment
 data GenEnv = GenEnv
   { constrArity :: QConstr -> Maybe Int
-  , signatures :: Name -> Maybe (Converted.Signature Converted.Expr Unit Void)
+  , signatures :: Name -> Maybe (Converted.Signature Converted.Expr Closed.Expr Void)
   , returnDirections :: Name -> Maybe RetDir
   }
 
@@ -426,8 +427,8 @@ generateConstant visibility name (Constant dir e) = do
       Indirect -> pointer "null"
 
 generateFunction :: Visibility -> Name -> Function RetDir (Expr RetDir) Var -> Gen ()
-generateFunction visibility name (Function retDir hs funScope) = do
-  vs <- Traversable.forM hs $ \(h, d) -> do
+generateFunction visibility name (Function retDir args funScope) = do
+  vs <- forMTele args $ \h d _sz -> do
     n <- text <$> freshWithHint h
     return $ case d of
       Void -> VoidVar

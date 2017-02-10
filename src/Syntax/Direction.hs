@@ -2,6 +2,7 @@
 module Syntax.Direction where
 
 import Pretty
+import Syntax.Annotation
 
 data Direction = Void | Direct | Indirect
   deriving (Eq, Ord, Show)
@@ -10,6 +11,11 @@ instance Pretty Direction where
   prettyM Void = "void"
   prettyM Direct = "direct"
   prettyM Indirect = "indirect"
+
+instance PrettyAnnotation Direction where
+  prettyAnnotation Void = prettyTightApp "(void)"
+  prettyAnnotation Direct = id
+  prettyAnnotation Indirect = prettyTightApp "&"
 
 data ReturnDirection a
   = ReturnVoid

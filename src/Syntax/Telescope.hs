@@ -146,9 +146,6 @@ teleNames (Telescope t) = (\(h, _, _) -> h) <$> t
 teleAnnotations :: Telescope a expr v -> Vector a
 teleAnnotations (Telescope t) = (\(_, a, _) -> a) <$> t
 
-teleNamedAnnotations :: Telescope a e v -> Vector (NameHint, a)
-teleNamedAnnotations (Telescope tele) = (\(h, a, _) -> (h, a)) <$> tele
-
 teleTypes :: Telescope a expr v -> Vector (Scope Tele expr v)
 teleTypes (Telescope t) = (\(_, _, x) -> x) <$> t
 

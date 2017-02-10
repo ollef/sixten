@@ -46,7 +46,6 @@ import qualified Syntax.Sized.Converted as Converted
 import qualified Syntax.Sized.Lifted as Lifted
 import qualified Syntax.Sized.SLambda as SLambda
 import TCM
-import Util
 
 processResolved
   :: HashMap Name (SourceLoc, Unscoped.Definition Name, Unscoped.Type Name)
@@ -234,18 +233,8 @@ liftGroup
   -> TCM [[(Name, Lifted.Definition ClosureDir (Lifted.Expr ClosureDir) Void)]]
 liftGroup defs = fmap (Lifted.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
   let (e', fs) = liftDefinition name e
-  addConvertedSignatures $ HashMap.fromList $ fmap fakeSignature <$> fs
+  addConvertedSignatures $ HashMap.fromList $ fmap Lifted.signature <$> fs
   return $ (name, e') : fmap (second $ Lifted.FunctionDef Private) fs
-  where
-    -- TODO this isn't a very nice way to do this
-    fakeSignature
-      :: Lifted.Function ClosureDir (Lifted.Expr ClosureDir) Void
-      -> Converted.Signature Converted.Expr Unit Void
-    fakeSignature (Lifted.Function retDir tele _body)
-      = Converted.Function
-        retDir
-        (Telescope $ (\(h, d) -> (h, d, Scope $ Converted.Lit 0)) <$> tele)
-        $ Scope Unit
 
 inferGroupDirections
   :: [(Name, Lifted.Definition ClosureDir (Lifted.Expr ClosureDir) Void)]

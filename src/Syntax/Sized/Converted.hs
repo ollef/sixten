@@ -11,6 +11,7 @@ import Data.Void
 import Prelude.Extras
 
 import Syntax
+import qualified Syntax.Sized.Closed as Closed
 import Util
 
 data Expr v
@@ -31,10 +32,10 @@ data Signature expr expr' v
   | Constant Direction (expr' v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-signature :: Expr v -> Signature Expr Expr v
-signature (Lams dir tele s) = Function dir tele s
-signature (Sized _ (Lams dir tele s)) = Function dir tele s
-signature e = Constant (sExprDir e) e
+signature :: Expr v -> Signature Expr Closed.Expr v
+signature (Lams dir tele s) = Function dir tele (hoistScope toClosed s)
+signature (Sized _ (Lams dir tele s)) = Function dir tele (hoistScope toClosed s)
+signature e = Constant (sExprDir e) (toClosed e)
 
 hoistSignature
   :: (Monad expr1, Monad expr2)
@@ -66,6 +67,18 @@ sizeDir _ = Indirect
 sExprDir :: Expr v -> Direction
 sExprDir (Sized sz _) = sizeDir sz
 sExprDir _ = error "sExprDir"
+
+toClosed :: Expr v -> Closed.Expr v
+toClosed expr = case expr of
+  Var v -> Closed.Var v
+  Global v -> Closed.Global v
+  Lit l -> Closed.Lit l
+  Con qc es -> Closed.Con qc $ toClosed <$> es
+  Call _retDir e es -> Closed.Call (toClosed e) $ toClosed . fst <$> es
+  Let h e s -> Closed.Let h (toClosed e) (hoistScope toClosed s)
+  Case e brs -> Closed.Case (toClosed e) $ hoistBranches toClosed brs
+  Prim p -> Closed.Prim $ toClosed <$> p
+  Sized sz e -> Closed.Sized (toClosed sz) (toClosed e)
 
 -------------------------------------------------------------------------------
 -- Instances

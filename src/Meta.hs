@@ -20,6 +20,7 @@ import Prelude.Extras
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
+import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.SLambda as SLambda
 import TCM
 import Util
@@ -59,6 +60,10 @@ instance MetaVary Concrete.Expr (MetaVar Concrete.Expr) where
 
 instance MetaVary (Abstract.Expr a) (MetaVar (Abstract.Expr a)) where
   type MetaData (Abstract.Expr a) (MetaVar (Abstract.Expr a)) = a
+
+instance MetaVary Closed.Expr (MetaVar Closed.Expr) where
+  type MetaData Closed.Expr (MetaVar Closed.Expr) = ()
+  refineVar v _ = return $ Closed.Var v
 
 type MetaP = MetaVar Abstract.ExprP
 type MetaE = MetaVar Abstract.ExprE

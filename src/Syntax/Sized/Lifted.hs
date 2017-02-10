@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, MonadComprehensions, OverloadedStrings #-}
 module Syntax.Sized.Lifted where
 
 import Control.Monad
@@ -10,7 +10,6 @@ import Data.Hashable
 import qualified Data.HashMap.Lazy as HashMap
 import Data.Monoid
 import Data.String
-import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 import Data.Void
 import Prelude.Extras
@@ -18,6 +17,8 @@ import Prelude.Extras
 import Syntax hiding (Definition, abstractDef)
 import TopoSort
 import Util
+import qualified Syntax.Sized.Closed as Closed
+import qualified Syntax.Sized.Converted as Converted
 
 data Expr retDir v
   = Var v
@@ -32,7 +33,7 @@ data Expr retDir v
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 data Function retDir expr v
-  = Function retDir (Vector (NameHint, Direction)) (Scope Tele expr v)
+  = Function retDir (Telescope Direction expr v) (Scope Tele expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 data Constant expr v
@@ -67,18 +68,18 @@ traverseDefinitionFirst
   -> Definition a (expr a) v
   -> f (Definition a' (expr a') v)
 traverseDefinitionFirst f (FunctionDef vis (Function retDir args s))
-  = FunctionDef vis <$> (Function <$> f retDir <*> pure args <*> bitraverseScope f pure s)
+  = FunctionDef vis <$> (Function <$> f retDir <*> bitraverseTelescope f pure args <*> bitraverseScope f pure s)
 traverseDefinitionFirst f (ConstantDef vis (Constant dir e))
   = ConstantDef vis <$> (Constant dir <$> bitraverse f pure e)
 
 abstractDef
-  :: Monad expr
+  :: GlobalBind expr
   => (a -> Maybe b)
   -> Definition retDir expr a
   -> Definition retDir expr (Var b a)
 abstractDef f (FunctionDef vis (Function retDir args s))
   = FunctionDef vis
-  $ Function retDir args
+  $ Function retDir (bound (pure . pure) global args)
   $ s >>>= \a -> pure $ maybe (F a) B (f a)
 abstractDef f (ConstantDef vis (Constant dir e))
   = ConstantDef vis
@@ -87,7 +88,7 @@ abstractDef f (ConstantDef vis (Constant dir e))
   $ abstract f e
 
 recursiveAbstractDefs
-  :: (Eq v, Monad f, Functor t, Foldable t, Hashable v)
+  :: (Eq v, GlobalBind f, Functor t, Foldable t, Hashable v)
   => t (v, Definition a f v)
   -> t (Definition a f (Var Int v))
 recursiveAbstractDefs es = (abstractDef (`HashMap.lookup` vs) . snd) <$> es
@@ -95,18 +96,51 @@ recursiveAbstractDefs es = (abstractDef (`HashMap.lookup` vs) . snd) <$> es
     vs = HashMap.fromList $ zip (Foldable.toList $ fst <$> es) [(0 :: Int)..]
 
 instantiateDef
-  :: Monad expr
+  :: GlobalBind expr
   => (b -> expr a)
   -> Definition retDir expr (Var b a)
   -> Definition retDir expr a
 instantiateDef f (FunctionDef vis (Function retDir args s))
   = FunctionDef vis
-  $ Function retDir args
+  $ Function retDir (bound (unvar f pure) global args)
   $ s >>>= unvar f pure
 instantiateDef f (ConstantDef vis (Constant dir e))
   = ConstantDef vis
   $ Constant dir
   $ e >>= unvar f pure
+
+toClosed :: Expr retDir v -> Closed.Expr v
+toClosed expr = case expr of
+  Var v -> Closed.Var v
+  Global v -> Closed.Global v
+  Lit l -> Closed.Lit l
+  Con qc es -> Closed.Con qc $ toClosed <$> es
+  Call _retDir e es -> Closed.Call (toClosed e) $ toClosed . fst <$> es
+  Let h e s -> Closed.Let h (toClosed e) (hoistScope toClosed s)
+  Case e brs -> Closed.Case (toClosed e) $ hoistBranches toClosed brs
+  Prim p -> Closed.Prim $ toClosed <$> p
+  Sized sz e -> Closed.Sized (toClosed sz) (toClosed e)
+
+toConverted :: Expr ClosureDir v -> Converted.Expr v
+toConverted expr = case expr of
+  Var v -> Converted.Var v
+  Global v -> Converted.Global v
+  Lit l -> Converted.Lit l
+  Con qc es -> Converted.Con qc $ toConverted <$> es
+  Call retDir e es -> Converted.Call retDir (toConverted e) $ first toConverted <$> es
+  Let h e s -> Converted.Let h (toConverted e) (hoistScope toConverted s)
+  Case e brs -> Converted.Case (toConverted e) $ hoistBranches toConverted brs
+  Prim p -> Converted.Prim $ toConverted <$> p
+  Sized sz e -> Converted.Sized (toConverted sz) (toConverted e)
+
+signature
+  :: Function ClosureDir (Expr ClosureDir) Void
+  -> Converted.Signature Converted.Expr Closed.Expr Void
+signature (Function retDir tele bodyScope)
+  = Converted.Function
+    retDir
+    (hoistTelescope toConverted tele)
+    (hoistScope toClosed bodyScope)
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -131,7 +165,7 @@ instance GlobalBound Constant where
   bound f g (Constant dir expr) = Constant dir $ bind f g expr
 
 instance GlobalBound (Function retDir) where
-  bound f g (Function retDir args s) = Function retDir args $ bound f g s
+  bound f g (Function retDir args s) = Function retDir (bound f g args) $ bound f g s
 
 instance GlobalBound (Definition retDir) where
   bound f g (FunctionDef vis fdef) = FunctionDef vis $ bound f g fdef
@@ -185,8 +219,8 @@ instance (Eq v, IsString v, Pretty v, Eq retDir, Pretty retDir)
 instance (Eq v, IsString v, Pretty v, Eq retDir, Pretty retDir, Pretty (expr v), Monad expr)
   => Pretty (Function retDir expr v) where
   prettyM (Function retDir vs s) = parens `above` absPrec $
-    withNameHints (fst <$> vs) $ \ns -> prettyM retDir <+>
-      "\\" <> hsep (Vector.toList $ prettyM <$> Vector.zip ns (snd <$> vs)) <> "." <+>
+    withNameHints (teleNames vs) $ \ns -> prettyM retDir <+>
+      "\\" <> prettyTeleVars ns vs <> "." <+>
       associate absPrec (prettyM $ instantiateTele (pure . fromName) ns s)
 
 instance (Eq v, IsString v, Pretty v, Pretty (expr v))

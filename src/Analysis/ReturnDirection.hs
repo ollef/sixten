@@ -199,8 +199,13 @@ inferDefinition
   -> Definition ClosureDir (Expr ClosureDir) MetaVar
   -> TCM (Definition RetDirM (Expr RetDirM) MetaVar)
 inferDefinition v (FunctionDef vis (Function mretDir args s)) = do
-  args' <- forM args $ \(h, _) -> exists h MProjection MOutParam
-  let e = instantiateTele pure args' s
+  vs <- forMTele args $ \h _ _ -> exists h MProjection MOutParam
+  args' <- forMTele args $ \h d szScope -> do
+    let sz = instantiateTele pure vs szScope
+    (sz', _szLoc) <- infer sz
+    let szScope' = abstract (teleAbstraction vs) sz'
+    return (h, d, szScope')
+  let e = instantiateTele pure vs s
       vdir = metaReturnIndirect v
   retDir <- case mretDir of
     ClosureDir -> do
@@ -211,8 +216,8 @@ inferDefinition v (FunctionDef vis (Function mretDir args s)) = do
   glbdir <- maxMetaReturnIndirect loc vdir
   unifyMetaReturnIndirect glbdir vdir
   let retDir' = toReturnDirection vdir retDir
-      s' = abstract (teleAbstraction args') e'
-  return $ FunctionDef vis $ Function retDir' args s'
+      s' = abstract (teleAbstraction vs) e'
+  return $ FunctionDef vis $ Function retDir' (Telescope args') s'
 inferDefinition _ (ConstantDef vis (Constant dir e))
   = ConstantDef vis . Constant dir . fst <$> infer e
 

@@ -23,8 +23,8 @@ import Backend.Target
 import qualified Builtin
 import Syntax
 import Syntax.Abstract
+import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.Converted as Converted
-import Util
 
 newtype Level = Level Int
   deriving (Eq, Num, Ord, Show)
@@ -37,7 +37,7 @@ data TCMState = TCMState
   , tcContext :: HashMap Name (Definition ExprP Void, TypeP Void)
   , tcConstrs :: HashMap Constr (Set (Name, TypeP Void))
   , tcErasableContext :: HashMap Name (Definition ExprE Void, TypeE Void)
-  , tcConvertedSignatures :: HashMap Name (Converted.Signature Converted.Expr Unit Void)
+  , tcConvertedSignatures :: HashMap Name (Converted.Signature Converted.Expr Closed.Expr Void)
   , tcReturnDirections :: HashMap Name RetDir
   , tcIndent :: !Int -- This has no place here, but is useful for debugging
   , tcFresh :: !Int
@@ -161,13 +161,12 @@ addContext prog = modify $ \s -> s
       return (c, Set.fromList [(n, t)])
 
 addConvertedSignatures
-  :: Monad b
-  => HashMap Name (Converted.Signature Converted.Expr b c)
+  :: HashMap Name (Converted.Signature Converted.Expr Closed.Expr c)
   -> TCM ()
 addConvertedSignatures p = modify $ \s -> s { tcConvertedSignatures = p' <> tcConvertedSignatures s }
   where
     p' = fmap (const $ error "addConvertedSignatures")
-       . Converted.hoistSignature (const Unit) <$> p
+      {- . Converted.hoistSignature (const Unit) -} <$> p
 
 instance Context (Expr Plicitness) where
   definition name = do
@@ -231,7 +230,7 @@ instance Context (Expr Erasability) where
 -- Converted
 convertedSignature
   :: Name
-  -> TCM (Converted.Signature Converted.Expr Unit Void)
+  -> TCM (Converted.Signature Converted.Expr Closed.Expr Void)
 convertedSignature name = do
   mres <- gets $ HashMap.lookup name . tcConvertedSignatures
   maybe (throwError $ "Not in scope: converted " ++ show name)

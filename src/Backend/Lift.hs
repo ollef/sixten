@@ -38,7 +38,8 @@ liftExpr expr = case expr of
   Converted.Con c es -> Lifted.Con c <$> mapM liftExpr es
   Converted.Lams d tele s -> do
     s' <- underScope liftExpr s
-    f <- liftFunction $ Lifted.Function d (teleNamedAnnotations tele) s'
+    tele' <- liftTelescope tele
+    f <- liftFunction $ Lifted.Function d tele' s'
     return $ Lifted.Global f
   Converted.Call retDir e es -> Lifted.Call retDir
     <$> liftExpr e
@@ -71,17 +72,18 @@ liftBranches (LitBranches lbrs def) = LitBranches <$> sequence
 liftBranches (NoBranches sz) = NoBranches <$> liftExpr sz
 
 liftTelescope
-  :: Telescope () Converted.Expr v
-  -> Lift (Telescope () (Lifted.Expr ClosureDir) v)
+  :: Telescope d Converted.Expr v
+  -> Lift (Telescope d (Lifted.Expr ClosureDir) v)
 liftTelescope (Telescope tele) = Telescope
-  <$> mapM (\(h, (), s) -> (,,) h () <$> underScope liftExpr s) tele
+  <$> mapM (\(h, d, s) -> (,,) h d <$> underScope liftExpr s) tele
 
 liftDefinitionM
   :: Converted.Expr Void
   -> Lift (Lifted.Definition ClosureDir (Lifted.Expr ClosureDir) Void)
-liftDefinitionM (Converted.Sized _ (Converted.Lams retDir tele s))
-  = Lifted.FunctionDef Public . Lifted.Function retDir (teleNamedAnnotations tele)
-    <$> underScope liftExpr s
+liftDefinitionM (Converted.Sized _ (Converted.Lams retDir tele s)) = do
+  tele' <- liftTelescope tele
+  s' <- underScope liftExpr s
+  return $ Lifted.FunctionDef Public $ Lifted.Function retDir tele' s'
 liftDefinitionM sexpr
   = Lifted.ConstantDef Public . Lifted.Constant (Converted.sExprDir sexpr)
     <$> liftExpr sexpr
