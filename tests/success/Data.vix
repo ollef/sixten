@@ -55,3 +55,5 @@ propagationTest : Bool
 propagationTest = id (id True)
 
 lift f x = f x (\y. y)
+
+main1 = printSize (test propagationTest)

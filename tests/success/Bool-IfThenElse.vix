@@ -7,7 +7,13 @@ True x y = x
 False : Bool
 False x y = y
 
-ifThenElse : {a : Type} -> Bool -> a -> a -> a
-ifThenElse b = b
+if : {a : Type} -> Bool -> a -> a -> a
+if b = b
 
-main1 = printSize (ifThenElse False 12 13)
+and : Bool -> Bool -> Bool
+and b1 b2 = if b1 b2 False
+
+or : Bool -> Bool -> Bool
+or b1 b2 = if b1 True b2
+
+main1 = printSize (if (or False (and True False)) 12 13)

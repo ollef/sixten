@@ -18,29 +18,10 @@ idConst1 x = const x (\(x : Size). x)
 useConst : forall {a}{b}. ((a -> a -> a) -> b) -> b
 useConst f = f const
 
-if : Bool -> forall {n}{a : Type {n}}. a -> a -> a
-if b = b
-
 fun : Type {_} -> Type {1}
 fun a = a -> a
-
-ifPrime : forall {a}. Bool -> a -> a -> a
-ifPrime b = b
-
-Bool : Type {1}
-Bool = forall {n} {a : Type {n}}. a -> a -> a
-
-True : Bool
-True x y = x
-
-False : Bool
-False x y = y
 
 a : forall {a}. a
 a = a
 
-and : Bool -> Bool -> Bool
-and b1 b2 = ifPrime b1 b2 False
-
-or : Bool -> Bool -> Bool
-or b1 b2 = ifPrime b1 True b2
+main1 = printSize (const 10 20)
