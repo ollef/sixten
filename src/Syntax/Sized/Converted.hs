@@ -74,6 +74,7 @@ toClosed expr = case expr of
   Global v -> Closed.Global v
   Lit l -> Closed.Lit l
   Con qc es -> Closed.Con qc $ toClosed <$> es
+  Lams _dir tele s -> Closed.Lams (mapAnnotations (const ()) $ hoistTelescope toClosed tele) (hoistScope toClosed s)
   Call _retDir e es -> Closed.Call (toClosed e) $ toClosed . fst <$> es
   Let h e s -> Closed.Let h (toClosed e) (hoistScope toClosed s)
   Case e brs -> Closed.Case (toClosed e) $ hoistBranches toClosed brs

@@ -10,6 +10,6 @@ test = Ref (Cons 2 (Ref (Cons 3 (Ref (Cons 5 (Ref Nil))))))
 
 head : {A : Type} -> Ptr (List A) -> A
 head (Ref (Cons x _)) = x
-head (Ref _) = head (Ref Nil)
+head x = head x
 
 x = printSize (head test)

@@ -39,7 +39,7 @@ data TCMState = TCMState
   , tcErasableContext :: HashMap Name (Definition ExprE Void, TypeE Void)
   , tcConvertedSignatures :: HashMap Name (Converted.Signature Converted.Expr Closed.Expr Void)
   , tcReturnDirections :: HashMap Name RetDir
-  , tcIndent :: !Int -- This has no place here, but is useful for debugging
+  , tcIndent :: !Int
   , tcFresh :: !Int
   , tcLevel :: !Level
   , tcLogHandle :: !Handle

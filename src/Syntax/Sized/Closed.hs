@@ -18,7 +18,7 @@ data Expr v
   | Con QConstr (Vector (Expr v)) -- ^ Fully applied
   | Lams (Telescope () Expr Void) (Scope Tele Expr Void)
   | Call (Expr v) (Vector (Expr v))
-  | Let NameHint (Expr v) (Scope () Expr v)
+  | Let NameHint (Expr v) (Scope1 Expr v)
   | Case (Expr v) (Branches QConstr () Expr v)
   | Prim (Primitive (Expr v))
   | Sized (Expr v) (Expr v)

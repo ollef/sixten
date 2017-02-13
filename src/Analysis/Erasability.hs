@@ -251,6 +251,14 @@ infer er expr = do
       (e', _eType) <- infer er e
       (brs', typ) <- inferBranches er brs
       return (Case e' brs', typ)
+    Let h _ e scope -> do
+      letEr <- existsMetaErasability
+      (e', eType) <- infer letEr e
+      x <- forall h letEr eType
+      let body = instantiate1 (pure x) scope
+      (body', bodyType) <- infer er body
+      retainSize er bodyType
+      return (Let h letEr e' $ abstract1 x body', bodyType)
   modifyIndent pred
   logErasable 20 "infer res" resExpr
   logErasable 20 "      res" resType

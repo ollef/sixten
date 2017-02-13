@@ -21,7 +21,7 @@ data Expr a v
   | Pi !NameHint !a (Type a v) (Scope1 (Expr a) v)
   | Lam !NameHint !a (Type a v) (Scope1 (Expr a) v)
   | App (Expr a v) !a (Expr a v)
-  | Let !NameHint (Expr a v) (Scope1 (Expr a) v)
+  | Let !NameHint !a (Expr a v) (Scope1 (Expr a) v)
   | Case (Expr a v) (Branches QConstr a (Expr a) v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
@@ -45,7 +45,7 @@ instance GlobalBind (Expr a) where
     Pi h a t s -> Pi h a (bind f g t) (bound f g s)
     Lam h a t s -> Lam h a (bind f g t) (bound f g s)
     App e1 a e2 -> App (bind f g e1) a (bind f g e2)
-    Let h e s -> Let h (bind f g e) (bound f g s)
+    Let h a e s -> Let h a (bind f g e) (bound f g s)
     Case e brs -> Case (bind f g e) (bound f g brs)
 
 instance Annotated (Expr a) where
@@ -95,7 +95,7 @@ instance Bitraversable Expr where
     Pi h a t s -> Pi h <$> f a <*> bitraverse f g t <*> bitraverseScope f g s
     Lam h a t s -> Lam h <$> f a <*> bitraverse f g t <*> bitraverseScope f g s
     App e1 a e2 -> App <$> bitraverse f g e1 <*> f a <*> bitraverse f g e2
-    Let h e s -> Let h <$> bitraverse f g e <*> bitraverseScope f g s
+    Let h a e s -> Let h <$> f a <*> bitraverse f g e <*> bitraverseScope f g s
     Case e brs -> Case <$> bitraverse f g e <*> bitraverseAnnotatedBranches f g brs
 
 instance (Eq v, IsString v, Pretty v, Eq a, PrettyAnnotation a) => Pretty (Expr a v) where
@@ -119,8 +119,8 @@ instance (Eq v, IsString v, Pretty v, Eq a, PrettyAnnotation a) => Pretty (Expr 
       prettyM (instantiateTele (pure . fromName) ns s)
     Lam {} -> error "impossible prettyPrec lam"
     App e1 a e2 -> prettyApp (prettyM e1) (prettyAnnotation a $ prettyM e2)
-    Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
-      "let" <+> prettyM n <+> "=" <+> inviolable (prettyM e) <+> "in"
+    Let h a e s -> parens `above` letPrec $ withNameHint h $ \n ->
+      "let" <+> prettyAnnotation a (prettyM n) <+> "=" <+> inviolable (prettyM e) <+> "in"
       <+> prettyM (Util.instantiate1 (pure $ fromName n) s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (prettyM brs)

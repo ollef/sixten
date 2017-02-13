@@ -24,7 +24,7 @@ import Text.Trifecta.Result(Err(Err), explain)
 
 import Analysis.Simplify
 import qualified Builtin
-import Inference.Match
+import Inference.Match as Match
 import Inference.Normalise
 import Inference.TypeOf
 import Inference.Unify
@@ -165,11 +165,13 @@ tcRho expr expected expectedAppResult = case expr of
     (pat', vs, patType) <- inferPat p pat mempty
     let body = instantiatePatternVec pure vs bodyScope
         h = Concrete.patternHint pat
-    body' <- enterLevel $ checkPoly body =<< existsTypeType mempty
+    bodyType <- existsTypeType h
+    body' <- enterLevel $ checkPoly body bodyType
     f <- instExpected expected $ Builtin.TypeP $ Abstract.Lit 1
     x <- forall h p patType
     body'' <- matchSingle (pure x) pat' body'
-    f =<< Abstract.Pi h p patType <$> abstract1M x body''
+    let body''' = body'' >>= unvar (\Match.Fail -> Builtin.Fail (Abstract.Lit 0) bodyType) pure
+    f =<< Abstract.Pi h p patType <$> abstract1M x body'''
   Concrete.Lam p pat bodyScope -> do
     let h = Concrete.patternHint pat
     case expected of
@@ -178,8 +180,10 @@ tcRho expr expected expectedAppResult = case expr of
         argVar <- forall h p argType
         let body = instantiatePatternVec pure vs bodyScope
         (body', bodyType) <- enterLevel $ inferRho body (InstBelow Explicit) Nothing
+        bodyTypeSize <- sizeOfType bodyType
         body'' <- matchSingle (pure argVar) pat' body'
-        bodyScope' <- abstract1M argVar body''
+        let body''' = body'' >>= unvar (\Match.Fail -> Builtin.Fail bodyTypeSize bodyType) pure
+        bodyScope' <- abstract1M argVar body'''
         bodyTypeScope <- abstract1M argVar bodyType
         f <- instExpected expected $ Abstract.Pi h p argType bodyTypeScope
         f $ Abstract.Lam h p argType bodyScope'
@@ -192,7 +196,9 @@ tcRho expr expected expectedAppResult = case expr of
             bodyType = Util.instantiate1 (pure argVar) bodyTypeScope
         body' <- enterLevel $ checkPoly body bodyType
         body'' <- matchSingle (pure argVar) pat' body'
-        fResult =<< Abstract.Lam h' p argType <$> abstract1M argVar body''
+        bodyTypeSize <- sizeOfType bodyType
+        let body''' = body'' >>= unvar (\Match.Fail -> Builtin.Fail bodyTypeSize bodyType) pure
+        fResult =<< Abstract.Lam h' p argType <$> abstract1M argVar body'''
   Concrete.App fun p arg -> do
     (fun', funType) <- inferRho fun (InstBelow p) expectedAppResult
     (argType, resTypeScope, f1) <- subtypeFun funType p
@@ -250,7 +256,10 @@ tcBranches expr pbrs expected = do
 
   matched <- case inferredBranches of
     [] -> return $ Abstract.Case expr' $ NoBranches resType
-    _ -> matchCase expr' inferredBranches
+    _ -> do
+      matched <- matchCase expr' inferredBranches
+      resTypeSize <- sizeOfType resType
+      return $ matched >>= unvar (\Match.Fail -> Builtin.Fail resTypeSize resType) pure
 
   f matched
 
@@ -798,22 +807,28 @@ checkClausesRho clauses rhoType = do
 
   clauses' <- forM clauses $ \(Concrete.Clause pats bodyScope) -> do
     (pats', patVars) <- checkPats (snd <$> pats) $ metaType <$> argVars
-    logShow 20 "checkClausesRho clause patVars" patVars
     let body = instantiatePatternVec pure patVars bodyScope
     body' <- checkRho body returnType
-    logMeta 20 "checkClausesRho clause body" body'
     return (pats', body')
 
   modifyIndent pred
+
+  forM_ clauses' $ \(pats, body) -> do
+    forM_ pats $ \pat -> logMeta 20 "checkClausesRho clause pat" (first (const ()) pat)
+    logMeta 20 "checkClausesRho clause body" body
 
   body <- matchClauses
     (Vector.toList $ pure <$> argVars)
     (NonEmpty.toList $ first Vector.toList <$> clauses')
 
+  returnTypeSize <- sizeOfType returnType
+
+  let body' = body >>= unvar (\Match.Fail -> Builtin.Fail returnTypeSize returnType) pure
+
   result <- foldrM
     (\(p, (f, v)) e ->
       f =<< Abstract.Lam (metaHint v) p (metaType v) <$> abstract1M v e)
-    body
+    body'
     (Vector.zip ps $ Vector.zip fs argVars)
 
   logMeta 20 "checkClauseRho res" result

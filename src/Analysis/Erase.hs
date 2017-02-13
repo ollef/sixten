@@ -55,6 +55,17 @@ erase expr = do
     Abstract.App e1 Retained e2 -> SLambda.App <$> erase e1 <*> eraseS e2
     Abstract.App e1 Erased _e2 -> erase e1
     Abstract.Case e brs -> SLambda.Case <$> eraseS e <*> eraseBranches brs
+    Abstract.Let h Retained e scope -> do
+      t <- typeOf e
+      v <- forall h Retained t
+      e' <- eraseS e
+      sz <- erase =<< sizeOfType t
+      body <- eraseS $ instantiate1 (pure v) scope
+      return $ SLambda.Let h e' sz $ abstract1 v body
+    Abstract.Let h Erased e scope -> do
+      t <- typeOf e
+      v <- forall h Erased t
+      erase $ instantiate1 (pure v) scope
   modifyIndent pred
   logMeta 20 "erase res" res
   return res

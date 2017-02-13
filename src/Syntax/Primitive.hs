@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable #-}
 module Syntax.Primitive where
 
 import Control.Monad
@@ -6,33 +6,21 @@ import Data.String
 
 import qualified Backend.LLVM as LLVM
 import Pretty
+import Syntax.Direction
 
-newtype Primitive v = Primitive { unPrimitive :: [PrimitivePart v] }
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable, Monoid)
+data Primitive v = Primitive
+  { primitiveDir :: Direction
+  , unPrimitive :: [PrimitivePart v]
+  } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 data PrimitivePart v
   = TextPart LLVM.C
   | VarPart v
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-bindPrimitivePart :: (a -> Primitive b) -> PrimitivePart a -> Primitive b
-bindPrimitivePart _ (TextPart t) = Primitive $ pure $ TextPart t
-bindPrimitivePart f (VarPart v) = f v
-
-instance Applicative Primitive where
-  pure = return
-  (<*>) = ap
-
-instance Monad Primitive where
-  return = Primitive . pure . pure
-  Primitive xs >>= f = Primitive $ xs >>= unPrimitive . bindPrimitivePart f
-
-instance IsString (Primitive v) where
-  fromString = Primitive . pure . fromString
-
 instance (IsString v, Pretty v)
       => Pretty (Primitive v) where
-  prettyM (Primitive xs) = hsep $ prettyM <$> xs
+  prettyM (Primitive d xs) = prettyM d <+> hsep (prettyM <$> xs)
 
 instance Applicative PrimitivePart where
   pure = VarPart

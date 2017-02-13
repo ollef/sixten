@@ -393,14 +393,23 @@ generateBranches caseExpr branches brCont = do
 generatePrim
   :: Primitive (Expr RetDir Var)
   -> Gen Var
-generatePrim (Primitive xs) = do
+generatePrim (Primitive dir xs) = do
   strs <- forM xs $ \x -> case x of
     TextPart t -> return t
     VarPart o -> do
       v <- generateExpr (Just "1") o
       unOperand <$> loadVar mempty v
-  ret <- "prim" =: Instr (Foldable.fold strs)
-  return $ DirectVar ret
+  let instr = Instr $ Foldable.fold strs
+  case dir of
+    Void -> do
+      emit instr
+      return $ VoidVar
+    Direct -> do
+      ret <- "prim" =: instr
+      return $ DirectVar ret
+    Indirect -> do
+      ret <- "prim" =: instr
+      return $ IndirectVar ret
 
 generateConstant :: Visibility -> Name -> Constant (Expr RetDir) Var -> Gen C
 generateConstant visibility name (Constant dir e) = do

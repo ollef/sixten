@@ -12,7 +12,7 @@ import Data.Monoid
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 
-import Builtin
+import qualified Builtin
 import Inference.Normalise
 import Inference.TypeOf
 import Meta
@@ -33,7 +33,7 @@ fatBar :: a -> Expr a (Var Fail v) -> Expr a (Var Fail v) -> Expr a (Var Fail v)
 fatBar p e e' = case foldMap (bifoldMap (:[]) mempty) e of
   [] -> e
   [_] -> e >>= unvar (\Fail -> e') (pure . F)
-  _ -> Let mempty (Lam mempty p (Global UnitName) $ abstractNone e')
+  _ -> Let mempty p (Lam mempty p (Global Builtin.UnitName) $ abstractNone e')
     $ instantiateSome (\Fail -> App (pure $ B ()) p (Con Builtin.Unit))
     $ F <$> toScope e
 
@@ -41,26 +41,23 @@ matchSingle
   :: AbstractM
   -> PatM
   -> AbstractM
-  -> TCM AbstractM
-matchSingle expr pat innerExpr = do
-  result <- match [expr] [([pat], F <$> innerExpr)] $ F <$> innerExpr
-  traverse (unvar (const $ throwError "matchSingle is not allowed to fail") pure) result
+  -> TCM (ExprP (Var Fail MetaP))
+matchSingle expr pat innerExpr
+  = match [expr] [([pat], F <$> innerExpr)] $ F <$> innerExpr
 
 matchCase
   :: AbstractM
   -> [(PatM, AbstractM)]
-  -> TCM AbstractM
-matchCase expr pats = do
-  result <- match [expr] (bimap pure (fmap F) <$> pats) (pure $ B Fail)
-  traverse (unvar (const $ throwError "matchCase is not allowed to fail") pure) result
+  -> TCM (ExprP (Var Fail MetaP))
+matchCase expr pats
+  = match [expr] (bimap pure (fmap F) <$> pats) (pure $ B Fail)
 
 matchClauses
   :: [AbstractM]
   -> [([PatM], AbstractM)]
-  -> TCM AbstractM
-matchClauses exprs pats = do
-  result <- match exprs (fmap (fmap F) <$> pats) (pure $ B Fail)
-  traverse (unvar (const $ throwError "matchClauses is not allowed to fail") pure) result
+  -> TCM (ExprP (Var Fail MetaP))
+matchClauses exprs pats
+  = match exprs (fmap (fmap F) <$> pats) (pure $ B Fail)
 
 type Match
   = [AbstractM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)

@@ -26,6 +26,14 @@ closeExpr expr = case expr of
   SLambda.Lit l -> return $ Closed.Lit l
   SLambda.Con qc es -> Closed.Con qc <$> mapM closeExpr es
   SLambda.App e1 e2 -> Closed.apps <$> closeExpr e1 <*> (pure <$> closeExpr e2)
+  SLambda.Let h e sz scope -> do
+    sz' <- closeExpr sz
+    e' <- closeExpr e
+    x <- forall h () sz'
+    let body = instantiate1 (pure x) scope
+    closedBody <- closeExpr body
+    let scope' = abstract1 x closedBody
+    return $ Closed.Let h (Closed.Sized sz' e') scope'
   SLambda.Case e brs -> Closed.Case <$> closeExpr e <*> closeBranches brs
   SLambda.Sized sz e -> Closed.Sized <$> closeExpr sz <*> closeExpr e
   (bindingsViewM SLambda.lamView -> Just (tele, s)) -> closeLambda tele s

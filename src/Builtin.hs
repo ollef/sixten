@@ -47,6 +47,9 @@ pattern Closure <- ((== QConstr "Builtin" "CL") -> True) where Closure = QConstr
 
 pattern Ref <- ((== QConstr PtrName RefName) -> True) where Ref = QConstr PtrName RefName
 
+pattern FailName <- ((==) "fail" -> True) where FailName = "fail"
+pattern Fail sz t = App (App (Global FailName) Implicit sz) Explicit t
+
 applyName :: Int -> Name
 applyName n = "apply_" <> shower n
 
@@ -69,6 +72,12 @@ contextP = HashMap.fromList
   , (UnitName, dataType (TypeP $ Lit 0)
                         [ConstrDef UnitConstrName $ toScope $ Global UnitName])
 
+  , ( FailName
+    , opaque
+    $ namedPi "sz" Implicit Size
+    $ namedPi "T" Explicit (TypeP $ pure "sz")
+    $ pure "T"
+    )
   ]
   where
     cl = fromMaybe (error "Builtin not closed") . closed
@@ -92,7 +101,12 @@ contextE = HashMap.fromList
                        ])
   , (UnitName, dataType (TypeE $ Lit 0)
                         [ConstrDef UnitConstrName $ toScope $ Global UnitName])
-
+  , ( FailName
+    , opaque
+    $ namedPi "t" Retained Size
+    $ namedPi "T" Erased (TypeE $ pure "t")
+    $ pure "T"
+    )
   ]
   where
     cl = fromMaybe (error "Builtin not closed") . closed
@@ -122,7 +136,12 @@ convertedContext = HashMap.fromList $ concat
       $ Scope
       $ Converted.sized 1
       $ Converted.Prim
-      $ "add " <> intT <> " " <> pure (Converted.Var $ B 0) <> ", " <> pure (Converted.Var $ B 1)
+      $ Primitive Direct
+      [TextPart $ "add " <> intT <> " "
+      , pure $ Converted.Var $ B 0
+      , ", "
+      , pure $ Converted.Var $ B 1
+      ]
     )
   , ( MaxSizeName
     , Converted.sized 1
@@ -137,12 +156,17 @@ convertedContext = HashMap.fromList $ concat
       $ Converted.Let "lt"
       (Converted.sized 1
       $ Converted.Prim
-      $ "icmp ugt " <> intT <> " " <> pure (Converted.Var $ B 0) <> ", " <> pure (Converted.Var $ B 1))
+      $ Primitive Direct
+      [TextPart $ "icmp ugt " <> intT <> " ", pure $ Converted.Var $ B 0, ", ", pure $ Converted.Var $ B 1])
       $ toScope
       $ Converted.Prim
-      $ "select i1 " <> pure (Converted.Var $ B ())
-      <> ", " <> intT <> " " <> pure (Converted.Var $ F $ B 0) <> ", " <> intT <> " "
-      <> pure (Converted.Var $ F $ B 1)
+      $ Primitive Direct
+      ["select i1 ", pure $ Converted.Var $ B ()
+      , TextPart $ ", " <> intT <> " "
+      , pure $ Converted.Var $ F $ B 0
+      , TextPart $ ", " <> intT <> " "
+      , pure $ Converted.Var $ F $ B 1
+      ]
     )
   , ( PrintSizeName
     , Converted.sized 1
@@ -155,17 +179,32 @@ convertedContext = HashMap.fromList $ concat
       $ Converted.Let "res"
       (Converted.sized 1
       $ Converted.Prim
-      ("call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([5 x i8], [5 x i8]* @size_t-format, i32 0, i32 0), " <> intT <> " " <> pure (Converted.Var $ B 0) <> ")"))
-
+      $ Primitive Direct
+      [TextPart $ "call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([5 x i8], [5 x i8]* @size_t-format, i32 0, i32 0), " <> intT <> " "
+      , pure $ Converted.Var $ B 0, ")"
+      ])
       $ Scope
       $ Converted.Lit 0
+    )
+  , ( FailName
+    , Converted.sized 1
+      $ Converted.Lams
+        (NonClosureDir Direct)
+        (Telescope
+        $ Vector.fromList [(mempty, Direct, slit 1)])
+      $ Scope
+      $ Converted.Sized (Converted.Var $ B 0)
+      $ Converted.Prim
+      $ Primitive Void
+      [TextPart $ "call " <> voidT <> " @exit(i32 1)"]
     )
   ]
   , [(papName left given, pap left given) | given <- [1..maxArity - 1], left <- [1..maxArity - given]]
   , [(applyName arity, apply arity) | arity <- [1..maxArity]]
   ]
   where
-    intT = Primitive [TextPart LLVM.integerT]
+    intT = LLVM.integerT
+    voidT = LLVM.voidT
 
 -- TODO move these
 slit :: Literal -> Scope b Converted.Expr v
@@ -175,7 +214,7 @@ svarb :: b -> Scope b Converted.Expr a
 svarb = Scope . Converted.Var . B
 
 maxArity :: Num n => n
-maxArity = 4
+maxArity = 6
 
 deref :: Converted.Expr v -> Converted.Expr v
 deref e

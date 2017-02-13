@@ -18,6 +18,7 @@ data Expr v
   | Con QConstr (Vector (Expr v)) -- ^ Fully applied
   | Lam !NameHint (Expr v) (Scope1 Expr v)
   | App (Expr v) (Expr v)
+  | Let NameHint (Expr v) (Expr v) (Scope () Expr v)
   | Case (Expr v) (Branches QConstr () Expr v)
   | Sized (Expr v) (Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
@@ -56,6 +57,7 @@ instance GlobalBind Expr where
     Con qc es -> Con qc (bind f g <$> es)
     Lam h e s -> Lam h (bind f g e) (bound f g s)
     App e1 e2 -> App (bind f g e1) (bind f g e2)
+    Let h e sz s -> Let h (bind f g e) (bind f g sz) (bound f g s)
     Case e brs -> Case (bind f g e) (bound f g brs)
     Sized sz e -> Sized (bind f g sz) (bind f g e)
 
@@ -68,6 +70,9 @@ instance (Eq v, IsString v, Pretty v)
     Lit l -> prettyM l
     App e1 e2 -> parens `above` annoPrec $
       prettyApp (prettyM e1) (prettyM e2)
+    Let h e sz s -> parens `above` letPrec $ withNameHint h $ \n ->
+      "let" <+> prettyM n <+> "=" <+> prettyM e <+> ":" <+> prettyM sz <+> "in" <+>
+        prettyM (Util.instantiate1 (pure $ fromName n) s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> indent 2 (prettyM brs)
