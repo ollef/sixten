@@ -18,6 +18,8 @@ Codegen
     Add error message for circular globals, e.g. `a = a`
   Should things of known size > 1 be passed as LLVM arrays?
   Use e.g. llvm-hs-kaleidoscope for llvm?
+Simplification
+  * Get eta-reduction working for multi-arg functions
 Compiler
   * Get rid of recursiveAbstract, instantiateDef
   Add printing to compiler passes that are not TCM (make a MonadLog class?)
