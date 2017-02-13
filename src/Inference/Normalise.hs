@@ -38,6 +38,7 @@ whnf expr = do
           e2' <- whnf e2
           whnf $ Util.instantiate1 e2' s
         _ -> return expr
+    Let _ _ e s -> whnf $ instantiate1 e s
     Case e brs -> do
       e' <- whnf e
       chooseBranch e' brs whnf
@@ -70,6 +71,9 @@ normaliseM expr = do
       case e1' of
         Lam _ p' _ s | p == p' -> normaliseM $ Util.instantiate1 e2' s
         _ -> return $ App e1' p e2'
+    Let _ _ e s -> do
+      e' <- normaliseM e
+      normaliseM $ instantiate1 e' s
     Case e brs -> do
       e' <- whnf e
       res <- chooseBranch e' brs whnf

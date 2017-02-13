@@ -26,17 +26,21 @@ typeOfM expr = do
     Con qc -> qconstructor qc
     Lit _ -> return Builtin.Size
     Pi {} -> return $ Builtin.TypeP $ Lit 1
-    Lam n a t s -> do
-      x <- forall n a t
+    Lam h a t s -> do
+      x <- forall h a t
       resType  <- typeOfM (instantiate1 (pure x) s)
       abstractedResType <- abstract1M x resType
-      return $ Pi n a t abstractedResType
+      return $ Pi h a t abstractedResType
     App e1 a e2 -> do
       e1type <- typeOfM e1
       e1type' <- whnf e1type
       case e1type' of
         Pi _ a' _ resType | a == a' -> return $ instantiate1 e2 resType
         _ -> throwError $ "typeOfM: expected pi type " ++ show e1type'
+    Let h a e s -> do
+      eType <- typeOfM e
+      v <- forall h a eType
+      typeOfM $ instantiate1 (pure v) s
     Case _ (ConBranches ((_, tele, brScope) NonEmpty.:| _)) -> mdo
       vs <- forMTele tele $ \h a s ->
         forall h a $ instantiateTele pure vs s
@@ -62,17 +66,21 @@ typeOf expr = do
     Con qc -> qconstructor qc
     Lit _ -> return Builtin.Size
     Pi {} -> return $ typeOfSize 1
-    Lam n a t s -> do
-      x <- forall n a t
+    Lam h a t s -> do
+      x <- forall h a t
       resType <- typeOf (instantiate1 (pure x) s)
       let abstractedResType = abstract1 x resType
-      return $ Pi n a t abstractedResType
+      return $ Pi h a t abstractedResType
     App e1 a e2 -> do
       e1type <- typeOf e1
       e1type' <- whnf e1type
       case e1type' of
         Pi _ a' _ resType | a == a' -> return $ instantiate1 e2 resType
         _ -> throwError $ "typeOf: expected pi type " ++ show e1type'
+    Let h a e s -> do
+      eType <- typeOf e
+      v <- forall h a eType
+      typeOf $ instantiate1 (pure v) s
     Case _ (ConBranches ((_, tele, brScope) NonEmpty.:| _)) -> mdo
       vs <- forMTele tele $ \h a s ->
         forall h a $ instantiateTele pure vs s
