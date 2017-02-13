@@ -106,7 +106,7 @@ matchCon expr exprs clauses expr0 = do
 
   cbrs <- forM cs $ \c -> do
     let clausesStartingWithC = NonEmpty.filter ((== c) . firstCon) clauses
-    ps <- conPatArgs c =<< typeOf expr
+    ps <- conPatArgs c =<< typeOfM expr
 
     ys <- forM ps $ \(p, pat, typ) -> forall (patternHint pat) p typ
     let exprs' = (pure <$> Vector.toList ys) ++ exprs
