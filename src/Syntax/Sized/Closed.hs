@@ -83,8 +83,7 @@ instance (Eq v, IsString v, Pretty v)
       withTeleHints tele $ \ns ->
         "\\" <> prettyTeleVarTypes ns (show <$> tele) <> "." <+>
         associate absPrec (prettyM $ instantiateTele (pure . fromName) ns $ show <$> s)
-    Call e es -> parens `above` annoPrec $
-      prettyApps (prettyM e) (prettyM <$> es)
+    Call e es -> prettyApps (prettyM e) (prettyM <$> es)
     Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
       "let" <+> prettyM n <+> "=" <+> prettyM e <+> "in" <+>
         prettyM (Util.instantiate1 (pure $ fromName n) s)

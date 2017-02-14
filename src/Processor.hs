@@ -157,7 +157,7 @@ simplifyGroup
   => [(Name, Definition (Abstract.Expr a) Void, Abstract.Expr a Void)]
   -> TCM [(Name, Definition (Abstract.Expr a) Void, Abstract.Expr a Void)]
 simplifyGroup defs = forM defs $ \(x, def, typ) ->
-  return (x, simplifyDef def, simplifyExpr False typ)
+  return (x, simplifyDef def, simplifyExpr 0 typ)
 
 addGroupToContext
   :: [(Name, Definition Abstract.ExprP Void, Abstract.ExprP Void)]

@@ -8,7 +8,7 @@ Matching
   Parse and typecheck view patterns
   * Desugar patterns of different arity and with differing implicit args
 Erasure
-  Make sure that we don't transform functions to non-functions by erasing all arguments.
+  * Make sure that we don't transform functions to non-functions by erasing all arguments.
     e.g. `loop x = loop x : Void` should not have its argument removed.
   Type-based erasure of things of size 0 (they can be invented when needed instead of passed around)
 Codegen
@@ -18,8 +18,6 @@ Codegen
     Add error message for circular globals, e.g. `a = a`
   Should things of known size > 1 be passed as LLVM arrays?
   Use e.g. llvm-hs-kaleidoscope for llvm?
-Simplification
-  * Get eta-reduction working for multi-arg functions
 Compiler
   * Get rid of recursiveAbstract, instantiateDef
   Add printing to compiler passes that are not TCM (make a MonadLog class?)
@@ -48,10 +46,10 @@ Language
 Size types
   Can the size be made abstract, e.g. `List A : Type {sizeof (List A)}`?
   Change Size to runtime representation, which can include:
-    * Allocation strategy
-    * Size
-    * GC info (e.g. positions of pointers)
-    * Functions can be of type `Type {ClosureRep}` where ClosureRep is magic
+    - Allocation strategy
+    - Size
+    - GC info (e.g. positions of pointers)
+    - Functions can be of type `Type {ClosureRep}` where ClosureRep is magic
   Can we have an Infinity size for things we can only hold in pointers?
   ListRep : max 1 (1 + sizeof A + sizeof (Ptr (List A)))
 Optimisations

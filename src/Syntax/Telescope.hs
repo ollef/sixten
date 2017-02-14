@@ -124,6 +124,12 @@ dropTele n
   . Vector.drop n
   . unTelescope
 
+takeTele
+  :: Int
+  -> Telescope a expr v
+  -> Telescope a expr v
+takeTele n = Telescope . Vector.take n . unTelescope
+
 instantiatePrefix
   :: Monad expr
   => Vector (expr v)

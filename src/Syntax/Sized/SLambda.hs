@@ -68,8 +68,7 @@ instance (Eq v, IsString v, Pretty v)
     Global g -> prettyM g
     Con c es -> prettyApps (prettyM c) $ prettyM <$> es
     Lit l -> prettyM l
-    App e1 e2 -> parens `above` annoPrec $
-      prettyApp (prettyM e1) (prettyM e2)
+    App e1 e2 -> prettyApp (prettyM e1) (prettyM e2)
     Let h e sz s -> parens `above` letPrec $ withNameHint h $ \n ->
       "let" <+> prettyM n <+> "=" <+> prettyM e <+> ":" <+> prettyM sz <+> "in" <+>
         prettyM (Util.instantiate1 (pure $ fromName n) s)
