@@ -233,6 +233,12 @@ iforMTele
   -> m (Vector v')
 iforMTele (Telescope t) f = flip Vector.imapM t $ \i (h, d, s) -> f i h d s
 
+iforTele
+  :: Telescope a expr v
+  -> (Int -> NameHint -> a -> Scope Tele expr v -> v')
+  -> Vector v'
+iforTele (Telescope t) f = (\(i, (h, d, s)) -> f i h d s) <$> Vector.indexed t
+
 instantiateTele
   :: Monad f
   => (v -> f a)

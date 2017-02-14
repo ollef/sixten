@@ -47,7 +47,7 @@ erase expr = do
                 $ Scope
                 $ apps (Abstract.Con qc)
                 $ Vector.fromList (fmap (pure . pure) <$> es)
-                <> forTele tele (\_ a t -> (a, unscope t))
+                <> iforTele tele (\i _ a _ -> (a, pure $ B $ Tele i))
       where
         es' = Vector.fromList $ snd <$> filter (\(a, _) -> a == Retained) es
         argsLen = length es
