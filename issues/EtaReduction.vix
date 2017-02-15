@@ -1,0 +1,18 @@
+data Unit = unit
+
+loop unit = loop unit
+
+test1 = \x y z. x y z
+test2 = \x y z. (loop unit) x y z
+test3 = \(x : Size -> Size -> Size) (y z : Size). x y z
+test4 = \(x y z : Size). (loop unit) x y z
+
+test5 : Size -> Size -> Size -> Size
+test5 = \(x y z : Size). (loop unit) x y z
+
+data List a = Nil | Cons a (Ptr (List a))
+
+map f (Ref Nil) = Ref Nil
+map f (Ref (Cons x xs)) = Ref (Cons (f x) (map f xs))
+
+main1 = map printSize (Ref (Cons (test1 (\x y. 3) 0 1) (Ref (Cons (test3 (\x y. 4) 0 1) (Ref Nil)))))
