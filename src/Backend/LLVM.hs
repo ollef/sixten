@@ -175,12 +175,12 @@ freshWithHint (NameHint (Hint Nothing)) = freshName
 -------------------------------------------------------------------------------
 -- * Operands
 -------------------------------------------------------------------------------
-newtype Operand a = Operand C deriving (IsString, Monoid)
+newtype Operand a = Operand C deriving (Show, IsString, Monoid)
 
 unOperand :: Operand a -> C
 unOperand (Operand b) = b
 
-newtype Instr a = Instr C deriving (IsString, Monoid)
+newtype Instr a = Instr C deriving (Show, IsString, Monoid)
 
 unInstr :: Instr a -> C
 unInstr (Instr c) = c

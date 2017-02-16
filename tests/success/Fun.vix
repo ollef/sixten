@@ -21,7 +21,7 @@ useConst f = f const
 fun : Type {_} -> Type {1}
 fun a = a -> a
 
-a : forall {a}. a
-a = a
+fa : forall {a}. a
+fa = fa
 
 main1 = printSize (const 10 20)

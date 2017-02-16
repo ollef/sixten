@@ -110,3 +110,19 @@ snd3 (_, b, _) = b
 
 thd3 :: (a, b, c) -> c
 thd3 (_, _, c) = c
+
+mapWithPrefix
+  :: (v -> Vector v' -> v')
+  -> Vector v
+  -> Vector v'
+mapWithPrefix f vs = result
+  where
+    result = Vector.imap (\i v -> f v $ Vector.take i result) vs
+
+mapWithPrefixM
+  :: (Monad m, Foldable t)
+  => (v -> Vector v' -> m v')
+  -> t v
+  -> m (Vector v')
+mapWithPrefixM f
+  = foldlM (\vs' v -> Vector.snoc vs' <$> f v vs') mempty

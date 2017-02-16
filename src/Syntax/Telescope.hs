@@ -220,6 +220,13 @@ forMTele
   -> m (Vector v')
 forMTele (Telescope t) f = forM t $ \(h, d, s) -> f h d s
 
+forTeleWithPrefixM
+  :: Monad m
+  => Telescope a expr v
+  -> (NameHint -> a -> Scope Tele expr v -> Vector v' -> m v')
+  -> m (Vector v')
+forTeleWithPrefixM (Telescope t) f = mapWithPrefixM (\(h, d, s) -> f h d s) t
+
 forTele
   :: Telescope a expr v
   -> (NameHint -> a -> Scope Tele expr v -> v')
@@ -232,6 +239,13 @@ iforMTele
   -> (Int -> NameHint -> a -> Scope Tele expr v -> m v')
   -> m (Vector v')
 iforMTele (Telescope t) f = flip Vector.imapM t $ \i (h, d, s) -> f i h d s
+
+iforTeleWithPrefixM
+  :: Monad m
+  => Telescope a expr v
+  -> (Int -> NameHint -> a -> Scope Tele expr v -> Vector v' -> m v')
+  -> m (Vector v')
+iforTeleWithPrefixM (Telescope t) f = mapWithPrefixM (\(i, (h, d, s)) -> f i h d s) $ Vector.indexed t
 
 iforTele
   :: Telescope a expr v

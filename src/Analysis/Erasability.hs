@@ -25,18 +25,22 @@ import Inference.Normalise
 
 data MetaErasability
   = MErased
+  | MZeroed
   | MRetained
   | MRef (STRef (World TCM) (Maybe MetaErasability))
   deriving Eq
 
 instance Show MetaErasability where
   show MErased = "MErased"
+  show MZeroed = "MZeroed"
   show MRetained = "MRetained"
   show (MRef _) = "MRef"
 
 minMetaErasability :: MetaErasability -> MetaErasability -> TCM MetaErasability
 minMetaErasability MErased _ = return MErased
 minMetaErasability _ MErased = return MErased
+minMetaErasability MZeroed _ = return MZeroed
+minMetaErasability _ MZeroed = return MZeroed
 minMetaErasability x MRetained = return x
 minMetaErasability MRetained x = return x
 minMetaErasability m@(MRef ref1) (MRef ref2) | ref1 == ref2 = return m
@@ -49,11 +53,13 @@ showMetaErasability = fmap show . normaliseMetaErasability
 
 instance PrettyAnnotation MetaErasability where
   prettyAnnotation MErased = prettyTightApp "~"
+  prettyAnnotation MZeroed = prettyTightApp "0~"
   prettyAnnotation MRetained = prettyTightApp "!"
   prettyAnnotation (MRef _) = prettyTightApp "?"
 
 normaliseMetaErasability :: MetaErasability -> TCM MetaErasability
 normaliseMetaErasability MErased = return MErased
+normaliseMetaErasability MZeroed = return MZeroed
 normaliseMetaErasability MRetained = return MRetained
 normaliseMetaErasability m@(MRef ref) = do
   sol <- liftST $ readSTRef ref
@@ -70,6 +76,7 @@ existsMetaErasability = liftST $ MRef <$> newSTRef Nothing
 fromErasability :: Erasability -> MetaErasability
 fromErasability er = case er of
   Erased -> MErased
+  Zeroed -> MZeroed
   Retained -> MRetained
 
 toErasability :: Erasability -> MetaErasability -> TCM Erasability
@@ -77,6 +84,7 @@ toErasability def er = do
   er' <- normaliseMetaErasability er
   return $ case er' of
     MErased -> Erased
+    MZeroed -> Zeroed
     MRetained -> Retained
     MRef _ -> def
 
@@ -122,10 +130,13 @@ subErasability m1 m2 = do
   subErasability' m1' m2'
 
 subErasability' :: MetaErasability -> MetaErasability -> TCM ()
+subErasability' _ MZeroed = return ()
 subErasability' _ MErased = return ()
 subErasability' MRetained _ = return ()
 subErasability' MErased MRetained = throwError "subErasability"
+subErasability' MZeroed MRetained = throwError "subErasability"
 subErasability' MErased (MRef ref) = liftST $ writeSTRef ref $ Just MErased
+subErasability' MZeroed (MRef ref) = liftST $ writeSTRef ref $ Just MZeroed
 subErasability' (MRef ref) MRetained = liftST $ writeSTRef ref $ Just MRetained
 subErasability' (MRef ref1) (MRef ref2) | ref1 == ref2 = return ()
 subErasability' (MRef ref1) (MRef ref2) = liftST $ writeSTRef ref2 $ Just $ MRef ref1
@@ -224,17 +235,38 @@ infer er expr = do
       let retType = instantiate1 (pure x) retTypeScope
       (retType', _) <- infer MErased retType -- since we know this is a type
       return (Pi h argEr argType' $ abstract1 x retType', first fromErasability $ Builtin.TypeE $ Lit 1)
-    Lam h _ argType retScope -> do
-      (argType', _argTypeType) <- infer MErased argType
-      argEr <- existsMetaErasability
-      x <- forall h argEr argType'
-      let ret = instantiate1 (pure x) retScope
+    (lamsViewM -> Just (tele, retScope)) -> do
+      vs <- forTeleWithPrefixM tele $ \h _ argScope vs -> do
+        let argType = instantiateTele pure vs argScope
+        argEr <- existsMetaErasability
+        (argType', _argTypeType) <- infer MErased argType
+        forall h argEr argType'
+      let ret = instantiateTele pure vs retScope
       (ret', retType) <- infer er ret
       retainSize er retType
+
+      argErs <- mapM (normaliseMetaErasability . metaErasability) vs
+
+      -- TODO is there a better way to do this?
+      unless (any (\e -> e == MRetained || e == MZeroed) argErs) $ do
+        let isMRef (MRef _) = True
+            isMRef _ = False
+            refs = Vector.filter isMRef argErs
+        if Vector.null refs then
+          throwError "Can't erase lambda"
+        else do
+          let (MRef r) = refs Vector.! 0
+          liftST $ writeSTRef r $ Just MZeroed
+
+      let abstr = teleAbstraction vs
+          tele' = Telescope $ (\v -> (metaHint v, metaErasability v, abstract abstr $ metaType v)) <$> vs
+          retScope' = abstract abstr ret'
+          retTypeScope = abstract abstr retType
       return
-        ( Lam h argEr argType' $ abstract1 x ret'
-        , Pi h argEr argType' $ abstract1 x retType
+        ( lams tele' retScope'
+        , pis tele' retTypeScope
         )
+    Lam {} -> error "infer Lam"
     App fun _ arg -> do
       (fun', funType) <- infer er fun
       funType' <- whnf funType
@@ -270,12 +302,12 @@ inferBranches
   -> Branches QConstr a (Expr a) MetaVar
   -> TCM (Branches QConstr MetaErasability (Expr MetaErasability) MetaVar, ErasableM)
 inferBranches er (ConBranches cbrs) = do
-  cbrs' <- forM cbrs $ \(c@(QConstr dataTypeName _), tele, brScope) -> mdo
+  cbrs' <- forM cbrs $ \(c@(QConstr dataTypeName _), tele, brScope) -> do
     (_, dataTypeType) <- definition dataTypeName
     let numParams = teleLength $ telescope (dataTypeType :: ErasableM)
     conType <- qconstructor c
     let (argTypes, _ret) = pisView (conType :: ExprE MetaVar)
-    vs <- iforMTele tele $ \i h _ s -> do
+    vs <- iforTeleWithPrefixM tele $ \i h _ s vs -> do
       logVerbose 30 $ shower $ teleAnnotations argTypes
       let argEr = fromErasability $ teleAnnotations argTypes Vector.! (i + numParams)
           typ = instantiateTele pure vs s
@@ -337,9 +369,9 @@ checkDataType
   => DataDef (Expr a) MetaVar
   -> ErasableM
   -> TCM (DataDef (Expr MetaErasability) MetaVar)
-checkDataType (DataDef cs) typ = mdo
+checkDataType (DataDef cs) typ = do
 
-  vs <- forMTele (telescope typ) $ \h e s ->
+  vs <- forTeleWithPrefixM (telescope typ) $ \h e s vs ->
     forall h e $ instantiateTele pure vs s
 
   cs' <- forM cs $ \(ConstrDef c s) -> do

@@ -18,7 +18,7 @@ data Expr v
   | Con QConstr (Vector (Expr v)) -- ^ Fully applied
   | Lam !NameHint (Expr v) (Scope1 Expr v)
   | App (Expr v) (Expr v)
-  | Let NameHint (Expr v) (Expr v) (Scope () Expr v)
+  | Let NameHint (Expr v) (Expr v) (Scope1 Expr v)
   | Case (Expr v) (Branches QConstr () Expr v)
   | Sized (Expr v) (Expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)

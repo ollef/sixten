@@ -29,6 +29,10 @@ erase expr = do
     Abstract.Lam h Erased t s -> do
       v <- forall h Erased t
       erase $ instantiate1 (pure v) s
+    Abstract.Lam h Zeroed t s -> do
+      v <- forall h Zeroed t
+      e <- eraseS $ instantiate1 (pure v) s
+      return $ SLambda.Lam h (SLambda.Lit 0) $ abstract1 v e
     Abstract.Lam h Retained t s -> do
       v <- forall h Retained t
       e <- eraseS $ instantiate1 (pure v) s
@@ -52,9 +56,21 @@ erase expr = do
         es' = Vector.fromList $ snd <$> filter (\(a, _) -> a == Retained) es
         argsLen = length es
     Abstract.Con _qc -> throwError "erase impossible"
-    Abstract.App e1 Retained e2 -> SLambda.App <$> erase e1 <*> eraseS e2
     Abstract.App e1 Erased _e2 -> erase e1
+    Abstract.App e1 Zeroed _e2 -> do
+      e1' <- erase e1
+      return $ SLambda.App e1' unit
+    Abstract.App e1 Retained e2 -> SLambda.App <$> erase e1 <*> eraseS e2
     Abstract.Case e brs -> SLambda.Case <$> eraseS e <*> eraseBranches brs
+    Abstract.Let h Erased e scope -> do
+      t <- typeOf e
+      v <- forall h Erased t
+      erase $ instantiate1 (pure v) scope
+    Abstract.Let h Zeroed e scope -> do
+      t <- typeOf e
+      v <- forall h Zeroed t
+      body <- eraseS $ instantiate1 (pure v) scope
+      return $ SLambda.Let h unit (SLambda.Lit 0) $ abstract1 v body
     Abstract.Let h Retained e scope -> do
       t <- typeOf e
       v <- forall h Retained t
@@ -62,13 +78,11 @@ erase expr = do
       sz <- erase =<< sizeOfType t
       body <- eraseS $ instantiate1 (pure v) scope
       return $ SLambda.Let h e' sz $ abstract1 v body
-    Abstract.Let h Erased e scope -> do
-      t <- typeOf e
-      v <- forall h Erased t
-      erase $ instantiate1 (pure v) scope
   modifyIndent pred
   logMeta 20 "erase res" res
   return res
+  where
+    unit = SLambda.Sized (SLambda.Lit 0) $ SLambda.Con Builtin.Unit mempty
 
 retainedAbstraction :: Telescope Erasability expr v -> Tele -> Maybe Tele
 retainedAbstraction tele (Tele n) = Tele <$> perm Vector.! n
@@ -76,6 +90,7 @@ retainedAbstraction tele (Tele n) = Tele <$> perm Vector.! n
     perm = Vector.fromList $ reverse $ fst $
       Vector.foldl' (\(xs, i) (_, a, _) -> case a of
           Erased -> (Nothing : xs, i)
+          Zeroed -> (Nothing : xs, i)
           Retained -> (Just i : xs, i + 1))
         ([], 0) $ unTelescope tele
 
@@ -124,4 +139,8 @@ eraseDef (DataDefinition _) typ = go typ
     go (Abstract.Pi h Erased t s) = do
       v <- forall h Erased t
       go $ instantiate1 (pure v) s
+    go (Abstract.Pi h Zeroed t s) = do
+      v <- forall h Zeroed t
+      e <- go $ instantiate1 (pure v) s
+      return $ SLambda.Sized (SLambda.Lit 1) $ SLambda.Lam h (SLambda.Lit 0) $ abstract1 v e
     go _ = return $ SLambda.Sized (SLambda.Lit 0) $ SLambda.Con Builtin.Unit mempty

@@ -53,6 +53,7 @@ data Var
   = VoidVar
   | IndirectVar (Operand Ptr)
   | DirectVar (Operand Int)
+  deriving Show
 
 varDir :: Var -> Direction
 varDir VoidVar = Void
@@ -151,7 +152,7 @@ generateExpr msz expr = case expr of
     szInt <- loadVar "size" szVar
     generateExpr (Just szInt) e
   where
-    sz = fromMaybe (error "generateExpr") msz
+    sz = fromMaybe (error $ "generateExpr" ++ show expr) msz
 
 storeExpr :: Maybe (Operand Int) -> Expr RetDir Var -> Operand Ptr -> Gen ()
 storeExpr msz expr ret = case expr of

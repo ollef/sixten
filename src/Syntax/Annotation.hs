@@ -26,15 +26,17 @@ instance PrettyAnnotation Plicitness where
   prettyAnnotationParens Implicit = braces
   prettyAnnotationParens Explicit = parens
 
-data Erasability = Erased | Retained
+data Erasability = Erased | Zeroed | Retained
   deriving (Eq, Ord)
 
 instance Show Erasability where
   show Erased = "Er"
+  show Zeroed = "Ze"
   show Retained = "Re"
 
 instance PrettyAnnotation Erasability where
   prettyAnnotation Erased = prettyTightApp "~"
+  prettyAnnotation Zeroed = prettyTightApp "0~"
   prettyAnnotation Retained = id
 
 data Visibility = Private | Public
