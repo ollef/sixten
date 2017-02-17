@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, OverloadedStrings, RecursiveDo, TypeFamilies #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Backend.ClosureConvert where
 
 import Control.Applicative
@@ -41,15 +41,14 @@ createLambdaSignature
     ( Direction
     , Telescope Direction Converted.Expr Void
     )
-createLambdaSignature tele lamScope = mdo
-  tele' <- forMTele tele $ \h () s -> do
-    let e = instantiateTele pure vs $ vacuous s
-    v <- forall h () Unit
-    e' <- convertExpr e
-    return (v, e')
-  let vs = fst <$> tele'
-      abstr = teleAbstraction vs
-      tele'' = error "convertLambda" <$> Telescope ((\(v, e) -> (metaHint v, Converted.sizeDir e, abstract abstr e)) <$> tele')
+createLambdaSignature tele lamScope = do
+  vs <- forMTele tele $ \h () _ ->
+    forall h () Unit
+  es <- forMTele tele $ \_ () s ->
+    convertExpr $ instantiateTele pure vs $ vacuous s
+
+  let abstr = teleAbstraction vs
+      tele'' = error "convertLambda" <$> Telescope (Vector.zipWith (\v e -> (metaHint v, Converted.sizeDir e, abstract abstr e)) vs es)
   return (Closed.sExprDir $ fromScope lamScope, tele'')
 
 convertSignature
@@ -75,16 +74,16 @@ convertLambda
     , Telescope Direction Converted.Expr Void
     , Scope Tele Converted.Expr Void
     )
-convertLambda tele lamScope = mdo
-  tele' <- forMTele tele $ \h () s -> do
-    let e = instantiateTele pure vs $ vacuous s
-    v <- forall h () Unit
-    e' <- convertExpr e
-    return (v, e')
-  let vs = fst <$> tele'
-      lamExpr = instantiateTele pure vs $ vacuous lamScope
+convertLambda tele lamScope = do
+  vs <- forMTele tele $ \h () _ ->
+    forall h () Unit
+
+  es <- forMTele tele $ \_ () s ->
+    convertExpr $ instantiateTele pure vs $ vacuous s
+
+  let lamExpr = instantiateTele pure vs $ vacuous lamScope
       abstr = teleAbstraction vs
-      tele'' = error "convertLambda" <$> Telescope ((\(v, e) -> (metaHint v, Converted.sizeDir e, abstract abstr e)) <$> tele')
+      tele'' = error "convertLambda" <$> Telescope (Vector.zipWith (\v e -> (metaHint v, Converted.sizeDir e, abstract abstr e)) vs es)
   lamExpr' <- convertExpr lamExpr
   let lamScope' = abstract abstr lamExpr'
   return (Converted.sExprDir lamExpr', tele'', error "convertLambda" <$> lamScope')
@@ -204,16 +203,14 @@ knownCall f retDir tele fBodyScope args
 
 convertBranches :: LBrsM -> TCM CBrsM
 convertBranches (ConBranches cbrs) = fmap ConBranches $
-  forM cbrs $ \(qc, tele, brScope) -> mdo
-    tele' <- forMTele tele $ \h () s -> do
-      let e = instantiateTele pure vs s
-      v <- forall h () Unit
-      e' <- convertExpr e
-      return (v, e')
-    let vs = fst <$> tele'
-        brExpr = instantiateTele pure vs brScope
+  forM cbrs $ \(qc, tele, brScope) -> do
+    vs <- forMTele tele $ \h () _ ->
+      forall h () Unit
+    es <- forMTele tele $ \_ () s ->
+      convertExpr $ instantiateTele pure vs s
+    let brExpr = instantiateTele pure vs brScope
         abstr = teleAbstraction vs
-        tele'' = Telescope $ (\(v, e) -> (metaHint v, (), abstract abstr e)) <$> tele'
+        tele'' = Telescope $ Vector.zipWith (\v e -> (metaHint v, (), abstract abstr e)) vs es
     brExpr' <- convertExpr brExpr
     let brScope' = abstract abstr brExpr'
     return (qc, tele'', brScope')

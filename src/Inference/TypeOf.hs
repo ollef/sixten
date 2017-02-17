@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, RecursiveDo, TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts, TypeFamilies #-}
 module Inference.TypeOf where
 
 import Control.Monad
@@ -41,8 +41,8 @@ typeOfM expr = do
       eType <- typeOfM e
       v <- forall h a eType
       typeOfM $ instantiate1 (pure v) s
-    Case _ (ConBranches ((_, tele, brScope) NonEmpty.:| _)) -> mdo
-      vs <- forMTele tele $ \h a s ->
+    Case _ (ConBranches ((_, tele, brScope) NonEmpty.:| _)) -> do
+      vs <- forTeleWithPrefixM tele $ \h a s vs ->
         forall h a $ instantiateTele pure vs s
       typeOfM $ instantiateTele pure vs brScope
     Case _ (LitBranches _ def) -> typeOfM def
@@ -81,8 +81,8 @@ typeOf expr = do
       eType <- typeOf e
       v <- forall h a eType
       typeOf $ instantiate1 (pure v) s
-    Case _ (ConBranches ((_, tele, brScope) NonEmpty.:| _)) -> mdo
-      vs <- forMTele tele $ \h a s ->
+    Case _ (ConBranches ((_, tele, brScope) NonEmpty.:| _)) -> do
+      vs <- forTeleWithPrefixM tele $ \h a s vs ->
         forall h a $ instantiateTele pure vs s
       typeOf $ instantiateTele pure vs brScope
     Case _ (LitBranches _ def) -> typeOf def

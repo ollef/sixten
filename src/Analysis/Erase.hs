@@ -1,4 +1,4 @@
-{-# LANGUAGE MonadComprehensions, OverloadedStrings, RecursiveDo, ViewPatterns #-}
+{-# LANGUAGE MonadComprehensions, OverloadedStrings, ViewPatterns #-}
 module Analysis.Erase where
 
 import Bound.Scope hiding (instantiate1)
@@ -101,9 +101,11 @@ eraseBranches
 eraseBranches (ConBranches cbrs) = do
   logMeta 20 "eraseBranches brs" $ ConBranches cbrs
   modifyIndent succ
-  cbrs' <- forM cbrs $ \(c, tele, brScope) -> mdo
-    tele' <- forMTele tele $ \h a s -> do
-      let t = instantiateTele pure vs s
+  cbrs' <- forM cbrs $ \(c, tele, brScope) -> do
+    tele' <- forTeleWithPrefixM tele $ \h a s tele' -> do
+      let vs = fst <$> tele'
+          abstr v = retainedAbstraction tele =<< teleAbstraction vs v
+          t = instantiateTele pure vs s
       tsz <- erase =<< sizeOfType t
       v <- forall h a t
       return (v, (h, a, abstract abstr tsz))

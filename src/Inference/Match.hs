@@ -1,4 +1,4 @@
-{-# LANGUAGE RecursiveDo, ScopedTypeVariables, ViewPatterns #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Inference.Match where
 
 import Control.Monad.Except
@@ -139,10 +139,8 @@ conPatArgs c typ = do
   ctype <- qconstructor c
   let (tele, _) = pisView (ctype :: AbstractM)
       tele' = instantiatePrefix (snd <$> Vector.fromList args) tele
-  vs <- mdo
-    vs <- forMTele tele' $ \h p s ->
-      forall h p $ instantiateTele pure vs s
-    return vs
+  vs <- forTeleWithPrefixM tele' $ \h p s vs ->
+    forall h p $ instantiateTele pure vs s
   return
     $ (\(p, v) -> (p, VarPat mempty v, metaType v))
     <$> Vector.zip (teleAnnotations tele') vs

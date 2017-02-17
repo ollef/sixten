@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, OverloadedStrings, RecursiveDo, TypeFamilies, ViewPatterns #-}
+{-# LANGUAGE ViewPatterns #-}
 module Backend.Close where
 
 import Control.Monad.Except
@@ -43,7 +43,7 @@ closeLambda
   :: Telescope () SLambda.Expr Meta
   -> Scope Tele SLambda.Expr Meta
   -> TCM CExprM
-closeLambda tele lamScope = mdo
+closeLambda tele lamScope = do
   sortedFvs <- do
     -- TODO move into util function
     -- TODO do we need to use foldMapM here?
@@ -57,7 +57,7 @@ closeLambda tele lamScope = mdo
 
     return $ Vector.fromList $ impure <$> topoSort deps
 
-  vs <- forMTele tele $ \h () s -> do
+  vs <- forTeleWithPrefixM tele $ \h () s vs -> do
     let e = instantiateTele pure vs s
     e' <- closeExpr e
     forall h () e'
@@ -84,8 +84,8 @@ closeLambda tele lamScope = mdo
 
 closeBranches :: BrsM SLambda.Expr -> TCM (BrsM Closed.Expr)
 closeBranches (ConBranches cbrs) = fmap ConBranches $
-  forM cbrs $ \(qc, tele, brScope) -> mdo
-    vs <- forMTele tele $ \h () s -> do
+  forM cbrs $ \(qc, tele, brScope) -> do
+    vs <- forTeleWithPrefixM tele $ \h () s vs -> do
       let e = instantiateTele pure vs s
       e' <- closeExpr e
       forall h () e'

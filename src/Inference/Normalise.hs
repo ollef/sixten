@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, FlexibleInstances, MonadComprehensions, MultiParamTypeClasses, RecursiveDo, TypeFamilies, ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts, MonadComprehensions, ViewPatterns #-}
 module Inference.Normalise where
 
 import Control.Monad.Except
@@ -94,13 +94,13 @@ normaliseM expr = do
   logMeta 40 "normaliseM res" res
   return res
   where
-    normaliseTelescope tele scope = mdo
-      avs <- forMTele tele $ \h a s -> do
-        t' <- normaliseM $ instantiateTele pure vs s
+    normaliseTelescope tele scope = do
+      avs <- forTeleWithPrefixM tele $ \h a s avs -> do
+        t' <- normaliseM $ instantiateTele pure (snd <$> avs) s
         v <- forall h a t'
         return (a, v)
-      let vs = snd <$> avs
 
+      let vs = snd <$> avs
           abstr = teleAbstraction vs
       e' <- normaliseM $ instantiateTele pure vs scope
       scope' <- abstractM abstr e'

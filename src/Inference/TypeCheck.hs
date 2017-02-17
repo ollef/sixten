@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, RecursiveDo, ScopedTypeVariables, TypeFamilies, ViewPatterns #-}
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, TypeFamilies, ViewPatterns #-}
 module Inference.TypeCheck where
 
 import Control.Monad.Except
@@ -358,10 +358,8 @@ tcPat' pat vs expected = case pat of
         numParams = teleLength paramsTele
         (tele, retScope) = pisView conType
 
-    typeVars <- mdo
-      typeVars <- forMTele tele $ \h _ s ->
-        exists h $ instantiateTele pure typeVars s
-      return typeVars
+    typeVars <- forTeleWithPrefixM tele $ \h _ s typeVars ->
+      exists h $ instantiateTele pure typeVars s
 
     let retType = instantiateTele pure typeVars retScope
     unless (Vector.length pats == Vector.length typeVars - numParams) $
@@ -719,12 +717,12 @@ checkDataType
   -> DataDef Concrete.Expr MetaP
   -> AbstractM
   -> TCM (DataDef Abstract.ExprP MetaP, AbstractM)
-checkDataType name (DataDef cs) typ = mdo
+checkDataType name (DataDef cs) typ = do
   typ' <- zonk typ
   logMeta 20 "checkDataType t" typ'
 
-  ps' <- forMTele (telescope typ') $ \h p s -> do
-    let is = instantiateTele pure vs s
+  ps' <- forTeleWithPrefixM (telescope typ') $ \h p s ps' -> do
+    let is = instantiateTele pure (snd <$> ps') s
     v <- forall h p is
     return (p, v)
 
@@ -796,10 +794,9 @@ checkClausesRho clauses rhoType = do
         where
           Concrete.Clause pats _ = NonEmpty.head clauses
   (argTele, returnTypeScope, fs) <- funSubtypes rhoType ps
-  argVars <- mdo
-    -- TODO get namehints from the patterns
-    argVars <- forMTele argTele $ \h p s -> forall h p $ instantiateTele pure argVars s
-    return argVars
+  -- TODO get namehints from the patterns
+  argVars <- forTeleWithPrefixM argTele $ \h p s argVars ->
+    forall h p $ instantiateTele pure argVars s
 
   let returnType = instantiateTele pure argVars returnTypeScope
 
