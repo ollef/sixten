@@ -8,7 +8,6 @@ import Data.Bifoldable
 import Data.Bifunctor
 import Data.Foldable
 import Data.Hashable
-import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Set(Set)
@@ -69,14 +68,6 @@ bifoldMapScope
   -> Scope b (expr x) y -> m
 bifoldMapScope f g (Scope s) = bifoldMap f (unvar mempty $ bifoldMap f g) s
 
-recursiveAbstract
-  :: (Eq v, Foldable t, Functor t, Hashable v, Monad f)
-  => t (v, f v)
-  -> t (Scope Int f v)
-recursiveAbstract es = (abstract (`HashMap.lookup` vs) . snd) <$> es
-  where
-    vs = HashMap.fromList $ zip (toList $ fst <$> es) [(0 :: Int)..]
-
 fromText :: IsString a => Text -> a
 fromText = fromString . Text.unpack
 
@@ -119,6 +110,12 @@ mapWithPrefix f vs = result
   where
     result = Vector.imap (\i v -> f v $ Vector.take i result) vs
 
+forWithPrefix
+  :: Vector v
+  -> (v -> Vector v' -> v')
+  -> Vector v'
+forWithPrefix = flip mapWithPrefix
+
 mapWithPrefixM
   :: (Monad m, Foldable t)
   => (v -> Vector v' -> m v')
@@ -126,3 +123,10 @@ mapWithPrefixM
   -> m (Vector v')
 mapWithPrefixM f
   = foldlM (\vs' v -> Vector.snoc vs' <$> f v vs') mempty
+
+forWithPrefixM
+  :: (Monad m, Foldable t)
+  => t v
+  -> (v -> Vector v' -> m v')
+  -> m (Vector v')
+forWithPrefixM = flip mapWithPrefixM

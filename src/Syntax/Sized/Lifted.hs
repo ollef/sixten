@@ -5,8 +5,6 @@ import Control.Monad
 import Data.Bifoldable
 import Data.Bifunctor
 import Data.Bitraversable
-import qualified Data.Foldable as Foldable
-import Data.Hashable
 import qualified Data.HashMap.Lazy as HashMap
 import Data.Monoid
 import Data.String
@@ -14,7 +12,7 @@ import Data.Vector(Vector)
 import Data.Void
 import Prelude.Extras
 
-import Syntax hiding (Definition, abstractDef)
+import Syntax hiding (Definition)
 import TopoSort
 import Util
 import qualified Syntax.Sized.Closed as Closed
@@ -62,52 +60,16 @@ sizeOf :: Expr retDir v -> Expr retDir v
 sizeOf (Sized sz _) = sz
 sizeOf _ = error "Lifted.sizeOf"
 
-traverseDefinitionFirst
+bitraverseDefinition
   :: (Bitraversable expr, Applicative f)
   => (a -> f a')
-  -> Definition a (expr a) v
-  -> f (Definition a' (expr a') v)
-traverseDefinitionFirst f (FunctionDef vis (Function retDir args s))
-  = FunctionDef vis <$> (Function <$> f retDir <*> bitraverseTelescope f pure args <*> bitraverseScope f pure s)
-traverseDefinitionFirst f (ConstantDef vis (Constant dir e))
-  = ConstantDef vis <$> (Constant dir <$> bitraverse f pure e)
-
-abstractDef
-  :: GlobalBind expr
-  => (a -> Maybe b)
-  -> Definition retDir expr a
-  -> Definition retDir expr (Var b a)
-abstractDef f (FunctionDef vis (Function retDir args s))
-  = FunctionDef vis
-  $ Function retDir (bound (pure . pure) global args)
-  $ s >>>= \a -> pure $ maybe (F a) B (f a)
-abstractDef f (ConstantDef vis (Constant dir e))
-  = ConstantDef vis
-  $ Constant dir
-  $ fromScope
-  $ abstract f e
-
-recursiveAbstractDefs
-  :: (Eq v, GlobalBind f, Functor t, Foldable t, Hashable v)
-  => t (v, Definition a f v)
-  -> t (Definition a f (Var Int v))
-recursiveAbstractDefs es = (abstractDef (`HashMap.lookup` vs) . snd) <$> es
-  where
-    vs = HashMap.fromList $ zip (Foldable.toList $ fst <$> es) [(0 :: Int)..]
-
-instantiateDef
-  :: GlobalBind expr
-  => (b -> expr a)
-  -> Definition retDir expr (Var b a)
-  -> Definition retDir expr a
-instantiateDef f (FunctionDef vis (Function retDir args s))
-  = FunctionDef vis
-  $ Function retDir (bound (unvar f pure) global args)
-  $ s >>>= unvar f pure
-instantiateDef f (ConstantDef vis (Constant dir e))
-  = ConstantDef vis
-  $ Constant dir
-  $ e >>= unvar f pure
+  -> (b -> f b')
+  -> Definition a (expr a) b
+  -> f (Definition a' (expr a') b')
+bitraverseDefinition f g (FunctionDef vis (Function retDir args s))
+  = FunctionDef vis <$> (Function <$> f retDir <*> bitraverseTelescope f g args <*> bitraverseScope f g s)
+bitraverseDefinition f g (ConstantDef vis (Constant dir e))
+  = ConstantDef vis <$> (Constant dir <$> bitraverse f g e)
 
 toClosed :: Expr retDir v -> Closed.Expr v
 toClosed expr = case expr of

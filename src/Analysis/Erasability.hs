@@ -7,12 +7,14 @@ import Data.Bifunctor
 import Data.Bitraversable
 import Data.Function
 import Data.Hashable
+import Data.Maybe
 import Data.Monoid
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Set as Set
 import Data.STRef
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
+import Data.Void
 
 import qualified Builtin
 import Syntax
@@ -116,7 +118,7 @@ instance Meta.MetaVary (Expr MetaErasability) MetaVar where
   metaVarType = metaType
 
 instance Context (Expr MetaErasability) where
-  definition = fmap (bimap (definitionFirst fromErasability) (first fromErasability)) . definition
+  definition = fmap (bimap (bimapDefinition fromErasability id) (first fromErasability)) . definition
   qconstructor = fmap (first fromErasability) . qconstructor
   typeOfSize = first fromErasability . typeOfSize
 
@@ -393,40 +395,61 @@ generaliseDefs
   :: Vector ( MetaVar
             , Definition (Expr MetaErasability) MetaVar
             )
-  -> TCM (Vector ( Definition ExprE (Var Int MetaVar)
-                 , Scope Int ExprE MetaVar
+  -> TCM (Vector ( Definition ExprE MetaVar
+                 , ExprE MetaVar
                  )
          )
-generaliseDefs ds = do
-  let types = (\(v, _) -> (v, metaType v)) <$> ds
-  ds' <- traverse (bitraverse pure $ traverseDefinitionFirst (toErasability Erased)) ds
-  types' <- traverse (bitraverse pure $ bitraverse (toErasability Erased) pure) types
-  let abstractedDs = recursiveAbstractDefs ds'
-      abstractedTypes = recursiveAbstract types'
-  return $ Vector.zip abstractedDs abstractedTypes
+generaliseDefs ds = forM ds $ \(v, d) -> do
+  let t = metaType v
+  d' <- bitraverseDefinition (toErasability Erased) pure d
+  t' <- bitraverse (toErasability Erased) pure t
+  return (d', t')
 
 inferRecursiveDefs
   :: PrettyAnnotation a
   => Vector ( Name
-            , Definition (Expr a) (Var Int MetaVar)
-            , Scope Int (Expr a) MetaVar
+            , Definition (Expr a) Void
+            , Expr a Void
             )
-  -> TCM (Vector ( Definition ExprE (Var Int MetaVar)
-                 , Scope Int ExprE MetaVar
+  -> TCM (Vector ( Name
+                 , Definition ExprE Void
+                 , ExprE Void
                  )
          )
-inferRecursiveDefs ds = mdo
-  evs <- Vector.forM ds $ \(v, _, t) -> do
-    logPretty 20 "InferErasability.inferRecursiveDefs" v
-    (t', _) <- inferType MErased $ instantiate (pure . (evs Vector.!)) t
-    let h = fromName v
-    forall h MRetained t'
-  let instantiatedDs = flip Vector.map ds $ \(_, e, _) ->
-        instantiateDef (pure . (evs Vector.!)) e
+inferRecursiveDefs defs = do
+  let names = fst3 <$> defs
+      expose evars name = case Vector.elemIndex name names of
+        Nothing -> global name
+        Just index -> pure
+          $ fromMaybe (error "Erasability inferRecursiveDefs")
+          $ evars Vector.!? index
 
-  results <- flip Vector.imapM instantiatedDs $ \i d -> do
-    let v = evs Vector.! i
-    d' <- checkDefType d $ metaType v
-    return (v, d')
+  -- TODO handle very recursive types?
+  evars <- forWithPrefixM defs $ \(name, _, typ) evars -> do
+    logPretty 20 "InferErasability.inferRecursiveDefs" name
+    (typ', _) <- inferType MErased $ bind absurd (expose evars) typ
+    forall (fromName name) MRetained typ'
 
-  generaliseDefs results
+  let exposedDefs = flip Vector.map defs $ \(_, def, _) ->
+        bound absurd (expose evars) def
+
+  checkedDefs <- forM (Vector.zip evars exposedDefs) $ \(evar, def) -> do
+    d' <- checkDefType def $ metaType evar
+    return (evar, d')
+
+  genDefs <- generaliseDefs checkedDefs
+
+  let unexpose evar = case Vector.elemIndex evar evars of
+        Nothing -> pure evar
+        Just index -> global
+          $ fromMaybe (error "Erasability inferRecursiveDefs 2")
+          $ names Vector.!? index
+      vf :: MetaVar -> TCM b
+      vf v = throwError $ "inferRecursiveDefs " ++ show v
+
+  forM (Vector.zip names genDefs) $ \(name, (def, typ)) -> do
+    let unexposedDef = bound unexpose global def
+        unexposedTyp = bind unexpose global typ
+    unexposedDef' <- traverse vf unexposedDef
+    unexposedTyp' <- traverse vf unexposedTyp
+    return (name, unexposedDef', unexposedTyp')

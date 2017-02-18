@@ -23,19 +23,28 @@ newtype DataDef typ v = DataDef { dataConstructors :: [ConstrDef (Scope Tele typ
 instance GlobalBound DataDef where
   bound f g (DataDef cs) = DataDef $ fmap (bound f g) <$> cs
 
-traverseDataDefFirst
-  :: (Bitraversable typ, Applicative f)
-  => (a -> f a')
-  -> DataDef (typ a) v
-  -> f (DataDef (typ a') v)
-traverseDataDefFirst f (DataDef cs) = DataDef <$> traverse (traverse $ bitraverseScope f pure) cs
+hoistDataDef
+  :: Functor typ
+  => (forall v'. typ v' -> typ' v')
+  -> DataDef typ v
+  -> DataDef typ' v
+hoistDataDef f (DataDef cs) = DataDef $ fmap (hoistScope f) <$> cs
 
-dataDefFirst
+bimapDataDef
   :: Bifunctor typ
   => (a -> a')
-  -> DataDef (typ a) v
-  -> DataDef (typ a') v
-dataDefFirst f (DataDef cs) = DataDef $ map (fmap $ bimapScope f id) cs
+  -> (b -> b')
+  -> DataDef (typ a) b
+  -> DataDef (typ a') b'
+bimapDataDef f g (DataDef cs) = DataDef $ fmap (bimapScope f g) <$> cs
+
+bitraverseDataDef
+  :: (Bitraversable typ, Applicative f)
+  => (a -> f a')
+  -> (b -> f b')
+  -> DataDef (typ a) b
+  -> f (DataDef (typ a') b')
+bitraverseDataDef f g (DataDef cs) = DataDef <$> traverse (traverse $ bitraverseScope f g) cs
 
 quantifiedConstrTypes
   :: Syntax typ

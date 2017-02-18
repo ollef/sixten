@@ -5,7 +5,6 @@ import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.State
 import Data.Bifunctor
-import Data.Bitraversable
 import Data.Foldable
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
@@ -150,7 +149,8 @@ prettyGroup str f defs = do
 typeCheckGroup
   :: [(Name, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]
   -> TCM [(Name, Definition Abstract.ExprP Void, Abstract.ExprP Void)]
-typeCheckGroup = fmap Vector.toList . TypeCheck.checkRecursiveDefs . Vector.fromList
+typeCheckGroup
+  = fmap Vector.toList . TypeCheck.checkRecursiveDefs . Vector.fromList
 
 simplifyGroup
   :: Eq a
@@ -170,28 +170,10 @@ inferGroupErasability
   :: PrettyAnnotation a
   => [(Name, Definition (Abstract.Expr a) Void, Abstract.Expr a Void)]
   -> TCM [(Name, Definition Abstract.ExprE Void, Abstract.ExprE Void)]
-inferGroupErasability defs = do
-  let names = Vector.fromList [n | (n, _, _) <- defs]
-      glob n = maybe (global n) (pure . B) $ Vector.elemIndex n names
-      exposedDefs = Vector.fromList
-        [ ( n
-          , bound absurd glob d
-          , toScope $ bind absurd glob t
-          )
-        | (n, d, t) <- defs]
-  inferredDefs <- Erasability.inferRecursiveDefs exposedDefs
-
-  let vf :: Erasability.MetaVar -> TCM b
-      vf v = throwError $ "inferGroupErasability " ++ show v
-  inferredDefs' <- traverse (bitraverse (traverse $ traverse vf) (traverse vf)) inferredDefs
-  let instDefs =
-        [ ( names Vector.! i
-          , instantiateDef (global . (names Vector.!)) d
-          , instantiate (global . (names Vector.!)) t
-          )
-        | (i, (d, t)) <- zip [0..] $ Vector.toList inferredDefs'
-        ]
-  return instDefs
+inferGroupErasability
+  = fmap Vector.toList
+  . Erasability.inferRecursiveDefs
+  . Vector.fromList
 
 addErasableGroupToContext
   :: [(Name, Definition Abstract.ExprE Void, Abstract.ExprE Void)]
@@ -239,26 +221,8 @@ liftGroup defs = fmap (Lifted.dependencyOrder . concat) $ forM defs $ \(name, e)
 inferGroupDirections
   :: [(Name, Lifted.Definition ClosureDir (Lifted.Expr ClosureDir) Void)]
   -> TCM [(Name, Lifted.Definition RetDir (Lifted.Expr RetDir) Void)]
-inferGroupDirections defs = do
-  let names = Vector.fromList $ fst <$> defs
-      glob n = maybe (global n) (pure . B) $ Vector.elemIndex n names
-      exposedDefs = Vector.fromList
-        [ ( n
-          , bound absurd glob d
-          )
-        | (n, d) <- defs]
-  inferredDefs <- ReturnDirection.inferRecursiveDefs exposedDefs
-
-  let vf :: ReturnDirection.MetaVar -> TCM b
-      vf v = throwError $ "inferGroupDirections " ++ show v
-  inferredDefs' <- traverse (traverse $ traverse vf) inferredDefs
-  let instDefs =
-        [ ( names Vector.! i
-          , Lifted.instantiateDef (global . (names Vector.!)) d
-          )
-        | (i, d) <- zip [0..] $ Vector.toList inferredDefs'
-        ]
-  return instDefs
+inferGroupDirections
+  = fmap Vector.toList . ReturnDirection.inferRecursiveDefs . Vector.fromList
 
 addReturnDirectionsToContext
   :: [(Name, Lifted.Definition RetDir (Lifted.Expr RetDir) Void)]

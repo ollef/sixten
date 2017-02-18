@@ -7,11 +7,13 @@ import Data.Bitraversable
 import Data.Function
 import Data.Hashable
 import qualified Data.List.NonEmpty as NonEmpty
+import Data.Maybe
 import Data.STRef
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
+import Data.Void
 
-import Syntax hiding (Definition, traverseDefinitionFirst, recursiveAbstractDefs, instantiateDef) -- TODO cleanup name conflicts
+import Syntax hiding (Definition, bitraverseDefinition)
 import Syntax.Sized.Lifted
 import TCM
 
@@ -222,27 +224,47 @@ inferDefinition _ (ConstantDef vis (Constant dir e))
   = ConstantDef vis . Constant dir . fst <$> infer e
 
 generaliseDefs
-  :: Vector (MetaVar, Definition RetDirM (Expr RetDirM) MetaVar)
-  -> TCM (Vector (Definition RetDir (Expr RetDir) (Var Int MetaVar)))
-generaliseDefs ds = do
-  ds' <- traverse (bitraverse pure $ traverseDefinitionFirst $ traverse $ toReturnIndirect Projection) ds
-  return $ recursiveAbstractDefs ds'
+  :: Vector (Definition RetDirM (Expr RetDirM) MetaVar)
+  -> TCM (Vector (Definition RetDir (Expr RetDir) MetaVar))
+generaliseDefs
+  = traverse
+  $ bitraverseDefinition (traverse $ toReturnIndirect Projection) pure
 
 inferRecursiveDefs
-  :: Vector (Name, Definition ClosureDir (Expr ClosureDir) (Var Int MetaVar))
-  -> TCM (Vector (Definition RetDir (Expr RetDir) (Var Int MetaVar)))
-inferRecursiveDefs ds = do
-  evs <- Vector.forM ds $ \(v, d) -> do
+  :: Vector (Name, Definition ClosureDir (Expr ClosureDir) Void)
+  -> TCM (Vector (Name, Definition RetDir (Expr RetDir) Void))
+inferRecursiveDefs defs = do
+  let names = fst <$> defs
+
+  evars <- Vector.forM defs $ \(v, d) -> do
     logPretty 30 "InferDirection.inferRecursiveDefs 1" (v, show <$> d)
     let h = fromName v
     exists h MProjection =<< existsMetaReturnIndirect
-  let instantiatedDs = flip Vector.map ds $ \(_, e) ->
-        instantiateDef (pure . (evs Vector.!)) e
 
-  results <- flip Vector.imapM instantiatedDs $ \i d -> do
-    let v = evs Vector.! i
+  let expose name = case Vector.elemIndex name names of
+        Nothing -> global name
+        Just index -> pure
+          $ fromMaybe (error "InferDirection.inferRecursiveDefs expose")
+          $ evars Vector.!? index
+
+  let exposedDefs = flip Vector.map defs $ \(_, e) ->
+        bound absurd expose e
+
+  inferredDefs <- Vector.forM (Vector.zip evars exposedDefs) $ \(v, d) -> do
     logPretty 30 "InferDirection.inferRecursiveDefs 2" (show v, show <$> d)
-    d' <- inferDefinition v d
-    return (v, d')
+    inferDefinition v d
 
-  generaliseDefs results
+  genDefs <- generaliseDefs inferredDefs
+
+  let unexpose evar = case Vector.elemIndex evar evars of
+        Nothing -> pure evar
+        Just index -> global
+          $ fromMaybe (error "inferRecursiveDefs 2")
+          $ names Vector.!? index
+      vf :: MetaVar -> TCM b
+      vf v = throwError $ "inferRecursiveDefs " ++ show v
+
+  forM (Vector.zip names genDefs) $ \(name, def) -> do
+    let unexposedDef = bound unexpose global def
+    unexposedDef' <- traverse vf unexposedDef
+    return (name, unexposedDef')

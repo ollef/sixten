@@ -942,13 +942,14 @@ checkRecursiveDefs defs = do
       typ <- existsType hint
       forall hint Explicit (typ :: AbstractM)
 
-    exposedDefs <- forM defs $ \(_, loc, def, typ) -> do
-      let expose name = case Vector.elemIndex name names of
-            Nothing -> global name
-            Just index -> pure
-              $ fromMaybe (error "checkRecursiveDefs 1")
-              $ evars Vector.!? index
-      return (loc, bound absurd expose def, bind absurd expose typ)
+    let expose name = case Vector.elemIndex name names of
+          Nothing -> global name
+          Just index -> pure
+            $ fromMaybe (error "checkRecursiveDefs 1")
+            $ evars Vector.!? index
+
+    let exposedDefs = flip fmap defs $ \(_, loc, def, typ) ->
+          (loc, bound absurd expose def, bind absurd expose typ)
 
     checkedDefs <- forM (Vector.zip evars exposedDefs) $ \(evar, (loc, def, typ)) -> do
       typ' <- checkPoly typ =<< existsTypeType (metaHint evar)
@@ -962,17 +963,17 @@ checkRecursiveDefs defs = do
 
   genDefs <- generaliseDefs checkedDefs
 
+  let unexpose evar = case Vector.elemIndex evar evars of
+        Nothing -> pure evar
+        Just index -> global
+          $ fromMaybe (error "checkRecursiveDefs 2")
+          $ names Vector.!? index
+      vf :: MetaP -> TCM b
+      vf v = throwError $ "checkRecursiveDefs " ++ show v
+
   forM (Vector.zip names genDefs) $ \(name, (def, typ)) -> do
-    let unexpose evar = case Vector.elemIndex evar evars of
-          Nothing -> pure evar
-          Just index -> global
-            $ fromMaybe (error "checkRecursiveDefs 2")
-            $ names Vector.!? index
     let unexposedDef = bound unexpose global def
         unexposedTyp = bind unexpose global typ
-        vf :: MetaP -> TCM b
-        vf v = throwError $ "checkRecursiveDefs " ++ show v
-
     unexposedDef' <- traverse vf unexposedDef
     unexposedTyp' <- traverse vf unexposedTyp
     return (name, unexposedDef', unexposedTyp')
