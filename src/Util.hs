@@ -1,8 +1,11 @@
 {-# LANGUAGE DeriveFunctor, Rank2Types #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 module Util where
 
 import Bound
+import Bound.Scope
 import Bound.Var
+import Control.Monad.Morph
 import Control.Monad.State
 import Data.Bifoldable
 import Data.Bifunctor
@@ -130,3 +133,6 @@ forWithPrefixM
   -> (v -> Vector v' -> m v')
   -> m (Vector v')
 forWithPrefixM = flip mapWithPrefixM
+
+instance MFunctor (Scope b) where
+  hoist = hoistScope

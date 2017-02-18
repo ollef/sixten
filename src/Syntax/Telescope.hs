@@ -14,6 +14,7 @@ module Syntax.Telescope where
 import Bound
 import Bound.Scope
 import Bound.Var
+import Control.Monad.Morph
 import Data.Bifoldable
 import Data.Bifunctor
 import Data.Bitraversable
@@ -102,13 +103,9 @@ bitraverseTelescope
 bitraverseTelescope f g (Telescope xs)
   = Telescope <$> traverse (\(h, p, s) -> (,,) h p <$> bitraverseScope f g s) xs
 
-hoistTelescope
-  :: Functor e
-  => (forall v'. e v' -> e' v')
-  -> Telescope a e v
-  -> Telescope a e' v
-hoistTelescope f (Telescope xs)
-  = Telescope $ (\(h, p, s) -> (h, p, hoistScope f s)) <$> xs
+instance MFunctor (Telescope a) where
+  hoist f (Telescope xs)
+    = Telescope $ (\(h, p, s) -> (h, p, hoist f s)) <$> xs
 
 teleLength :: Telescope a e v -> Int
 teleLength = Vector.length . unTelescope

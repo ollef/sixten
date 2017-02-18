@@ -19,8 +19,7 @@ Codegen
   Should things of known size > 1 be passed as LLVM arrays?
   Use e.g. llvm-hs-kaleidoscope for llvm?
 Compiler
-  Use mmorph for hoist* functions etc
-    Look into a class for "transverse" (monadic/applicative hoisting)?
+  Look into a class for "(bi)transverse" (monadic/applicative hoisting)?
   Add printing to compiler passes that are not TCM (make a MonadLog class?)
   * Make converted signatures contain converted exprs to get rid of the back-and-forth conversions between slambda representations?
   Simplify/make consistent all the type synonyms

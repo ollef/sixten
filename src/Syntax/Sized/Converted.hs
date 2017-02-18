@@ -2,6 +2,7 @@
 module Syntax.Sized.Converted where
 
 import Control.Monad
+import Control.Monad.Morph
 import Data.Bifunctor
 import Data.Monoid
 import Data.String
@@ -33,19 +34,15 @@ data Signature expr expr' v
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 signature :: Expr v -> Signature Expr Closed.Expr v
-signature (Lams dir tele s) = Function dir tele (hoistScope toClosed s)
-signature (Sized _ (Lams dir tele s)) = Function dir tele (hoistScope toClosed s)
+signature (Lams dir tele s) = Function dir tele (hoist toClosed s)
+signature (Sized _ (Lams dir tele s)) = Function dir tele (hoist toClosed s)
 signature e = Constant (sExprDir e) (toClosed e)
 
-hoistSignature
-  :: (Monad expr1, Monad expr2)
-  => (forall v'. expr1 v' -> expr2 v')
-  -> Signature expr expr1 v
-  -> Signature expr expr2 v
-hoistSignature f (Function dir tele s)
-  = Function dir tele $ toScope $ f $ fromScope s
-hoistSignature f (Constant d e)
-  = Constant d $ f e
+instance MFunctor (Signature expr) where
+  hoist f (Function dir tele s)
+    = Function dir tele $ hoist f s
+  hoist f (Constant d e)
+    = Constant d $ f e
 
 -------------------------------------------------------------------------------
 -- Helpers
@@ -74,10 +71,10 @@ toClosed expr = case expr of
   Global v -> Closed.Global v
   Lit l -> Closed.Lit l
   Con qc es -> Closed.Con qc $ toClosed <$> es
-  Lams _dir tele s -> Closed.Lams (mapAnnotations (const ()) $ hoistTelescope toClosed tele) (hoistScope toClosed s)
+  Lams _dir tele s -> Closed.Lams (mapAnnotations (const ()) $ hoist toClosed tele) (hoist toClosed s)
   Call _retDir e es -> Closed.Call (toClosed e) $ toClosed . fst <$> es
-  Let h e s -> Closed.Let h (toClosed e) (hoistScope toClosed s)
-  Case e brs -> Closed.Case (toClosed e) $ hoistBranches toClosed brs
+  Let h e s -> Closed.Let h (toClosed e) (hoist toClosed s)
+  Case e brs -> Closed.Case (toClosed e) $ hoist toClosed brs
   Prim p -> Closed.Prim $ toClosed <$> p
   Sized sz e -> Closed.Sized (toClosed sz) (toClosed e)
 

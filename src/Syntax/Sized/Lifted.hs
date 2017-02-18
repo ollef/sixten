@@ -2,6 +2,7 @@
 module Syntax.Sized.Lifted where
 
 import Control.Monad
+import Control.Monad.Morph
 import Data.Bifoldable
 import Data.Bifunctor
 import Data.Bitraversable
@@ -78,8 +79,8 @@ toClosed expr = case expr of
   Lit l -> Closed.Lit l
   Con qc es -> Closed.Con qc $ toClosed <$> es
   Call _retDir e es -> Closed.Call (toClosed e) $ toClosed . fst <$> es
-  Let h e s -> Closed.Let h (toClosed e) (hoistScope toClosed s)
-  Case e brs -> Closed.Case (toClosed e) $ hoistBranches toClosed brs
+  Let h e s -> Closed.Let h (toClosed e) (hoist toClosed s)
+  Case e brs -> Closed.Case (toClosed e) $ hoist toClosed brs
   Prim p -> Closed.Prim $ toClosed <$> p
   Sized sz e -> Closed.Sized (toClosed sz) (toClosed e)
 
@@ -90,8 +91,8 @@ toConverted expr = case expr of
   Lit l -> Converted.Lit l
   Con qc es -> Converted.Con qc $ toConverted <$> es
   Call retDir e es -> Converted.Call retDir (toConverted e) $ first toConverted <$> es
-  Let h e s -> Converted.Let h (toConverted e) (hoistScope toConverted s)
-  Case e brs -> Converted.Case (toConverted e) $ hoistBranches toConverted brs
+  Let h e s -> Converted.Let h (toConverted e) (hoist toConverted s)
+  Case e brs -> Converted.Case (toConverted e) $ hoist toConverted brs
   Prim p -> Converted.Prim $ toConverted <$> p
   Sized sz e -> Converted.Sized (toConverted sz) (toConverted e)
 
@@ -101,8 +102,8 @@ signature
 signature (Function retDir tele bodyScope)
   = Converted.Function
     retDir
-    (hoistTelescope toConverted tele)
-    (hoistScope toClosed bodyScope)
+    (hoist toConverted tele)
+    (hoist toClosed bodyScope)
 
 -------------------------------------------------------------------------------
 -- Instances

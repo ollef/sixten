@@ -4,6 +4,7 @@ module Syntax.Data where
 import Bound
 import Bound.Scope
 import Bound.Var
+import Control.Monad.Morph
 import Data.Bifunctor
 import Data.Bitraversable
 import Data.String
@@ -23,12 +24,8 @@ newtype DataDef typ v = DataDef { dataConstructors :: [ConstrDef (Scope Tele typ
 instance GlobalBound DataDef where
   bound f g (DataDef cs) = DataDef $ fmap (bound f g) <$> cs
 
-hoistDataDef
-  :: Functor typ
-  => (forall v'. typ v' -> typ' v')
-  -> DataDef typ v
-  -> DataDef typ' v
-hoistDataDef f (DataDef cs) = DataDef $ fmap (hoistScope f) <$> cs
+instance MFunctor DataDef where
+  hoist f (DataDef cs) = DataDef $ fmap (hoistScope f) <$> cs
 
 bimapDataDef
   :: Bifunctor typ

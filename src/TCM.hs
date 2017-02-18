@@ -166,7 +166,7 @@ addConvertedSignatures
 addConvertedSignatures p = modify $ \s -> s { tcConvertedSignatures = p' <> tcConvertedSignatures s }
   where
     p' = fmap (const $ error "addConvertedSignatures")
-      {- . Converted.hoistSignature (const Unit) -} <$> p
+      {- . hoist (const Unit) -} <$> p
 
 instance Context (Expr Plicitness) where
   definition name = do

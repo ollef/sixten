@@ -79,6 +79,7 @@ executable sixten
                        directory,
                        filepath,
                        hashable,
+                       mmorph,
                        monad-st,
                        mtl,
                        optparse-applicative,

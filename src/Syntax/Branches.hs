@@ -1,7 +1,9 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, MonadComprehensions, Rank2Types, OverloadedStrings #-}
 module Syntax.Branches where
+
 import Bound
 import Bound.Scope
+import Control.Monad.Morph
 import Data.Bifoldable
 import Data.Bifunctor
 import Data.Bitraversable
@@ -128,13 +130,9 @@ bitraverseBranches f g (LitBranches lbrs def)
 bitraverseBranches f g (NoBranches typ)
   = NoBranches <$> bitraverse f g typ
 
-hoistBranches
-  :: Functor expr
-  => (forall v. expr v -> expr' v)
-  -> Branches c p expr a
-  -> Branches c p expr' a
-hoistBranches f (ConBranches cbrs)
-  = ConBranches [(c, hoistTelescope f tele, hoistScope f s) | (c, tele, s) <- cbrs]
-hoistBranches f (LitBranches lbrs def)
-  = LitBranches [(l, f e) | (l, e) <- lbrs] $ f def
-hoistBranches f (NoBranches typ) = NoBranches $ f typ
+instance MFunctor (Branches c p) where
+  hoist f (ConBranches cbrs)
+    = ConBranches [(c, hoist f tele, hoist f s) | (c, tele, s) <- cbrs]
+  hoist f (LitBranches lbrs def)
+    = LitBranches [(l, f e) | (l, e) <- lbrs] $ f def
+  hoist f (NoBranches typ) = NoBranches $ f typ
