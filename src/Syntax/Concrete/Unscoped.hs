@@ -38,9 +38,6 @@ data Definition v
 data Clause v = Clause [(Plicitness, Pat (Type v) Name)] (Expr v)
   deriving (Show)
 
-clauseArity :: Clause v -> Int
-clauseArity (Clause pats _) = length pats
-
 -------------------------------------------------------------------------------
 -- Smart constructors
 pis

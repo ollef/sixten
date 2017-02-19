@@ -60,20 +60,17 @@ scopeCheckProgram defs = do
 scopeCheckDefinition
   :: Unscoped.Definition Name
   -> ScopeCheck (Scoped.PatDefinition Scoped.Expr Name)
-scopeCheckDefinition (Unscoped.Definition clauses) = do
-  let clausesWithArity = [(clause, Unscoped.clauseArity clause) | clause <- clauses]
-      arity = maximum $ snd <$> clausesWithArity
-  Scoped.PatDefinition <$> mapM (scopeCheckClause arity) clausesWithArity
+scopeCheckDefinition (Unscoped.Definition clauses) =
+  Scoped.PatDefinition <$> mapM scopeCheckClause clauses
 scopeCheckDefinition (Unscoped.DataDefinition params cs) = do
   let paramNames = (\(_, n, _) -> n) <$> params
       abstr = abstract $ teleAbstraction $ Vector.fromList paramNames
   Scoped.PatDataDefinition . DataDef <$> mapM (mapM (fmap abstr . scopeCheckExpr)) cs
 
 scopeCheckClause
-  :: Int
-  -> (Unscoped.Clause Name, Int)
+  :: Unscoped.Clause Name
   -> ScopeCheck (Scoped.Clause Scoped.Expr Name)
-scopeCheckClause arity (Unscoped.Clause plicitPats e, patsArity) = do
+scopeCheckClause (Unscoped.Clause plicitPats e) = do
   plicitPats' <- traverse (traverse scopeCheckPat) plicitPats
 
   let pats = snd <$> plicitPats'
@@ -81,10 +78,7 @@ scopeCheckClause arity (Unscoped.Clause plicitPats e, patsArity) = do
       typedPats'' = Vector.fromList
         $ second void <$> abstractPatternsTypes vars plicitPats'
 
-  -- TODO handle different plicitness in eta expansion
-  Scoped.etaExpandClause (patsArity - arity) Explicit
-    . Scoped.Clause typedPats''
-    . abstract (patternAbstraction vars) <$> scopeCheckExpr e
+  Scoped.Clause typedPats'' . abstract (patternAbstraction vars) <$> scopeCheckExpr e
 
 scopeCheckExpr
   :: Unscoped.Expr Name

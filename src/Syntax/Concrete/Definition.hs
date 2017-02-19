@@ -5,15 +5,12 @@ import Control.Monad
 import Data.Bifunctor
 import Data.Bitraversable
 import Data.List.NonEmpty(NonEmpty)
-import Data.Monoid
 import Data.String
 import Data.Traversable
 import Data.Vector(Vector)
-import qualified Data.Vector as Vector
 
 import Syntax
 import Syntax.Concrete.Pattern
-import Util
 
 data PatDefinition expr v
   = PatDefinition (NonEmpty (Clause expr v))
@@ -25,20 +22,6 @@ data Clause expr v
     (Vector (Plicitness, Pat (PatternScope expr v) ()))
     (PatternScope expr v)
   deriving (Show)
-
--- TODO handle plicitness
-etaExpandClause
-  :: (Monad expr, AppSyntax expr, Annotation expr ~ Plicitness)
-  => Int
-  -> Annotation expr
-  -> Clause expr v
-  -> Clause expr v
-etaExpandClause n anno (Clause pats (Scope s))
-  = Clause pats' (Scope $ apps s $ (\i -> (anno, pure $ B i)) <$> Vector.enumFromN startIndex n)
-  where
-    startIndex = fromIntegral $ Vector.length patVars
-    patVars = join $ toVector . snd <$> pats
-    pats' = pats <> Vector.replicate n (anno, VarPat mempty ())
 
 -------------------------------------------------------------------------------
 -- Instances
