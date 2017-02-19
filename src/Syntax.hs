@@ -1,9 +1,9 @@
 module Syntax (module X, Util.instantiate1) where
 
-import Control.Monad.Morph as X
 import Bound as X hiding (instantiate1)
 import Bound.Scope as X hiding (instantiate1)
 import Bound.Var as X
+import Control.Monad.Morph as X
 import qualified Util
 
 import Pretty as X

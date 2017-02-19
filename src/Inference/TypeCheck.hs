@@ -900,7 +900,7 @@ generaliseDefs xs = do
 
   instDefs <- forM xs $ \(_, d, t) -> do
     d' <- boundJoin <$> traverse (sub instVars) d
-    t' <- join      <$> traverse (sub instVars) t
+    t' <- join <$> traverse (sub instVars) t
     return (d', t')
 
   genDefs <- mapM (uncurry $ generaliseDef $ Vector.fromList sortedFvs) instDefs

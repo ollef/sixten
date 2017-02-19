@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, Rank2Types, OverloadedStrings #-}
 module Syntax.Definition where
 
-import Bound
 import Data.Bifunctor
 import Data.Bitraversable
 import Data.String
@@ -51,11 +50,3 @@ prettyTypedDef (DataDefinition d) t = prettyDataDef (telescope t) d
 instance (Monad expr, Pretty (expr v), IsString v) => Pretty (Definition expr v) where
   prettyM (Definition e) = prettyM e
   prettyM (DataDefinition d) = prettyM d
-
-foldMapDefinition
-  :: (Monoid m, Monad expr)
-  => (forall v. expr v -> m)
-  -> Definition expr x
-  -> m
-foldMapDefinition f (Definition e) = f e
-foldMapDefinition f (DataDefinition (DataDef cs)) = foldMap (foldMap $ f . fromScope) cs
