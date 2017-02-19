@@ -1,0 +1,38 @@
+data A = A1 | A2
+data B = B1 | B2
+
+test1 A1 {B1} A2 {B2} = A1
+test1 A2 A1 = A1
+test1 _ _ = A2
+
+test1sig : A -> {B} -> A -> {B} -> A
+test1sig A1 {B1} A2 {B2} = A1
+test1sig A2 A1 = A1
+test1sig _ _ = A2
+
+test2 {A1} B1 {A2} B2 = A1
+test2 A2 A1 = A1
+test2 _ _ = A2
+
+test2sig : {A} -> B -> {A} -> B -> A
+test2sig {A1} B1 {A2} B2 = A1
+test2sig A2 A1 = A1
+test2sig _ _ = A2
+
+test3 A2 A1 = A1
+test3 {A1}{A2} B1 {A2}{A1} B2 = A1
+test3 _ _ = A2
+
+test3sig : {A} -> {A} -> B -> {A} -> {A} -> B -> A
+test3sig A2 A1 = A1
+test3sig {A1}{A2} B1 {A2}{A1} B2 = A1
+test3sig _ _ = A2
+
+test4 B2 {A1}{A2} B1 {A2}{A1} = A1
+test4 B1 B1 = A1
+test4 _ _ _ = A2
+
+test4sig : B -> {A} -> {A} -> B -> {A} -> {A} -> A
+test4sig B2 {A1}{A2} B1 {A2}{A1} = A1
+test4sig B1 B1 = A1
+test4sig _ _ _ = A2
