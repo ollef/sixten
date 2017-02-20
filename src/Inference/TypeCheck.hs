@@ -764,11 +764,14 @@ checkClauses
 checkClauses clauses polyType = do
   forM_ clauses $ logMeta 20 "checkClauses clause"
   logMeta 20 "checkClauses typ" polyType
+  let equalisedClauses = Concrete.equaliseClauses clauses
+  forM_ equalisedClauses $ logMeta 20 "checkClauses equalisedClause"
+
   modifyIndent succ
 
-  (vs, rhoType, f) <- prenexConvert polyType $ instBelowClause $ NonEmpty.head clauses
+  (vs, rhoType, f) <- prenexConvert polyType $ instBelowClause $ NonEmpty.head equalisedClauses
 
-  res <- checkClausesRho clauses rhoType
+  res <- checkClausesRho equalisedClauses rhoType
 
   modifyIndent pred
   logMeta 20 "checkClauses res" res
