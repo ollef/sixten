@@ -4,6 +4,7 @@ module Syntax.Concrete.Definition where
 import Control.Monad
 import Data.Bifunctor
 import Data.Bitraversable
+import qualified Data.Foldable as Foldable
 import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.String
@@ -57,28 +58,40 @@ instance (Pretty (expr v), Monad expr, IsString v)
   prettyM (PatDefinition clauses) = vcat $ prettyM <$> clauses
   prettyM (PatDataDefinition dataDef)= prettyM dataDef
 
-equaliseClauses :: NonEmpty (Clause expr v) -> NonEmpty (Clause expr v)
+equaliseClauses
+  :: (AppSyntax expr, Applicative expr, Annotation expr ~ Plicitness)
+  => NonEmpty (Clause expr v)
+  -> NonEmpty (Clause expr v)
 equaliseClauses clauses
   = NonEmpty.zipWith
-    (Clause . Vector.fromList)
+    (uncurry etaClause)
     (go (Vector.toList . clausePatterns <$> clauses))
     (clauseScope <$> clauses)
   where
     go
       :: NonEmpty [(Plicitness, Pat (PatternScope expr v) ())]
-      -> NonEmpty [(Plicitness, Pat (PatternScope expr v) ())]
-    go pats
-      | numEx == 0 && numIm == 0 = pats
-      | numEx == len = NonEmpty.zipWith (:) heads $ go tails
-      | numIm == len = NonEmpty.zipWith (:) heads $ go tails
-      | numIm > 0 = go $ addImplicit <$> pats
-      | numEx > 0 = go $ addExplicit <$> pats
+      -> NonEmpty ([(Plicitness, Pat (PatternScope expr v) ())], [Plicitness])
+    go clausePats
+      | numEx == 0 && numIm == 0 = (\pats -> (pats, mempty)) <$> clausePats
+      | numEx == len = NonEmpty.zipWith (first . (:)) heads $ go tails
+      | numIm == len = NonEmpty.zipWith (first . (:)) heads $ go tails
+      | numIm > 0 = go' $ addImplicit <$> clausePats
+      | numEx > 0 = go' $ addExplicit <$> clausePats
+      | otherwise = error "equaliseClauses go"
       where
-        numEx = numExplicit pats
-        numIm = numImplicit pats
-        heads = head <$> pats
-        tails = tail <$> pats
-        len = length pats
+        numEx = numExplicit clausePats
+        numIm = numImplicit clausePats
+        heads = head <$> clausePats
+        tails = tail <$> clausePats
+        len = length clausePats
+    go'
+      :: NonEmpty ([(Plicitness, Pat (PatternScope expr v) ())], [Plicitness])
+      -> NonEmpty ([(Plicitness, Pat (PatternScope expr v) ())], [Plicitness])
+    go' clausePats
+      = NonEmpty.zipWith
+        (\ps (pats, ps') -> (pats, ps ++ ps'))
+        (snd <$> clausePats)
+        (go $ fst <$> clausePats)
 
     numExplicit, numImplicit :: NonEmpty [(Plicitness, Pat (PatternScope expr v) ())] -> Int
     numExplicit = length . NonEmpty.filter (\xs -> case xs of
@@ -91,8 +104,25 @@ equaliseClauses clauses
 
     addImplicit, addExplicit
       :: [(Plicitness, Pat (PatternScope expr v) ())]
-      -> [(Plicitness, Pat (PatternScope expr v) ())]
-    addImplicit pats@((Implicit, _):_) = pats
-    addImplicit pats = (Implicit, WildcardPat) : pats
+      -> ([(Plicitness, Pat (PatternScope expr v) ())], [Plicitness])
+    addImplicit pats@((Implicit, _):_) = (pats, mempty)
+    addImplicit pats = ((Implicit, WildcardPat) : pats, mempty)
 
-    addExplicit = error "addExplicit TODO"
+    addExplicit pats@((Explicit, _):_) = (pats, mempty)
+    addExplicit pats = ((Explicit, VarPat mempty ()) : pats, pure Explicit)
+
+etaClause
+  :: (AppSyntax expr, Applicative expr, Annotation expr ~ Plicitness)
+  => [(Plicitness, Pat (PatternScope expr v) ())]
+  -> [Plicitness]
+  -> PatternScope expr v
+  -> Clause expr v
+etaClause pats extras (Scope scope)
+  = Clause
+    (Vector.fromList pats)
+    $ Scope
+    $ apps scope vs
+  where
+    numBindings = length $ concat $ Foldable.toList . snd <$> pats
+    numExtras = length extras
+    vs = zip extras $ pure . B . PatternVar <$> [numBindings - numExtras ..]
