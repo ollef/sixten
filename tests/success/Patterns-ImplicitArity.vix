@@ -1,0 +1,31 @@
+data A = A1 | A2
+
+test1 A1 b = \c. c
+test1 A2 b c {d} {e} = c
+
+test1p A2 b c {d} {e} = c
+test1p A1 b = \c. c
+
+test1sig : A -> A -> A -> {A} -> {A} -> A
+test1sig A1 b = \c. c
+test1sig A2 b c {d} {e} = c
+
+test2 A1 = \x. x
+test2 A2 c {d} = c
+
+test2p A2 c {d} = c
+test2p A1 = \x. x
+
+test2sig : A -> A -> {A} -> A
+test2sig A2 c {d} = c
+test2sig A1 = \x. x
+
+test3 A1 = \x y z. x
+test3 a b {_} {_} c d {e} = c
+
+test3sig : A -> A -> {A} -> {A} -> A -> A -> {A} -> A
+test3sig A1 = \x y z. x
+test3sig a b {_} {_} c d {e} = c
+
+test3p a b {_} {_} c d {e} = c
+test3p A1 = \x y z. x
