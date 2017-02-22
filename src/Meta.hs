@@ -218,22 +218,6 @@ abstract1M v e = do
   logVerbose 20 $ "abstracting " <> fromString (show $ metaId v)
   abstractM (\v' -> if v == v' then Just () else Nothing) e
 
-abstractDefM
-  :: (MetaP -> Maybe b)
-  -> Definition Abstract.ExprP MetaP
-  -> AbstractM
-  -> TCM ( Definition Abstract.ExprP (Var b MetaP)
-           , ScopeM b Abstract.ExprP
-           )
-abstractDefM f (Definition e) t = do
-  e' <- abstractM f e
-  t' <- abstractM f t
-  return (Definition $ fromScope e', t')
-abstractDefM f (DataDefinition e) t = do
-  e' <- abstractDataDefM f e t
-  t' <- abstractM f t
-  return (DataDefinition e', t')
-
 abstractDataDefM
   :: (MetaP -> Maybe b)
   -> DataDef Abstract.ExprP MetaP
