@@ -21,6 +21,7 @@ import Syntax.Abstract
 import Syntax.Abstract.Pattern
 import TCM
 import Util
+
 type PatM = Pat AbstractM MetaP
 type Clause =
   ( [PatM]
@@ -106,14 +107,14 @@ matchCon expr exprs clauses expr0 = do
 
   cbrs <- forM cs $ \c -> do
     let clausesStartingWithC = NonEmpty.filter ((== c) . firstCon) clauses
-    ps <- conPatArgs c =<< typeOfM expr
+    (ps, ys) <- conPatArgs c =<< typeOfM expr
 
-    ys <- forM ps $ \(p, pat, typ) -> forall (patternHint pat) p typ
     let exprs' = (pure <$> Vector.toList ys) ++ exprs
     rest <- match exprs' (decon clausesStartingWithC) (pure $ B Fail)
     rest' <- fromScope <$> zonkBound (toScope rest)
     let restScope = abstract (unvar (\Fail -> Nothing) $ teleAbstraction ys) rest'
-    return (c, F <$> patternTelescope ps, restScope)
+    tele <- patternTelescope ys ps
+    return (c, F <$> tele, restScope)
 
   cbrs' <- maybe
     (throwError "matchCon: empty branches")
@@ -132,7 +133,7 @@ matchCon expr exprs clauses expr0 = do
 conPatArgs
   :: QConstr
   -> AbstractM
-  -> TCM (Vector (Plicitness, PatM, AbstractM))
+  -> TCM (Vector (Plicitness, PatM, AbstractM), Vector MetaP)
 conPatArgs c typ = do
   typ' <- whnf typ
   let (_, args) = appsView typ'
@@ -141,16 +142,19 @@ conPatArgs c typ = do
       tele' = instantiatePrefix (snd <$> Vector.fromList args) tele
   vs <- forTeleWithPrefixM tele' $ \h p s vs ->
     forall h p $ instantiateTele pure vs s
-  return
-    $ (\(p, v) -> (p, VarPat mempty v, metaType v))
-    <$> Vector.zip (teleAnnotations tele') vs
+  let ps = (\(p, v) -> (p, VarPat (metaHint v) v, metaType v))
+        <$> Vector.zip (teleAnnotations tele') vs
+  return (ps, vs)
 
 patternTelescope
-  :: Vector (a, Pat typ b, Expr a v)
-  -> Telescope a (Expr a) v
-patternTelescope = Telescope . fmap go
+  :: Vector MetaP
+  -> Vector (a, Pat typ b, AbstractM)
+  -> TCM (Telescope a ExprP MetaP)
+patternTelescope ys ps = Telescope <$> mapM go ps
   where
-    go (p, pat, e) = (patternHint pat, p, abstractNone e) -- TODO abstract something?
+    go (p, pat, e) = do
+      e' <- zonk e
+      return (patternHint pat, p, abstract (teleAbstraction ys) e')
 
 matchLit :: AbstractM -> NonEmptyMatch
 matchLit expr exprs clauses expr0 = do

@@ -1,0 +1,6 @@
+data Impl where
+  impl1 : forall {m}{A : Type {m}}. Ptr A -> Impl
+  impl2 : forall {m}{n}{A : Type {m}}{B : Type {n}}. Ptr A -> Ptr B -> Impl
+
+test (impl1 {m}{A}{n} ptr) = m
+test (impl2 {m}{n}{A}{B} ptr1 ptr2) = addSize m n

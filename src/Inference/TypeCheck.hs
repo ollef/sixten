@@ -24,6 +24,7 @@ import Text.Trifecta.Result(Err(Err), explain)
 
 import Analysis.Simplify
 import qualified Builtin
+import Inference.Clause
 import Inference.Match as Match
 import Inference.Normalise
 import Inference.TypeOf
@@ -42,6 +43,7 @@ type Monotype = AbstractM
 type Rhotype = AbstractM -- No top-level foralls
 
 newtype InstBelow = InstBelow Plicitness
+  deriving (Eq, Ord)
 
 data Expected typ
   = Infer (STRef (World TCM) typ) InstBelow
@@ -352,18 +354,19 @@ tcPat' pat vs expected = case pat of
     let qc = qualify typeName c
     (_, typeType) <- definition typeName
     conType <- qconstructor qc
-    -- TODO check plicitnesses
-    -- TODO Make a function that checks a list of patterns against a type properly
+
     let (paramsTele, _) = pisView (typeType :: AbstractM)
         numParams = teleLength paramsTele
         (tele, retScope) = pisView conType
+
+    pats' <- Vector.fromList <$> equalisePats
+      (Vector.toList $ Vector.drop numParams $ teleAnnotations tele)
+      (Vector.toList pats)
 
     typeVars <- forTeleWithPrefixM tele $ \h _ s typeVars ->
       exists h $ instantiateTele pure typeVars s
 
     let retType = instantiateTele pure typeVars retScope
-    unless (Vector.length pats == Vector.length typeVars - numParams) $
-      throwError $ "tcPat wrong number of args " ++ show qc ++ " " ++ show pats
 
     let go (revPats, vs') ((p, pat'), v) = do
           (pat'', vs'') <- checkPat pat' vs' $ metaType v
@@ -371,12 +374,12 @@ tcPat' pat vs expected = case pat of
           -- TODO unify the var with the pat
 
     (revPats, vs') <- foldlM go (mempty, vs)
-      $ Vector.zip pats
+      $ Vector.zip pats'
       $ Vector.drop numParams typeVars
-    let pats' = Vector.fromList $ reverse revPats
+    let pats'' = Vector.fromList $ reverse revPats
 
     (expectedType, f) <- instPatExpected expected retType
-    p <- viewPat expectedType f $ Abstract.ConPat qc pats'
+    p <- viewPat expectedType f $ Abstract.ConPat qc pats''
 
     return (p, vs')
   Concrete.AnnoPat s p -> do
@@ -764,12 +767,21 @@ checkClauses
 checkClauses clauses polyType = do
   forM_ clauses $ logMeta 20 "checkClauses clause"
   logMeta 20 "checkClauses typ" polyType
-  let equalisedClauses = Concrete.equaliseClauses clauses
-  forM_ equalisedClauses $ logMeta 20 "checkClauses equalisedClause"
 
   modifyIndent succ
 
-  (vs, rhoType, f) <- prenexConvert polyType $ instBelowClause $ NonEmpty.head equalisedClauses
+  (vs, rhoType, f) <- prenexConvert polyType $ minimum $ instBelowClause <$> clauses
+
+  ps <- piPlicitnesses rhoType
+
+  clauses' <- forM clauses $ \(Concrete.Clause pats body) -> do
+    pats' <- equalisePats ps $ Vector.toList pats
+    return $ Concrete.Clause (Vector.fromList pats') body
+
+  let equalisedClauses = equaliseClauses clauses'
+
+  forM_ equalisedClauses $ logMeta 20 "checkClauses equalisedClause"
+
 
   res <- checkClausesRho equalisedClauses rhoType
 
@@ -784,6 +796,17 @@ checkClauses clauses polyType = do
     instBelowClause (Concrete.Clause pats s)
       | Vector.length pats > 0 = InstBelow $ fst $ Vector.head pats
       | otherwise = instBelowExpr $ fromScope s
+
+    piPlicitnesses :: AbstractM -> TCM [Plicitness]
+    piPlicitnesses t = do
+      t' <- whnf t
+      piPlicitnesses' t'
+
+    piPlicitnesses' :: AbstractM -> TCM [Plicitness]
+    piPlicitnesses' (Abstract.Pi h p t s) = do
+      v <- forall h p t
+      (:) p <$> piPlicitnesses (instantiate1 (pure v) s)
+    piPlicitnesses' _ = return mempty
 
 checkClausesRho
   :: NonEmpty (Concrete.Clause Concrete.Expr MetaP)
@@ -831,7 +854,7 @@ checkClausesRho clauses rhoType = do
     body'
     (Vector.zip ps $ Vector.zip fs argVars)
 
-  logMeta 20 "checkClauseRho res" result
+  logMeta 20 "checkClausesRho res" result
   return result
 
 checkDefType
