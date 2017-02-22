@@ -60,7 +60,7 @@ test opts = Compile.compile (compileOptions opts) onCompileError onCompileSucces
       output <- readProcess f [] ""
       mexpectedOutput <- traverse readFile $ expectedOutputFile opts
       case mexpectedOutput of
-        Nothing -> return ()
+        Nothing -> success
         Just expectedOutput
           | output == expectedOutput -> success
           | otherwise -> failed expectedOutput $ putStrLn output
