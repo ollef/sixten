@@ -415,7 +415,7 @@ generatePrim (Primitive dir xs) = do
 generateConstant :: Visibility -> Name -> Constant (Expr RetDir) Var -> Gen C
 generateConstant visibility name (Constant dir e) = do
   let gname = unOperand $ global name
-      initName = gname <> "-init"
+      initName = unOperand $ global $ name <> "-init"
       vis | visibility == Private = "private"
           | otherwise = ""
   emitRaw $ Instr $ gname <+> "= global" <+> vis <+> typVal <> ", align" <+> align

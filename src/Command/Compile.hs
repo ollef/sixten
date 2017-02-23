@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Command.Compile where
 
+import Control.Monad
+import Data.Maybe
 import GHC.IO.Handle
 import Options.Applicative
 import System.Directory
@@ -97,10 +99,20 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
                   optLlFile = asmDir </> fileName <> "-opt" <.> "ll"
               callProcess "opt" $ optFlag ["-S", llFile, "-o", optLlFile]
               return (optLlFile, optFlag)
-          let asmFile = asmDir </> fileName <.> "s"
-          callProcess "llc" $ optFlag ["-march=" <> Target.architecture tgt, optLlFile, "-o", asmFile]
+          let llcFlags ft o
+                = optFlag
+                [ "-filetype=" <> ft
+                , "-march=" <> Target.architecture tgt
+                , optLlFile
+                , "-o", o
+                ]
+              asmFile = asmDir </> fileName <.> "s"
+              objFile = asmDir </> fileName <.> "o"
+          when (isJust $ assemblyDir opts) $
+            callProcess "llc" $ llcFlags "asm" asmFile
+          callProcess "llc" $ llcFlags "obj" objFile
           ldFlags <- readProcess "pkg-config" ["--libs", "--static", "bdw-gc"] ""
-          callProcess "gcc" $ concatMap words (lines ldFlags) ++ optFlag [asmFile, "-o", outputFile]
+          callProcess "gcc" $ concatMap words (lines ldFlags) ++ optFlag [objFile, "-o", outputFile]
           onSuccess outputFile
   where
     (inputDir, inputFileName) = splitFileName $ inputFile opts
