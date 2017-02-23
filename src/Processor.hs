@@ -153,7 +153,7 @@ typeCheckGroup
   = fmap Vector.toList . TypeCheck.checkRecursiveDefs . Vector.fromList
 
 simplifyGroup
-  :: Eq a
+  :: (Eq a, IsRetained a)
   => [(Name, Definition (Abstract.Expr a) Void, Abstract.Expr a Void)]
   -> TCM [(Name, Definition (Abstract.Expr a) Void, Abstract.Expr a Void)]
 simplifyGroup defs = forM defs $ \(x, def, typ) ->

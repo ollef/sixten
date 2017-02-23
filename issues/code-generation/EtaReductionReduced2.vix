@@ -1,0 +1,3 @@
+data Unit = unit
+loop unit = loop unit
+test4 (z : Size) = loop unit z
