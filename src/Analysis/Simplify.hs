@@ -126,7 +126,7 @@ etaLams applied tele scope = case go 0 0 $ fromScope scope of
     etaAllowed retained e
       = retained < teleRCount -- the resulting expression terminates since it's a lambda
       || applied >= retained -- termination doesn't matter since the expression is applied anyway
-      || terminates e
+      || terminates e -- TODO this is not correct: remove
     teleRCount = teleRetainCount tele
     len = teleLength tele
     as = teleAnnotations tele
