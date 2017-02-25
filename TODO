@@ -42,6 +42,7 @@ Language
   Inductive families
   FFI & More general way to define builtins (extern LLVM, C?)
 Size types
+  Don't explicitly use sizes, but instead compile _types_ to the typerep/size
   Can the size be made abstract, e.g. `List A : Type {sizeof (List A)}`?
   Change Size to runtime representation, which can include:
     - Allocation strategy
