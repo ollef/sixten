@@ -15,7 +15,7 @@ import Inference.TypeOf
 import TCM
 
 eraseS :: AbstractE -> TCM LambdaM
-eraseS e = SLambda.Sized <$> (erase =<< sizeOf e) <*> erase e
+eraseS e = SLambda.Sized <$> (erase =<< typeOf e) <*> erase e
 
 erase :: AbstractE -> TCM LambdaM
 erase expr = do
@@ -36,7 +36,7 @@ erase expr = do
     Abstract.Lam h Retained t s -> do
       v <- forall h Retained t
       e <- eraseS $ instantiate1 (pure v) s
-      sz <- erase =<< sizeOfType t
+      sz <- erase t
       return $ SLambda.Lam h sz $ abstract1 v e
     (appsView -> (Abstract.Con qc, es)) -> do
       n <- constrArity qc
@@ -75,7 +75,7 @@ erase expr = do
       t <- typeOf e
       v <- forall h Retained t
       e' <- eraseS e
-      sz <- erase =<< sizeOfType t
+      sz <- erase t
       body <- eraseS $ instantiate1 (pure v) scope
       return $ SLambda.Let h e' sz $ abstract1 v body
   modifyIndent pred
@@ -106,7 +106,7 @@ eraseBranches (ConBranches cbrs) = do
       let vs = fst <$> tele'
           abstr v = retainedAbstraction tele =<< teleAbstraction vs v
           t = instantiateTele pure vs s
-      tsz <- erase =<< sizeOfType t
+      tsz <- erase t
       v <- forall h a t
       return (v, (h, a, abstract abstr tsz))
     let vs = fst <$> tele'
@@ -135,7 +135,7 @@ eraseDef (DataDefinition _) typ = go typ
   where
     go (Abstract.Pi h Retained t s) = do
       v <- forall h Retained t
-      sz <- erase =<< sizeOfType t
+      sz <- erase t
       e <- go $ instantiate1 (pure v) s
       return $ SLambda.Sized (SLambda.Lit 1) $ SLambda.Lam h sz $ abstract1 v e
     go (Abstract.Pi h Erased t s) = do

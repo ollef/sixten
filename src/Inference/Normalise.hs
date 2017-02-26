@@ -29,8 +29,8 @@ whnf expr = do
     Lit _ -> return expr
     Pi {} -> return expr
     Lam {} -> return expr
-    Builtin.AddSize p1 p2 x y -> binOp 0 (+) (Builtin.AddSize p1 p2) whnf x y
-    Builtin.MaxSize p1 p2 x y -> binOp 0 max (Builtin.MaxSize p1 p2) whnf x y
+    Builtin.AddInt p1 p2 x y -> binOp 0 (+) (Builtin.AddInt p1 p2) whnf x y
+    Builtin.MaxInt p1 p2 x y -> binOp 0 max (Builtin.MaxInt p1 p2) whnf x y
     App e1 p e2 -> do
       e1' <- whnf e1
       case e1' of
@@ -63,8 +63,8 @@ normaliseM expr = do
     Lit _ -> return expr
     Pi n p a s -> normaliseScope n p (Pi n p) a s
     Lam n p a s -> normaliseScope n p (Lam n p) a s
-    Builtin.AddSize p1 p2 x y -> binOp 0 (+) (Builtin.AddSize p1 p2) normaliseM x y
-    Builtin.MaxSize p1 p2 x y -> binOp 0 max (Builtin.MaxSize p1 p2) normaliseM x y
+    Builtin.AddInt p1 p2 x y -> binOp 0 (+) (Builtin.AddInt p1 p2) normaliseM x y
+    Builtin.MaxInt p1 p2 x y -> binOp 0 max (Builtin.MaxInt p1 p2) normaliseM x y
     App e1 p e2 -> do
       e1' <- normaliseM e1
       e2' <- normaliseM e2

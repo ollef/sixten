@@ -17,24 +17,22 @@ import Syntax.Abstract as Abstract
 import qualified Syntax.Sized.Converted as Converted
 import Util
 
-pattern SizeName <- ((==) "Size" -> True) where SizeName = "Size"
-pattern Size = Global SizeName
+pattern IntName <- ((==) "Int" -> True) where IntName = "Int"
+pattern IntType = Global IntName
 
-pattern AddSizeName <- ((==) "addSize" -> True) where AddSizeName = "addSize"
-pattern AddSizeE e1 e2 = AddSize Explicit Explicit e1 e2
-pattern AddSize p1 p2 e1 e2 = App (App (Global AddSizeName) p1 e1) p2 e2
+pattern AddIntName <- ((==) "addInt" -> True) where AddIntName = "addInt"
+pattern AddIntE e1 e2 = AddInt Explicit Explicit e1 e2
+pattern AddInt p1 p2 e1 e2 = App (App (Global AddIntName) p1 e1) p2 e2
 
-pattern PrintSizeName <- ((==) "printSize" -> True) where PrintSizeName = "printSize"
-pattern PrintSize e1 = App (Global AddSizeName) Explicit e1
+pattern MaxIntName <- ((==) "maxInt" -> True) where MaxIntName = "maxInt"
+pattern MaxIntE e1 e2 = MaxInt Explicit Explicit e1 e2
+pattern MaxInt p1 p2 e1 e2 = App (App (Global MaxIntName) p1 e1) p2 e2
 
-pattern MaxSizeName <- ((==) "maxSize" -> True) where MaxSizeName = "maxSize"
-pattern MaxSizeE e1 e2 = AddSize Explicit Explicit e1 e2
-pattern MaxSize p1 p2 e1 e2 = App (App (Global MaxSizeName) p1 e1) p2 e2
+pattern PrintIntName <- ((==) "printInt" -> True) where PrintIntName = "printInt"
+pattern PrintInt e1 = App (Global PrintIntName) Explicit e1
 
 pattern TypeName <- ((==) "Type" -> True) where TypeName = "Type"
-pattern Type p sz = App (Global TypeName) p sz
-pattern TypeP sz = Type Implicit sz
-pattern TypeE sz = Type Retained sz
+pattern Type = Global TypeName
 
 pattern RefName <- ((==) "Ref" -> True) where RefName = "Ref"
 pattern PtrName <- ((==) "Ptr" -> True) where PtrName = "Ptr"
@@ -48,7 +46,7 @@ pattern Closure <- ((== QConstr "Builtin" "CL") -> True) where Closure = QConstr
 pattern Ref <- ((== QConstr PtrName RefName) -> True) where Ref = QConstr PtrName RefName
 
 pattern FailName <- ((==) "fail" -> True) where FailName = "fail"
-pattern Fail sz t = App (App (Global FailName) Implicit sz) Explicit t
+pattern Fail t = App (Global FailName) Explicit t
 
 applyName :: Int -> Name
 applyName n = "apply_" <> shower n
@@ -58,24 +56,21 @@ papName k m = "pap_" <> shower k <> "_" <> shower m
 
 contextP :: HashMap Name (Definition ExprP Void, TypeP Void)
 contextP = HashMap.fromList
-  [ (SizeName, opaque $ TypeP $ Lit 1)
-  , (AddSizeName, opaque $ arrow Explicit Size $ arrow Explicit Size Size)
-  , (MaxSizeName, opaque $ arrow Explicit Size $ arrow Explicit Size Size)
-  , (PrintSizeName, opaque $ arrow Explicit Size Size)
-  , (TypeName, opaque $ arrow Implicit Size $ TypeP $ Lit 0)
-  , (PtrName, dataType (namedPi "size" Implicit Size
-                       $ arrow Explicit (TypeP $ pure "size")
-                       $ TypeP $ Lit 1)
-                       [ ConstrDef RefName $ toScope $ fmap B $ arrow Explicit (pure 1)
-                                           $ apps (Global PtrName) [(Implicit, pure 0), (Explicit, pure 1)]
+  [ (TypeName, opaque Type)
+  , (IntName, opaque Type)
+  , (AddIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
+  , (MaxIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
+  , (PrintIntName, opaque $ arrow Explicit IntType IntType)
+  , (PtrName, dataType (arrow Explicit Type Type)
+                       [ ConstrDef RefName $ toScope $ fmap B $ arrow Explicit (pure 0)
+                                           $ app (Global PtrName) Explicit (pure 0)
                        ])
-  , (UnitName, dataType (TypeP $ Lit 0)
+  , (UnitName, dataType Type
                         [ConstrDef UnitConstrName $ toScope $ Global UnitName])
 
   , ( FailName
     , opaque
-    $ namedPi "sz" Implicit Size
-    $ namedPi "T" Explicit (TypeP $ pure "sz")
+    $ namedPi "T" Explicit Type
     $ pure "T"
     )
   ]
@@ -88,23 +83,20 @@ contextP = HashMap.fromList
 
 contextE :: HashMap Name (Definition ExprE Void, TypeE Void)
 contextE = HashMap.fromList
-  [ (SizeName, opaque $ TypeE $ Lit 1)
-  , (AddSizeName, opaque $ arrow Retained Size $ arrow Retained Size Size)
-  , (MaxSizeName, opaque $ arrow Retained Size $ arrow Retained Size Size)
-  , (PrintSizeName, opaque $ arrow Retained Size Size)
-  , (TypeName, opaque $ arrow Retained Size $ TypeE $ Lit 0)
-  , (PtrName, dataType (namedPi "size" Retained Size
-                       $ arrow Retained (TypeE $ pure "size")
-                       $ TypeE $ Lit 1)
-                       [ ConstrDef RefName $ toScope $ fmap B $ arrow Retained (pure 1)
-                                           $ apps (Global PtrName) [(Retained, pure 0), (Retained, pure 1)]
+  [ (TypeName, opaque Type)
+  , (IntName, opaque Type)
+  , (AddIntName, opaque $ arrow Retained IntType $ arrow Retained IntType IntType)
+  , (MaxIntName, opaque $ arrow Retained IntType $ arrow Retained IntType IntType)
+  , (PrintIntName, opaque $ arrow Retained IntType IntType)
+  , (PtrName, dataType (arrow Retained Type Type)
+                       [ ConstrDef RefName $ toScope $ fmap B $ arrow Retained (pure 0)
+                                           $ app (Global PtrName) Retained (pure 0)
                        ])
-  , (UnitName, dataType (TypeE $ Lit 0)
+  , (UnitName, dataType Type
                         [ConstrDef UnitConstrName $ toScope $ Global UnitName])
   , ( FailName
     , opaque
-    $ namedPi "t" Retained Size
-    $ namedPi "T" Erased (TypeE $ pure "t")
+    $ namedPi "T" Retained Type
     $ pure "T"
     )
   ]
@@ -117,15 +109,15 @@ contextE = HashMap.fromList
 
 convertedContext :: HashMap Name (Converted.Expr Void)
 convertedContext = HashMap.fromList $ concat
-  [[( SizeName
-    , Converted.sized 0
-    $ Converted.Con Builtin.Unit mempty
+  [[( TypeName
+    , Converted.sized 1
+    $ Converted.Lit 1
     )
-  , ( TypeName
-    , Converted.sized 0
-    $ Converted.Con Builtin.Unit mempty
+  , ( IntName
+    , Converted.sized 1
+    $ Converted.Lit 1
     )
-  , ( AddSizeName
+  , ( AddIntName
     , Converted.sized 1
       $ Converted.Lams
         (NonClosureDir Direct)
@@ -143,7 +135,7 @@ convertedContext = HashMap.fromList $ concat
       , pure $ Converted.Var $ B 1
       ]
     )
-  , ( MaxSizeName
+  , ( MaxIntName
     , Converted.sized 1
       $ Converted.Lams
         (NonClosureDir Direct)
@@ -168,7 +160,7 @@ convertedContext = HashMap.fromList $ concat
       , pure $ Converted.Var $ F $ B 1
       ]
     )
-  , ( PrintSizeName
+  , ( PrintIntName
     , Converted.sized 1
       $ Converted.Lams
         (NonClosureDir Direct)
@@ -259,7 +251,7 @@ apply numArgs
         = Converted.Con Ref
         $ pure
         $ Converted.Sized
-          (addSizes
+          (addInts
           $ Vector.cons (Converted.Lit $ fromIntegral $ 3 + numArgs)
           $ (\n -> Converted.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs)
         $ Converted.Con Closure
@@ -284,11 +276,11 @@ apply numArgs
         $ (\n -> (Converted.sized 1 $ Converted.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
         <|> (\n -> (Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + fromIntegral numArgs + n, Indirect)) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
 
-addSizes :: Vector (Converted.Expr v) -> Converted.Expr v
-addSizes = Vector.foldr1 go
+addInts :: Vector (Converted.Expr v) -> Converted.Expr v
+addInts = Vector.foldr1 go
   where
     go x y
-      = Converted.Call (NonClosureDir Direct) (Converted.Global AddSizeName)
+      = Converted.Call (NonClosureDir Direct) (Converted.Global AddIntName)
       $ Vector.cons (Converted.Sized (Converted.Lit 1) x, Direct)
       $ pure (Converted.Sized (Converted.Lit 1) y, Direct)
 

@@ -155,7 +155,7 @@ tcRho expr expected expectedAppResult = case expr of
     f <- instExpected expected typ
     f $ Abstract.Global g
   Concrete.Lit l -> do
-    f <- instExpected expected Builtin.Size
+    f <- instExpected expected Builtin.IntType
     f $ Abstract.Lit l
   Concrete.Con con -> do
     typeName <- resolveConstrType [con] expectedAppResult
@@ -167,12 +167,11 @@ tcRho expr expected expectedAppResult = case expr of
     (pat', vs, patType) <- inferPat p pat mempty
     let body = instantiatePatternVec pure vs bodyScope
         h = Concrete.patternHint pat
-    bodyType <- existsTypeType h
-    body' <- enterLevel $ checkPoly body bodyType
-    f <- instExpected expected $ Builtin.TypeP $ Abstract.Lit 1
+    body' <- enterLevel $ checkPoly body Builtin.Type
+    f <- instExpected expected Builtin.Type
     x <- forall h p patType
     body'' <- matchSingle (pure x) pat' body'
-    let body''' = body'' >>= unvar (\Match.Fail -> Builtin.Fail (Abstract.Lit 0) bodyType) pure
+    let body''' = body'' >>= unvar (\Match.Fail -> Builtin.Fail Builtin.Type) pure
     f =<< Abstract.Pi h p patType <$> abstract1M x body'''
   Concrete.Lam p pat bodyScope -> do
     let h = Concrete.patternHint pat
@@ -182,9 +181,8 @@ tcRho expr expected expectedAppResult = case expr of
         argVar <- forall h p argType
         let body = instantiatePatternVec pure vs bodyScope
         (body', bodyType) <- enterLevel $ inferRho body (InstBelow Explicit) Nothing
-        bodyTypeSize <- sizeOfType bodyType
         body'' <- matchSingle (pure argVar) pat' body'
-        let body''' = body'' >>= unvar (\Match.Fail -> Builtin.Fail bodyTypeSize bodyType) pure
+        let body''' = body'' >>= unvar (\Match.Fail -> Builtin.Fail bodyType) pure
         bodyScope' <- abstract1M argVar body'''
         bodyTypeScope <- abstract1M argVar bodyType
         f <- instExpected expected $ Abstract.Pi h p argType bodyTypeScope
@@ -198,8 +196,7 @@ tcRho expr expected expectedAppResult = case expr of
             bodyType = Util.instantiate1 (pure argVar) bodyTypeScope
         body' <- enterLevel $ checkPoly body bodyType
         body'' <- matchSingle (pure argVar) pat' body'
-        bodyTypeSize <- sizeOfType bodyType
-        let body''' = body'' >>= unvar (\Match.Fail -> Builtin.Fail bodyTypeSize bodyType) pure
+        let body''' = body'' >>= unvar (\Match.Fail -> Builtin.Fail bodyType) pure
         fResult =<< Abstract.Lam h' p argType <$> abstract1M argVar body'''
   Concrete.App fun p arg -> do
     (fun', funType) <- inferRho fun (InstBelow p) expectedAppResult
@@ -260,8 +257,7 @@ tcBranches expr pbrs expected = do
     [] -> return $ Abstract.Case expr' $ NoBranches resType
     _ -> do
       matched <- matchCase expr' inferredBranches
-      resTypeSize <- sizeOfType resType
-      return $ matched >>= unvar (\Match.Fail -> Builtin.Fail resTypeSize resType) pure
+      return $ matched >>= unvar (\Match.Fail -> Builtin.Fail resType) pure
 
   f matched
 
@@ -344,7 +340,7 @@ tcPat' pat vs expected = case pat of
     return (Abstract.VarPat h v, vs <> pure v)
   Concrete.WildcardPat -> return (Abstract.WildcardPat, vs)
   Concrete.LitPat lit -> do
-    (expectedType, f) <- instPatExpected expected Builtin.Size
+    (expectedType, f) <- instPatExpected expected Builtin.IntType
     p <- viewPat expectedType f $ Abstract.LitPat lit
     return (p, vs)
   Concrete.ConPat c pats -> do
@@ -384,7 +380,7 @@ tcPat' pat vs expected = case pat of
     return (p, vs')
   Concrete.AnnoPat s p -> do
     let patType = instantiatePatternVec pure vs s
-    patType' <- checkPoly patType =<< existsTypeType (Concrete.patternHint p)
+    patType' <- checkPoly patType Builtin.Type
     (p', vs') <- checkPat p vs patType'
     (expectedType, f) <- instPatExpected expected patType'
     p'' <- viewPat expectedType f p'
@@ -701,18 +697,16 @@ checkConstrDef
   :: ConstrDef ConcreteM
   -> TCM (ConstrDef AbstractM, AbstractM, AbstractM)
 checkConstrDef (ConstrDef c typ) = do
-  typeType <- existsTypeType mempty
-  typ' <- zonk =<< checkPoly typ typeType
+  typ' <- zonk =<< checkPoly typ Builtin.Type
   (sizes, ret) <- go typ'
-  let size = foldr Builtin.AddSizeE (Abstract.Lit 0) sizes
+  let size = foldr Builtin.AddIntE (Abstract.Lit 0) sizes
   return (ConstrDef c typ', ret, size)
   where
     go :: AbstractM -> TCM ([AbstractM], AbstractM)
     go (Abstract.Pi h p t s) = do
       v <- forall h p t
       (sizes, ret) <- go $ instantiate1 (pure v) s
-      size <- sizeOfType t
-      return (size : sizes, ret)
+      return (t : sizes, ret)
     go ret = return ([], ret)
 
 checkDataType
@@ -741,24 +735,21 @@ checkDataType name (DataDef cs) typ = do
   let addTagSize = case cs of
         [] -> id
         [_] -> id
-        _ -> Builtin.AddSizeE $ Abstract.Lit 1
+        _ -> Builtin.AddIntE $ Abstract.Lit 1
 
       typeSize = addTagSize
-               $ foldr (Builtin.MaxSize Explicit Explicit) (Abstract.Lit 0) sizes
+               $ foldr (Builtin.MaxInt Explicit Explicit) (Abstract.Lit 0) sizes
 
-  let typeReturnType = Builtin.TypeP typeSize
-  unify [] typeReturnType =<< typeOfM constrRetType
-
-  abstractedReturnType <- abstractM abstr typeReturnType
+  unify [] Builtin.Type =<< typeOfM constrRetType
 
   abstractedCs <- forM cs' $ \c@(ConstrDef qc e) -> do
     logMeta 20 ("checkDataType res " ++ show qc) e
     traverse (abstractM abstr) c
 
   params <- metaTelescopeM ps'
-  let typ'' = pis params abstractedReturnType
+  let typ'' = pis params $ Scope Builtin.Type
 
-  return (DataDef abstractedCs, typ'')
+  return (DataDef abstractedCs, typ'') -- TODO Make a definition from typeSize?
 
 checkClauses
   :: NonEmpty (Concrete.Clause Concrete.Expr MetaP)
@@ -844,9 +835,7 @@ checkClausesRho clauses rhoType = do
     (Vector.toList $ pure <$> argVars)
     (NonEmpty.toList $ first Vector.toList <$> clauses')
 
-  returnTypeSize <- sizeOfType returnType
-
-  let body' = body >>= unvar (\Match.Fail -> Builtin.Fail returnTypeSize returnType) pure
+  let body' = body >>= unvar (\Match.Fail -> Builtin.Fail returnType) pure
 
   result <- foldrM
     (\(p, (f, v)) e ->
@@ -978,7 +967,7 @@ checkRecursiveDefs defs = do
           (loc, bound absurd expose def, bind absurd expose typ)
 
     checkedDefs <- forM (Vector.zip evars exposedDefs) $ \(evar, (loc, def, typ)) -> do
-      typ' <- checkPoly typ =<< existsTypeType (metaHint evar)
+      typ' <- checkPoly typ Builtin.Type
       unify [] (metaType evar) typ'
       (def', typ'') <- checkDefType evar def loc typ'
       logMeta 20 ("checkRecursiveDefs res " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) def'

@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts, TypeFamilies #-}
 module Inference.TypeOf where
 
-import Control.Monad
 import Control.Monad.Except
 import qualified Data.List.NonEmpty as NonEmpty
 
@@ -24,8 +23,8 @@ typeOfM expr = do
       return typ
     Var v -> return $ metaType v
     Con qc -> qconstructor qc
-    Lit _ -> return Builtin.Size
-    Pi {} -> return $ Builtin.TypeP $ Lit 1
+    Lit _ -> return Builtin.IntType
+    Pi {} -> return Builtin.Type
     Lam h a t s -> do
       x <- forall h a t
       resType  <- typeOfM (instantiate1 (pure x) s)
@@ -64,8 +63,8 @@ typeOf expr = do
       return typ
     Var v -> return $ metaVarType v
     Con qc -> qconstructor qc
-    Lit _ -> return Builtin.Size
-    Pi {} -> return $ typeOfSize 1
+    Lit _ -> return Builtin.IntType
+    Pi {} -> return Builtin.Type
     Lam h a t s -> do
       x <- forall h a t
       resType <- typeOf (instantiate1 (pure x) s)
@@ -90,24 +89,3 @@ typeOf expr = do
   modifyIndent pred
   -- logMeta "typeOf res" =<< zonk t
   return t
-
-sizeOfType
-  :: (MetaData (Expr a) v ~ a, Context (Expr a), Eq a, Show a, Show v, MetaVary (Expr a) v)
-  => Expr a v
-  -> TCM (Expr a v)
-sizeOfType expr = do
-  -- logMeta "sizeOf" expr
-  modifyIndent succ
-  t <- whnf =<< typeOf expr
-  case t of
-    Builtin.Type _ sz -> do
-      modifyIndent pred
-      -- logMeta "sizeOf res" sz
-      return sz
-    _ -> throwError $ "sizeOfType: Not a type: " ++ show t
-
-sizeOf
-  :: (MetaData (Expr a) v ~ a, Context (Expr a), Eq a, Show a, Show v, MetaVary (Expr a) v)
-  => Expr a v
-  -> TCM (Expr a v)
-sizeOf = typeOf >=> sizeOfType

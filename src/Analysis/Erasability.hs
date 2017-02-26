@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, OverloadedStrings, RecursiveDo, TypeFamilies, ViewPatterns #-}
+{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, OverloadedStrings, TypeFamilies, ViewPatterns #-}
 module Analysis.Erasability where
 
 import Control.Monad.Except
@@ -120,7 +120,6 @@ instance Meta.MetaVary (Expr MetaErasability) MetaVar where
 instance Context (Expr MetaErasability) where
   definition = fmap (bimap (bimapDefinition fromErasability id) (first fromErasability)) . definition
   qconstructor = fmap (first fromErasability) . qconstructor
-  typeOfSize = first fromErasability . typeOfSize
 
 type AbstractM a = Expr a MetaVar
 type ErasableM = Expr MetaErasability MetaVar
@@ -174,28 +173,16 @@ inferType er typ = do
     Pi h _ argType retTypeScope -> do
       modifyIndent succ
       argEr <- existsMetaErasability
-      argType' <- inferArgType argEr argType
+      (argType', _) <- infer argEr argType
       x <- forall h argEr argType'
       let retType = instantiate1 (pure x) retTypeScope
       (retType', _) <- inferType er retType
       modifyIndent pred
-      return (Pi h argEr argType' $ abstract1 x retType', first fromErasability $ Builtin.TypeE $ Lit 1)
+      return (Pi h argEr argType' $ abstract1 x retType', Builtin.Type)
     _ -> infer er typ
   modifyIndent pred
   logErasable 20 "inferType res" resType
   return (resType, resTypeType)
-
-inferArgType
-  :: PrettyAnnotation a
-  => MetaErasability
-  -> AbstractM a
-  -> TCM ErasableM
-inferArgType argEr argType = do
-  (argType', argTypeType) <- infer MErased argType
-  case argEr of
-    MErased -> return ()
-    _ -> void $ infer argEr argTypeType -- retain the size
-  return argType'
 
 retainSize
   :: MetaErasability
@@ -227,16 +214,14 @@ infer er expr = do
     Con c -> do
       typ <- qconstructor c
       return (Con c, first fromErasability typ)
-    Lit l -> return (Lit l, Builtin.Size)
+    Lit l -> return (Lit l, Builtin.IntType)
     Pi h _ argType retTypeScope -> do
-      argEr <- case pisView argType of
-            (_,  appsView . fromScope -> (Global Builtin.TypeName, _)) -> existsMetaErasability
-            _ -> return MRetained
-      argType' <- inferArgType argEr argType
+      let argEr = MRetained
+      (argType', _) <- infer argEr argType
       x <- forall h argEr argType'
       let retType = instantiate1 (pure x) retTypeScope
       (retType', _) <- infer MErased retType -- since we know this is a type
-      return (Pi h argEr argType' $ abstract1 x retType', first fromErasability $ Builtin.TypeE $ Lit 1)
+      return (Pi h argEr argType' $ abstract1 x retType', Builtin.Type)
     (lamsViewM -> Just (tele, retScope)) -> do
       vs <- forTeleWithPrefixM tele $ \h _ argScope vs -> do
         let argType = instantiateTele pure vs argScope
@@ -313,7 +298,7 @@ inferBranches er (ConBranches cbrs) = do
       logVerbose 30 $ shower $ teleAnnotations argTypes
       let argEr = fromErasability $ teleAnnotations argTypes Vector.! (i + numParams)
           typ = instantiateTele pure vs s
-      typ' <- inferArgType argEr typ
+      (typ', _) <- infer argEr typ
       forall h argEr typ'
     let abstr = abstract $ teleAbstraction vs
         br = instantiateTele pure vs brScope

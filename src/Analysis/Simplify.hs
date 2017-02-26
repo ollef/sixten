@@ -115,7 +115,7 @@ etaLams applied tele scope = case go 0 0 $ fromScope scope of
       , a == as Vector.! unTele n
       , B n `Set.notMember` toSet (second (const ()) <$> e)
       = case go i' retained' e of
-        Nothing | etaAllowed retained' e -> Just (i', e)
+        Nothing | etaAllowed retained' -> Just (i', e)
         res -> res
       where
         retained'
@@ -123,10 +123,9 @@ etaLams applied tele scope = case go 0 0 $ fromScope scope of
           | otherwise = retained
         i' = i + 1
     go _ _ _ = Nothing
-    etaAllowed retained e
+    etaAllowed retained
       = retained < teleRCount -- the resulting expression terminates since it's a lambda
       || applied >= retained -- termination doesn't matter since the expression is applied anyway
-      || terminates e -- TODO this is not correct: remove
     teleRCount = teleRetainCount tele
     len = teleLength tele
     as = teleAnnotations tele

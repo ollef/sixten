@@ -20,7 +20,6 @@ import Data.Void
 import System.IO
 
 import Backend.Target
-import qualified Builtin
 import Syntax
 import Syntax.Abstract
 import qualified Syntax.Sized.Closed as Closed
@@ -145,7 +144,6 @@ whenVerbose i m = do
 -- Context class
 class Context e where
   definition :: Name -> TCM (Definition e v, e v)
-  typeOfSize :: Integer -> e v
   qconstructor :: QConstr -> TCM (e v)
 
 -------------------------------------------------------------------------------
@@ -186,8 +184,6 @@ instance Context (Expr Plicitness) where
           _ -> throwError $ "Ambiguous constructor: " ++ show qc
       Definition _ -> throwError $ "Not a data type: " ++ show n
 
-  typeOfSize = Builtin.TypeP . Lit
-
 constructor
   :: Ord v
   => Either Constr QConstr
@@ -223,8 +219,6 @@ instance Context (Expr Erasability) where
           [cdef] -> return $ constrType cdef
           _ -> throwError $ "Ambiguous constructor: " ++ show qc
       Definition _ -> throwError $ "Not a data type: " ++ show n
-
-  typeOfSize = Builtin.TypeE . Lit
 
 -------------------------------------------------------------------------------
 -- Converted

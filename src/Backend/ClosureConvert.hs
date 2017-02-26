@@ -170,7 +170,7 @@ knownCall f retDir tele fBodyScope args
     return
       $ Converted.Con Builtin.Ref
       $ pure
-      $ Converted.Sized (Builtin.addSizes $ Vector.cons (Converted.Lit 2) $ Converted.sizeOf <$> args)
+      $ Converted.Sized (Builtin.addInts $ Vector.cons (Converted.Lit 2) $ Converted.sizeOf <$> args)
       $ Converted.Con Builtin.Closure
       $ Vector.cons (Converted.sized 1 fNumArgs)
       $ Vector.cons (Converted.sized 1 $ Converted.Lit $ fromIntegral $ arity - numArgs) args
