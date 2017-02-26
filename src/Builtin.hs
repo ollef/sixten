@@ -54,6 +54,18 @@ applyName n = "apply_" <> shower n
 papName :: Int -> Int -> Name
 papName k m = "pap_" <> shower k <> "_" <> shower m
 
+addInt :: Expr v -> Expr v -> Expr v
+addInt (Lit 0) e = e
+addInt e (Lit 0) = e
+addInt (Lit m) (Lit n) = Lit $ m + n
+addInt e e' = AddInt e e'
+
+maxInt :: Expr v -> Expr v -> Expr v
+maxInt (Lit 0) e = e
+maxInt e (Lit 0) = e
+maxInt (Lit m) (Lit n) = Lit $ max m n
+maxInt e e' = MaxInt e e'
+
 context :: HashMap Name (Definition Expr Void, Type Void)
 context = HashMap.fromList
   [ (TypeName, opaque Type)

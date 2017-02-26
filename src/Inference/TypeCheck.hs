@@ -699,7 +699,7 @@ checkConstrDef
 checkConstrDef (ConstrDef c typ) = do
   typ' <- zonk =<< checkPoly typ Builtin.Type
   (sizes, ret) <- go typ'
-  let size = foldr Builtin.AddInt (Abstract.Lit 0) sizes
+  let size = foldr Builtin.addInt (Abstract.Lit 0) sizes
   return (ConstrDef c typ', ret, size)
   where
     go :: AbstractM -> TCM ([AbstractM], AbstractM)
@@ -735,10 +735,10 @@ checkDataType name (DataDef cs) typ = do
   let addTagSize = case cs of
         [] -> id
         [_] -> id
-        _ -> Builtin.AddInt $ Abstract.Lit 1
+        _ -> Builtin.addInt $ Abstract.Lit 1
 
       typeSize = addTagSize
-               $ foldr Builtin.MaxInt (Abstract.Lit 0) sizes
+               $ foldr Builtin.maxInt (Abstract.Lit 0) sizes
 
   unify [] Builtin.Type =<< typeOfM constrRetType
 
