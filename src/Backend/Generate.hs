@@ -419,7 +419,7 @@ generateConstant visibility name (Constant dir e) = do
       initName = unOperand $ global $ name <> "-init"
       vis | visibility == Private = "private"
           | otherwise = ""
-  emitRaw $ Instr $ gname <+> "= global" <+> vis <+> typVal <> ", align" <+> align
+  emitRaw $ Instr $ gname <+> "= unnamed_addr global" <+> vis <+> typVal <> ", align" <+> align
   emitRaw $ Instr ""
   emitRaw $ Instr $ "define private fastcc" <+> voidT <+> initName <> "() {"
   case dir of
