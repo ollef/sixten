@@ -47,7 +47,7 @@ scopeCheckProgram defs = do
       , c <- constrName <$> d
       ] <>
       [ HashMap.singleton c $ HashSet.singleton n
-      | (n, (DataDefinition d, _)) <- HashMap.toList Builtin.contextP
+      | (n, (DataDefinition d _, _)) <- HashMap.toList Builtin.context
       , c <- constrNames d
       ]
     lookupConstr c = HashMap.lookupDefault mempty c constrs

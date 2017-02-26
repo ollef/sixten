@@ -39,4 +39,4 @@ map f xs = Ref case deref xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (map f xs')
 
-result = map (\x. printSize (boolToSize (even x))) numbers
+result = map (\x. printInt (boolToSize (even x))) numbers

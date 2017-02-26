@@ -11,11 +11,11 @@ data Maybe a
   = Nothing
   | Just a
 
-test : Ptr (List Size)
+test : Ptr (List Int)
 test = Ref (Cons 2 (Ref (Cons 3 (Ref (Cons 5 (Ref Nil))))))
 
 sum xs = case deref xs of
   Nil -> 0
-  Cons x xs -> addSize x (sum xs)
+  Cons x xs -> addInt x (sum xs)
 
-x = printSize (sum test)
+x = printInt (sum test)

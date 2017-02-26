@@ -13,7 +13,7 @@ instance Pretty Direction where
   prettyM Indirect = "indirect"
 
 instance PrettyAnnotation Direction where
-  prettyAnnotation Void = prettyTightApp "(void)"
+  prettyAnnotation Void = prettyTightApp "0~"
   prettyAnnotation Direct = id
   prettyAnnotation Indirect = prettyTightApp "&"
 

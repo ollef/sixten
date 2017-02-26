@@ -58,22 +58,20 @@ data MetaVar e = MetaVar
 instance MetaVary Concrete.Expr (MetaVar Concrete.Expr) where
   type MetaData Concrete.Expr (MetaVar Concrete.Expr) = Plicitness
 
-instance MetaVary (Abstract.Expr a) (MetaVar (Abstract.Expr a)) where
-  type MetaData (Abstract.Expr a) (MetaVar (Abstract.Expr a)) = a
+instance MetaVary Abstract.Expr (MetaVar Abstract.Expr) where
+  type MetaData Abstract.Expr (MetaVar Abstract.Expr) = Plicitness
 
 instance MetaVary Closed.Expr (MetaVar Closed.Expr) where
   type MetaData Closed.Expr (MetaVar Closed.Expr) = ()
   refineVar v _ = return $ Closed.Var v
 
-type MetaP = MetaVar Abstract.ExprP
-type MetaE = MetaVar Abstract.ExprE
+type MetaA = MetaVar Abstract.Expr
 
-type ConcreteM = Concrete.Expr MetaP
-type AbstractM = Abstract.ExprP MetaP
-type AbstractE = Abstract.ExprE (MetaVar Abstract.ExprE)
-type LambdaM = SLambda.Expr MetaE
-type ScopeM b f = Scope b f MetaP
-type BranchesM c a f = Branches c a f MetaP
+type ConcreteM = Concrete.Expr MetaA
+type AbstractM = Abstract.Expr MetaA
+type LambdaM = SLambda.Expr MetaA
+type ScopeM b f = Scope b f MetaA
+type BranchesM c a f = Branches c a f MetaA
 
 instance Eq (MetaVar e) where
   (==) = (==) `on` metaId
@@ -86,7 +84,7 @@ instance Hashable (MetaVar e) where
 
 instance Show1 e => Show (MetaVar e) where
   showsPrec d (MetaVar i t h _) = showParen (d > 10) $
-    showString "Meta" . showChar ' ' . showsPrec 11 i .
+    showString "MetaA" . showChar ' ' . showsPrec 11 i .
     showChar ' ' . showsPrec1 11 t . showChar ' ' . showsPrec 11 h .
     showChar ' ' . showString "<Ref>"
 
@@ -210,19 +208,18 @@ abstractM f e = do
     free = pure . pure . pure . pure
 
 abstract1M
-  :: Show a
-  => MetaVar (Abstract.Expr a)
-  -> Abstract.Expr a (MetaVar (Abstract.Expr a))
-  -> TCM (Scope () (Abstract.Expr a) (MetaVar (Abstract.Expr a)))
+  :: MetaA
+  -> AbstractM
+  -> TCM (ScopeM () Abstract.Expr)
 abstract1M v e = do
   logVerbose 20 $ "abstracting " <> fromString (show $ metaId v)
   abstractM (\v' -> if v == v' then Just () else Nothing) e
 
 abstractDataDefM
-  :: (MetaP -> Maybe b)
-  -> DataDef Abstract.ExprP MetaP
+  :: (MetaA -> Maybe b)
+  -> DataDef Abstract.Expr MetaA
   -> AbstractM
-  -> TCM (DataDef Abstract.ExprP (Var b MetaP))
+  -> TCM (DataDef Abstract.Expr (Var b MetaA))
 abstractDataDefM f (DataDef cs) typ = mdo
   let inst = instantiateTele pure vs
       vs = (\(_, _, _, v) -> v) <$> ps'

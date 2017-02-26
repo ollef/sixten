@@ -16,4 +16,4 @@ and b1 b2 = if b1 b2 False
 or : Bool -> Bool -> Bool
 or b1 b2 = if b1 True b2
 
-main1 = printSize (if (or False (and True False)) 12 13)
+main1 = printInt (if (or False (and True False)) 12 13)

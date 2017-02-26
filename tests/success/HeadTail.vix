@@ -20,5 +20,5 @@ tail xs = case deref xs of
 
 aList = Ref (Cons 1 (Ref (Cons 2 (Ref Nil))))
 
-val1 = printSize (head aList)
-val2 = printSize (head (Ref (tail aList)))
+val1 = printInt (head aList)
+val2 = printInt (head (Ref (tail aList)))

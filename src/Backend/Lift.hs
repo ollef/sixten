@@ -49,7 +49,7 @@ liftExpr expr = case expr of
     <*> fmap toScope (liftExpr $ fromScope s)
   Converted.Case e brs -> Lifted.Case <$> liftExpr e <*> liftBranches brs
   Converted.Prim p -> Lifted.Prim <$> mapM liftExpr p
-  Converted.Sized sz e -> Lifted.Sized <$> liftExpr sz <*> liftExpr e
+  Converted.Anno e t -> Lifted.Anno <$> liftExpr e <*> liftExpr t
 
 underScope
   :: (Functor m, Monad e, Monad e')
@@ -80,7 +80,7 @@ liftTelescope (Telescope tele) = Telescope
 liftDefinitionM
   :: Converted.Expr Void
   -> Lift (Lifted.Definition ClosureDir (Lifted.Expr ClosureDir) Void)
-liftDefinitionM (Converted.Sized _ (Converted.Lams retDir tele s)) = do
+liftDefinitionM (Converted.Anno (Converted.Lams retDir tele s) _) = do
   tele' <- liftTelescope tele
   s' <- underScope liftExpr s
   return $ Lifted.FunctionDef Public $ Lifted.Function retDir tele' s'

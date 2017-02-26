@@ -147,7 +147,7 @@ generateExpr msz expr = case expr of
       (_, Just directRets) -> fmap DirectVar $ "case-result" =: phiInt directRets
       (_, Nothing) -> fmap IndirectVar $ "case-result" =: phiPtr (first snd <$> rets)
   Prim p -> generatePrim p
-  Sized size e -> do
+  Anno e size -> do
     szVar <- generateExpr (Just "1") size
     szInt <- loadVar "size" szVar
     generateExpr (Just szInt) e
@@ -182,12 +182,12 @@ storeExpr msz expr ret = case expr of
     res <- generatePrim p
     intRes <- loadVar "loaded-prim" res
     emit $ store intRes ret
-  Sized size e -> do
+  Anno e size -> do
     szVar <- generateExpr (Just "1") size
     szInt <- loadVar "size" szVar
     storeExpr (Just szInt) e ret
   where
-    sz = fromMaybe (error $ "storeExpr " ++ show (const () <$> expr)) msz
+    sz = fromMaybe (error $ "storeExpr " ++ show (void expr)) msz
 
 generateDirectedExpr
   :: Expr RetDir Var
@@ -197,7 +197,7 @@ generateDirectedExpr expr dir
   = generateExpr Nothing expr >>= directed dir
 
 gcAllocExpr :: Expr RetDir Var -> Gen (Operand Ptr)
-gcAllocExpr (Sized sz expr) = do
+gcAllocExpr (Anno expr sz) = do
   szVar <- generateExpr (Just "1") sz
   szInt <- loadVar "size" szVar
   ref <- gcAlloc szInt
@@ -210,7 +210,7 @@ generateCon _ Builtin.Ref es = do
   sizes <- mapM (loadVar "size" <=< generateExpr (Just "1") . sizeOf) es
   (is, fullSize) <- adds sizes
   ref <- gcAlloc fullSize
-  Foldable.forM_ (zip (Vector.toList sizes) $ zip is $ Vector.toList es) $ \(sz, (i, Sized _ e)) -> do
+  Foldable.forM_ (zip (Vector.toList sizes) $ zip is $ Vector.toList es) $ \(sz, (i, Anno e _)) -> do
     index <- "index" =: getElementPtr ref i
     storeExpr (Just sz) e index
   refInt <- "ref-int" =: ptrToInt ref
@@ -230,7 +230,7 @@ storeCon qc es ret = do
   let es' = maybe id (Vector.cons . sized 1 . Lit . fromIntegral) mqcIndex es
   sizes <- mapM (loadVar "size" <=< generateExpr (Just "1") . sizeOf) es'
   (is, _) <- adds sizes
-  Foldable.forM_ (zip (Vector.toList sizes) $ zip is $ Vector.toList es') $ \(sz, (i, Sized _ e)) -> do
+  Foldable.forM_ (zip (Vector.toList sizes) $ zip is $ Vector.toList es') $ \(sz, (i, Anno e _)) -> do
     index <- "index" =: getElementPtr ret i
     storeExpr (Just sz) e index
 

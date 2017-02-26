@@ -139,10 +139,10 @@ infer expr = case expr of
   Prim p -> do
     p' <- mapM (fmap fst . infer) p
     return (Prim p', MProjection) -- TODO?
-  Sized sz e -> do
-    (sz', _szLoc) <- infer sz
+  Anno e t -> do
+    (t', _tLoc) <- infer t
     (e', eLoc) <- infer e
-    return (Sized sz' e', eLoc)
+    return (Anno e' t', eLoc)
   where
     directCall = locatedCall MProjection
     locatedCall loc dir f es = do

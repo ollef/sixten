@@ -12,4 +12,4 @@ head : {A : Type} -> Ptr (List A) -> A
 head (Ref (Cons x _)) = x
 head x = head x
 
-x = printSize (head test)
+x = printInt (head test)

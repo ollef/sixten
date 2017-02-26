@@ -13,9 +13,9 @@ import Syntax.Abstract
 import Util
 
 whnf
-  :: (Context (Expr a), Eq a, MetaVary (Expr a) v)
-  => Expr a v
-  -> TCM (Expr a v)
+  :: MetaVary Expr v
+  => Expr v
+  -> TCM (Expr v)
 whnf expr = do
   modifyIndent succ
   res <- case expr of
@@ -29,8 +29,8 @@ whnf expr = do
     Lit _ -> return expr
     Pi {} -> return expr
     Lam {} -> return expr
-    Builtin.AddInt p1 p2 x y -> binOp 0 (+) (Builtin.AddInt p1 p2) whnf x y
-    Builtin.MaxInt p1 p2 x y -> binOp 0 max (Builtin.MaxInt p1 p2) whnf x y
+    Builtin.AddInt x y -> binOp 0 (+) Builtin.AddInt whnf x y
+    Builtin.MaxInt x y -> binOp 0 max Builtin.MaxInt whnf x y
     App e1 p e2 -> do
       e1' <- whnf e1
       case e1' of
@@ -38,7 +38,7 @@ whnf expr = do
           e2' <- whnf e2
           whnf $ Util.instantiate1 e2' s
         _ -> return expr
-    Let _ _ e s -> whnf $ instantiate1 e s
+    Let _ e s -> whnf $ instantiate1 e s
     Case e brs -> do
       e' <- whnf e
       chooseBranch e' brs whnf
@@ -46,9 +46,8 @@ whnf expr = do
   return res
 
 normaliseM
-  :: (Context (Expr a), Eq a, PrettyAnnotation a, Show a)
-  => Expr a (MetaVar (Expr a))
-  -> TCM (Expr a (MetaVar (Expr a)))
+  :: Expr MetaA
+  -> TCM (Expr MetaA)
 normaliseM expr = do
   logMeta 40 "normaliseM e" expr
   modifyIndent succ
@@ -63,15 +62,15 @@ normaliseM expr = do
     Lit _ -> return expr
     Pi n p a s -> normaliseScope n p (Pi n p) a s
     Lam n p a s -> normaliseScope n p (Lam n p) a s
-    Builtin.AddInt p1 p2 x y -> binOp 0 (+) (Builtin.AddInt p1 p2) normaliseM x y
-    Builtin.MaxInt p1 p2 x y -> binOp 0 max (Builtin.MaxInt p1 p2) normaliseM x y
+    Builtin.AddInt x y -> binOp 0 (+) Builtin.AddInt normaliseM x y
+    Builtin.MaxInt x y -> binOp 0 max Builtin.MaxInt normaliseM x y
     App e1 p e2 -> do
       e1' <- normaliseM e1
       e2' <- normaliseM e2
       case e1' of
         Lam _ p' _ s | p == p' -> normaliseM $ Util.instantiate1 e2' s
         _ -> return $ App e1' p e2'
-    Let _ _ e s -> do
+    Let _ e s -> do
       e' <- normaliseM e
       normaliseM $ instantiate1 e' s
     Case e brs -> do
@@ -115,13 +114,14 @@ normaliseM expr = do
       c t' <$> abstract1M x ns
 
 binOp
-  :: Literal
+  :: Monad m
+  => Literal
   -> (Literal -> Literal -> Literal)
-  -> (Expr a v -> Expr a v -> Expr a v)
-  -> (Expr a v -> TCM (Expr a v))
-  -> Expr a v
-  -> Expr a v
-  -> TCM (Expr a v)
+  -> (Expr v -> Expr v -> Expr v)
+  -> (Expr v -> m (Expr v))
+  -> Expr v
+  -> Expr v
+  -> m (Expr v)
 binOp zero op cop norm x y = do
     x' <- norm x
     y' <- norm y
@@ -132,10 +132,11 @@ binOp zero op cop norm x y = do
       _ -> return $ cop x' y'
 
 chooseBranch
-  :: Expr a v
-  -> Branches QConstr a (Expr a) v
-  -> (Expr a v -> TCM (Expr a v))
-  -> TCM (Expr a v)
+  :: Monad m
+  => Expr v
+  -> Branches QConstr Plicitness Expr v
+  -> (Expr v -> m (Expr v))
+  -> m (Expr v)
 chooseBranch (Lit l) (LitBranches lbrs def) k = k chosenBranch
   where
     chosenBranch = head $ [br | (l', br) <- NonEmpty.toList lbrs, l == l'] ++ [def]

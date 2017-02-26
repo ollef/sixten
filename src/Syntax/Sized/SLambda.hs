@@ -18,10 +18,12 @@ data Expr v
   | Con QConstr (Vector (Expr v)) -- ^ Fully applied
   | Lam !NameHint (Expr v) (Scope1 Expr v)
   | App (Expr v) (Expr v)
-  | Let NameHint (Expr v) (Expr v) (Scope1 Expr v)
+  | Let NameHint (Expr v) (Type v) (Scope1 Expr v)
   | Case (Expr v) (Branches QConstr () Expr v)
-  | Sized (Expr v) (Expr v)
+  | Anno (Expr v) (Type v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+type Type = Expr
 
 appsView :: Expr v -> (Expr v, Vector (Expr v))
 appsView = go []
@@ -30,7 +32,7 @@ appsView = go []
     go args e = (e, Vector.fromList args)
 
 lamView :: Expr v -> Maybe (NameHint, (), Expr v, Scope () Expr v)
-lamView (Sized _ e) = lamView e
+lamView (Anno e _) = lamView e
 lamView (Lam h e s) = Just (h, (), e, s)
 lamView _ = Nothing
 
@@ -57,9 +59,9 @@ instance GlobalBind Expr where
     Con qc es -> Con qc (bind f g <$> es)
     Lam h e s -> Lam h (bind f g e) (bound f g s)
     App e1 e2 -> App (bind f g e1) (bind f g e2)
-    Let h e sz s -> Let h (bind f g e) (bind f g sz) (bound f g s)
+    Let h e t s -> Let h (bind f g e) (bind f g t) (bound f g s)
     Case e brs -> Case (bind f g e) (bound f g brs)
-    Sized sz e -> Sized (bind f g sz) (bind f g e)
+    Anno e t -> Anno (bind f g e) (bind f g t)
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Expr v) where
@@ -69,14 +71,14 @@ instance (Eq v, IsString v, Pretty v)
     Con c es -> prettyApps (prettyM c) $ prettyM <$> es
     Lit l -> prettyM l
     App e1 e2 -> prettyApp (prettyM e1) (prettyM e2)
-    Let h e sz s -> parens `above` letPrec $ withNameHint h $ \n ->
-      "let" <+> prettyM n <+> "=" <+> prettyM e <+> ":" <+> prettyM sz <+> "in" <+>
+    Let h e t s -> parens `above` letPrec $ withNameHint h $ \n ->
+      "let" <+> prettyM n <+> "=" <+> prettyM e <+> ":" <+> prettyM t <+> "in" <+>
         prettyM (Util.instantiate1 (pure $ fromName n) s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> indent 2 (prettyM brs)
-    Sized sz e -> parens `above` annoPrec $
-      prettyM e <+> ":" <+> prettyM sz
+    Anno e t -> parens `above` annoPrec $
+      prettyM e <+> ":" <+> prettyM t
     (bindingsViewM lamView -> Just (tele, s)) -> parens `above` absPrec $
       withTeleHints tele $ \ns ->
         "\\" <> prettyTeleVarTypes ns tele <> "." <+>

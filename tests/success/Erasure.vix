@@ -1,7 +1,7 @@
-test : (n : Size)(A : Type {n}) -> A -> A
-test n A a = a
+test : (A : Type) -> A -> A
+test A a = a
 
-test2 : Type {1} -> Type {1}
-test2 t = test 0 (Type {1}) t
+test2 : Type -> Type
+test2 t = test Type t
 
-test3 = printSize 123
+test3 = printInt 123

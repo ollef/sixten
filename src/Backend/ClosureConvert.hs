@@ -27,11 +27,11 @@ type CBrsM = Branches QConstr () Converted.Expr Meta
 createSignature
   :: LExprM
   -> TCM (Converted.Signature Converted.Expr Closed.Expr Meta)
-createSignature sizedExpr@(Closed.Sized sz expr)  = case expr of
+createSignature sizedExpr@(Closed.Anno expr typ)  = case expr of
   Closed.Lams tele lamScope -> do
     (retDir, tele') <- createLambdaSignature tele lamScope
     return $ Converted.Function (NonClosureDir retDir) tele' lamScope
-  _ -> return $ Converted.Constant (Closed.sizeDir sz) sizedExpr
+  _ -> return $ Converted.Constant (Closed.sizeDir typ) sizedExpr
 createSignature _ = throwError "createSignature sizeless definition"
 
 createLambdaSignature
@@ -62,7 +62,7 @@ convertSignature sig = case sig of
     lamExpr' <- convertExpr lamExpr
     let lamScope' = abstract abstr lamExpr'
     return
-      $ Converted.Sized (Converted.Lit 1) $ Converted.Lams retDir tele
+      $ flip Converted.Anno (Converted.Lit 1) $ Converted.Lams retDir tele
       $ error "convertBody" <$> lamScope'
   Converted.Constant _ e -> convertExpr $ error "convertBody" <$> e
 
@@ -126,7 +126,7 @@ convertExpr expr = case expr of
     return $ Converted.Let h e' bodyScope'
   Closed.Case e brs -> Converted.Case <$> convertExpr e <*> convertBranches brs
   Closed.Prim p -> Converted.Prim <$> mapM convertExpr p
-  Closed.Sized sz e -> Converted.Sized <$> convertExpr sz <*> convertExpr e
+  Closed.Anno e t -> Converted.Anno <$> convertExpr e <*> convertExpr t
 
 unknownCall
   :: CExprM
@@ -134,7 +134,7 @@ unknownCall
   -> CExprM
 unknownCall e es
   = Converted.Call ClosureDir (Converted.Global $ Builtin.applyName $ Vector.length es)
-  $ Vector.cons (Converted.sized 1 e, Direct) $ (\sz -> (sz, Direct)) <$> Converted.sizedSizesOf es <|> (\arg -> (arg, Indirect)) <$> es
+  $ Vector.cons (Converted.sized 1 e, Direct) $ (\t -> (t, Direct)) <$> Converted.sizedSizesOf es <|> (\arg -> (arg, Indirect)) <$> es
 
 knownCall
   :: Converted.Expr Void
@@ -151,8 +151,8 @@ knownCall f retDir tele fBodyScope args
              | otherwise = F $ Tele $ 1 + i
           where
             i = fromMaybe (error "knownCall elemIndex") $ Vector.elemIndex v vs
-    sz <- case fBody of
-      Closed.Sized sz _ -> fmap go <$> convertExpr sz
+    typ <- case fBody of
+      Closed.Anno _ t -> fmap go <$> convertExpr t
       _ -> error "knownCall unsized body"
     let fNumArgs = Converted.Lams ClosureDir tele'
           $ toScope
@@ -164,13 +164,13 @@ knownCall f retDir tele fBodyScope args
             , Telescope $ Vector.cons (mempty, (), Builtin.slit 1)
                         $ Vector.cons (mempty, (), Builtin.slit 1) clArgs'
             , toScope
-            $ Converted.Sized sz
+            $ flip Converted.Anno typ
             $ Converted.Call retDir (vacuous f) (Vector.zip fArgs $ teleAnnotations tele)
             )
     return
       $ Converted.Con Builtin.Ref
       $ pure
-      $ Converted.Sized (Builtin.addInts $ Vector.cons (Converted.Lit 2) $ Converted.sizeOf <$> args)
+      $ flip Converted.Anno (Builtin.addInts $ Vector.cons (Converted.Lit 2) $ Converted.sizeOf <$> args)
       $ Converted.Con Builtin.Closure
       $ Vector.cons (Converted.sized 1 fNumArgs)
       $ Vector.cons (Converted.sized 1 $ Converted.Lit $ fromIntegral $ arity - numArgs) args
@@ -187,11 +187,11 @@ knownCall f retDir tele fBodyScope args
     clArgs = (\(h, d, s) -> (h, d, mapBound (+ 2) s)) <$> Vector.take numArgs (unTelescope tele)
     clArgs' = (\(h, _, s) -> (h, (), vacuous s)) <$> clArgs
     fArgs1 = Vector.zipWith
-      Converted.Sized ((\(_, _, s) -> unvar F absurd <$> fromScope s) <$> clArgs)
-                      (Converted.Var . B <$> Vector.enumFromN 2 numArgs)
-    fArgs2 = Vector.zipWith Converted.Sized
-      (Converted.Var . F <$> Vector.enumFromN 1 numXs)
+      Converted.Anno (Converted.Var . B <$> Vector.enumFromN 2 numArgs)
+                      ((\(_, _, s) -> unvar F absurd <$> fromScope s) <$> clArgs)
+    fArgs2 = Vector.zipWith Converted.Anno
       (Converted.Var . F <$> Vector.enumFromN (fromIntegral $ 1 + numXs) numXs)
+      (Converted.Var . F <$> Vector.enumFromN 1 numXs)
     xs = Vector.drop numArgs $ teleNames tele
     numXs = Vector.length xs
     fArgs = fArgs1 <> fArgs2

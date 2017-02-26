@@ -5,4 +5,4 @@ data List {a : Size}(A : Type {a}) where
 sizeof : forall {n}. Type {n} -> Size
 sizeof {n} _ = n
 
-sizeOfList = printSize (sizeof (List (List Size)))
+sizeOfList = printInt (sizeof (List (List Size)))

@@ -17,8 +17,6 @@ executable sixten
   ghc-options:         -Wall -funbox-strict-fields
   main-is:             Main.hs
   other-modules:
-                       Analysis.Erasability
-                       Analysis.Erase
                        Analysis.ReturnDirection
                        Analysis.Simplify
                        Backend.Close
@@ -26,6 +24,7 @@ executable sixten
                        Backend.Generate
                        Backend.LLVM
                        Backend.Lift
+                       Backend.SLam
                        Backend.Target
                        Builtin
                        Command.Compile

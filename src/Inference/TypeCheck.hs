@@ -223,7 +223,7 @@ tcRho expr expected expectedAppResult = case expr of
 
 tcBranches
   :: ConcreteM
-  -> [(Concrete.Pat (PatternScope Concrete.Expr MetaP) (), PatternScope Concrete.Expr MetaP)]
+  -> [(Concrete.Pat (PatternScope Concrete.Expr MetaA) (), PatternScope Concrete.Expr MetaA)]
   -> Expected Rhotype
   -> TCM AbstractM
 tcBranches expr pbrs expected = do
@@ -275,16 +275,16 @@ instPatExpected (Infer r _instBelow) patType = do
   return (patType, return)
 
 checkPat
-  :: Concrete.Pat (PatternScope Concrete.Expr MetaP) ()
-  -> Vector MetaP
+  :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
+  -> Vector MetaA
   -> Polytype
-  -> TCM (Abstract.Pat AbstractM MetaP, Vector MetaP)
+  -> TCM (Abstract.Pat AbstractM MetaA, Vector MetaA)
 checkPat pat vs expectedType = tcPat pat vs $ Check expectedType
 
 checkPats
-  :: Vector (Concrete.Pat (PatternScope Concrete.Expr MetaP) ())
+  :: Vector (Concrete.Pat (PatternScope Concrete.Expr MetaA) ())
   -> Vector Polytype
-  -> TCM (Vector (Abstract.Pat AbstractM MetaP), Vector MetaP)
+  -> TCM (Vector (Abstract.Pat AbstractM MetaA), Vector MetaA)
 checkPats pats types = do
   unless (Vector.length pats == Vector.length types)
     $ throwError "checkPats length mismatch"
@@ -297,9 +297,9 @@ checkPats pats types = do
 
 inferPat
   :: Plicitness
-  -> Concrete.Pat (PatternScope Concrete.Expr MetaP) ()
-  -> Vector MetaP
-  -> TCM (Abstract.Pat AbstractM MetaP, Vector MetaP, Polytype)
+  -> Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
+  -> Vector MetaA
+  -> TCM (Abstract.Pat AbstractM MetaA, Vector MetaA, Polytype)
 inferPat p pat vs = do
   ref <- liftST $ newSTRef $ error "inferPat: empty result"
   (pat', vs') <- tcPat pat vs $ Infer ref $ InstBelow p
@@ -307,10 +307,10 @@ inferPat p pat vs = do
   return (pat', vs', typ)
 
 tcPat
-  :: Concrete.Pat (PatternScope Concrete.Expr MetaP) ()
-  -> Vector MetaP
+  :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
+  -> Vector MetaA
   -> Expected Polytype
-  -> TCM (Abstract.Pat AbstractM MetaP, Vector MetaP)
+  -> TCM (Abstract.Pat AbstractM MetaA, Vector MetaA)
 tcPat pat vs expected = do
   whenVerbose 20 $ do
     shownPat <- bitraverse (showMeta . instantiatePatternVec pure vs) pure pat
@@ -324,10 +324,10 @@ tcPat pat vs expected = do
   return (pat', vs')
 
 tcPat'
-  :: Concrete.Pat (PatternScope Concrete.Expr MetaP) ()
-  -> Vector MetaP
+  :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
+  -> Vector MetaA
   -> Expected Polytype
-  -> TCM (Abstract.Pat AbstractM MetaP, Vector MetaP)
+  -> TCM (Abstract.Pat AbstractM MetaA, Vector MetaA)
 tcPat' pat vs expected = case pat of
   Concrete.VarPat h () -> do
     varType <- case expected of
@@ -391,8 +391,8 @@ tcPat' pat vs expected = case pat of
 viewPat
   :: AbstractM -- ^ expectedType
   -> (AbstractM -> TCM AbstractM) -- ^ expectedType -> patType
-  -> Abstract.Pat AbstractM MetaP
-  -> TCM (Abstract.Pat AbstractM MetaP) -- ^ expectedType
+  -> Abstract.Pat AbstractM MetaA
+  -> TCM (Abstract.Pat AbstractM MetaA) -- ^ expectedType
 viewPat expectedType f p = do
   x <- forall mempty Explicit expectedType
   fx <- f $ pure x
@@ -406,7 +406,7 @@ viewPat expectedType f p = do
 instantiateDataType
   :: Applicative f
   => Name
-  -> TCM (AbstractM, Vector (Plicitness, f MetaP))
+  -> TCM (AbstractM, Vector (Plicitness, f MetaA))
 instantiateDataType typeName = mdo
   (_, dataTypeType) <- definition typeName
   let params = telescope dataTypeType
@@ -430,7 +430,7 @@ resolveConstrType cs expected = do
   mExpectedType <- expectedDataType
   possibleTypeSets <- forM cs $ \c -> do
     possibleTypes <- constructor c
-    return $ Set.map fst (possibleTypes :: Set (Name, Abstract.ExprP ()))
+    return $ Set.map fst (possibleTypes :: Set (Name, Abstract.Expr ()))
   let possibleTypes = List.foldl1' Set.intersection possibleTypeSets
 
   when (Set.null possibleTypes) $
@@ -471,7 +471,7 @@ resolveConstrType cs expected = do
         Abstract.Global v -> do
           (d, _ :: AbstractM) <- definition v
           return $ case d of
-            DataDefinition _ -> Just v
+            DataDefinition _ _ -> Just v
             _ -> Nothing
         _ -> return Nothing
     err heading docs = do
@@ -490,7 +490,7 @@ resolveConstrType cs expected = do
 prenexConvert
   :: Polytype
   -> InstBelow
-  -> TCM (Vector (Plicitness, MetaP), Rhotype, AbstractM -> TCM AbstractM)
+  -> TCM (Vector (Plicitness, MetaA), Rhotype, AbstractM -> TCM AbstractM)
 prenexConvert typ instBelow = do
   typ' <- whnf typ
   prenexConvert' typ' instBelow
@@ -498,7 +498,7 @@ prenexConvert typ instBelow = do
 prenexConvert'
   :: Polytype
   -> InstBelow
-  -> TCM (Vector (Plicitness, MetaP), Rhotype, AbstractM -> TCM AbstractM)
+  -> TCM (Vector (Plicitness, MetaA), Rhotype, AbstractM -> TCM AbstractM)
 prenexConvert' (Abstract.Pi h p t resScope) (InstBelow p') | p < p' = do
   y <- forall h p t
   let resType = Util.instantiate1 (pure y) resScope
@@ -593,8 +593,8 @@ funSubtypes
   :: Rhotype
   -> Vector Plicitness
   -> TCM
-    ( Telescope Plicitness Abstract.ExprP MetaP
-    , Scope Tele Abstract.ExprP MetaP
+    ( Telescope Plicitness Abstract.Expr MetaA
+    , Scope Tele Abstract.Expr MetaA
     , Vector (AbstractM -> TCM AbstractM)
     )
 funSubtypes startType plics = go plics startType mempty mempty mempty
@@ -626,7 +626,7 @@ funSubtypes startType plics = go plics startType mempty mempty mempty
 funSubtype
   :: Rhotype
   -> Plicitness
-  -> TCM (NameHint, Rhotype, Scope1 Abstract.ExprP MetaP, AbstractM -> TCM AbstractM)
+  -> TCM (NameHint, Rhotype, Scope1 Abstract.Expr MetaA, AbstractM -> TCM AbstractM)
 funSubtype typ p = do
   typ' <- whnf typ
   funSubtype' typ' p
@@ -634,7 +634,7 @@ funSubtype typ p = do
 funSubtype'
   :: Rhotype
   -> Plicitness
-  -> TCM (NameHint, Rhotype, Scope1 Abstract.ExprP MetaP, AbstractM -> TCM AbstractM)
+  -> TCM (NameHint, Rhotype, Scope1 Abstract.Expr MetaA, AbstractM -> TCM AbstractM)
 funSubtype' (Abstract.Pi h p t s) p' | p == p' = return (h, t, s, pure)
 funSubtype' typ p = do
   argType <- existsType mempty
@@ -647,7 +647,7 @@ funSubtype' typ p = do
 subtypeFun
   :: Rhotype
   -> Plicitness
-  -> TCM (Rhotype, Scope1 Abstract.ExprP MetaP, AbstractM -> TCM AbstractM)
+  -> TCM (Rhotype, Scope1 Abstract.Expr MetaA, AbstractM -> TCM AbstractM)
 subtypeFun typ p = do
   typ' <- whnf typ
   subtypeFun' typ' p
@@ -655,7 +655,7 @@ subtypeFun typ p = do
 subtypeFun'
   :: Rhotype
   -> Plicitness
-  -> TCM (Rhotype, Scope1 Abstract.ExprP MetaP, AbstractM -> TCM AbstractM)
+  -> TCM (Rhotype, Scope1 Abstract.Expr MetaA, AbstractM -> TCM AbstractM)
 subtypeFun' (Abstract.Pi _ p t s) p' | p == p' = return (t, s, pure)
 subtypeFun' typ p = do
   argType <- existsType mempty
@@ -699,7 +699,7 @@ checkConstrDef
 checkConstrDef (ConstrDef c typ) = do
   typ' <- zonk =<< checkPoly typ Builtin.Type
   (sizes, ret) <- go typ'
-  let size = foldr Builtin.AddIntE (Abstract.Lit 0) sizes
+  let size = foldr Builtin.AddInt (Abstract.Lit 0) sizes
   return (ConstrDef c typ', ret, size)
   where
     go :: AbstractM -> TCM ([AbstractM], AbstractM)
@@ -710,10 +710,10 @@ checkConstrDef (ConstrDef c typ) = do
     go ret = return ([], ret)
 
 checkDataType
-  :: MetaP
-  -> DataDef Concrete.Expr MetaP
+  :: MetaA
+  -> DataDef Concrete.Expr MetaA
   -> AbstractM
-  -> TCM (DataDef Abstract.ExprP MetaP, AbstractM)
+  -> TCM (DataDef Abstract.Expr MetaA, AbstractM, AbstractM)
 checkDataType name (DataDef cs) typ = do
   typ' <- zonk typ
   logMeta 20 "checkDataType t" typ'
@@ -735,10 +735,10 @@ checkDataType name (DataDef cs) typ = do
   let addTagSize = case cs of
         [] -> id
         [_] -> id
-        _ -> Builtin.AddIntE $ Abstract.Lit 1
+        _ -> Builtin.AddInt $ Abstract.Lit 1
 
       typeSize = addTagSize
-               $ foldr (Builtin.MaxInt Explicit Explicit) (Abstract.Lit 0) sizes
+               $ foldr Builtin.MaxInt (Abstract.Lit 0) sizes
 
   unify [] Builtin.Type =<< typeOfM constrRetType
 
@@ -749,10 +749,12 @@ checkDataType name (DataDef cs) typ = do
   params <- metaTelescopeM ps'
   let typ'' = pis params $ Scope Builtin.Type
 
-  return (DataDef abstractedCs, typ'') -- TODO Make a definition from typeSize?
+  abstractedTypeSize <- abstractM abstr typeSize
+
+  return (DataDef abstractedCs, lams params abstractedTypeSize, typ'')
 
 checkClauses
-  :: NonEmpty (Concrete.Clause Concrete.Expr MetaP)
+  :: NonEmpty (Concrete.Clause Concrete.Expr MetaA)
   -> Polytype
   -> TCM AbstractM
 checkClauses clauses polyType = do
@@ -800,7 +802,7 @@ checkClauses clauses polyType = do
     piPlicitnesses' _ = return mempty
 
 checkClausesRho
-  :: NonEmpty (Concrete.Clause Concrete.Expr MetaP)
+  :: NonEmpty (Concrete.Clause Concrete.Expr MetaA)
   -> Rhotype
   -> TCM AbstractM
 checkClausesRho clauses rhoType = do
@@ -847,51 +849,59 @@ checkClausesRho clauses rhoType = do
   return result
 
 checkDefType
-  :: MetaP
-  -> Concrete.PatDefinition Concrete.Expr MetaP
+  :: MetaA
+  -> Concrete.PatDefinition Concrete.Expr MetaA
   -> SourceLoc
   -> AbstractM
-  -> TCM (Definition Abstract.ExprP MetaP, AbstractM)
+  -> TCM (Definition Abstract.Expr MetaA, AbstractM)
 checkDefType v def loc typ = located (render loc) $ case def of
   Concrete.PatDefinition clauses -> do
     e' <- checkClauses clauses typ
     return (Definition e', typ)
   Concrete.PatDataDefinition d -> do
-    (d', typ') <- checkDataType v d typ
-    return (DataDefinition d', typ')
+    (d', rep, typ') <- checkDataType v d typ
+    return (DataDefinition d' rep, typ')
 
 generaliseDef
-  :: Vector MetaP
-  -> Definition Abstract.ExprP MetaP
+  :: Vector MetaA
+  -> Definition Abstract.Expr MetaA
   -> AbstractM
-  -> TCM ( Definition Abstract.ExprP MetaP
+  -> TCM ( Definition Abstract.Expr MetaA
          , AbstractM
          )
 generaliseDef vs (Definition e) t = do
-  ge <- go lam e
-  gt <- go pi_ t
+  let ivs = (,) Implicit <$> vs
+  ge <- abstractMs ivs lam e
+  gt <- abstractMs ivs pi_ t
   return (Definition ge, gt)
-  where
-    go c b = Foldable.foldrM
-      (\a s -> c (metaHint a) Implicit (metaType a) <$> abstract1M a s)
-      b
-      vs
-generaliseDef vs (DataDefinition (DataDef cs)) typ = do
+generaliseDef vs (DataDefinition (DataDef cs) rep) typ = do
   let cs' = map (fmap $ toScope . splat f g) cs
+      ivs = (,) Implicit <$> vs
   -- Abstract vs on top of typ
-  typ' <- foldrM (\v -> fmap (Abstract.Pi (metaHint v) Implicit (metaType v))
-                      . abstract1M v) typ vs
-  return (DataDefinition (DataDef cs'), typ')
+  grep <- abstractMs ivs lam rep
+  gtyp <- abstractMs ivs pi_ typ
+  return (DataDefinition (DataDef cs') grep, gtyp)
   where
     f v = pure $ maybe (F v) (B . Tele) (v `Vector.elemIndex` vs)
     g = pure . B . (+ Tele (length vs))
 
+abstractMs
+  :: Foldable t
+  => t (Plicitness, MetaA)
+  -> (NameHint -> Plicitness -> AbstractM -> ScopeM () Abstract.Expr -> AbstractM)
+  -> AbstractM
+  -> TCM AbstractM
+abstractMs vs c b = foldrM
+  (\(p, v)  s -> c (metaHint v) p (metaType v) <$> abstract1M v s)
+  b
+  vs
+
 generaliseDefs
-  :: Vector ( MetaP
-            , Definition Abstract.ExprP MetaP
+  :: Vector ( MetaA
+            , Definition Abstract.Expr MetaA
             , AbstractM
             )
-  -> TCM (Vector ( Definition Abstract.ExprP MetaP
+  -> TCM (Vector ( Definition Abstract.Expr MetaA
                  , AbstractM
                  )
          )
@@ -944,8 +954,8 @@ checkRecursiveDefs
             , Concrete.Expr Void
             )
   -> TCM (Vector ( Name
-                 , Definition Abstract.ExprP Void
-                 , Abstract.ExprP Void
+                 , Definition Abstract.Expr Void
+                 , Abstract.Expr Void
                  )
          )
 checkRecursiveDefs defs = do
@@ -983,7 +993,7 @@ checkRecursiveDefs defs = do
         Just index -> global
           $ fromMaybe (error "checkRecursiveDefs 2")
           $ names Vector.!? index
-      vf :: MetaP -> TCM b
+      vf :: MetaA -> TCM b
       vf v = throwError $ "checkRecursiveDefs " ++ show v
 
   forM (Vector.zip names genDefs) $ \(name, (def, typ)) -> do

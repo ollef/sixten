@@ -21,13 +21,13 @@ import Syntax
 import Syntax.Abstract
 import TCM
 
-existsType :: Monad e => NameHint -> TCM (e (MetaVar ExprP))
+existsType :: Monad e => NameHint -> TCM (e MetaA)
 existsType n = existsVar n Builtin.Type
 
 occurs
   :: [(AbstractM, AbstractM)]
   -> Level
-  -> MetaVar ExprP
+  -> MetaA
   -> AbstractM
   -> TCM ()
 occurs cxt l tv expr = traverse_ go expr
@@ -91,16 +91,16 @@ unify' cxt type1 type2
     (_, appsView -> (Var v@(metaRef -> Just r), distinctForalls -> Just pvs)) -> solveVar (flip . unify) r v pvs type1
     (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
     (Lam h1 p1 t1 s1, Lam h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
-    (Lit 0, Builtin.AddIntE x y) -> do
+    (Lit 0, Builtin.AddInt x y) -> do
       unify cxt (Lit 0) x
       unify cxt (Lit 0) y
-    (Builtin.AddIntE x y, Lit 0) -> do
+    (Builtin.AddInt x y, Lit 0) -> do
       unify cxt x (Lit 0)
       unify cxt y (Lit 0)
-    (Builtin.AddIntE (Lit m) y, Lit n) -> unify cxt y $ Lit $ n - m
-    (Builtin.AddIntE y (Lit m), Lit n) -> unify cxt y $ Lit $ n - m
-    (Lit n, Builtin.AddIntE (Lit m) y) -> unify cxt (Lit $ n - m) y
-    (Lit n, Builtin.AddIntE y (Lit m)) -> unify cxt (Lit $ n - m) y
+    (Builtin.AddInt (Lit m) y, Lit n) -> unify cxt y $ Lit $ n - m
+    (Builtin.AddInt y (Lit m), Lit n) -> unify cxt y $ Lit $ n - m
+    (Lit n, Builtin.AddInt (Lit m) y) -> unify cxt (Lit $ n - m) y
+    (Lit n, Builtin.AddInt y (Lit m)) -> unify cxt (Lit $ n - m) y
     -- Since we've already tried reducing the application, we can only hope to
     -- unify it pointwise.
     (App e1 a1 e1', App e2 a2 e2') | a1 == a2 -> do

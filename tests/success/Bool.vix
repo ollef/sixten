@@ -6,4 +6,4 @@ test (b : Bool) = case b of
   False -> 2
   True -> 3
 
-x = printSize (addSize (test True) (test False))
+x = printInt (addInt (test True) (test False))

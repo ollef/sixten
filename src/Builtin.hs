@@ -21,12 +21,10 @@ pattern IntName <- ((==) "Int" -> True) where IntName = "Int"
 pattern IntType = Global IntName
 
 pattern AddIntName <- ((==) "addInt" -> True) where AddIntName = "addInt"
-pattern AddIntE e1 e2 = AddInt Explicit Explicit e1 e2
-pattern AddInt p1 p2 e1 e2 = App (App (Global AddIntName) p1 e1) p2 e2
+pattern AddInt e1 e2 = App (App (Global AddIntName) Explicit e1) Explicit e2
 
 pattern MaxIntName <- ((==) "maxInt" -> True) where MaxIntName = "maxInt"
-pattern MaxIntE e1 e2 = MaxInt Explicit Explicit e1 e2
-pattern MaxInt p1 p2 e1 e2 = App (App (Global MaxIntName) p1 e1) p2 e2
+pattern MaxInt e1 e2 = App (App (Global MaxIntName) Explicit e1) Explicit e2
 
 pattern PrintIntName <- ((==) "printInt" -> True) where PrintIntName = "printInt"
 pattern PrintInt e1 = App (Global PrintIntName) Explicit e1
@@ -48,24 +46,28 @@ pattern Ref <- ((== QConstr PtrName RefName) -> True) where Ref = QConstr PtrNam
 pattern FailName <- ((==) "fail" -> True) where FailName = "fail"
 pattern Fail t = App (Global FailName) Explicit t
 
+pattern PiTypeName <- ((==) "Pi_" -> True) where PiTypeName = "Pi_"
+
 applyName :: Int -> Name
 applyName n = "apply_" <> shower n
 
 papName :: Int -> Int -> Name
 papName k m = "pap_" <> shower k <> "_" <> shower m
 
-contextP :: HashMap Name (Definition ExprP Void, TypeP Void)
-contextP = HashMap.fromList
+context :: HashMap Name (Definition Expr Void, Type Void)
+context = HashMap.fromList
   [ (TypeName, opaque Type)
+  , (PtrName, dataType 1
+                       (arrow Explicit Type Type)
+                       [ ConstrDef RefName $ toScope $ fmap B $ arrow Explicit (pure 0)
+                                           $ app (Global PtrName) Explicit (pure 0)
+                       ])
   , (IntName, opaque Type)
   , (AddIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
   , (MaxIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
   , (PrintIntName, opaque $ arrow Explicit IntType IntType)
-  , (PtrName, dataType (arrow Explicit Type Type)
-                       [ ConstrDef RefName $ toScope $ fmap B $ arrow Explicit (pure 0)
-                                           $ app (Global PtrName) Explicit (pure 0)
-                       ])
-  , (UnitName, dataType Type
+  , (UnitName, dataType 0
+                        Type
                         [ConstrDef UnitConstrName $ toScope $ Global UnitName])
 
   , ( FailName
@@ -76,36 +78,10 @@ contextP = HashMap.fromList
   ]
   where
     cl = fromMaybe (error "Builtin not closed") . closed
-    opaque t = (DataDefinition $ DataDef mempty, cl t)
-    dataType t xs = (DataDefinition $ DataDef xs, cl t)
-    namedPi :: Name -> Plicitness -> TypeP Name -> ExprP Name -> ExprP Name
+    opaque t = (DataDefinition (DataDef mempty) (Lit 1), cl t)
+    dataType sz t xs = (DataDefinition (DataDef xs) (Lit sz), cl t)
+    namedPi :: Name -> Plicitness -> Type Name -> Expr Name -> Expr Name
     namedPi n p t e = Pi (fromName n) p t $ abstract1 n e
-
-contextE :: HashMap Name (Definition ExprE Void, TypeE Void)
-contextE = HashMap.fromList
-  [ (TypeName, opaque Type)
-  , (IntName, opaque Type)
-  , (AddIntName, opaque $ arrow Retained IntType $ arrow Retained IntType IntType)
-  , (MaxIntName, opaque $ arrow Retained IntType $ arrow Retained IntType IntType)
-  , (PrintIntName, opaque $ arrow Retained IntType IntType)
-  , (PtrName, dataType (arrow Retained Type Type)
-                       [ ConstrDef RefName $ toScope $ fmap B $ arrow Retained (pure 0)
-                                           $ app (Global PtrName) Retained (pure 0)
-                       ])
-  , (UnitName, dataType Type
-                        [ConstrDef UnitConstrName $ toScope $ Global UnitName])
-  , ( FailName
-    , opaque
-    $ namedPi "T" Retained Type
-    $ pure "T"
-    )
-  ]
-  where
-    cl = fromMaybe (error "Builtin not closed") . closed
-    opaque t = (DataDefinition $ DataDef mempty, cl t)
-    dataType t xs = (DataDefinition $ DataDef xs, cl t)
-    namedPi :: Name -> Erasability -> TypeE Name -> ExprE Name -> ExprE Name
-    namedPi n a t e = Pi (fromName n) a t $ abstract1 n e
 
 convertedContext :: HashMap Name (Converted.Expr Void)
 convertedContext = HashMap.fromList $ concat
@@ -113,6 +89,19 @@ convertedContext = HashMap.fromList $ concat
     , Converted.sized 1
     $ Converted.Lit 1
     )
+  , ( PiTypeName
+    , Converted.sized 1
+    $ Converted.Lit 1
+    )
+  , ( PtrName
+    , Converted.sized 1
+      $ Converted.Lams
+        (NonClosureDir Direct)
+        (Telescope $ pure (mempty, Direct, slit 1))
+      $ Scope
+      $ Converted.sized 1
+      $ Converted.Lit 1
+      )
   , ( IntName
     , Converted.sized 1
     $ Converted.Lit 1
@@ -185,7 +174,7 @@ convertedContext = HashMap.fromList $ concat
         (Telescope
         $ Vector.fromList [(mempty, Direct, slit 1)])
       $ Scope
-      $ Converted.Sized (Converted.Var $ B 0)
+      $ flip Converted.Anno (Converted.Var $ B 0)
       $ Converted.Prim
       $ Primitive Void
       [TextPart $ "call " <> voidT <> " @exit(i32 1)"]
@@ -250,7 +239,7 @@ apply numArgs
       | numArgs < arity
         = Converted.Con Ref
         $ pure
-        $ Converted.Sized
+        $ flip Converted.Anno
           (addInts
           $ Vector.cons (Converted.Lit $ fromIntegral $ 3 + numArgs)
           $ (\n -> Converted.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs)
@@ -259,12 +248,12 @@ apply numArgs
         $ Vector.cons (Converted.sized 1 $ Converted.Lit $ fromIntegral $ arity - numArgs)
         $ Vector.cons (Converted.sized 1 $ Converted.Var $ F $ B 0)
         $ (\n -> Converted.sized 1 $ Converted.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs
-        <|> (\n -> Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + Tele numArgs + n) <$> Vector.enumFromN 0 numArgs
+        <|> (\n -> flip Converted.Anno (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + Tele numArgs + n) <$> Vector.enumFromN 0 numArgs
       | numArgs == arity
         = Converted.Call ClosureDir (Converted.Var $ B 0)
         $ Vector.cons (Converted.sized 1 $ Converted.Var $ F $ B 0, Direct)
         $ (\n -> (Converted.sized 1 $ Converted.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN 0 numArgs
-        <|> (\n -> (Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + Tele numArgs + n, Indirect)) <$> Vector.enumFromN 0 numArgs
+        <|> (\n -> (flip Converted.Anno (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + Tele numArgs + n, Indirect)) <$> Vector.enumFromN 0 numArgs
       | otherwise
         = Converted.Call (NonClosureDir Indirect) (Converted.Global $ applyName $ numArgs - arity)
         $ Vector.cons
@@ -272,17 +261,17 @@ apply numArgs
           $ Converted.Call ClosureDir (Converted.Var $ B 0)
           $ Vector.cons (Converted.sized 1 $ Converted.Var $ F $ B 0, Direct)
           $ (\n -> (Converted.sized 1 $ Converted.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN 0 arity
-          <|> (\n -> (Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + fromIntegral numArgs + n, Indirect)) <$> Vector.enumFromN 0 arity, Direct)
+          <|> (\n -> (flip Converted.Anno (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + fromIntegral numArgs + n, Indirect)) <$> Vector.enumFromN 0 arity, Direct)
         $ (\n -> (Converted.sized 1 $ Converted.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
-        <|> (\n -> (Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + fromIntegral numArgs + n, Indirect)) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
+        <|> (\n -> (flip Converted.Anno (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + fromIntegral numArgs + n, Indirect)) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
 
 addInts :: Vector (Converted.Expr v) -> Converted.Expr v
 addInts = Vector.foldr1 go
   where
     go x y
       = Converted.Call (NonClosureDir Direct) (Converted.Global AddIntName)
-      $ Vector.cons (Converted.Sized (Converted.Lit 1) x, Direct)
-      $ pure (Converted.Sized (Converted.Lit 1) y, Direct)
+      $ Vector.cons (Converted.Anno x (Converted.Lit 1), Direct)
+      $ pure (Converted.Anno y (Converted.Lit 1), Direct)
 
 pap :: Int -> Int -> Converted.Expr Void
 pap k m
@@ -309,6 +298,6 @@ pap k m
       $ Vector.cons (Converted.sized 1 $ Converted.Var $ B 2, Direct)
       $ (\n -> (Converted.sized 1 $ Converted.Var $ B $ 3 + n, Direct)) <$> Vector.enumFromN 0 m
       <|> (\n -> (Converted.sized 1 $ Converted.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN 0 k
-      <|> (\n -> (Converted.Sized (Converted.Var $ B $ 3 + n) $ Converted.Var $ B $ 3 + Tele m + n, Indirect)) <$> Vector.enumFromN 0 m
-      <|> (\n -> (Converted.Sized (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + Tele k + n, Indirect)) <$> Vector.enumFromN 0 k
+      <|> (\n -> (flip Converted.Anno (Converted.Var $ B $ 3 + n) $ Converted.Var $ B $ 3 + Tele m + n, Indirect)) <$> Vector.enumFromN 0 m
+      <|> (\n -> (flip Converted.Anno (Converted.Var $ F $ B $ 1 + n) $ Converted.Var $ F $ B $ 1 + Tele k + n, Indirect)) <$> Vector.enumFromN 0 k
     )

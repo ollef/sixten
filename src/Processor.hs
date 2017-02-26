@@ -20,8 +20,6 @@ import System.IO
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import qualified Text.Trifecta as Trifecta
 
-import qualified Analysis.Erasability as Erasability
-import Analysis.Erase
 import qualified Analysis.ReturnDirection as ReturnDirection
 import Analysis.Simplify
 import Backend.Close
@@ -29,6 +27,7 @@ import qualified Backend.ClosureConvert as ClosureConvert
 import qualified Backend.Generate as Generate
 import Backend.Lift
 import qualified Backend.LLVM as LLVM
+import qualified Backend.SLam as SLam
 import Backend.Target
 import qualified Builtin
 import qualified Frontend.Parse as Parse
@@ -65,17 +64,12 @@ processGroup
   >=> processAbstractGroup
 
 processAbstractGroup
-  :: [(Name, Definition Abstract.ExprP Void, Abstract.ExprP Void)]
+  :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
   -> TCM [(LLVM.B, LLVM.B)]
 processAbstractGroup
   = addGroupToContext
-  >=> inferGroupErasability
-  >=> prettyTypedGroup "Inferred erasability" absurd
-  >=> simplifyGroup
-  >=> prettyTypedGroup "Simplified again" absurd
-  >=> addErasableGroupToContext
-  >=> eraseGroup
-  >=> prettyGroup "Erased (SLambda)" absurd
+  >=> slamGroup
+  >=> prettyGroup "SLammed:" absurd
   >=> closeGroup
   >=> prettyGroup "Closed" absurd
   >=> closureConvertGroup
@@ -148,49 +142,32 @@ prettyGroup str f defs = do
 
 typeCheckGroup
   :: [(Name, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]
-  -> TCM [(Name, Definition Abstract.ExprP Void, Abstract.ExprP Void)]
+  -> TCM [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
 typeCheckGroup
   = fmap Vector.toList . TypeCheck.checkRecursiveDefs . Vector.fromList
 
 simplifyGroup
-  :: (Eq a, IsRetained a)
-  => [(Name, Definition (Abstract.Expr a) Void, Abstract.Expr a Void)]
-  -> TCM [(Name, Definition (Abstract.Expr a) Void, Abstract.Expr a Void)]
+  :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  -> TCM [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
 simplifyGroup defs = forM defs $ \(x, def, typ) ->
   return (x, simplifyDef def, simplifyExpr 0 typ)
 
 addGroupToContext
-  :: [(Name, Definition Abstract.ExprP Void, Abstract.ExprP Void)]
-  -> TCM [(Name, Definition Abstract.ExprP Void, Abstract.ExprP Void)]
+  :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  -> TCM [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
 addGroupToContext defs = do
   addContext $ HashMap.fromList $ (\(n, d, t) -> (n, (d, t))) <$> defs
   return defs
 
-inferGroupErasability
-  :: PrettyAnnotation a
-  => [(Name, Definition (Abstract.Expr a) Void, Abstract.Expr a Void)]
-  -> TCM [(Name, Definition Abstract.ExprE Void, Abstract.ExprE Void)]
-inferGroupErasability
-  = fmap Vector.toList
-  . Erasability.inferRecursiveDefs
-  . Vector.fromList
-
-addErasableGroupToContext
-  :: [(Name, Definition Abstract.ExprE Void, Abstract.ExprE Void)]
-  -> TCM [(Name, Definition Abstract.ExprE Void, Abstract.ExprE Void)]
-addErasableGroupToContext defs = do
-  addErasableContext $ HashMap.fromList $ (\(n, d, t) -> (n, (d, t))) <$> defs
-  return defs
-
-eraseGroup
-  :: [(Name, Definition Abstract.ExprE Void, Abstract.ExprE Void)] 
+slamGroup
+  :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
   -> TCM [(Name, SLambda.Expr Void)]
-eraseGroup defs = sequence
+slamGroup defs = sequence
   [ do
-      d' <- eraseDef (vacuous d) (vacuous t)
-      d'' <- traverse (throwError . ("eraseGroup " ++) . show) d'
+      d' <- SLam.slamDef $ vacuous d
+      d'' <- traverse (throwError . ("slamGroup " ++) . show) d'
       return (x, d'')
-  | (x, d, t) <- defs
+  | (x, d, _t) <- defs
   ]
 
 closeGroup
@@ -307,8 +284,7 @@ processFile file output target logHandle verbosity = do
           return Success
   where
     process resolved = do
-      addContext Builtin.contextP
-      addErasableContext Builtin.contextE
+      addContext Builtin.context
       addConvertedSignatures $ Converted.signature <$> Builtin.convertedContext
       builtins <- processConvertedGroup $ HashMap.toList Builtin.convertedContext
       results <- processResolved resolved

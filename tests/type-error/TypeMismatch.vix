@@ -5,4 +5,4 @@ data Bool where
 the : (a : Type) -> a -> a
 the _ x = x
 
-test = addSize (the Bool True) 1
+test = addInt (the Bool True) 1

@@ -15,7 +15,6 @@ import qualified Data.Set as Set
 import Data.String
 import Data.Text(Text)
 import qualified Data.Text.IO as Text
-import qualified Data.Vector as Vector
 import Data.Void
 import System.IO
 
@@ -33,9 +32,8 @@ instance Pretty Level where
 
 data TCMState = TCMState
   { tcLocation :: SourceLoc
-  , tcContext :: HashMap Name (Definition ExprP Void, TypeP Void)
-  , tcConstrs :: HashMap Constr (Set (Name, TypeP Void))
-  , tcErasableContext :: HashMap Name (Definition ExprE Void, TypeE Void)
+  , tcContext :: HashMap Name (Definition Expr Void, Type Void)
+  , tcConstrs :: HashMap Constr (Set (Name, Type Void))
   , tcConvertedSignatures :: HashMap Name (Converted.Signature Converted.Expr Closed.Expr Void)
   , tcReturnDirections :: HashMap Name RetDir
   , tcIndent :: !Int
@@ -51,7 +49,6 @@ emptyTCMState target handle verbosity = TCMState
   { tcLocation = mempty
   , tcContext = mempty
   , tcConstrs = mempty
-  , tcErasableContext = mempty
   , tcConvertedSignatures = mempty
   , tcReturnDirections = mempty
   , tcIndent = 0
@@ -141,20 +138,14 @@ whenVerbose i m = do
   when (v >= i) m
 
 -------------------------------------------------------------------------------
--- Context class
-class Context e where
-  definition :: Name -> TCM (Definition e v, e v)
-  qconstructor :: QConstr -> TCM (e v)
-
--------------------------------------------------------------------------------
 -- Working with abstract syntax
-addContext :: HashMap Name (Definition ExprP Void, TypeP Void) -> TCM ()
+addContext :: HashMap Name (Definition Expr Void, Type Void) -> TCM ()
 addContext prog = modify $ \s -> s
   { tcContext = prog <> tcContext s
   , tcConstrs = HashMap.unionWith (<>) cs $ tcConstrs s
   } where
     cs = HashMap.fromList $ do
-      (n, (DataDefinition d, defType)) <- HashMap.toList prog
+      (n, (DataDefinition d _, defType)) <- HashMap.toList prog
       ConstrDef c t <- quantifiedConstrTypes d defType $ const Implicit
       return (c, Set.fromList [(n, t)])
 
@@ -163,62 +154,37 @@ addConvertedSignatures
   -> TCM ()
 addConvertedSignatures p = modify $ \s -> s { tcConvertedSignatures = p' <> tcConvertedSignatures s }
   where
-    p' = fmap (const $ error "addConvertedSignatures")
-      {- . hoist (const Unit) -} <$> p
+    p' = fmap (const $ error "addConvertedSignatures") <$> p
 
-instance Context (Expr Plicitness) where
-  definition name = do
-    mres <- gets $ HashMap.lookup name . tcContext
-    maybe (throwError $ "Not in scope: " ++ show name)
-          (return . bimap vacuous vacuous)
-          mres
+definition :: Name -> TCM (Definition Expr v, Expr v)
+definition name = do
+  mres <- gets $ HashMap.lookup name . tcContext
+  maybe (throwError $ "Not in scope: " ++ show name)
+        (return . bimap vacuous vacuous)
+        mres
 
-  qconstructor qc@(QConstr n c) = do
-    (def, typ) <- definition n
-    case def of
-      DataDefinition dataDef -> do
-        let qcs = quantifiedConstrTypes dataDef typ $ const Implicit
-        case filter ((== c) . constrName) qcs of
-          [] -> throwError $ "Not in scope: constructor " ++ show qc
-          [cdef] -> return $ constrType cdef
-          _ -> throwError $ "Ambiguous constructor: " ++ show qc
-      Definition _ -> throwError $ "Not a data type: " ++ show n
+qconstructor :: QConstr -> TCM (Expr v)
+qconstructor qc@(QConstr n c) = do
+  (def, typ) <- definition n
+  case def of
+    DataDefinition dataDef _ -> do
+      let qcs = quantifiedConstrTypes dataDef typ $ const Implicit
+      case filter ((== c) . constrName) qcs of
+        [] -> throwError $ "Not in scope: constructor " ++ show qc
+        [cdef] -> return $ constrType cdef
+        _ -> throwError $ "Ambiguous constructor: " ++ show qc
+    Definition _ -> throwError $ "Not a data type: " ++ show n
 
 constructor
   :: Ord v
   => Either Constr QConstr
-  -> TCM (Set (Name, TypeP v))
+  -> TCM (Set (Name, Type v))
 constructor (Right qc@(QConstr n _)) = Set.singleton . (,) n <$> qconstructor qc
 constructor (Left c) 
   = gets
   $ maybe mempty (Set.map $ second vacuous)
   . HashMap.lookup c
   . tcConstrs
-
--------------------------------------------------------------------------------
--- Erasable
-addErasableContext :: HashMap Name (Definition ExprE Void, TypeE Void) -> TCM ()
-addErasableContext prog = modify $ \s -> s
-  { tcErasableContext = prog <> tcErasableContext s
-  }
-
-instance Context (Expr Erasability) where
-  definition name = do
-    mres <- gets $ HashMap.lookup name . tcErasableContext
-    maybe (throwError $ "Not in scope: " ++ show name)
-          (return . bimap vacuous vacuous)
-          mres
-
-  qconstructor qc@(QConstr n c) = do
-    (def, typ) <- definition n
-    case def of
-      DataDefinition dataDef -> do
-        let qcs = quantifiedConstrTypes dataDef typ $ const Erased
-        case filter ((== c) . constrName) qcs of
-          [] -> throwError $ "Not in scope: constructor " ++ show qc
-          [cdef] -> return $ constrType cdef
-          _ -> throwError $ "Ambiguous constructor: " ++ show qc
-      Definition _ -> throwError $ "Not a data type: " ++ show n
 
 -------------------------------------------------------------------------------
 -- Converted
@@ -253,7 +219,7 @@ qconstructorIndex :: TCM (QConstr -> Maybe Int)
 qconstructorIndex = do
   cxt <- gets tcContext
   return $ \(QConstr n c) -> do
-    (DataDefinition (DataDef constrDefs), _) <- HashMap.lookup n cxt
+    (DataDefinition (DataDef constrDefs) _, _) <- HashMap.lookup n cxt
     case constrDefs of
       [] -> Nothing
       [_] -> Nothing
@@ -264,24 +230,13 @@ constrArity
   -> TCM Int
 constrArity
   = fmap (teleLength . fst . pisView)
-  . (qconstructor :: QConstr -> TCM (ExprP Void))
+  . (qconstructor :: QConstr -> TCM (Expr Void))
 
 constrIndex
   :: QConstr
   -> TCM Int
 constrIndex qc@(QConstr n c) = do
-  (DataDefinition (DataDef cs), _) <- definition n :: TCM (Definition ExprP Void, ExprP Void)
+  (DataDefinition (DataDef cs) _, _) <- definition n
   case List.findIndex ((== c) . constrName) cs of
     Just i -> return i
     Nothing -> throwError $ "Can't find index for " ++ show qc
-
-retainedConstrArity
-  :: QConstr
-  -> TCM Int
-retainedConstrArity
-  = fmap ( Vector.length
-         . Vector.filter (\(_, er, _) -> er == Retained)
-         . unTelescope
-         . fst
-         . pisView)
-  . (qconstructor :: QConstr -> TCM (ExprE Void))

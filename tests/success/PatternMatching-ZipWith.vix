@@ -10,4 +10,4 @@ map f (Ref (Cons x xs)) = Ref (Cons (f x) (map f xs))
 list1 = Ref (Cons 1 (Ref (Cons 2 (Ref (Cons 3 (Ref Nil))))))
 list2 = Ref (Cons 10 (Ref (Cons 20 (Ref (Cons 30 (Ref Nil))))))
 
-main1 = map printSize (zipWith addSize list1 list2)
+main1 = map printInt (zipWith addInt list1 list2)

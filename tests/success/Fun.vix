@@ -24,4 +24,4 @@ fun a = a -> a
 fa : forall {a}. a
 fa = fa
 
-main1 = printSize (const 10 20)
+main1 = printInt (const 10 20)

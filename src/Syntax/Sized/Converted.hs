@@ -20,13 +20,15 @@ data Expr v
   | Global Name
   | Lit Literal
   | Con QConstr (Vector (Expr v)) -- ^ Fully applied
-  | Lams ClosureDir (Telescope Direction Expr Void) (Scope Tele Expr Void)
+  | Lams ClosureDir (Telescope Direction Type Void) (Scope Tele Expr Void)
   | Call ClosureDir (Expr v) (Vector (Expr v, Direction))
   | Let NameHint (Expr v) (Scope1 Expr v)
   | Case (Expr v) (Branches QConstr () Expr v)
   | Prim (Primitive (Expr v))
-  | Sized (Expr v) (Expr v)
+  | Anno (Expr v) (Type v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+type Type = Expr
 
 data Signature expr expr' v
   = Function ClosureDir (Telescope Direction expr Void) (Scope Tele expr' Void)
@@ -35,7 +37,7 @@ data Signature expr expr' v
 
 signature :: Expr v -> Signature Expr Closed.Expr v
 signature (Lams dir tele s) = Function dir tele (hoist toClosed s)
-signature (Sized _ (Lams dir tele s)) = Function dir tele (hoist toClosed s)
+signature (Anno (Lams dir tele s) _) = Function dir tele (hoist toClosed s)
 signature e = Constant (sExprDir e) (toClosed e)
 
 instance MFunctor (Signature expr) where
@@ -47,10 +49,10 @@ instance MFunctor (Signature expr) where
 -------------------------------------------------------------------------------
 -- Helpers
 sized :: Literal -> Expr v -> Expr v
-sized = Sized . Lit
+sized = flip Anno . Lit
 
 sizeOf :: Expr v -> Expr v
-sizeOf (Sized sz _) = sz
+sizeOf (Anno _ sz) = sz
 sizeOf _ = error "sizeOf"
 
 sizedSizesOf :: Functor f => f (Expr v) -> f (Expr v)
@@ -62,7 +64,7 @@ sizeDir (Lit 1) = Direct
 sizeDir _ = Indirect
 
 sExprDir :: Expr v -> Direction
-sExprDir (Sized sz _) = sizeDir sz
+sExprDir (Anno _ sz) = sizeDir sz
 sExprDir _ = error "sExprDir"
 
 toClosed :: Expr v -> Closed.Expr v
@@ -76,7 +78,7 @@ toClosed expr = case expr of
   Let h e s -> Closed.Let h (toClosed e) (hoist toClosed s)
   Case e brs -> Closed.Case (toClosed e) $ hoist toClosed brs
   Prim p -> Closed.Prim $ toClosed <$> p
-  Sized sz e -> Closed.Sized (toClosed sz) (toClosed e)
+  Anno e t -> Closed.Anno (toClosed e) (toClosed t)
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -104,7 +106,7 @@ instance GlobalBind Expr where
     Let h e s -> Let h (bind f g e) (bound f g s)
     Case e brs -> Case (bind f g e) (bound f g brs)
     Prim p -> Prim $ bind f g <$> p
-    Sized sz e -> Sized (bind f g sz) (bind f g e)
+    Anno e t -> Anno (bind f g e) (bind f g t)
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Expr v) where
@@ -126,5 +128,5 @@ instance (Eq v, IsString v, Pretty v)
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> indent 2 (prettyM brs)
     Prim p -> prettyM $ pretty <$> p
-    Sized sz e -> parens `above` annoPrec $
-      prettyM e <+> ":" <+> prettyM sz
+    Anno e t -> parens `above` annoPrec $
+      prettyM e <+> ":" <+> prettyM t

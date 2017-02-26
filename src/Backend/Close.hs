@@ -26,16 +26,16 @@ closeExpr expr = case expr of
   SLambda.Lit l -> return $ Closed.Lit l
   SLambda.Con qc es -> Closed.Con qc <$> mapM closeExpr es
   SLambda.App e1 e2 -> Closed.apps <$> closeExpr e1 <*> (pure <$> closeExpr e2)
-  SLambda.Let h e sz scope -> do
-    sz' <- closeExpr sz
+  SLambda.Let h e t scope -> do
+    t' <- closeExpr t
     e' <- closeExpr e
-    x <- forall h () sz'
+    x <- forall h () t'
     let body = instantiate1 (pure x) scope
     closedBody <- closeExpr body
     let scope' = abstract1 x closedBody
-    return $ Closed.Let h (Closed.Sized sz' e') scope'
+    return $ Closed.Let h (Closed.Anno e' t') scope'
   SLambda.Case e brs -> Closed.Case <$> closeExpr e <*> closeBranches brs
-  SLambda.Sized sz e -> Closed.Sized <$> closeExpr sz <*> closeExpr e
+  SLambda.Anno e t -> Closed.Anno <$> closeExpr e <*> closeExpr t
   (bindingsViewM SLambda.lamView -> Just (tele, s)) -> closeLambda tele s
   SLambda.Lam {} -> throwError "closeExpr Lam"
 
@@ -73,7 +73,7 @@ closeLambda tele lamScope = do
   voidedTele <- traverse (const $ throwError "closeLambda") tele''
   voidedLamScope <- traverse (const $ throwError "closeLambda") lamScope'
 
-  let args = (\v -> Closed.Sized (metaType v) $ Closed.Var v) <$> sortedFvs
+  let args = (\v -> Closed.Anno (pure v) (metaType v)) <$> sortedFvs
 
   return $ if null args
     then Closed.Lams voidedTele voidedLamScope

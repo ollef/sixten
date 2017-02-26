@@ -14,6 +14,6 @@ deref p = case p of Ref t -> t
 
 sum xs = case deref xs of
   Nil -> 0
-  Cons x xs -> addSize x (sum xs)
+  Cons x xs -> addInt x (sum xs)
 
-x = printSize (sum (zipWith addSize test test))
+x = printInt (sum (zipWith addInt test test))

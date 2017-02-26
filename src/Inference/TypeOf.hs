@@ -36,9 +36,9 @@ typeOfM expr = do
       case e1type' of
         Pi _ a' _ resType | a == a' -> return $ instantiate1 e2 resType
         _ -> throwError $ "typeOfM: expected pi type " ++ show e1type'
-    Let h a e s -> do
+    Let h e s -> do
       eType <- typeOfM e
-      v <- forall h a eType
+      v <- forall h Explicit eType
       typeOfM $ instantiate1 (pure v) s
     Case _ (ConBranches ((_, tele, brScope) NonEmpty.:| _)) -> do
       vs <- forTeleWithPrefixM tele $ \h a s vs ->
@@ -51,9 +51,9 @@ typeOfM expr = do
   return t
 
 typeOf
-  :: (MetaData (Expr a) v ~ a, Context (Expr a), Eq a, Show a, Show v, MetaVary (Expr a) v)
-  => Expr a v
-  -> TCM (Expr a v)
+  :: (MetaData Expr v ~ Plicitness, Show v, MetaVary Expr v)
+  => Expr v
+  -> TCM (Expr v)
 typeOf expr = do
   -- logMeta "typeOf" expr
   modifyIndent succ
@@ -76,9 +76,9 @@ typeOf expr = do
       case e1type' of
         Pi _ a' _ resType | a == a' -> return $ instantiate1 e2 resType
         _ -> throwError $ "typeOf: expected pi type " ++ show e1type'
-    Let h a e s -> do
+    Let h e s -> do
       eType <- typeOf e
-      v <- forall h a eType
+      v <- forall h Explicit eType
       typeOf $ instantiate1 (pure v) s
     Case _ (ConBranches ((_, tele, brScope) NonEmpty.:| _)) -> do
       vs <- forTeleWithPrefixM tele $ \h a s vs ->

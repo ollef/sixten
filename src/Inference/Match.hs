@@ -22,63 +22,63 @@ import Syntax.Abstract.Pattern
 import TCM
 import Util
 
-type PatM = Pat AbstractM MetaP
+type PatM = Pat AbstractM MetaA
 type Clause =
   ( [PatM]
-  , ExprP (Var Fail MetaP)
+  , Expr (Var Fail MetaA)
   )
 
 data Fail = Fail
 
-fatBar :: a -> Expr a (Var Fail v) -> Expr a (Var Fail v) -> Expr a (Var Fail v)
-fatBar p e e' = case foldMap (bifoldMap (:[]) mempty) e of
+fatBar :: Expr (Var Fail v) -> Expr (Var Fail v) -> Expr (Var Fail v)
+fatBar e e' = case foldMap (bifoldMap (:[]) mempty) e of
   [] -> e
   [_] -> e >>= unvar (\Fail -> e') (pure . F)
-  _ -> Let mempty p (Lam mempty p (Global Builtin.UnitName) $ abstractNone e')
-    $ instantiateSome (\Fail -> App (pure $ B ()) p (Con Builtin.Unit))
+  _ -> Let mempty (Lam mempty Explicit (Global Builtin.UnitName) $ abstractNone e')
+    $ instantiateSome (\Fail -> App (pure $ B ()) Explicit (Con Builtin.Unit))
     $ F <$> toScope e
 
 matchSingle
   :: AbstractM
   -> PatM
   -> AbstractM
-  -> TCM (ExprP (Var Fail MetaP))
+  -> TCM (Expr (Var Fail MetaA))
 matchSingle expr pat innerExpr
   = match [expr] [([pat], F <$> innerExpr)] $ F <$> innerExpr
 
 matchCase
   :: AbstractM
   -> [(PatM, AbstractM)]
-  -> TCM (ExprP (Var Fail MetaP))
+  -> TCM (Expr (Var Fail MetaA))
 matchCase expr pats
   = match [expr] (bimap pure (fmap F) <$> pats) (pure $ B Fail)
 
 matchClauses
   :: [AbstractM]
   -> [([PatM], AbstractM)]
-  -> TCM (ExprP (Var Fail MetaP))
+  -> TCM (Expr (Var Fail MetaA))
 matchClauses exprs pats
   = match exprs (fmap (fmap F) <$> pats) (pure $ B Fail)
 
 type Match
   = [AbstractM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
   -> [Clause] -- ^ Clauses
-  -> ExprP (Var Fail MetaP) -- ^ The continuation for pattern match failure
-  -> TCM (ExprP (Var Fail MetaP))
+  -> Expr (Var Fail MetaA) -- ^ The continuation for pattern match failure
+  -> TCM (Expr (Var Fail MetaA))
 
 type NonEmptyMatch
   = [AbstractM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
   -> NonEmpty Clause -- ^ Clauses
-  -> ExprP (Var Fail MetaP) -- ^ The continuation for pattern match failure
-  -> TCM (ExprP (Var Fail MetaP))
+  -> Expr (Var Fail MetaA) -- ^ The continuation for pattern match failure
+  -> TCM (Expr (Var Fail MetaA))
 
 -- | Desugar pattern matching clauses
 match :: Match
 match _ [] expr0 = return expr0
 match [] clauses expr0 = return $ foldr go expr0 clauses
   where
-    go :: Clause -> ExprP (Var Fail MetaP) -> ExprP (Var Fail MetaP)
-    go ([], s) x = fatBar Explicit s x
+    go :: Clause -> Expr (Var Fail MetaA) -> Expr (Var Fail MetaA)
+    go ([], s) x = fatBar s x
     go _ _ = error "match go"
 match xs clauses expr0
   = foldrM
@@ -121,19 +121,19 @@ matchCon expr exprs clauses expr0 = do
     return
     (NonEmpty.nonEmpty cbrs)
 
-  return $ fatBar Explicit (Case (F <$> expr) (ConBranches cbrs')) expr0
+  return $ fatBar (Case (F <$> expr) (ConBranches cbrs')) expr0
   where
     firstCon = constr . firstPattern
     constr (ConPat c _) = c
     constr _ = error "match constr"
     constructors typeName = do
-      (DataDefinition (DataDef cs), _ :: ExprP ()) <- definition typeName
+      (DataDefinition (DataDef cs) _, _ :: Expr ()) <- definition typeName
       return $ QConstr typeName . constrName <$> cs
 
 conPatArgs
   :: QConstr
   -> AbstractM
-  -> TCM (Vector (Plicitness, PatM, AbstractM), Vector MetaP)
+  -> TCM (Vector (Plicitness, PatM, AbstractM), Vector MetaA)
 conPatArgs c typ = do
   typ' <- whnf typ
   let (_, args) = appsView typ'
@@ -147,9 +147,9 @@ conPatArgs c typ = do
   return (ps, vs)
 
 patternTelescope
-  :: Vector MetaP
+  :: Vector MetaA
   -> Vector (a, Pat typ b, AbstractM)
-  -> TCM (Telescope a ExprP MetaP)
+  -> TCM (Telescope a Expr MetaA)
 patternTelescope ys ps = Telescope <$> mapM go ps
   where
     go (p, pat, e) = do

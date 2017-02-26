@@ -1,5 +1,5 @@
 prime' x = x
 
-hej = printSize (prime' 123)
+hej = printInt (prime' 123)
 
 prime2' = Size

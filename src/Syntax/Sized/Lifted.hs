@@ -28,8 +28,10 @@ data Expr retDir v
   | Let NameHint (Expr retDir v) (Scope1 (Expr retDir) v)
   | Case (Expr retDir v) (Branches QConstr () (Expr retDir) v)
   | Prim (Primitive (Expr retDir v))
-  | Sized (Expr retDir v) (Expr retDir v)
+  | Anno (Expr retDir v) (Type retDir v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+type Type = Expr
 
 data Function retDir expr v
   = Function retDir (Telescope Direction expr v) (Scope Tele expr v)
@@ -55,10 +57,10 @@ dependencyOrder defs = fmap (\n -> (n, m HashMap.! n)) <$> topoSort (second (bou
 -------------------------------------------------------------------------------
 -- Helpers
 sized :: Literal -> Expr retDir v -> Expr retDir v
-sized = Sized . Lit
+sized = flip Anno . Lit
 
 sizeOf :: Expr retDir v -> Expr retDir v
-sizeOf (Sized sz _) = sz
+sizeOf (Anno _ sz) = sz
 sizeOf _ = error "Lifted.sizeOf"
 
 bitraverseDefinition
@@ -82,7 +84,7 @@ toClosed expr = case expr of
   Let h e s -> Closed.Let h (toClosed e) (hoist toClosed s)
   Case e brs -> Closed.Case (toClosed e) $ hoist toClosed brs
   Prim p -> Closed.Prim $ toClosed <$> p
-  Sized sz e -> Closed.Sized (toClosed sz) (toClosed e)
+  Anno e t -> Closed.Anno (toClosed e) (toClosed t)
 
 toConverted :: Expr ClosureDir v -> Converted.Expr v
 toConverted expr = case expr of
@@ -94,7 +96,7 @@ toConverted expr = case expr of
   Let h e s -> Converted.Let h (toConverted e) (hoist toConverted s)
   Case e brs -> Converted.Case (toConverted e) $ hoist toConverted brs
   Prim p -> Converted.Prim $ toConverted <$> p
-  Sized sz e -> Converted.Sized (toConverted sz) (toConverted e)
+  Anno e t -> Converted.Anno (toConverted e) (toConverted t)
 
 signature
   :: Function ClosureDir (Expr ClosureDir) Void
@@ -122,7 +124,7 @@ instance GlobalBind (Expr retDir) where
     Let h e s -> Let h (bind f g e) (bound f g s)
     Case e brs -> Case (bind f g e) (bound f g brs)
     Prim p -> Prim $ bind f g <$> p
-    Sized sz e -> Sized (bind f g sz) (bind f g e)
+    Anno e t -> Anno (bind f g e) (bind f g t)
 
 instance GlobalBound Constant where
   bound f g (Constant dir expr) = Constant dir $ bind f g expr
@@ -159,7 +161,7 @@ instance Bitraversable Expr where
     Let h e s -> Let h <$> bitraverse f g e <*> bitraverseScope f g s
     Case e brs -> Case <$> bitraverse f g e <*> bitraverseBranches f g brs
     Prim p -> Prim <$> traverse (bitraverse f g) p
-    Sized sz e -> Sized <$> bitraverse f g sz <*> bitraverse f g e
+    Anno e t -> Anno <$> bitraverse f g e <*> bitraverse f g t
 
 instance (Eq v, IsString v, Pretty v, Eq retDir, Pretty retDir)
   => Pretty (Expr retDir v) where
@@ -176,8 +178,8 @@ instance (Eq v, IsString v, Pretty v, Eq retDir, Pretty retDir)
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> indent 2 (prettyM brs)
     Prim p -> prettyM $ pretty <$> p
-    Sized sz e -> parens `above` annoPrec $
-      prettyM e <+> ":" <+> prettyM sz
+    Anno e t -> parens `above` annoPrec $
+      prettyM e <+> ":" <+> prettyM t
 
 instance (Eq v, IsString v, Pretty v, Eq retDir, Pretty retDir, Pretty (expr v), Monad expr)
   => Pretty (Function retDir expr v) where

@@ -15,4 +15,4 @@ data List a = Nil | Cons a (Ptr (List a))
 map f (Ref Nil) = Ref Nil
 map f (Ref (Cons x xs)) = Ref (Cons (f x) (map f xs))
 
-main1 = map printSize (Ref (Cons (test1 (\x y. 3) 0 1) (Ref (Cons (test3 (\x y. 4) 0 1) (Ref Nil)))))
+main1 = map printInt (Ref (Cons (test1 (\x y. 3) 0 1) (Ref (Cons (test3 (\x y. 4) 0 1) (Ref Nil)))))

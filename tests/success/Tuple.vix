@@ -13,4 +13,4 @@ complex : Tuple Size Size
 complex = Tup 10 20
 
 test : Size
-test = printSize (addSize (fst complex) (snd complex))
+test = printInt (addInt (fst complex) (snd complex))
