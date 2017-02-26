@@ -103,12 +103,14 @@ directed d v = case d of
 
 -------------------------------------------------------------------------------
 -- Generation
-generateExpr :: Maybe (Operand Int) -> Expr RetDir Var -> Gen Var
-generateExpr msz expr = case expr of
+generateExpr :: Gen (Operand Int) -> Expr RetDir Var -> Gen Var
+generateExpr genSz expr = case expr of
   Var v -> return v
   Global g -> generateGlobal g
   Lit l -> return $ DirectVar $ shower l
-  Con qc es -> generateCon sz qc es
+  Con qc es -> do
+    sz <- genSz
+    generateCon sz qc es
   Call _ (Global Builtin.PtrName) _ -> generateExpr genSz $ Lit 1 -- TODO: Is there a cleaner way to do this?
   Call retDir funExpr es -> do
     fun <- generateFunOp funExpr retDir $ snd <$> es
@@ -118,6 +120,7 @@ generateExpr msz expr = case expr of
         emit $ varCall voidT fun args
         return VoidVar
       ReturnIndirect OutParam -> do
+        sz <- genSz
         ret <- "call-return" =: alloca sz
         emit $ varCall voidT fun $ Vector.snoc args $ IndirectVar ret
         return $ IndirectVar ret
@@ -128,11 +131,11 @@ generateExpr msz expr = case expr of
         ret <- "call-return" =: varCall integerT fun args
         return $ DirectVar ret
   Let _h e s -> do
-    v <- generateExpr Nothing e
-    generateExpr msz $ Bound.instantiate1 (pure v) s
+    v <- generateExpr (error "generateExpr sz") e
+    generateExpr genSz $ Bound.instantiate1 (pure v) s
   Case e brs -> mdo
     rets <- generateBranches e brs $ \br -> do
-      v <- generateExpr msz br
+      v <- generateExpr genSz br
       let mdirectRet = case v of
             VoidVar -> Just "0"
             IndirectVar _ -> Nothing
@@ -148,17 +151,19 @@ generateExpr msz expr = case expr of
       (_, Just directRets) -> fmap DirectVar $ "case-result" =: phiInt directRets
       (_, Nothing) -> fmap IndirectVar $ "case-result" =: phiPtr (first snd <$> rets)
   Prim p -> generatePrim p
-  Anno e size -> do
-    szVar <- generateExpr (Just "1") size
-    szInt <- loadVar "size" szVar
-    generateExpr (Just szInt) e
-  where
-    sz = fromMaybe (error $ "generateExpr" ++ show expr) msz
+  Anno e typ -> do
+    let genSz' = do
+          szVar <- generateExpr generateTypeSize typ
+          loadVar "size" szVar
+    generateExpr genSz' e
 
-storeExpr :: Maybe (Operand Int) -> Expr RetDir Var -> Operand Ptr -> Gen ()
-storeExpr msz expr ret = case expr of
-  Var v -> varcpy ret v sz
+storeExpr :: Gen (Operand Int) -> Expr RetDir Var -> Operand Ptr -> Gen ()
+storeExpr genSz expr ret = case expr of
+  Var v -> do
+    sz <- genSz
+    varcpy ret v sz
   Global g -> do
+    sz <- genSz
     v <- generateGlobal g
     varcpy ret v sz
   Lit l -> emit $ store (shower l) ret
@@ -171,49 +176,64 @@ storeExpr msz expr ret = case expr of
       ReturnIndirect OutParam -> emit $ varCall voidT fun $ Vector.snoc args $ IndirectVar ret
       ReturnIndirect Projection -> do
         res <- "call-return" =: varCall pointerT fun args
+        sz <- genSz
         wordcpy ret res sz
       ReturnDirect -> do
         res <- "call-return" =: varCall integerT fun args
         emit $ store res ret
   Let _h e s -> do
-    v <- generateExpr Nothing e
-    storeExpr msz (Bound.instantiate1 (pure v) s) ret
-  Case e brs -> void $ generateBranches e brs $ \br -> storeExpr msz br ret
+    v <- generateExpr (error "storeExpr sz") e
+    storeExpr genSz (Bound.instantiate1 (pure v) s) ret
+  Case e brs -> void $ generateBranches e brs $ \br -> storeExpr genSz br ret
   Prim p -> do
     res <- generatePrim p
     intRes <- loadVar "loaded-prim" res
     emit $ store intRes ret
-  Anno e size -> do
-    szVar <- generateExpr (Just "1") size
-    szInt <- loadVar "size" szVar
-    storeExpr (Just szInt) e ret
-  where
-    sz = fromMaybe (error $ "storeExpr " ++ show (void expr)) msz
+  Anno e typ -> do
+    let genSz' = do
+          szVar <- generateExpr generateTypeSize typ
+          loadVar "size" szVar
+    storeExpr genSz' e ret
+
+generateIntSize :: Gen (Operand Int)
+generateIntSize = do
+  v <- generateExpr generateTypeSize $ Global Builtin.IntName
+  loadVar "size" v
+
+generateTypeSize :: Gen (Operand Int)
+generateTypeSize = do
+  v <- generateExpr generateTypeSize $ Global Builtin.TypeName
+  loadVar "size" v
+
+generatePiSize :: Gen (Operand Int)
+generatePiSize = do
+  v <- generateExpr generateTypeSize $ Global Builtin.PiTypeName
+  loadVar "size" v
 
 generateDirectedExpr
   :: Expr RetDir Var
   -> Direction
   -> Gen Var
 generateDirectedExpr expr dir
-  = generateExpr Nothing expr >>= directed dir
+  = generateExpr (error "generateDirectedExpr sz") expr >>= directed dir
 
 gcAllocExpr :: Expr RetDir Var -> Gen (Operand Ptr)
-gcAllocExpr (Anno expr sz) = do
-  szVar <- generateExpr (Just "1") sz
+gcAllocExpr (Anno expr typ) = do
+  szVar <- generateExpr generateTypeSize typ
   szInt <- loadVar "size" szVar
   ref <- gcAlloc szInt
-  storeExpr (Just szInt) expr ref
+  storeExpr (pure szInt) expr ref
   return ref
 gcAllocExpr _ = error "gcAllocExpr"
 
 generateCon :: Operand Int -> QConstr -> Vector (Expr RetDir Var) -> Gen Var
 generateCon _ Builtin.Ref es = do
-  sizes <- mapM (loadVar "size" <=< generateExpr (Just "1") . sizeOf) es
+  sizes <- mapM (loadVar "size" <=< generateExpr generateIntSize . sizeOf) es
   (is, fullSize) <- adds sizes
   ref <- gcAlloc fullSize
   Foldable.forM_ (zip (Vector.toList sizes) $ zip is $ Vector.toList es) $ \(sz, (i, Anno e _)) -> do
     index <- "index" =: getElementPtr ref i
-    storeExpr (Just sz) e index
+    storeExpr (pure sz) e index
   refInt <- "ref-int" =: ptrToInt ref
   return $ DirectVar refInt
 generateCon sz qc es = do
@@ -229,16 +249,16 @@ storeCon Builtin.Ref es ret = do
 storeCon qc es ret = do
   mqcIndex <- constrIndex qc
   let es' = maybe id (Vector.cons . sized 1 . Lit . fromIntegral) mqcIndex es
-  sizes <- mapM (loadVar "size" <=< generateExpr (Just "1") . sizeOf) es'
+  sizes <- mapM (loadVar "size" <=< generateExpr generateIntSize . sizeOf) es'
   (is, _) <- adds sizes
   Foldable.forM_ (zip (Vector.toList sizes) $ zip is $ Vector.toList es') $ \(sz, (i, Anno e _)) -> do
     index <- "index" =: getElementPtr ret i
-    storeExpr (Just sz) e index
+    storeExpr (pure sz) e index
 
 generateFunOp :: Expr RetDir Var -> RetDir -> Vector Direction -> Gen (Operand Fun)
 generateFunOp (Global g) _ _ = return $ global g
 generateFunOp e retDir argDirs = do
-  funVar <- generateExpr (Just "1") e
+  funVar <- generateExpr generatePiSize e
   funInt <- loadVar "func-int" funVar
   funPtr <- "func-ptr" =: intToPtr funInt
   "func" =: bitcastToFun funPtr retDir argDirs
@@ -273,11 +293,11 @@ generateBranches caseExpr branches brCont = do
   postLabel <- Operand . text <$> freshenName "after-branch"
   case branches of
     NoBranches _ -> do
-      void $ generateExpr Nothing caseExpr
+      void $ generateExpr (error "generateBranches sz") caseExpr
       emit unreachable
       return []
     ConBranches ((Builtin.Ref, tele, brScope) NonEmpty.:| []) -> mdo
-      exprInt <- loadVar "case-expr-int" =<< generateExpr Nothing caseExpr
+      exprInt <- loadVar "case-expr-int" =<< generateExpr (error "generateBranches Con sz") caseExpr
       expr <- "case-expr" =: intToPtr exprInt
       branchLabel <- Operand . text <$> freshenName Builtin.RefName
 
@@ -290,7 +310,7 @@ generateBranches caseExpr branches brCont = do
             nextIndex <- if i == Vector.length teleVector - 1
               then return index
               else do
-                sz <- generateExpr (Just "1") $ inst s
+                sz <- generateExpr generateIntSize $ inst s
                 szInt <- loadVar "size" sz
                 "index" =: add index szInt
             return (IndirectVar ptr : vs, nextIndex)
@@ -303,7 +323,7 @@ generateBranches caseExpr branches brCont = do
       return [(contResult, afterBranchLabel)]
 
     ConBranches ((QConstr _ (Constr constrName), tele, brScope) NonEmpty.:| []) -> mdo
-      expr <- indirect "case-expr" =<< generateExpr Nothing caseExpr
+      expr <- indirect "case-expr" =<< generateExpr (error "generateBranches single Con sz") caseExpr
       branchLabel <- Operand . text <$> freshenName constrName
 
       emit $ branch branchLabel
@@ -315,7 +335,7 @@ generateBranches caseExpr branches brCont = do
             nextIndex <- if i == Vector.length teleVector - 1
               then return index
               else do
-                sz <- generateExpr (Just "1") $ inst s
+                sz <- generateExpr generateIntSize $ inst s
                 szInt <- loadVar "size" sz
                 "index" =: add index szInt
             return (IndirectVar ptr : vs, nextIndex)
@@ -329,7 +349,7 @@ generateBranches caseExpr branches brCont = do
 
     ConBranches cbrs -> do
       let cbrs' = NonEmpty.toList cbrs
-      expr <- indirect "case-expr" =<< generateExpr Nothing caseExpr
+      expr <- indirect "case-expr" =<< generateExpr (error "generateBranches ConBranches sz") caseExpr
       e0Ptr <- "tag-pointer" =: getElementPtr expr "0"
       e0 <- "tag" =: load e0Ptr
 
@@ -351,7 +371,7 @@ generateBranches caseExpr branches brCont = do
               nextIndex <- if i == Vector.length teleVector - 1
                 then return index
                 else do
-                  sz <- generateExpr (Just "1") $ inst s
+                  sz <- generateExpr generateIntSize $ inst s
                   szInt <- loadVar "size" sz
                   "index" =: add index szInt
               return (IndirectVar ptr : vs, nextIndex)
@@ -370,7 +390,7 @@ generateBranches caseExpr branches brCont = do
 
     LitBranches lbrs def -> do
       let lbrs' = NonEmpty.toList lbrs
-      e0 <- loadVar "lit" =<< generateExpr (Just "1") caseExpr
+      e0 <- loadVar "lit" =<< generateExpr generateIntSize caseExpr
 
       branchLabels <- Traversable.forM lbrs' $ \(l, _) -> do
         branchLabel <- Operand . text <$> freshenName (shower l)
@@ -399,7 +419,7 @@ generatePrim (Primitive dir xs) = do
   strs <- forM xs $ \x -> case x of
     TextPart t -> return t
     VarPart o -> do
-      v <- generateExpr (Just "1") o
+      v <- generateExpr generateIntSize o
       unOperand <$> loadVar mempty v
   let instr = Instr $ Foldable.fold strs
   case dir of
@@ -423,8 +443,8 @@ generateConstant visibility name (Constant dir e) = do
   emitRaw $ Instr ""
   emitRaw $ Instr $ "define private fastcc" <+> voidT <+> initName <> "() {"
   case dir of
-    Void -> storeExpr Nothing e $ global name
-    Direct -> storeExpr Nothing e $ global name
+    Void -> storeExpr (error "generateConstant Void sz") e $ global name
+    Direct -> storeExpr (error "generateConstant Direct sz") e $ global name
     Indirect -> do
       ptr <- gcAllocExpr e
       emit $ storePtr ptr $ global name
@@ -452,22 +472,22 @@ generateFunction visibility name (Function retDir args funScope) = do
     ReturnVoid -> do
       emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> voidT <+> unOperand (global name)
         <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList vs) <> ") {"
-      storeExpr Nothing funExpr $ Operand "null"
+      storeExpr (error "generateFunction Void sz") funExpr $ Operand "null"
       emit returnVoid
     ReturnIndirect OutParam -> do
       ret <- Operand . text <$> freshenName "return"
       emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> voidT <+> unOperand (global name)
         <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList vs <> pure (IndirectVar ret)) <> ") {"
-      storeExpr Nothing funExpr ret
+      storeExpr (error "generateFunction Out sz") funExpr ret
       emit returnVoid
     ReturnIndirect Projection -> do
       emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> pointerT <+> unOperand (global name) <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList vs) <> ") {"
-      res <- generateExpr Nothing funExpr
+      res <- generateExpr (error "generateFunction Indirect sz") funExpr
       resPtr <- indirect "function-result" res
       emit $ returnPtr resPtr
     ReturnDirect -> do
       emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> integerT <+> unOperand (global name) <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList vs) <> ") {"
-      res <- generateExpr Nothing funExpr
+      res <- generateExpr (error "generateFunction Direct sz") funExpr
       resInt <- loadVar "function-result" res
       emit $ returnInt resInt
   emitRaw "}"
