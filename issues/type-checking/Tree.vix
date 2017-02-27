@@ -2,7 +2,7 @@ data Tree a where
   Leaf : a -> Tree a
   Fork : Ptr (Tree a) -> Ptr (Tree a) -> Tree a
 
-deref : forall {n}{a : Type {n}}. Ptr a -> a
+deref : {a : Type} -> Ptr a -> a
 deref p = case p of Ref x -> x
 
 mapTree : forall {a}{b}. (a -> b) -> Ptr (Tree a) -> Ptr (Tree b)
@@ -10,11 +10,11 @@ mapTree f tree = Ref case deref tree of
   Leaf a -> Leaf (f a)
   Fork t1 t2 -> Fork (mapTree f t1) (mapTree f t2)
 
-sumTree : Ptr (Tree Size) -> Size
+sumTree : Ptr (Tree Int) -> Int
 sumTree (Ref (Leaf a)) = a
-sumTree (Ref (Fork t1 t2)) = addSize (sumTree t1) (sumTree t2)
+sumTree (Ref (Fork t1 t2)) = addInt (sumTree t1) (sumTree t2)
 
-tree : Ptr (Tree Size)
+tree : Ptr (Tree Int)
 tree = Ref (Fork (Ref (Leaf 1)) (Ref (Fork (Ref (Fork (Ref (Leaf 2)) (Ref (Leaf 3)))) (Ref (Leaf 4)))))
 
 main1 = sumTree tree

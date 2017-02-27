@@ -3,7 +3,7 @@ id x = x
 
 id' x = x
 
-idT : Type {_} -> Type {_}
+idT : Type -> Type
 idT t = t
 
 idf : forall {f}{a}. f a -> f a
@@ -18,7 +18,7 @@ idConst1 x = const x (\(x : Int). x)
 useConst : forall {a}{b}. ((a -> a -> a) -> b) -> b
 useConst f = f const
 
-fun : Type {_} -> Type {1}
+fun : Type -> Type
 fun a = a -> a
 
 fa : forall {a}. a

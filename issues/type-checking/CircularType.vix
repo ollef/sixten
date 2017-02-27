@@ -1,5 +1,5 @@
 const : {a b : Type} -> a -> b -> a
 const x y = x
 
-X : const Size X
+X : const Int X
 X = 12
