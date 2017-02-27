@@ -96,18 +96,3 @@ have to mark where we actually want pointers with the `Ptr` type constructor.
 The `Cons` constructor has to hold a _pointer to_ the tail of the list because
 we would otherwise create an infinite-size datatype, which is not allowed in
 Sixten.
-
-The secret sauce that lets Sixten do this is _sized types_. `List` can also be
-defined in a more elaborated form where we make explicit all the implicit sizes
-that the compiler would otherwise automatically add:
-
-```
-data List {n : Size}(a : Type {n}) where
-    Nil : List a
-    Cons : a -> Ptr (List {n} a) -> List {n} a
-```
-
-```
-map : forall {m n : Size}{a : Type m}{b : Type n}.
-    (a -> b) -> Ptr (List a) -> Ptr (List b)
-```

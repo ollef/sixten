@@ -1,6 +1,6 @@
 # Pi types
 
-the (List Size) [1, 2, 3]
+the (List Int) [1, 2, 3]
 
 (a : A) -> (b : B) -> c
 (a : A)(b : B) -> c
