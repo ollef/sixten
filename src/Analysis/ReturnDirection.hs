@@ -1,3 +1,4 @@
+{-# LANGUAGE MonadComprehensions #-}
 module Analysis.ReturnDirection where
 
 import Control.Monad
@@ -112,19 +113,19 @@ infer
 infer expr = case expr of
   Var v -> return (Var v, metaLocation v)
   Global g -> return (Global g, MProjection)
-  Lit l -> return (Lit l, MProjection)
+  Lit l -> return (Lit l, MOutParam)
   Con c es -> do
     es' <- mapM infer es
     return (Con c $ fst <$> es', MOutParam)  -- TODO: Can be improved.
-  Call ClosureDir f es -> locatedCall MOutParam (ReturnIndirect MOutParam) f es
-  Call (NonClosureDir Void) f es -> directCall ReturnVoid f es
-  Call (NonClosureDir Direct) f es -> directCall ReturnDirect f es
+  Call ClosureDir f es -> call (ReturnIndirect MOutParam) f es
+  Call (NonClosureDir Void) f es -> call ReturnVoid f es
+  Call (NonClosureDir Direct) f es -> call ReturnDirect f es
   Call (NonClosureDir Indirect) f es -> do
     returnDir <- inferIndirectReturnDir f
     (f', _) <- infer f
     locatedEs <- mapM (bitraverse infer pure) es
     let es' = (\((e, _), d) -> (e, d)) <$> locatedEs
-        locs = (\((_, l), _) -> l) <$> locatedEs
+        locs = [l | ((_, l), Indirect) <- locatedEs]
     loc <- foldM maxMetaReturnIndirect returnDir locs
     return (Call (ReturnIndirect returnDir) f' es', loc)
   Let h e s -> do
@@ -138,18 +139,17 @@ infer expr = case expr of
     return (Case e' brs', loc)
   Prim p -> do
     p' <- mapM (fmap fst . infer) p
-    return (Prim p', MProjection) -- TODO?
+    return (Prim p', MOutParam)
   Anno e t -> do
-    (t', _tLoc) <- infer t
     (e', eLoc) <- infer e
+    (t', _tLoc) <- infer t
     return (Anno e' t', eLoc)
   where
-    directCall = locatedCall MProjection
-    locatedCall loc dir f es = do
+    call dir f es = do
       (f', _) <- infer f
       locatedEs <- mapM (bitraverse infer pure) es
       let es' = (\((e, _), d) -> (e, d)) <$> locatedEs
-      return (Call dir f' es', loc)
+      return (Call dir f' es', MOutParam)
 
 inferBranches
   :: Location
