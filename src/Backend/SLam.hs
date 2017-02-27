@@ -7,15 +7,16 @@ import Data.Monoid
 import qualified Data.Vector as Vector
 
 import qualified Builtin
+import Inference.TypeOf
+import Meta
+import Inference.Normalise
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Sized.SLambda as SLambda
-import Meta
-import Inference.TypeOf
 import TCM
 
 slamS :: AbstractM -> TCM LambdaM
-slamS e = SLambda.Anno <$> slam e <*> (slam =<< typeOf e)
+slamS e = SLambda.Anno <$> slam e <*> (slam =<< whnf' True =<< typeOf e)
 
 slam :: AbstractM -> TCM LambdaM
 slam expr = do
@@ -51,7 +52,7 @@ slam expr = do
     Abstract.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamS e2
     Abstract.Case e brs -> SLambda.Case <$> slamS e <*> slamBrances brs
     Abstract.Let h e scope -> do
-      t <- typeOf e
+      t <- whnf' True =<< typeOf e
       v <- forall h Explicit t
       e' <- slamS e
       sz <- slam t
@@ -73,7 +74,7 @@ slamBrances (ConBranches cbrs) = do
       let vs = fst <$> tele'
           abstr = teleAbstraction vs
           t = instantiateTele pure vs s
-      tsz <- slam t
+      tsz <- slam =<< whnf' True t
       v <- forall h a t
       return (v, (h, a, abstract abstr tsz))
     let vs = fst <$> tele'
