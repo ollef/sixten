@@ -24,11 +24,11 @@ Error messages
   Write own error printer
   Make error message footnotes contain metavars
 Language
-  Add new Int type -- overloaded literals
   * Let(rec) definitions
   Named implicit arguments (maybe names should be mandatory?)
   Laziness
   * Type classes
+    Overloaded literals
   Row polymorphism
     r : Row : Type
     {l = A} : {l : A} : Type
@@ -37,6 +37,7 @@ Language
   Mixfix definitions and noncompounds?
   Inductive families
   FFI & More general way to define builtins (extern LLVM, C?)
+  Strings
 Optimisations
   Inlining
   Common subexpressions
