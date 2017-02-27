@@ -32,6 +32,8 @@ pattern PrintInt e1 = App (Global PrintIntName) Explicit e1
 pattern TypeName <- ((==) "Type" -> True) where TypeName = "Type"
 pattern Type = Global TypeName
 
+pattern SizeOfName <- ((==) "sizeOf" -> True) where SizeOfName = "sizeOf"
+
 pattern RefName <- ((==) "Ref" -> True) where RefName = "Ref"
 pattern PtrName <- ((==) "Ptr" -> True) where PtrName = "Ptr"
 
@@ -69,6 +71,7 @@ maxInt e e' = MaxInt e e'
 context :: HashMap Name (Definition Expr Void, Type Void)
 context = HashMap.fromList
   [ (TypeName, opaque Type)
+  , (SizeOfName, opaque $ arrow Explicit Type IntType)
   , (PtrName, dataType (Lam mempty Explicit Type $ Scope $ Lit 1)
                        (arrow Explicit Type Type)
                        [ ConstrDef RefName $ toScope $ fmap B $ arrow Explicit (pure 0)
@@ -100,6 +103,15 @@ convertedContext = HashMap.fromList $ concat
     , Converted.sized 1
     $ Converted.Lit 1
     )
+  , (SizeOfName
+    , Converted.sized 1
+      $ Converted.Lams
+        (NonClosureDir Direct)
+        (Telescope $ pure (mempty, Direct, slit 1))
+      $ Scope
+      $ Converted.sized 1
+      $ pure $ B 0
+    )
   , ( PiTypeName
     , Converted.sized 1
     $ Converted.Lit 1
@@ -112,7 +124,7 @@ convertedContext = HashMap.fromList $ concat
       $ Scope
       $ Converted.sized 1
       $ Converted.Lit 1
-      )
+    )
   , ( IntName
     , Converted.sized 1
     $ Converted.Lit 1

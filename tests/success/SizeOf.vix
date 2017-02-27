@@ -2,7 +2,4 @@ data List (A : Type) where
   Nil : List A
   Cons : A -> Ptr (List A) -> List A
 
-sizeof : Type -> Int
-sizeof _ = n
-
-sizeOfList = printInt (sizeof (List (List Int)))
+sizeOfList = printInt (sizeOf (List (List Int)))
