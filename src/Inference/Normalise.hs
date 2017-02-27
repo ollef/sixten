@@ -16,63 +16,69 @@ whnf
   :: MetaVary Expr v
   => Expr v
   -> TCM (Expr v)
-whnf expr = do
+whnf = whnf' False
+
+whnf'
+  :: MetaVary Expr v
+  => Bool
+  -> Expr v
+  -> TCM (Expr v)
+whnf' expandTypeReps expr = do
   modifyIndent succ
   res <- case expr of
-    Var v -> refineVar v whnf
+    Var v -> refineVar v $ whnf' expandTypeReps
     Global g -> do
       (d, _) <- definition g
       case d of
-        Definition e -> whnf e
+        Definition e -> whnf' expandTypeReps e
+        DataDefinition _ e | expandTypeReps -> whnf' expandTypeReps e
         _ -> return expr
     Con _ -> return expr
     Lit _ -> return expr
     Pi {} -> return expr
     Lam {} -> return expr
-    Builtin.AddInt x y -> binOp 0 (+) Builtin.AddInt whnf x y
-    Builtin.MaxInt x y -> binOp 0 max Builtin.MaxInt whnf x y
+    Builtin.AddInt x y -> binOp 0 (+) Builtin.AddInt (whnf' expandTypeReps) x y
+    Builtin.MaxInt x y -> binOp 0 max Builtin.MaxInt (whnf' expandTypeReps) x y
     App e1 p e2 -> do
-      e1' <- whnf e1
+      e1' <- whnf' expandTypeReps e1
       case e1' of
-        Lam _ p' _ s | p == p' -> do
-          e2' <- whnf e2
-          whnf $ Util.instantiate1 e2' s
+        Lam _ p' _ s | p == p' -> whnf' expandTypeReps $ Util.instantiate1 e2 s
         _ -> return expr
-    Let _ e s -> whnf $ instantiate1 e s
+    Let _ e s -> whnf' expandTypeReps $ instantiate1 e s
     Case e brs -> do
-      e' <- whnf e
-      chooseBranch e' brs whnf
+      e' <- whnf' expandTypeReps e
+      chooseBranch e' brs $ whnf' expandTypeReps
   modifyIndent pred
   return res
 
-normaliseM
+normalise
   :: Expr MetaA
   -> TCM (Expr MetaA)
-normaliseM expr = do
-  logMeta 40 "normaliseM e" expr
+normalise expr = do
+  logMeta 40 "normalise e" expr
   modifyIndent succ
   res <- case expr of
-    Var v -> refineVar v normaliseM
+    Var v -> refineVar v normalise
     Global g -> do
       (d, _) <- definition g
       case d of
-        Definition e -> normaliseM e
+        Definition e -> normalise e
         _ -> return expr
     Con _ -> return expr
     Lit _ -> return expr
     Pi n p a s -> normaliseScope n p (Pi n p) a s
     Lam n p a s -> normaliseScope n p (Lam n p) a s
-    Builtin.AddInt x y -> binOp 0 (+) Builtin.AddInt normaliseM x y
-    Builtin.MaxInt x y -> binOp 0 max Builtin.MaxInt normaliseM x y
+    Builtin.AddInt x y -> binOp 0 (+) Builtin.AddInt normalise x y
+    Builtin.MaxInt x y -> binOp 0 max Builtin.MaxInt normalise x y
     App e1 p e2 -> do
-      e1' <- normaliseM e1
-      e2' <- normaliseM e2
+      e1' <- normalise e1
+      e2' <- normalise e2
       case e1' of
-        Lam _ p' _ s | p == p' -> normaliseM $ Util.instantiate1 e2' s
+        Lam _ p' _ s | p == p' -> normalise $ Util.instantiate1 e2' s
         _ -> return $ App e1' p e2'
     Let _ e s -> do
-      e' <- normaliseM e
-      normaliseM $ instantiate1 e' s
+      e' <- normalise e
+      normalise $ instantiate1 e' s
     Case e brs -> do
       e' <- whnf e
       res <- chooseBranch e' brs whnf
@@ -84,33 +90,33 @@ normaliseM expr = do
               | (qc, tele, s) <- cbrs
               ]
           LitBranches lbrs def -> LitBranches
-            <$> sequence [(,) l <$> normaliseM br | (l, br) <- lbrs]
-            <*> normaliseM def
+            <$> sequence [(,) l <$> normalise br | (l, br) <- lbrs]
+            <*> normalise def
           NoBranches typ -> NoBranches
-            <$> normaliseM typ
+            <$> normalise typ
         _ -> return res
   modifyIndent pred
-  logMeta 40 "normaliseM res" res
+  logMeta 40 "normalise res" res
   return res
   where
     normaliseTelescope tele scope = do
       avs <- forTeleWithPrefixM tele $ \h a s avs -> do
-        t' <- normaliseM $ instantiateTele pure (snd <$> avs) s
+        t' <- normalise $ instantiateTele pure (snd <$> avs) s
         v <- forall h a t'
         return (a, v)
 
       let vs = snd <$> avs
           abstr = teleAbstraction vs
-      e' <- normaliseM $ instantiateTele pure vs scope
+      e' <- normalise $ instantiateTele pure vs scope
       scope' <- abstractM abstr e'
       tele' <- forM avs $ \(a, v) -> do
         s <- abstractM abstr $ metaType v
         return (metaHint v, a, s)
       return (Telescope tele', scope')
     normaliseScope h p c t s = do
-      t' <- normaliseM t
+      t' <- normalise t
       x <- forall h p t'
-      ns <- normaliseM $ Util.instantiate1 (pure x) s
+      ns <- normalise $ Util.instantiate1 (pure x) s
       c t' <$> abstract1M x ns
 
 binOp
