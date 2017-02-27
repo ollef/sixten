@@ -5,7 +5,7 @@ data List A where
   Nil : List A
   Cons : A -> Ptr (List A) -> List A
 
-test : Ptr (List Size)
+test : Ptr (List Int)
 test = Ref (Cons 2 (Ref (Cons 3 (Ref (Cons 5 (Ref Nil))))))
 
 head : {A : Type} -> Ptr (List A) -> A

@@ -1,16 +1,16 @@
 data Tuple a b = tuple a b
 
-fun1 : Tuple Size Size -> Size
-fun1 (tuple sz1 sz2) = addInt sz1 sz2
+fun1 : Tuple Int Int -> Int
+fun1 (tuple i1 i2) = addInt i1 i2
 
-fun3 = \(tuple sz1 sz2). addInt sz1 sz2
-fun3p = \(tuple sz1 sz2) (tuple sz3 sz4). addInt sz1 sz2
+fun3 = \(tuple i1 i2). addInt i1 i2
+fun3p = \(tuple i1 i2) (tuple i3 i4). addInt i1 i2
 
-fun4 = \((tuple sz1 sz2) : Tuple _ _). addInt sz1 sz2
-fun4p = \((tuple sz1 sz2) (tuple sz3 sz4) : Tuple _ _). addInt sz1 (addInt sz2 (addInt sz3 sz4))
+fun4 = \((tuple i1 i2) : Tuple _ _). addInt i1 i2
+fun4p = \((tuple i1 i2) (tuple i3 i4) : Tuple _ _). addInt i1 (addInt i2 (addInt i3 i4))
 
-fun5 = \{(tuple sz1 sz2) : Tuple _ _}. addInt sz1 sz2
-fun5p = \{(tuple sz1 sz2) (tuple sz3 sz4) : Tuple _ _}. addInt sz1 (addInt sz2 (addInt sz3 sz4))
+fun5 = \{(tuple i1 i2) : Tuple _ _}. addInt i1 i2
+fun5p = \{(tuple i1 i2) (tuple i3 i4) : Tuple _ _}. addInt i1 (addInt i2 (addInt i3 i4))
 
-fun6 = \{(tuple sz1 sz2) : Tuple _ _}. addInt sz1 sz2
-fun6p = \{(tuple sz1 sz2) (tuple sz3 sz4) : Tuple _ _}. addInt sz1 (addInt sz2 (addInt sz3 sz4))
+fun6 = \{(tuple i1 i2) : Tuple _ _}. addInt i1 i2
+fun6p = \{(tuple i1 i2) (tuple i3 i4) : Tuple _ _}. addInt i1 (addInt i2 (addInt i3 i4))

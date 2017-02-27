@@ -6,5 +6,5 @@ data Bool where
   False : Bool
   True : Bool
 
-test : List Size
+test : List Int
 test = Cons True (Ref Nil)

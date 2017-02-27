@@ -1,4 +1,4 @@
-data Tuple {a b : Size} (A : Type {a}) (B : Type {b}) where
+data Tuple (A B : Type) where
   Tup : A -> B -> Tuple A B
 
 fst : forall {a}{b}. Tuple a b -> a
@@ -9,8 +9,8 @@ snd : forall {a}{b}. Tuple a b -> b
 snd x = case x of
   Tup a b -> b
 
-complex : Tuple Size Size
+complex : Tuple Int Int
 complex = Tup 10 20
 
-test : Size
+test : Int
 test = printInt (addInt (fst complex) (snd complex))

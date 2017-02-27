@@ -4,11 +4,11 @@ loop unit = loop unit
 
 test1 = \x y z. x y z
 test2 = \x y z. (loop unit) x y z
-test3 = \(x : Size -> Size -> Size) (y z : Size). x y z
-test4 = \(x y z : Size). (loop unit) x y z
+test3 = \(x : Int -> Int -> Int) (y z : Int). x y z
+test4 = \(x y z : Int). (loop unit) x y z
 
-test5 : Size -> Size -> Size -> Size
-test5 = \(x y z : Size). (loop unit) x y z
+test5 : Int -> Int -> Int -> Int
+test5 = \(x y z : Int). (loop unit) x y z
 
 data List a = Nil | Cons a (Ptr (List a))
 

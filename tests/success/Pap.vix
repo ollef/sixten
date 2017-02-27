@@ -1,7 +1,7 @@
-ap1 : forall {m}{n}{A : Type {m}}{B : Type {n}}. (A -> B) -> A -> B
+ap1 : forall {A B : Type}. (A -> B) -> A -> B
 ap1 f x = f x
 
-add3 : Size -> Size -> Size -> Size
+add3 : Int -> Int -> Int -> Int
 add3 a b c = addInt (addInt a b) c
 
 test = printInt (ap1 addInt 1 2)

@@ -1,2 +1,2 @@
-map : {b : Type {1}} -> b -> Size
+map : {b : Type} -> b -> Int
 map xs = map xs

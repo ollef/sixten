@@ -1,10 +1,10 @@
-deref : forall {n}{t : Type {n}}. Ptr t -> t
+deref : forall {t : Type}. Ptr t -> t
 deref p = case p of Ref t -> t
 
-the : forall {n}. (A : Type {n}) -> A -> A
+the : (A : Type) -> A -> A
 the _ a = a
 
-data List {a : Size}(A : Type {a}) where
+data List (A : Type) where
   Nil : List A
   Cons : A -> Ptr (List A) -> List A
 
@@ -26,7 +26,7 @@ tail3 xs = case deref xs of
   Cons x xs' -> xs'
   Nil -> xs
 
-map : forall {m}{n}{a : Type {m}}{b : Type {n}}. (a -> b) -> Ptr (List a) -> Ptr (List b)
+map : forall {a b : Type}. (a -> b) -> Ptr (List a) -> Ptr (List b)
 map f xs = Ref (case deref xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (map f xs'))
@@ -47,13 +47,13 @@ map4 f xs = case deref xs of
   Cons x xs' -> Ref (Cons (f x) (map4 f xs'))
   Nil -> Ref Nil
 
-testList : Ptr (List Size)
+testList : Ptr (List Int)
 testList = Ref (Cons 1 (Ref (Cons 2 (Ref (Cons 3 (Ref Nil))))))
 
-add3 : Size -> Size -> Size -> Size
+add3 : Int -> Int -> Int -> Int
 add3 a b c = addInt (addInt a b) c
 
-sum : Ptr (List Size) -> Size
+sum : Ptr (List Int) -> Int
 sum xs = case deref xs of
   Nil -> 0
   Cons x xs' -> addInt x (sum xs')

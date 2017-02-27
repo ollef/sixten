@@ -11,7 +11,7 @@ the _ a = a
 
 test = the (_ -> _ -> List _) Cons 1 (Ref Nil)
 
-test2 = the (List2 Size) (Cons 1 (Ref Nil))
+test2 = the (List2 Int) (Cons 1 (Ref Nil))
 
-test3 : List2 Size
+test3 : List2 Int
 test3 = Cons 1 (Ref Nil)

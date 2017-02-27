@@ -81,7 +81,6 @@ context = HashMap.fromList
   , (UnitName, dataType 0
                         Type
                         [ConstrDef UnitConstrName $ toScope $ Global UnitName])
-
   , ( FailName
     , opaque
     $ namedPi "T" Explicit Type
@@ -178,6 +177,9 @@ convertedContext = HashMap.fromList $ concat
       ])
       $ Scope
       $ Converted.Lit 0
+    )
+  , ( UnitName
+    , Converted.sized 1 $ Converted.Lit 0
     )
   , ( FailName
     , Converted.sized 1

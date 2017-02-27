@@ -13,7 +13,7 @@ const : forall {a}{b}. a -> b -> a
 const x y = x
 
 idConst1 : forall {f}{a}. f a -> f a
-idConst1 x = const x (\(x : Size). x)
+idConst1 x = const x (\(x : Int). x)
 
 useConst : forall {a}{b}. ((a -> a -> a) -> b) -> b
 useConst f = f const

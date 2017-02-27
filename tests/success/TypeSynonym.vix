@@ -2,4 +2,4 @@ data Void where
 
 Void2 = Void
 
-Int = Size
+Int2 = Int

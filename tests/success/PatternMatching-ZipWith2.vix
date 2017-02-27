@@ -6,7 +6,7 @@ zipWith f (Ref (Cons _ _)) (Ref Nil) = Ref Nil
 zipWith f (Ref Nil) (Ref (Cons _ _)) = Ref Nil
 zipWith f (Ref (Cons x xs)) (Ref (Cons y ys)) = Ref (Cons (f x y) (zipWith f xs ys))
 
-test : Ptr (List Size)
+test : Ptr (List Int)
 test = Ref (Cons 2 (Ref (Cons 3 (Ref (Cons 5 (Ref Nil))))))
 
 deref : forall {t}. Ptr t -> t

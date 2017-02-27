@@ -1,2 +1,2 @@
-test : Size
+test : Int
 test x = x

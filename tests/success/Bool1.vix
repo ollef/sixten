@@ -1,5 +1,5 @@
-Bool : Type {1}
-Bool = {a : Type {1}} -> a -> a -> a
+Bool : Type
+Bool = {a : Type} -> a -> a -> a
 
 True : Bool
 True x y = x

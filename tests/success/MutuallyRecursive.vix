@@ -20,7 +20,7 @@ even x = case deref x of
   Zero -> True
   Succ n -> odd n
 
-boolToSize b = case b of
+boolToInt b = case b of
   False -> 0
   True -> 1
 
@@ -39,4 +39,4 @@ map f xs = Ref case deref xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (map f xs')
 
-result = map (\x. printInt (boolToSize (even x))) numbers
+result = map (\x. printInt (boolToInt (even x))) numbers
