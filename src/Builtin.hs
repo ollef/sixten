@@ -69,7 +69,7 @@ maxInt e e' = MaxInt e e'
 context :: HashMap Name (Definition Expr Void, Type Void)
 context = HashMap.fromList
   [ (TypeName, opaque Type)
-  , (PtrName, dataType 1
+  , (PtrName, dataType (Lam mempty Explicit Type $ Scope $ Lit 1)
                        (arrow Explicit Type Type)
                        [ ConstrDef RefName $ toScope $ fmap B $ arrow Explicit (pure 0)
                                            $ app (Global PtrName) Explicit (pure 0)
@@ -78,7 +78,7 @@ context = HashMap.fromList
   , (AddIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
   , (MaxIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
   , (PrintIntName, opaque $ arrow Explicit IntType IntType)
-  , (UnitName, dataType 0
+  , (UnitName, dataType (Lit 0)
                         Type
                         [ConstrDef UnitConstrName $ toScope $ Global UnitName])
   , ( FailName
@@ -90,7 +90,7 @@ context = HashMap.fromList
   where
     cl = fromMaybe (error "Builtin not closed") . closed
     opaque t = (DataDefinition (DataDef mempty) (Lit 1), cl t)
-    dataType sz t xs = (DataDefinition (DataDef xs) (Lit sz), cl t)
+    dataType sz t xs = (DataDefinition (DataDef xs) sz, cl t)
     namedPi :: Name -> Plicitness -> Type Name -> Expr Name -> Expr Name
     namedPi n p t e = Pi (fromName n) p t $ abstract1 n e
 
