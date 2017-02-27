@@ -351,7 +351,7 @@ tcPat' pat vs expected = case pat of
     (_, typeType) <- definition typeName
     conType <- qconstructor qc
 
-    let (paramsTele, _) = pisView (typeType :: AbstractM)
+    let paramsTele = telescope (typeType :: AbstractM)
         numParams = teleLength paramsTele
         (tele, retScope) = pisView conType
 
