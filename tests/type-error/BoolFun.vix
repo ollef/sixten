@@ -1,0 +1,1 @@
+Bool = {n : Int} -> {a : Type {n}} -> a -> a -> a
