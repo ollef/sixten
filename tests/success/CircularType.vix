@@ -2,4 +2,4 @@ const : {a b : Type} -> a -> b -> a
 const x y = x
 
 X : const Int X
-X = 12
+X = printInt 12

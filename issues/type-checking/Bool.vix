@@ -1,2 +1,0 @@
-Bool : Type
-Bool = {A : Type} -> A -> A -> A

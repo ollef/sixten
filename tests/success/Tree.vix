@@ -17,4 +17,4 @@ sumTree (Ref (Fork t1 t2)) = addInt (sumTree t1) (sumTree t2)
 tree : Ptr (Tree Int)
 tree = Ref (Fork (Ref (Leaf 1)) (Ref (Fork (Ref (Fork (Ref (Leaf 2)) (Ref (Leaf 3)))) (Ref (Leaf 4)))))
 
-main1 = sumTree tree
+main1 = printInt (sumTree tree)
