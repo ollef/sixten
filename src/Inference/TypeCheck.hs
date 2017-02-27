@@ -749,7 +749,8 @@ checkDataType name (DataDef cs) typ = do
   params <- metaTelescopeM ps'
   let typ'' = pis params $ Scope Builtin.Type
 
-  abstractedTypeSize <- abstractM abstr typeSize
+  typeSize' <- whnf' True typeSize
+  abstractedTypeSize <- abstractM abstr typeSize'
 
   return (DataDef abstractedCs, lams params abstractedTypeSize, typ'')
 
