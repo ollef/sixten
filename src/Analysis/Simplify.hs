@@ -95,14 +95,15 @@ etaLams applied tele scope = case go 0 $ fromScope scope of
       , a == as Vector.! unTele n
       , B n `Set.notMember` toSet (second (const ()) <$> e)
       = case go i' e of
-        Nothing | etaAllowed i' -> Just (i', e)
+        Nothing | etaAllowed e i' -> Just (i', e)
         res -> res
       where
         i' = i + 1
     go _ _ = Nothing
-    etaAllowed n
+    etaAllowed e n
       = n < len -- the resulting expression terminates since it's a lambda
       || applied >= n -- termination doesn't matter since the expression is applied anyway
+      || terminatesWhenCalled e
     len = teleLength tele
     as = teleAnnotations tele
 
@@ -134,6 +135,18 @@ terminates expr = case expr of
   Lit _ -> True
   Pi {} -> True
   Lam {} -> True
-  App {} -> False
+  App e1 _ e2 -> terminatesWhenCalled e1 && terminates e2
   Case {} -> False
   Let _ e s -> terminates e && terminates (fromScope s)
+
+terminatesWhenCalled :: Expr v -> Bool
+terminatesWhenCalled expr = case expr of
+  Var _ -> False
+  Global _ -> False
+  Con _ -> True
+  Lit _ -> True
+  Pi {} -> True
+  Lam {} -> False
+  App {} -> False
+  Case {} -> False
+  Let _ e s -> terminates e && terminatesWhenCalled (fromScope s)
