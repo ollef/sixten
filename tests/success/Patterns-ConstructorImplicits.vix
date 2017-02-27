@@ -5,13 +5,13 @@ data Impl where
 test (impl1 ptr) = 1
 test (impl2 ptr1 ptr2) = 2
 
-test2 (impl1 {A} ptr) = m
-test2 (impl2 {A}{B} ptr1 ptr2) = addInt m n
+test2 (impl1 {A} ptr) = 1
+test2 (impl2 {A}{B} ptr1 ptr2) = 2
 
 test3 : Impl -> Int
 test3 (impl1 ptr) = 1
 test3 (impl2 ptr1 ptr2) = 2
 
 test4 : Impl -> Int
-test4 (impl1 {A} ptr) = m
-test4 (impl2 {A}{B} ptr1 ptr2) = addInt m n
+test4 (impl1 {A} ptr) = 1
+test4 (impl2 {A}{B} ptr1 ptr2) = 2
