@@ -15,8 +15,8 @@ import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Sized.SLambda as SLambda
 import TCM
 
-slamS :: AbstractM -> TCM LambdaM
-slamS e = SLambda.Anno <$> slam e <*> (slam =<< whnf' True =<< typeOf e)
+slamSized :: AbstractM -> TCM LambdaM
+slamSized e = SLambda.Anno <$> slam e <*> (slam =<< whnf' True =<< typeOf e)
 
 slam :: AbstractM -> TCM LambdaM
 slam expr = do
@@ -28,15 +28,20 @@ slam expr = do
     Abstract.Lit l -> return $ SLambda.Lit l
     Abstract.Pi {} -> return $ SLambda.Global Builtin.PiTypeName
     Abstract.Lam h p t s -> do
-      v <- forall h p t
-      e <- slamS $ instantiate1 (pure v) s
-      sz <- slam t
+      t' <- whnf' True t
+      v <- forall h p t'
+      e <- slamSized $ instantiate1 (pure v) s
+      sz <- slam t'
       return $ SLambda.Lam h sz $ abstract1 v e
-    (appsView -> (Abstract.Con qc, es)) -> do
+    (appsView -> (Abstract.Con qc@(QConstr typeName _), es)) -> do
+      (_, typeType) <- definition typeName
       n <- constrArity qc
-      case compare argsLen n of
+      case compare (length es) n of
         GT -> throwError $ "slam: too many args for constructor: " ++ show qc
-        EQ -> SLambda.Con qc <$> mapM slamS (Vector.fromList $ snd <$> es)
+        EQ -> do
+          let numParams = teleLength $ telescope typeType
+              es' = drop numParams es
+          SLambda.Con qc <$> mapM slamSized (Vector.fromList $ snd <$> es')
         LT -> do
           conType <- qconstructor qc
           let Just appliedConType = typeApps conType $ snd <$> es
@@ -46,17 +51,15 @@ slam expr = do
                 $ apps (Abstract.Con qc)
                 $ Vector.fromList (fmap (pure . pure) <$> es)
                 <> iforTele tele (\i _ a _ -> (a, pure $ B $ Tele i))
-      where
-        argsLen = length es
     Abstract.Con _qc -> throwError "slam impossible"
-    Abstract.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamS e2
-    Abstract.Case e brs -> SLambda.Case <$> slamS e <*> slamBrances brs
+    Abstract.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamSized e2
+    Abstract.Case e brs -> SLambda.Case <$> slamSized e <*> slamBrances brs
     Abstract.Let h e scope -> do
       t <- whnf' True =<< typeOf e
       v <- forall h Explicit t
-      e' <- slamS e
+      e' <- slamSized e
       sz <- slam t
-      body <- slamS $ instantiate1 (pure v) scope
+      body <- slamSized $ instantiate1 (pure v) scope
       return $ SLambda.Let h e' sz $ abstract1 v body
   modifyIndent pred
   logMeta 20 "slam res" res
@@ -96,5 +99,5 @@ slamBrances (NoBranches typ) = NoBranches <$> slam typ
 slamDef
   :: Definition Abstract.Expr MetaA
   -> TCM LambdaM
-slamDef (Definition e) = slamS e
-slamDef (DataDefinition _ e) = slamS e
+slamDef (Definition e) = slamSized e
+slamDef (DataDefinition _ e) = slamSized e
