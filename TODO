@@ -1,6 +1,7 @@
 Type checking
   Better checking for escaped vars
   Can the special-case equations for unifying ints be done in a principled way?
+    Probably let that be handled by normalisation
   Propagate equalities from cases
   Sanity type-check the Abstract syntax
 Matching
@@ -38,6 +39,7 @@ Language
   Inductive families
   FFI & More general way to define builtins (extern LLVM, C?)
   Strings
+  IO
 Optimisations
   Inlining
   Common subexpressions
