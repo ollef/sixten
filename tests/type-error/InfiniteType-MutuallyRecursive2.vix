@@ -1,0 +1,4 @@
+data A = A1 | A2 B
+data B = B1 | B2 C
+data C = C1 | C2 D
+data D = D1 | D2 A

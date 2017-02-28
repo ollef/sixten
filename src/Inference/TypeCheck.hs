@@ -25,6 +25,7 @@ import Text.Trifecta.Result(Err(Err), explain)
 import Analysis.Simplify
 import qualified Builtin
 import Inference.Clause
+import Inference.Cycle
 import Inference.Match as Match
 import Inference.Normalise
 import Inference.TypeOf
@@ -983,11 +984,13 @@ checkRecursiveDefs defs = do
       (def', typ'') <- checkDefType evar def loc typ'
       logMeta 20 ("checkRecursiveDefs res " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) def'
       logMeta 20 ("checkRecursiveDefs res t " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) typ''
-      return (evar, def', typ'')
+      return (loc, (evar, def', typ''))
+
+    detectTypeRepCycles checkedDefs
 
     return (checkedDefs, evars)
 
-  genDefs <- generaliseDefs checkedDefs
+  genDefs <- generaliseDefs $ snd <$> checkedDefs
 
   let unexpose evar = case Vector.elemIndex evar evars of
         Nothing -> pure evar

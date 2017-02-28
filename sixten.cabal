@@ -34,6 +34,7 @@ executable sixten
                        Frontend.Resolve
                        Frontend.ScopeCheck
                        Inference.Clause
+                       Inference.Cycle
                        Inference.Match
                        Inference.Normalise
                        Inference.TypeCheck

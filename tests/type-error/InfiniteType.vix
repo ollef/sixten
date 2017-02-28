@@ -1,10 +1,1 @@
-data List a where
-  Nil : List a
-  Cons : a -> List a -> List a
-
-data Bool where
-  False : Bool
-  True : Bool
-
-test : List Int
-test = Cons True (Ref Nil)
+data List a = Nil | Cons a (List a)
