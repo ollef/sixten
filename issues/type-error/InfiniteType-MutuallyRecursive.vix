@@ -1,0 +1,2 @@
+data A = A1 | A2 B
+data B = B1 | B2 A
