@@ -2,11 +2,13 @@
 module Analysis.Simplify where
 
 import Bound
+import Control.Monad.Identity
 import Data.Bifunctor
 import Data.Foldable as Foldable
 import qualified Data.Set as Set
 import qualified Data.Vector as Vector
 
+import Inference.Normalise
 import Syntax
 import Syntax.Abstract
 import Util
@@ -32,8 +34,12 @@ simplifyExpr !applied expr = case expr of
       (simplifyExpr (applied + 1) e1)
       p
       (simplifyExpr 0 e2)
-  -- TODO do something clever here
-  Case e brs -> Case (simplifyExpr 0 e) $ simplifyBranches applied brs
+  Case e brs ->
+    runIdentity
+      $ chooseBranch
+        (simplifyExpr 0 e)
+        (simplifyBranches applied brs)
+        (Identity . simplifyExpr applied)
   Let h e s -> let_ h (simplifyExpr 0 e) (simplifyScope applied s)
 
 simplifyScope
@@ -78,8 +84,8 @@ simplifyDef
   -> Definition Expr v
 simplifyDef (Definition e)
   = Definition $ simplifyExpr 0 e
-simplifyDef (DataDefinition d t)
-  = DataDefinition d $ simplifyExpr 0 t
+simplifyDef (DataDefinition d rep)
+  = DataDefinition d $ simplifyExpr 0 rep
 
 etaLams
   :: Int

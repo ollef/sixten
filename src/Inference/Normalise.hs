@@ -147,9 +147,10 @@ chooseBranch (Lit l) (LitBranches lbrs def) k = k chosenBranch
   where
     chosenBranch = head $ [br | (l', br) <- NonEmpty.toList lbrs, l == l'] ++ [def]
 chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs) k =
-  k $ instantiateTele snd (Vector.fromList args) chosenBranch
+  k $ instantiateTele snd (Vector.drop (Vector.length argsv - numConArgs) argsv) chosenBranch
   where
-    chosenBranch = case [br | (qc', _, br) <- NonEmpty.toList cbrs, qc == qc'] of
+    argsv = Vector.fromList args
+    (numConArgs, chosenBranch) = case [(teleLength tele, br) | (qc', tele, br) <- NonEmpty.toList cbrs, qc == qc'] of
       [br] -> br
       _ -> error "Normalise.chooseBranch"
 chooseBranch e brs _ = return $ Case e brs

@@ -41,7 +41,6 @@ Language
 Optimisations
   Inlining
   Common subexpressions
-  Case of known
   * Tagged pointers
     Reorder data to enable more?
   Join point let bindings
