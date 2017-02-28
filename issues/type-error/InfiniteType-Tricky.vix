@@ -1,0 +1,2 @@
+data A = A1 Int | A2 Int Int | A3 Int Int B Int Int | A4 Int Int Int Int
+data B = B1 Int | B2 Int Int | B3 Int Int A Int Int | B4 Int Int Int Int
