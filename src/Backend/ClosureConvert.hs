@@ -43,7 +43,7 @@ createLambdaSignature
     )
 createLambdaSignature tele lamScope = do
   vs <- forMTele tele $ \h () _ ->
-    forall h () Unit
+    forall h Unit
   es <- forMTele tele $ \_ () s ->
     convertExpr $ instantiateTele pure vs $ vacuous s
 
@@ -56,7 +56,7 @@ convertSignature
   -> TCM CExprM
 convertSignature sig = case sig of
   Converted.Function retDir tele lamScope -> do
-    vs <- forMTele tele $ \h _ _ -> forall h () Unit
+    vs <- forMTele tele $ \h _ _ -> forall h Unit
     let lamExpr = instantiateTele pure vs $ vacuous lamScope
         abstr = teleAbstraction vs
     lamExpr' <- convertExpr lamExpr
@@ -76,7 +76,7 @@ convertLambda
     )
 convertLambda tele lamScope = do
   vs <- forMTele tele $ \h () _ ->
-    forall h () Unit
+    forall h Unit
 
   es <- forMTele tele $ \_ () s ->
     convertExpr $ instantiateTele pure vs $ vacuous s
@@ -119,7 +119,7 @@ convertExpr expr = case expr of
     return $ unknownCall e' es'
   Closed.Let h e bodyScope -> do
     e' <- convertExpr e
-    v <- forall h () Unit
+    v <- forall h Unit
     let bodyExpr = Util.instantiate1 (pure v) bodyScope
     bodyExpr' <- convertExpr bodyExpr
     let bodyScope' = abstract1 v bodyExpr'
@@ -145,7 +145,7 @@ knownCall
   -> TCM CExprM
 knownCall f retDir tele fBodyScope args
   | numArgs < arity = do
-    vs <- forM fArgs $ \_ -> forall mempty () Unit
+    vs <- forM fArgs $ \_ -> forall mempty Unit
     let fBody = instantiateTele pure vs $ vacuous fBodyScope
         go v | i < Vector.length fArgs1 = B $ Tele $ 2 + i
              | otherwise = F $ Tele $ 1 + i
@@ -205,7 +205,7 @@ convertBranches :: LBrsM -> TCM CBrsM
 convertBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(qc, tele, brScope) -> do
     vs <- forMTele tele $ \h () _ ->
-      forall h () Unit
+      forall h Unit
     es <- forMTele tele $ \_ () s ->
       convertExpr $ instantiateTele pure vs s
     let brExpr = instantiateTele pure vs brScope

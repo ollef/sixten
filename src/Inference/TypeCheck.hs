@@ -170,7 +170,7 @@ tcRho expr expected expectedAppResult = case expr of
         h = Concrete.patternHint pat
     body' <- enterLevel $ checkPoly body Builtin.Type
     f <- instExpected expected Builtin.Type
-    x <- forall h p patType
+    x <- forall h patType
     body'' <- matchSingle (pure x) pat' body'
     let body''' = body'' >>= unvar (\Match.Fail -> Builtin.Fail Builtin.Type) pure
     f =<< Abstract.Pi h p patType <$> abstract1M x body'''
@@ -179,7 +179,7 @@ tcRho expr expected expectedAppResult = case expr of
     case expected of
       Infer _ _ -> do
         (pat', vs, argType) <- inferPat p pat mempty
-        argVar <- forall h p argType
+        argVar <- forall h argType
         let body = instantiatePatternVec pure vs bodyScope
         (body', bodyType) <- enterLevel $ inferRho body (InstBelow Explicit) Nothing
         body'' <- matchSingle (pure argVar) pat' body'
@@ -192,7 +192,7 @@ tcRho expr expected expectedAppResult = case expr of
         (typeh, argType, bodyTypeScope, fResult) <- funSubtype expectedType p
         let h' = h <> typeh
         (pat', vs) <- checkPat pat mempty argType
-        argVar <- forall h' p argType
+        argVar <- forall h' argType
         let body = instantiatePatternVec pure vs bodyScope
             bodyType = Util.instantiate1 (pure argVar) bodyTypeScope
         body' <- enterLevel $ checkPoly body bodyType
@@ -337,7 +337,7 @@ tcPat' pat vs expected = case pat of
         liftST $ writeSTRef ref varType
         return varType
       Check varType -> return varType
-    v <- forall h Explicit varType
+    v <- forall h varType
     return (Abstract.VarPat h v, vs <> pure v)
   Concrete.WildcardPat -> return (Abstract.WildcardPat, vs)
   Concrete.LitPat lit -> do
@@ -395,7 +395,7 @@ viewPat
   -> Abstract.Pat AbstractM MetaA
   -> TCM (Abstract.Pat AbstractM MetaA) -- ^ expectedType
 viewPat expectedType f p = do
-  x <- forall mempty Explicit expectedType
+  x <- forall mempty expectedType
   fx <- f $ pure x
   if fx == pure x then
     return p
@@ -465,8 +465,8 @@ resolveConstrType cs expected = do
     findExpectedDataType typ = do
       typ' <- whnf typ
       case typ' of
-        Abstract.Pi h p t s -> do
-          v <- forall h p t
+        Abstract.Pi h _ t s -> do
+          v <- forall h t
           findExpectedDataType $ Util.instantiate1 (pure v) s
         Abstract.App t1 _ _ -> findExpectedDataType t1
         Abstract.Global v -> do
@@ -501,7 +501,7 @@ prenexConvert'
   -> InstBelow
   -> TCM (Vector (Plicitness, MetaA), Rhotype, AbstractM -> TCM AbstractM)
 prenexConvert' (Abstract.Pi h p t resScope) (InstBelow p') | p < p' = do
-  y <- forall h p t
+  y <- forall h t
   let resType = Util.instantiate1 (pure y) resScope
   (vs, resType', f) <- prenexConvert resType $ InstBelow p'
   return $ case p of
@@ -541,7 +541,7 @@ subtype' (Abstract.Pi h1 p1 argType1 retScope1) (Abstract.Pi h2 p2 argType2 retS
   | p1 == p2 = do
     let h = h1 <> h2
     f1 <- subtype argType2 argType1
-    v2 <- forall h p2 argType2
+    v2 <- forall h argType2
     v1 <- f1 $ pure v2
     let retType1 = Util.instantiate1 v1 retScope1
         retType2 = Util.instantiate1 (pure v2) retScope2
@@ -573,7 +573,7 @@ subtypeRho' (Abstract.Pi h1 p1 argType1 retScope1) (Abstract.Pi h2 p2 argType2 r
   | p1 == p2 = do
     let h = h1 <> h2
     f1 <- subtype argType2 argType1
-    v2 <- forall h p2 argType2
+    v2 <- forall h argType2
     v1 <- f1 $ pure v2
     let retType1 = Util.instantiate1 v1 retScope1
         retType2 = Util.instantiate1 (pure v2) retScope2
@@ -615,7 +615,7 @@ funSubtypes startType plics = go plics startType mempty mempty mempty
       | otherwise = do
         let p = Vector.head ps
         (h, argType, resScope, f) <- funSubtype typ p
-        v <- forall mempty p argType
+        v <- forall mempty argType
         go
           (Vector.tail ps)
           (Util.instantiate1 (pure v) resScope)
@@ -704,8 +704,8 @@ checkConstrDef (ConstrDef c typ) = do
   return (ConstrDef c typ', ret, size)
   where
     go :: AbstractM -> TCM ([AbstractM], AbstractM)
-    go (Abstract.Pi h p t s) = do
-      v <- forall h p t
+    go (Abstract.Pi h _ t s) = do
+      v <- forall h t
       (sizes, ret) <- go $ instantiate1 (pure v) s
       return (t : sizes, ret)
     go ret = return ([], ret)
@@ -721,7 +721,7 @@ checkDataType name (DataDef cs) typ = do
 
   ps' <- forTeleWithPrefixM (telescope typ') $ \h p s ps' -> do
     let is = instantiateTele pure (snd <$> ps') s
-    v <- forall h p is
+    v <- forall h is
     return (p, v)
 
   let vs = snd <$> ps'
@@ -799,7 +799,7 @@ checkClauses clauses polyType = do
 
     piPlicitnesses' :: AbstractM -> TCM [Plicitness]
     piPlicitnesses' (Abstract.Pi h p t s) = do
-      v <- forall h p t
+      v <- forall h t
       (:) p <$> piPlicitnesses (instantiate1 (pure v) s)
     piPlicitnesses' _ = return mempty
 
@@ -816,8 +816,8 @@ checkClausesRho clauses rhoType = do
           Concrete.Clause pats _ = NonEmpty.head clauses
   (argTele, returnTypeScope, fs) <- funSubtypes rhoType ps
   -- TODO get namehints from the patterns
-  argVars <- forTeleWithPrefixM argTele $ \h p s argVars ->
-    forall h p $ instantiateTele pure argVars s
+  argVars <- forTeleWithPrefixM argTele $ \h _ s argVars ->
+    forall h $ instantiateTele pure argVars s
 
   let returnType = instantiateTele pure argVars returnTypeScope
 
@@ -967,7 +967,7 @@ checkRecursiveDefs defs = do
     evars <- Vector.forM names $ \name -> do
       let hint = fromName name
       typ <- existsType hint
-      forall hint Explicit (typ :: AbstractM)
+      forall hint (typ :: AbstractM)
 
     let expose name = case Vector.elemIndex name names of
           Nothing -> global name

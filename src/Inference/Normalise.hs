@@ -13,16 +13,14 @@ import Syntax.Abstract
 import Util
 
 whnf
-  :: MetaVary Expr v
-  => Expr v
-  -> TCM (Expr v)
+  :: AbstractM
+  -> TCM AbstractM
 whnf = whnf' False
 
 whnf'
-  :: MetaVary Expr v
-  => Bool
-  -> Expr v
-  -> TCM (Expr v)
+  :: Bool
+  -> AbstractM
+  -> TCM AbstractM
 whnf' expandTypeReps expr = do
   modifyIndent succ
   res <- case expr of
@@ -52,8 +50,8 @@ whnf' expandTypeReps expr = do
   return res
 
 normalise
-  :: Expr MetaA
-  -> TCM (Expr MetaA)
+  :: AbstractM
+  -> TCM AbstractM
 normalise expr = do
   logMeta 40 "normalise e" expr
   modifyIndent succ
@@ -102,7 +100,7 @@ normalise expr = do
     normaliseTelescope tele scope = do
       avs <- forTeleWithPrefixM tele $ \h a s avs -> do
         t' <- normalise $ instantiateTele pure (snd <$> avs) s
-        v <- forall h a t'
+        v <- forall h t'
         return (a, v)
 
       let vs = snd <$> avs
@@ -113,9 +111,9 @@ normalise expr = do
         s <- abstractM abstr $ metaType v
         return (metaHint v, a, s)
       return (Telescope tele', scope')
-    normaliseScope h p c t s = do
+    normaliseScope h _ c t s = do
       t' <- normalise t
-      x <- forall h p t'
+      x <- forall h t'
       ns <- normalise $ Util.instantiate1 (pure x) s
       c t' <$> abstract1M x ns
 

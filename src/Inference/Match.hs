@@ -140,8 +140,8 @@ conPatArgs c typ = do
   ctype <- qconstructor c
   let (tele, _) = pisView (ctype :: AbstractM)
       tele' = instantiatePrefix (snd <$> Vector.fromList args) tele
-  vs <- forTeleWithPrefixM tele' $ \h p s vs ->
-    forall h p $ instantiateTele pure vs s
+  vs <- forTeleWithPrefixM tele' $ \h _ s vs ->
+    forall h $ instantiateTele pure vs s
   let ps = (\(p, v) -> (p, VarPat (metaHint v) v, metaType v))
         <$> Vector.zip (teleAnnotations tele') vs
   return (ps, vs)

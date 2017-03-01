@@ -26,7 +26,7 @@ typeOfM expr = do
     Lit _ -> return Builtin.IntType
     Pi {} -> return Builtin.Type
     Lam h a t s -> do
-      x <- forall h a t
+      x <- forall h t
       resType  <- typeOfM (instantiate1 (pure x) s)
       abstractedResType <- abstract1M x resType
       return $ Pi h a t abstractedResType
@@ -38,11 +38,11 @@ typeOfM expr = do
         _ -> throwError $ "typeOfM: expected pi type " ++ show e1type'
     Let h e s -> do
       eType <- typeOfM e
-      v <- forall h Explicit eType
+      v <- forall h eType
       typeOfM $ instantiate1 (pure v) s
     Case _ (ConBranches ((_, tele, brScope) NonEmpty.:| _)) -> do
-      vs <- forTeleWithPrefixM tele $ \h a s vs ->
-        forall h a $ instantiateTele pure vs s
+      vs <- forTeleWithPrefixM tele $ \h _ s vs ->
+        forall h $ instantiateTele pure vs s
       typeOfM $ instantiateTele pure vs brScope
     Case _ (LitBranches _ def) -> typeOfM def
     Case _ (NoBranches t) -> return t
@@ -51,9 +51,8 @@ typeOfM expr = do
   return t
 
 typeOf
-  :: (MetaData Expr v ~ Plicitness, Show v, MetaVary Expr v)
-  => Expr v
-  -> TCM (Expr v)
+  :: AbstractM
+  -> TCM AbstractM
 typeOf expr = do
   -- logMeta "typeOf" expr
   modifyIndent succ
@@ -61,12 +60,12 @@ typeOf expr = do
     Global v -> do
       (_, typ) <- definition v
       return typ
-    Var v -> return $ metaVarType v
+    Var v -> return $ metaType v
     Con qc -> qconstructor qc
     Lit _ -> return Builtin.IntType
     Pi {} -> return Builtin.Type
     Lam h a t s -> do
-      x <- forall h a t
+      x <- forall h t
       resType <- typeOf (instantiate1 (pure x) s)
       let abstractedResType = abstract1 x resType
       return $ Pi h a t abstractedResType
@@ -78,11 +77,11 @@ typeOf expr = do
         _ -> throwError $ "typeOf: expected pi type " ++ show e1type'
     Let h e s -> do
       eType <- typeOf e
-      v <- forall h Explicit eType
+      v <- forall h eType
       typeOf $ instantiate1 (pure v) s
     Case _ (ConBranches ((_, tele, brScope) NonEmpty.:| _)) -> do
-      vs <- forTeleWithPrefixM tele $ \h a s vs ->
-        forall h a $ instantiateTele pure vs s
+      vs <- forTeleWithPrefixM tele $ \h _ s vs ->
+        forall h $ instantiateTele pure vs s
       typeOf $ instantiateTele pure vs brScope
     Case _ (LitBranches _ def) -> typeOf def
     Case _ (NoBranches t) -> return t

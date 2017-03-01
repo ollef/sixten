@@ -20,31 +20,8 @@ import Prelude.Extras
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
-import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.SLambda as SLambda
 import TCM
-import Util
-
-class Eq v => MetaVary e v where
-  type MetaData e v
-  forall :: NameHint -> MetaData e v -> e v -> TCM v
-  default forall :: (v ~ MetaVar e) => NameHint -> MetaData e (MetaVar e) -> e (MetaVar e) -> TCM (MetaVar e)
-  forall hint _a typ = do
-    i <- fresh
-    logVerbose 20 $ "forall: " <> fromString (show i)
-    return $ MetaVar i typ hint Nothing
-  refineVar :: v -> (e v -> TCM (e v)) -> TCM (e v)
-  default refineVar :: (v ~ MetaVar e, Applicative e) => MetaVar e -> (e (MetaVar e) -> TCM (e (MetaVar e))) -> TCM (e (MetaVar e))
-  refineVar v@(metaRef -> Nothing) _ = return $ pure v
-  refineVar v@(metaRef -> Just r) f = refineIfSolved r (pure v) f
-  refineVar _ _ = error "refineVar impossible"
-  metaVarType :: v -> e v
-  default metaVarType :: (v ~ MetaVar e) => MetaVar e -> e (MetaVar e)
-  metaVarType = metaType
-
-instance MetaVary Unit (MetaVar Unit) where
-  type MetaData Unit (MetaVar Unit) = ()
-  refineVar _ _ = return Unit
 
 type Exists e = STRef (World TCM) (Either Level (e (MetaVar e)))
 
@@ -54,16 +31,6 @@ data MetaVar e = MetaVar
   , metaHint :: !NameHint
   , metaRef  :: !(Maybe (Exists e))
   }
-
-instance MetaVary Concrete.Expr (MetaVar Concrete.Expr) where
-  type MetaData Concrete.Expr (MetaVar Concrete.Expr) = Plicitness
-
-instance MetaVary Abstract.Expr (MetaVar Abstract.Expr) where
-  type MetaData Abstract.Expr (MetaVar Abstract.Expr) = Plicitness
-
-instance MetaVary Closed.Expr (MetaVar Closed.Expr) where
-  type MetaData Closed.Expr (MetaVar Closed.Expr) = ()
-  refineVar v _ = return $ Closed.Var v
 
 type MetaA = MetaVar Abstract.Expr
 
@@ -87,6 +54,21 @@ instance Show1 e => Show (MetaVar e) where
     showString "MetaA" . showChar ' ' . showsPrec 11 i .
     showChar ' ' . showsPrec1 11 t . showChar ' ' . showsPrec 11 h .
     showChar ' ' . showString "<Ref>"
+
+forall :: NameHint -> e (MetaVar e) -> TCM (MetaVar e)
+forall hint typ = do
+  i <- fresh
+  logVerbose 20 $ "forall: " <> fromString (show i)
+  return $ MetaVar i typ hint Nothing
+
+refineVar
+  :: Applicative e
+  => MetaVar e
+  -> (e (MetaVar e) -> TCM (e (MetaVar e)))
+  -> TCM (e (MetaVar e))
+refineVar v@(metaRef -> Nothing) _ = return $ pure v
+refineVar v@(metaRef -> Just r) f = refineIfSolved r (pure v) f
+refineVar _ _ = error "refineVar impossible"
 
 showMeta
   :: (Functor e, Foldable e, Functor f, Foldable f, Pretty (f String), Pretty (e String))
@@ -226,7 +208,7 @@ abstractDataDefM f (DataDef cs) typ = mdo
   typ' <- zonk typ
   ps' <- forMTele (telescope typ') $ \h a s -> do
     let is = inst s
-    v <- forall h a is
+    v <- forall h is
     return (h, a, is, v)
   let f' x = F <$> f x <|> B . Tele <$> Vector.elemIndex x vs
   acs <- forM cs $ \c -> traverse (fmap (toScope . fmap assoc . fromScope) . abstractM f' . inst) c

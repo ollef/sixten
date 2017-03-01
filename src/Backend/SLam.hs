@@ -27,9 +27,9 @@ slam expr = do
     Abstract.Global g -> return $ SLambda.Global g
     Abstract.Lit l -> return $ SLambda.Lit l
     Abstract.Pi {} -> return $ SLambda.Global Builtin.PiTypeName
-    Abstract.Lam h p t s -> do
+    Abstract.Lam h _ t s -> do
       t' <- whnf' True t
-      v <- forall h p t'
+      v <- forall h t'
       e <- slamSized $ instantiate1 (pure v) s
       sz <- slam t'
       return $ SLambda.Lam h sz $ abstract1 v e
@@ -56,7 +56,7 @@ slam expr = do
     Abstract.Case e brs -> SLambda.Case <$> slamSized e <*> slamBrances brs
     Abstract.Let h e scope -> do
       t <- whnf' True =<< typeOf e
-      v <- forall h Explicit t
+      v <- forall h t
       e' <- slamSized e
       sz <- slam t
       body <- slamSized $ instantiate1 (pure v) scope
@@ -78,7 +78,7 @@ slamBrances (ConBranches cbrs) = do
           abstr = teleAbstraction vs
           t = instantiateTele pure vs s
       tsz <- slam =<< whnf' True t
-      v <- forall h a t
+      v <- forall h t
       return (v, (h, a, abstract abstr tsz))
     let vs = fst <$> tele'
         abstr = teleAbstraction vs

@@ -29,7 +29,7 @@ closeExpr expr = case expr of
   SLambda.Let h e t scope -> do
     t' <- closeExpr t
     e' <- closeExpr e
-    x <- forall h () t'
+    x <- forall h t'
     let body = instantiate1 (pure x) scope
     closedBody <- closeExpr body
     let scope' = abstract1 x closedBody
@@ -60,7 +60,7 @@ closeLambda tele lamScope = do
   vs <- forTeleWithPrefixM tele $ \h () s vs -> do
     let e = instantiateTele pure vs s
     e' <- closeExpr e
-    forall h () e'
+    forall h e'
 
   let lamExpr = instantiateTele pure vs lamScope
       vs' = sortedFvs <> vs
@@ -88,7 +88,7 @@ closeBranches (ConBranches cbrs) = fmap ConBranches $
     vs <- forTeleWithPrefixM tele $ \h () s vs -> do
       let e = instantiateTele pure vs s
       e' <- closeExpr e
-      forall h () e'
+      forall h e'
     let brExpr = instantiateTele pure vs brScope
         abstr = teleAbstraction vs
         tele'' = Telescope $ (\v -> (metaHint v, (), abstract abstr $ metaType v)) <$> vs

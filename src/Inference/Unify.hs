@@ -89,8 +89,8 @@ unify' cxt type1 type2
     -- general solution (see Miller, Dale (1991) "A Logic programming...")
     (appsView -> (Var v@(metaRef -> Just r), distinctForalls -> Just pvs), _) -> solveVar unify r v pvs type2
     (_, appsView -> (Var v@(metaRef -> Just r), distinctForalls -> Just pvs)) -> solveVar (flip . unify) r v pvs type1
-    (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
-    (Lam h1 p1 t1 s1, Lam h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
+    (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) t1 t2 s1 s2
+    (Lam h1 p1 t1 s1, Lam h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) t1 t2 s1 s2
     (Lit 0, Builtin.AddInt x y) -> do
       unify cxt (Lit 0) x
       unify cxt (Lit 0) y
@@ -126,9 +126,9 @@ unify' cxt type1 type2
           (intercalate ["", "while trying to unify"] explanation)
           mempty
   where
-    absCase h p a b s1 s2 = do
+    absCase h a b s1 s2 = do
       unify cxt a b
-      v <- pure <$> forall h p a
+      v <- pure <$> forall h a
       unify cxt (instantiate1 v s1) (instantiate1 v s2)
     distinctForalls pes = case traverse isForall pes of
       Just pes' | distinct pes' -> Just pes'
