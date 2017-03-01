@@ -8,9 +8,6 @@ class Eq a => PrettyAnnotation a where
   prettyAnnotationParens :: a -> PrettyM Doc -> PrettyM Doc
   prettyAnnotationParens p = prettyAnnotation p . parens
 
-class Annotated (e :: k) where
-  type Annotation e :: *
-
 instance PrettyAnnotation () where
   prettyAnnotation _ = id
 

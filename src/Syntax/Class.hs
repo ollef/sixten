@@ -9,21 +9,21 @@ import Syntax.Hint
 import Syntax.Telescope
 import Util
 
-class (AppSyntax e, Annotated e, Monad e, Traversable e) => Syntax e where
-  lam :: NameHint -> Annotation e -> e v -> Scope1 e v -> e v
-  lamView :: e v -> Maybe (NameHint, Annotation e, e v, Scope1 e v)
+class (AppSyntax e, Monad e, Traversable e) => Syntax e where
+  lam :: NameHint -> Plicitness -> e v -> Scope1 e v -> e v
+  lamView :: e v -> Maybe (NameHint, Plicitness, e v, Scope1 e v)
 
-  pi_ :: NameHint -> Annotation e -> e v -> Scope1 e v -> e v
-  piView :: e v -> Maybe (NameHint, Annotation e, e v, Scope1 e v)
+  pi_ :: NameHint -> Plicitness -> e v -> Scope1 e v -> e v
+  piView :: e v -> Maybe (NameHint, Plicitness, e v, Scope1 e v)
 
-class Annotated e => AppSyntax e where
-  app :: e v -> Annotation e -> e v -> e v
-  appView :: e v -> Maybe (e v, Annotation e, e v)
+class AppSyntax e where
+  app :: e v -> Plicitness -> e v -> e v
+  appView :: e v -> Maybe (e v, Plicitness, e v)
 
-apps :: (AppSyntax e, Foldable t) => e v -> t (Annotation e, e v) -> e v
+apps :: (AppSyntax e, Foldable t) => e v -> t (Plicitness, e v) -> e v
 apps = Foldable.foldl' (uncurry . app)
 
-appsView :: AppSyntax e => e v -> (e v, [(Annotation e, e v)])
+appsView :: AppSyntax e => e v -> (e v, [(Plicitness, e v)])
 appsView = second reverse . go
   where
     go (appView -> Just (e1, p, e2)) = second ((p, e2) :) $ go e1
@@ -39,33 +39,33 @@ typeApps = foldlM typeApp
 usedPiView
   :: Syntax e
   => e v
-  -> Maybe (NameHint, Annotation e, e v, Scope1 e v)
+  -> Maybe (NameHint, Plicitness, e v, Scope1 e v)
 usedPiView (piView -> Just (n, p, e, s@(unusedScope -> Nothing))) = Just (n, p, e, s)
 usedPiView _ = Nothing
 
-usedPisViewM :: Syntax e => e v -> Maybe (Telescope (Annotation e) e v, Scope Tele e v)
+usedPisViewM :: Syntax e => e v -> Maybe (Telescope Plicitness e v, Scope Tele e v)
 usedPisViewM = bindingsViewM usedPiView
 
-telescope :: Syntax e => e v -> Telescope (Annotation e) e v
+telescope :: Syntax e => e v -> Telescope Plicitness e v
 telescope (pisView -> (tele, _)) = tele
 
-pisView :: Syntax e => e v -> (Telescope (Annotation e) e v, Scope Tele e v)
+pisView :: Syntax e => e v -> (Telescope Plicitness e v, Scope Tele e v)
 pisView = bindingsView piView
 
-pisViewM :: Syntax e => e v -> Maybe (Telescope (Annotation e) e v, Scope Tele e v)
+pisViewM :: Syntax e => e v -> Maybe (Telescope Plicitness e v, Scope Tele e v)
 pisViewM = bindingsViewM piView
 
-lamsView :: Syntax e => e v -> (Telescope (Annotation e) e v, Scope Tele e v)
+lamsView :: Syntax e => e v -> (Telescope Plicitness e v, Scope Tele e v)
 lamsView = bindingsView lamView
 
-lamsViewM :: Syntax e => e v -> Maybe (Telescope (Annotation e) e v, Scope Tele e v)
+lamsViewM :: Syntax e => e v -> Maybe (Telescope Plicitness e v, Scope Tele e v)
 lamsViewM = bindingsViewM lamView
 
-lams :: Syntax e => Telescope (Annotation e) e v -> Scope Tele e v -> e v
+lams :: Syntax e => Telescope Plicitness e v -> Scope Tele e v -> e v
 lams tele s = quantify lam s tele
 
-pis :: Syntax e => Telescope (Annotation e) e v -> Scope Tele e v -> e v
+pis :: Syntax e => Telescope Plicitness e v -> Scope Tele e v -> e v
 pis tele s = quantify pi_ s tele
 
-arrow :: Syntax e => Annotation e -> e v -> e v -> e v
+arrow :: Syntax e => Plicitness -> e v -> e v -> e v
 arrow p a b = pi_ mempty p a $ Scope $ pure $ F b

@@ -92,7 +92,7 @@ infixr 1 >>=>
 (f >>=> g) a = concat <$> (f a >>= mapM g)
 
 prettyLocatedGroup
-  :: (Pretty (e Name), Functor e, Eq1 e, Syntax e, Eq (Annotation e), PrettyAnnotation (Annotation e))
+  :: (Pretty (e Name), Functor e, Eq1 e, Syntax e)
   => Text
   -> (v -> Name)
   -> [(Name, x, Definition e v, e v)]
@@ -102,7 +102,7 @@ prettyLocatedGroup x f defs = do
   return defs
 
 prettyTypedGroup
-  :: (Pretty (e Name), Functor e, Eq1 e, Syntax e, Eq (Annotation e), PrettyAnnotation (Annotation e))
+  :: (Pretty (e Name), Functor e, Eq1 e, Syntax e)
   => Text
   -> (v -> Name)
   -> [(Name, Definition e v, e v)]

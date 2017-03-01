@@ -7,7 +7,6 @@ import Data.String
 import Prelude.Extras
 
 import Pretty
-import Syntax.Annotation
 import Syntax.Class
 import Syntax.Data
 import Syntax.GlobalBind
@@ -40,7 +39,7 @@ bitraverseDefinition f g (Definition d) = Definition <$> bitraverse f g d
 bitraverseDefinition f g (DataDefinition d e) = DataDefinition <$> bitraverseDataDef f g d <*> bitraverse f g e
 
 prettyTypedDef
-  :: (Eq1 expr, Eq v, IsString v, Monad expr, Pretty (expr v), Syntax expr, Eq (Annotation expr), PrettyAnnotation (Annotation expr))
+  :: (Eq1 expr, Eq v, IsString v, Monad expr, Pretty (expr v), Syntax expr)
   => Definition expr v
   -> expr v
   -> PrettyM Doc

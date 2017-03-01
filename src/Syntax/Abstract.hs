@@ -40,9 +40,6 @@ instance GlobalBind Expr where
     Let h e s -> Let h (bind f g e) (bound f g s)
     Case e brs -> Case (bind f g e) (bound f g brs)
 
-instance Annotated Expr where
-  type Annotation Expr = Plicitness
-
 instance Syntax Expr where
   lam = Lam
 

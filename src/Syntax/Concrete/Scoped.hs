@@ -71,9 +71,6 @@ instance AppSyntax Expr where
   appView (App e1 p e2) = Just (e1, p, e2)
   appView _ = Nothing
 
-instance Annotated Expr where
-  type Annotation Expr = Plicitness
-
 instance GlobalBind Expr where
   global = Global
   bind f g expr = case expr of

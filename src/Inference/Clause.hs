@@ -41,7 +41,7 @@ equalisePats (Explicit:_) ((Implicit, pat):_) = do
     mempty
 
 equaliseClauses
-  :: (AppSyntax expr, Applicative expr, Annotation expr ~ Plicitness)
+  :: (AppSyntax expr, Applicative expr)
   => NonEmpty (Clause expr v)
   -> NonEmpty (Clause expr v)
 equaliseClauses clauses
@@ -94,7 +94,7 @@ equaliseClauses clauses
     addExplicit pats = ((Explicit, VarPat mempty ()) : pats, pure Explicit)
 
 etaClause
-  :: (AppSyntax expr, Applicative expr, Annotation expr ~ Plicitness)
+  :: (AppSyntax expr, Applicative expr)
   => [(Plicitness, Pat (PatternScope expr v) ())]
   -> [Plicitness]
   -> PatternScope expr v

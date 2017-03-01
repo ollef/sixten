@@ -47,7 +47,7 @@ quantifiedConstrTypes
   :: Syntax typ
   => DataDef typ v
   -> typ v
-  -> (Annotation typ -> Annotation typ)
+  -> (Plicitness -> Plicitness)
   -> [ConstrDef (typ v)]
 quantifiedConstrTypes (DataDef cs) typ anno = map (fmap $ pis ps) cs
   where
@@ -57,8 +57,8 @@ constrNames :: DataDef typ v -> [Constr]
 constrNames = map constrName . dataConstructors
 
 prettyDataDef
-  :: (Eq1 typ, Eq v, IsString v, Monad typ, Pretty (typ v), Eq (Annotation typ), PrettyAnnotation (Annotation typ))
-  => Telescope (Annotation typ) typ v
+  :: (Eq1 typ, Eq v, IsString v, Monad typ, Pretty (typ v))
+  => Telescope Plicitness typ v
   -> DataDef typ v
   -> PrettyM Doc
 prettyDataDef ps (DataDef cs) = "data" <+> "_" <+> withTeleHints ps (\ns ->
