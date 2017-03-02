@@ -1,7 +1,7 @@
-APP : forall {a}{b}. ((x : a) -> b x) -> (x : a) -> b x
+APP : forall {T}{F}. ((x : T) -> F x) -> (y : T) -> F y
 APP f x = f x
 
-APP2 : forall {a}{b}. ((x : a) -> b x) -> (x : a) -> b x
+APP2 : forall {S}{G}. ((z : S) -> G z) -> (w : S) -> G w
 APP2 f x = APP f x
 
 app : forall {a}{b}. (a -> b) -> a -> b
@@ -9,3 +9,11 @@ app = APP
 
 app2 f x = APP f x
 
+data List a = Nil | Cons a (Ptr (List a))
+
+map f (Ref Nil) = Ref Nil
+map f (Ref (Cons x xs)) = Ref (Cons (f x) (map f xs))
+
+list = Ref (Cons (APP (addInt 1) 2) (Ref (Cons (app (addInt 2) 3) (Ref (Cons (APP2 (addInt 3) 4) (Ref (Cons (app2 (addInt 4) 5) (Ref Nil))))))))
+
+result = map printInt list

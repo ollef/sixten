@@ -148,7 +148,7 @@ knownCall f retDir tele fBodyScope args
     vs <- forM fArgs $ \_ -> forall mempty Unit
     let fBody = instantiateTele pure vs $ vacuous fBodyScope
         go v | i < Vector.length fArgs1 = B $ Tele $ 2 + i
-             | otherwise = F $ Tele $ 1 + i
+             | otherwise = F $ Tele $ 1 + numXs - numArgs + i
           where
             i = fromMaybe (error "knownCall elemIndex") $ Vector.elemIndex v vs
     typ <- case fBody of
