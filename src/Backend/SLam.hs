@@ -26,7 +26,9 @@ slam expr = do
     Abstract.Var v -> return $ SLambda.Var v
     Abstract.Global g -> return $ SLambda.Global g
     Abstract.Lit l -> return $ SLambda.Lit l
-    Abstract.Pi {} -> return $ SLambda.Global Builtin.PiTypeName
+    Abstract.Pi {} -> do
+      t <- whnf' True $ Abstract.Global Builtin.PiTypeName
+      slam t
     Abstract.Lam h _ t s -> do
       t' <- whnf' True t
       v <- forall h t'
