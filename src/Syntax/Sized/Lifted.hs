@@ -163,14 +163,17 @@ instance Bitraversable Expr where
     Prim p -> Prim <$> traverse (bitraverse f g) p
     Anno e t -> Anno <$> bitraverse f g e <*> bitraverse f g t
 
-instance (Eq v, IsString v, Pretty v, Eq retDir, Pretty retDir)
+instance (Eq v, IsString v, Pretty v, PrettyAnnotation retDir)
   => Pretty (Expr retDir v) where
   prettyM expr = case expr of
     Var v -> prettyM v
     Global g -> prettyM g
     Lit l -> prettyM l
     Con c es -> prettyApps (prettyM c) $ prettyM <$> es
-    Call retDir e es -> prettyApps (prettyM (e, retDir)) (prettyM <$> es)
+    Call retDir e es ->
+      prettyApps
+        (prettyAnnotation retDir $ prettyM e)
+        ((\(e', d) -> prettyAnnotation d $ prettyM e') <$> es)
     Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
       "let" <+> prettyM n <+> "=" <+> prettyM e <+> "in" <+>
         prettyM (Util.instantiate1 (pure $ fromName n) s)

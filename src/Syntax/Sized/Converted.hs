@@ -117,10 +117,10 @@ instance (Eq v, IsString v, Pretty v)
     Con c es -> prettyApps (prettyM c) $ prettyM <$> es
     Lams dir tele s -> parens `above` absPrec $
       withTeleHints tele $ \ns ->
-        prettyM dir <+> "\\" <> hsep (map prettyM $ Vector.toList ns) <> "." <+>
-          associate absPrec (prettyM $ instantiateTele (pure . fromName) ns $ show <$> s)
+        prettyAnnotation dir "\\" <> hsep (map prettyM $ Vector.toList ns) <> "." <+>
+          associate absPrec (prettyM $ instantiateTele (pure . fromName) (ns <> pure "?" <> pure "?") $ show <$> s)
     Call d e es ->
-      prettyApp (brackets $ prettyM d) $ prettyApps (prettyM e) (prettyM <$> es)
+        prettyApps (prettyAnnotation d $ prettyM e) $ (\(arg, dir) -> prettyAnnotation dir $ prettyM arg) <$> es
     Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
       "let" <+> prettyM n <+> "=" <+> prettyM e <+> "in" <+>
         prettyM (Util.instantiate1 (pure $ fromName n) s)
