@@ -45,6 +45,7 @@ Optimisations
   * Tagged pointers
     Reorder data to enable more?
   Join point let bindings
+  Keep track of "user" lambdas and eta-reduce everything but those
 Runtime
   Do real GC with LLVM gcroots etc
   Closures
