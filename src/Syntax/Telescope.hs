@@ -42,9 +42,11 @@ newtype Tele = Tele Int
 unTele :: Tele -> Int
 unTele (Tele i) = i
 
-newtype Telescope anno expr v = Telescope
-  { unTelescope :: Vector (NameHint, anno, Scope Tele expr v)
-  } deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
+newtype Telescope anno expr v = Telescope (Vector (NameHint, anno, Scope Tele expr v))
+  deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
+
+unTelescope :: Telescope anno expr v -> Vector (NameHint, anno, Scope Tele expr v)
+unTelescope (Telescope xs) = xs
 
 mapAnnotations :: (a -> a') -> Telescope a e v -> Telescope a' e v
 mapAnnotations f (Telescope xs) = Telescope $ (\(h, a, s) -> (h, f a, s)) <$> xs
