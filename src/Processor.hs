@@ -8,6 +8,7 @@ import Data.Bifunctor
 import Data.Foldable
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
+import qualified Data.HashSet as HashSet
 import Data.List
 import Data.Monoid
 import Data.Text(Text)
@@ -44,6 +45,7 @@ import qualified Syntax.Sized.Converted as Converted
 import qualified Syntax.Sized.Lifted as Lifted
 import qualified Syntax.Sized.SLambda as SLambda
 import TCM
+import Util
 
 processResolved
   :: HashMap Name (SourceLoc, Unscoped.Definition Name, Unscoped.Type Name)
@@ -150,7 +152,10 @@ simplifyGroup
   :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
   -> TCM [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
 simplifyGroup defs = forM defs $ \(x, def, typ) ->
-  return (x, simplifyDef def, simplifyExpr 0 typ)
+  return (x, simplifyDef globTerm def, simplifyExpr globTerm 0 typ)
+  where
+    globTerm x = not $ HashSet.member x names
+    names = HashSet.fromList $ fst3 <$> defs
 
 addGroupToContext
   :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
