@@ -1,0 +1,8 @@
+
+test : Int -> Int
+test x = addInt 1 x
+
+test2 : Int -> Int
+test2 = test
+
+test3 = printInt (test2 2)

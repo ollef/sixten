@@ -107,7 +107,7 @@ convertExpr expr = case expr of
     sig <- convertedSignature g
     case sig of
       Converted.Function retDir tele s -> knownCall (Converted.Global g) retDir tele s es'
-      _ -> throwError $ "convertExpr call global " ++ show g
+      _ -> return $ unknownCall (Converted.Global g) es'
   Closed.Call (Closed.Lams tele s) es -> do
     (retDir, tele', s') <- convertLambda tele s
     es' <- mapM convertExpr es
