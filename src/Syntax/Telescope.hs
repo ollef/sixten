@@ -148,6 +148,9 @@ instantiatePrefix es (Telescope tele)
 teleNames :: Telescope a expr v -> Vector NameHint
 teleNames (Telescope t) = (\(h, _, _) -> h) <$> t
 
+addTeleNames :: Telescope a expr v -> Vector NameHint -> Telescope a expr v
+addTeleNames (Telescope t) hs = Telescope $ Vector.imap (\i (h, a, s) -> (maybe h (h <>) $ hs Vector.!? i, a, s)) t
+
 teleAnnotations :: Telescope a expr v -> Vector a
 teleAnnotations (Telescope t) = (\(_, a, _) -> a) <$> t
 

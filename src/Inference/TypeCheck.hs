@@ -827,12 +827,12 @@ checkClausesRho clauses rhoType = do
   forM_ clauses $ logMeta 20 "checkClausesRho clause"
   logMeta 20 "checkClausesRho type" rhoType
 
-  let ps = fst <$> pats
+  let (ps, firstPats) = Vector.unzip ppats
         where
-          Concrete.Clause pats _ = NonEmpty.head clauses
+          Concrete.Clause ppats _ = NonEmpty.head clauses
   (argTele, returnTypeScope, fs) <- funSubtypes rhoType ps
-  -- TODO get namehints from the patterns
-  argVars <- forTeleWithPrefixM argTele $ \h _ s argVars ->
+
+  argVars <- forTeleWithPrefixM (addTeleNames argTele $ Concrete.patternHint <$> firstPats) $ \h _ s argVars ->
     forall h $ instantiateTele pure argVars s
 
   let returnType = instantiateTele pure argVars returnTypeScope
