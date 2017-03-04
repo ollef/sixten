@@ -111,7 +111,6 @@ generateExpr genSz expr = case expr of
   Con qc es -> do
     sz <- genSz
     generateCon sz qc es
-  Call _ (Global Builtin.PtrName) _ -> generateExpr genSz $ Lit 1 -- TODO: Is there a cleaner way to do this?
   Call retDir funExpr es -> do
     fun <- generateFunOp funExpr retDir $ snd <$> es
     args <- mapM (uncurry generateDirectedExpr) es
