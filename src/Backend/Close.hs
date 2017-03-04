@@ -12,6 +12,7 @@ import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.SLambda as SLambda
 import TCM
 import TopoSort
+import Util
 
 type Meta = MetaVar Closed.Expr
 type ExprM = SLambda.Expr Meta
@@ -45,11 +46,7 @@ closeLambda
   -> TCM CExprM
 closeLambda tele lamScope = do
   sortedFvs <- do
-    -- TODO move into util function
-    -- TODO do we need to use foldMapM here?
-    teleFvs <- foldMapM (:[]) tele
-    scopeFvs <- foldMapM (:[]) lamScope
-    let fvs = HashSet.fromList teleFvs <> HashSet.fromList scopeFvs
+    let fvs = toHashSet tele <> toHashSet lamScope
 
     deps <- forM (HashSet.toList fvs) $ \x -> do
       ds <- foldMapM HashSet.singleton $ metaType x
