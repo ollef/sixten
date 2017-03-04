@@ -296,7 +296,7 @@ def
   <|> wildcard <**>% mkDef (const Nothing)
   where
     typeDecl = flip ParsedTypeDecl <$ symbol ":" <*>% expr
-    mkDef f = (\ps e n -> ParsedClause (f n) (Unscoped.Clause ps e)) <$> manyPatterns <*% symbol "=" <*>% expr
+    mkDef f = (\ps e n -> ParsedClause (f n) (Unscoped.Clause ps e)) <$> (Vector.fromList <$> manyPatterns) <*% symbol "=" <*>% expr
 
 dataDef :: Parser (TopLevelParsed Name)
 dataDef = ParsedData <$ reserved "data" <*>% ident <*> manyTypedBindings <*>%

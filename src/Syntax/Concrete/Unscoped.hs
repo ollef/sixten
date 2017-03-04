@@ -8,6 +8,7 @@ import Data.List.NonEmpty(NonEmpty)
 import Data.Monoid
 import Data.String
 import Data.Traversable
+import Data.Vector(Vector)
 
 import Syntax
 import Syntax.Concrete.Pattern
@@ -34,8 +35,7 @@ data Definition v
   | DataDefinition [(Plicitness, Name, Type v)] [ConstrDef (Expr v)]
   deriving (Show)
 
--- TODO vector?
-data Clause v = Clause [(Plicitness, Pat (Type v) Name)] (Expr v)
+data Clause v = Clause (Vector (Plicitness, Pat (Type v) Name)) (Expr v)
   deriving (Show)
 
 -------------------------------------------------------------------------------

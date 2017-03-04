@@ -74,9 +74,8 @@ scopeCheckClause (Unscoped.Clause plicitPats e) = do
   plicitPats' <- traverse (traverse scopeCheckPat) plicitPats
 
   let pats = snd <$> plicitPats'
-      vars = Vector.concat $ toVector <$> pats
-      typedPats'' = Vector.fromList
-        $ second void <$> abstractPatternsTypes vars plicitPats'
+      vars = join $ toVector <$> pats
+      typedPats'' = second void <$> abstractPatternsTypes vars plicitPats'
 
   Scoped.Clause typedPats'' . abstract (patternAbstraction vars) <$> scopeCheckExpr e
 
