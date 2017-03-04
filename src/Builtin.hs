@@ -255,7 +255,7 @@ apply numArgs
       $ Converted.Case (Converted.sized 1 $ Converted.Var $ B 1)
       $ LitBranches
         [(fromIntegral arity, br arity) | arity <- 1 :| [2..maxArity]]
-        $ Converted.Lit 1 -- TODO fail
+        $ Converted.Call (NonClosureDir Direct) (Converted.Global FailName) $ pure (Converted.sized 1 (Converted.Lit 1), Direct)
     )
   where
     br :: Int -> Converted.Expr (Var Tele (Var Tele Void))
