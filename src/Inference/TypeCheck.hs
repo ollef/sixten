@@ -159,8 +159,7 @@ tcRho expr expected expectedAppResult = case expr of
     f <- instExpected expected Builtin.IntType
     f $ Abstract.Lit l
   Concrete.Con con -> do
-    typeName <- resolveConstrType [con] expectedAppResult
-    let qc = qualify typeName con
+    qc <- resolveConstr con expectedAppResult
     typ <- qconstructor qc
     f <- instExpected expected typ
     f $ Abstract.Con qc
@@ -360,11 +359,10 @@ tcPat' pat vs expected = case pat of
     p <- viewPat expectedType f $ Abstract.LitPat lit
     return (p, vs)
   Concrete.ConPat c pats -> do
-    typeName <- resolveConstrType [c] $ case expected of
+    qc@(QConstr typeName _) <- resolveConstr c $ case expected of
       InferPat _ -> Nothing
       CheckPat expectedType -> Just expectedType
       CheckPatVar v -> Just $ metaType v
-    let qc = qualify typeName c
     (_, typeType) <- definition typeName
     conType <- qconstructor qc
 
@@ -439,11 +437,20 @@ instantiateDataType typeName = mdo
 
 --------------------------------------------------------------------------------
 -- Constrs
-resolveConstrType
+resolveConstr
+  :: Either Constr QConstr
+  -> Maybe Rhotype
+  -> TCM QConstr
+resolveConstr (Left c) expected = do
+  typeName <- resolveConstrsType [Left c] expected
+  return (QConstr typeName c)
+resolveConstr (Right qc) _ = return qc
+
+resolveConstrsType
   :: [Either Constr QConstr]
   -> Maybe Rhotype
   -> TCM Name
-resolveConstrType cs expected = do
+resolveConstrsType cs expected = do
   mExpectedType <- expectedDataType
   possibleTypeSets <- forM cs $ \c -> do
     possibleTypes <- constructor c
