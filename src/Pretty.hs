@@ -56,7 +56,7 @@ newtype PrettyM a = PrettyM (PrettyEnv -> a)
 data PrettyEnv = PrettyEnv
   { precedence :: !Int -- ^ The precedence of the surrounding expression
   , boundNames :: !(HashSet Name)
-  , freeNames  :: [Name]
+  , freeNames :: [Name]
   }
 
 class Pretty a where
@@ -71,7 +71,7 @@ runPrettyM :: PrettyM a -> a
 runPrettyM (PrettyM p) = p PrettyEnv
   { precedence = -1
   , boundNames = mempty
-  , freeNames  = do
+  , freeNames = do
     n <- [(0 :: Int)..]
     c <- ['a'..'z']
     return $ fromString $ c : if n == 0 then "" else show n
