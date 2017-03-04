@@ -47,10 +47,10 @@ instance (Pretty (expr v), Monad expr, IsString v)
       let go (p, pat)
             = prettyAnnotation p
             $ prettyM $ first (instantiatePatternVec (pure . fromName) ns) pat
-      hsep (go <$> renamePatterns ns pats)
+      "_" <+> hsep (go <$> renamePatterns ns pats)
       <+> "=" <+> prettyM (instantiatePatternVec (pure . fromName) ns s)
 
 instance (Pretty (expr v), Monad expr, IsString v)
   => Pretty (PatDefinition expr v) where
   prettyM (PatDefinition clauses) = vcat $ prettyM <$> clauses
-  prettyM (PatDataDefinition dataDef)= prettyM dataDef
+  prettyM (PatDataDefinition dataDef) = prettyM dataDef

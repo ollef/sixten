@@ -58,8 +58,8 @@ processGroup
   :: [(Name, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]
   -> TCM [(LLVM.B, LLVM.B)]
 processGroup
-  = {- prettyLocatedGroup "Concrete syntax" id -- TODO
-  >=> -} typeCheckGroup
+  = prettyConcreteGroup "Concrete syntax" absurd
+  >=> typeCheckGroup
   >=> prettyTypedGroup "Abstract syntax" absurd
   >=> simplifyGroup
   >=> prettyTypedGroup "Simplified" absurd
@@ -92,6 +92,28 @@ processConvertedGroup
 infixr 1 >>=>
 (>>=>) :: Monad m => (a -> m [b]) -> (b -> m [c]) -> a -> m [c]
 (f >>=> g) a = concat <$> (f a >>= mapM g)
+
+prettyConcreteGroup
+  :: (Pretty (e Name), Monad e, Traversable e)
+  => Text
+  -> (v -> Name)
+  -> [(Name, SourceLoc, Concrete.PatDefinition e v, e v)]
+  -> TCM [(Name, SourceLoc, Concrete.PatDefinition e v, e v)]
+prettyConcreteGroup str f defs = do
+  whenVerbose 10 $ do
+    TCM.log $ "----- " <> str <> " -----"
+    forM_ defs $ \(n, _, d, t) -> do
+      let t' = f <$> t
+      TCM.log
+        $ showWide
+        $ runPrettyM
+        $ prettyM n <+> ":" <+> prettyM t'
+      TCM.log
+        $ showWide
+        $ runPrettyM
+        $ prettyM (f <$> d)
+      TCM.log ""
+  return defs
 
 prettyLocatedGroup
   :: (Pretty (e Name), Functor e, Eq1 e, Syntax e)
