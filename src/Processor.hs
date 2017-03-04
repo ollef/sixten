@@ -116,7 +116,7 @@ prettyConcreteGroup str f defs = do
   return defs
 
 prettyLocatedGroup
-  :: (Pretty (e Name), Functor e, Eq1 e, Syntax e)
+  :: (Pretty (e Name), Eq1 e, Syntax e)
   => Text
   -> (v -> Name)
   -> [(Name, x, Definition e v, e v)]
@@ -126,7 +126,7 @@ prettyLocatedGroup x f defs = do
   return defs
 
 prettyTypedGroup
-  :: (Pretty (e Name), Functor e, Eq1 e, Syntax e)
+  :: (Pretty (e Name), Eq1 e, Syntax e)
   => Text
   -> (v -> Name)
   -> [(Name, Definition e v, e v)]
