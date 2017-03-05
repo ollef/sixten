@@ -1,0 +1,7 @@
+data List a = Nil | Cons a (Ptr (List a))
+
+ones = Cons 1 (Ref ones)
+
+test = case ones of
+  Cons 1 (Ref (Cons 1 (Ref (Cons 1 _)))) -> printInt 111
+  _ -> printInt 222
