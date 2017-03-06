@@ -1,0 +1,13 @@
+data List a = Nil | Cons a (Ptr (List a))
+
+map f (Ref Nil) = Ref Nil
+map f (Ref (Cons x xs)) = Ref (Cons (f x) (map f xs))
+
+drop 0 xs = xs
+drop n (Ref Nil) = Ref Nil
+drop n (Ref (Cons _ xs)) = drop (subInt n 1) xs
+
+enum 0 = Ref Nil
+enum n = Ref (Cons n (enum (subInt n 1)))
+
+test = map printInt (drop 5 (enum 10))

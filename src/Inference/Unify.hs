@@ -70,7 +70,7 @@ occurs cxt l tv expr = traverse_ go expr
             sol <- solution r
             case sol of
               Left l'    -> liftST $ writeSTRef r $ Left $ min l l'
-              Right typ' -> occurs cxt l tv typ'
+              Right typ' -> traverse_ go typ'
 
 unify :: [(AbstractM, AbstractM)] -> AbstractM -> AbstractM -> TCM ()
 unify cxt type1 type2 = do

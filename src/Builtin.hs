@@ -23,6 +23,9 @@ pattern IntType = Global IntName
 pattern AddIntName <- ((==) "addInt" -> True) where AddIntName = "addInt"
 pattern AddInt e1 e2 = App (App (Global AddIntName) Explicit e1) Explicit e2
 
+pattern SubIntName <- ((==) "subInt" -> True) where SubIntName = "subInt"
+pattern SubInt e1 e2 = App (App (Global SubIntName) Explicit e1) Explicit e2
+
 pattern MaxIntName <- ((==) "maxInt" -> True) where MaxIntName = "maxInt"
 pattern MaxInt e1 e2 = App (App (Global MaxIntName) Explicit e1) Explicit e2
 
@@ -79,6 +82,7 @@ context = HashMap.fromList
                        ])
   , (IntName, opaque (Lit 1) Type)
   , (AddIntName, opaque piRep $ arrow Explicit IntType $ arrow Explicit IntType IntType)
+  , (SubIntName, opaque piRep $ arrow Explicit IntType $ arrow Explicit IntType IntType)
   , (MaxIntName, opaque piRep $ arrow Explicit IntType $ arrow Explicit IntType IntType)
   , (PrintIntName, opaque piRep $ arrow Explicit IntType IntType)
   , (PiTypeName, opaque (Lit 1) Type)
@@ -140,6 +144,24 @@ convertedContext = HashMap.fromList $ concat
       $ Converted.Prim
       $ Primitive Direct
       [TextPart $ "add " <> intT <> " "
+      , pure $ Converted.Var $ B 0
+      , ", "
+      , pure $ Converted.Var $ B 1
+      ]
+    )
+  , ( SubIntName
+    , Converted.sized 1
+      $ Converted.Lams
+        (NonClosureDir Direct)
+        (Telescope
+        $ Vector.fromList [ (mempty, Direct, slit 1)
+                          , (mempty, Direct, slit 1)
+                          ])
+      $ Scope
+      $ Converted.sized 1
+      $ Converted.Prim
+      $ Primitive Direct
+      [TextPart $ "sub " <> intT <> " "
       , pure $ Converted.Var $ B 0
       , ", "
       , pure $ Converted.Var $ B 1
