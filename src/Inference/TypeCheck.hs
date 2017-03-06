@@ -1010,6 +1010,7 @@ checkRecursiveDefs defs = do
       return (loc, (evar, def', typ''))
 
     detectTypeRepCycles checkedDefs
+    detectDefCycles checkedDefs
 
     return (checkedDefs, evars)
 

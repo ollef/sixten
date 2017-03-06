@@ -6,17 +6,17 @@ data List a where
   Nil : List a
   Cons : a -> Ptr (List a) -> List a
 
-error = error
+error 0 = error 0
 
 head : {a : Type} -> Ptr (List a) -> a
 head xs = case deref xs of
   Cons a _ -> a
-  Nil -> error
+  Nil -> error 0
 
 tail : {a : Type} -> Ptr (List a) -> List a
 tail xs = case deref xs of
   Cons _ xs -> deref xs
-  Nil -> error
+  Nil -> error 0
 
 aList = Ref (Cons 1 (Ref (Cons 2 (Ref Nil))))
 
