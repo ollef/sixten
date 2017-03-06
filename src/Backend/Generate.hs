@@ -382,7 +382,6 @@ generateBranches caseExpr branches brCont = do
         return (contResult, afterBranchLabel)
 
       emitLabel failLabel
-      -- emit $ exit 1
       emit unreachable
       emitLabel postLabel
       return contResults
@@ -407,9 +406,10 @@ generateBranches caseExpr branches brCont = do
 
       emitLabel defaultLabel
       defaultContResult <- brCont def
+      afterDefaultLabel <- gets currentLabel
       emit $ branch postLabel
       emitLabel postLabel
-      return $ (defaultContResult, defaultLabel) : contResults
+      return $ (defaultContResult, afterDefaultLabel) : contResults
 
 generatePrim
   :: Primitive (Expr RetDir Var)
