@@ -1,2 +1,2 @@
 data Exists where
-  exists : {A : Type} -> Ptr A -> Exists
+  exists : Ptr _ -> Exists
