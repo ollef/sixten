@@ -18,14 +18,9 @@ import TCM
 import Util
 
 type Meta = MetaVar Unit
-type LExprM = Closed.Expr Meta
-type LBrsM = Branches QConstr () Closed.Expr Meta
-
-type CExprM = Converted.Expr Meta
-type CBrsM = Branches QConstr () Converted.Expr Meta
 
 createSignature
-  :: LExprM
+  :: Closed.Expr Meta
   -> TCM (Converted.Signature Converted.Expr Closed.Expr Meta)
 createSignature sizedExpr@(Closed.Anno expr typ)  = case expr of
   Closed.Lams tele lamScope -> do
@@ -52,8 +47,8 @@ createLambdaSignature tele lamScope = do
   return (Closed.sExprDir $ fromScope lamScope, tele'')
 
 convertSignature
-  :: Converted.Signature Converted.Expr Closed.Expr Void
-  -> TCM CExprM
+  :: Converted.Signature Converted.Expr Closed.Expr v
+  -> TCM (Converted.Expr Meta)
 convertSignature sig = case sig of
   Converted.Function retDir tele lamScope -> do
     vs <- forMTele tele $ \h _ _ -> forall h Unit
@@ -88,7 +83,7 @@ convertLambda tele lamScope = do
   let lamScope' = abstract abstr lamExpr'
   return (Converted.sExprDir lamExpr', tele'', error "convertLambda" <$> lamScope')
 
-convertExpr :: LExprM -> TCM CExprM
+convertExpr :: Closed.Expr Meta -> TCM (Converted.Expr Meta)
 convertExpr expr = case expr of
   Closed.Var v -> return $ Converted.Var v
   Closed.Global g -> do
@@ -129,9 +124,9 @@ convertExpr expr = case expr of
   Closed.Anno e t -> Converted.Anno <$> convertExpr e <*> convertExpr t
 
 unknownCall
-  :: CExprM
-  -> Vector CExprM
-  -> CExprM
+  :: Converted.Expr Meta
+  -> Vector (Converted.Expr Meta)
+  -> Converted.Expr Meta
 unknownCall e es
   = Converted.Call ClosureDir (Converted.Global $ Builtin.applyName $ Vector.length es)
   $ Vector.cons (Converted.sized 1 e, Direct) $ (\t -> (t, Direct)) <$> Converted.sizedSizesOf es <|> (\arg -> (arg, Indirect)) <$> es
@@ -141,8 +136,8 @@ knownCall
   -> ClosureDir
   -> Telescope Direction Converted.Expr Void
   -> Scope Tele Closed.Expr Void
-  -> Vector CExprM
-  -> TCM CExprM
+  -> Vector (Converted.Expr Meta)
+  -> TCM (Converted.Expr Meta)
 knownCall f retDir tele fBodyScope args
   | numArgs < arity = do
     vs <- forM fArgs $ \_ -> forall mempty Unit
@@ -201,7 +196,9 @@ knownCall f retDir tele fBodyScope args
       $ (\h -> (h, Direct, Builtin.slit 1)) <$> xs
       <|> (\(n, h) -> (h, Indirect, Builtin.svarb $ 1 + Tele n)) <$> Vector.indexed xs
 
-convertBranches :: LBrsM -> TCM CBrsM
+convertBranches
+  :: Branches QConstr () Closed.Expr Meta
+  -> TCM (Branches QConstr () Converted.Expr Meta)
 convertBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(qc, tele, brScope) -> do
     vs <- forMTele tele $ \h () _ ->
