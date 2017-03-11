@@ -1,6 +1,8 @@
 {-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, OverloadedStrings #-}
 module Syntax.Direction where
 
+import Data.Vector(Vector)
+
 import Pretty
 import Syntax.Annotation
 
@@ -65,3 +67,8 @@ instance PrettyAnnotation ClosureDir where
 instance Pretty ClosureDir where
   prettyM (NonClosureDir d) = prettyM d
   prettyM ClosureDir = "closure"
+
+data Signature a
+  = FunctionSig (ReturnDirection a) (Vector Direction)
+  | ConstantSig Direction
+  deriving (Eq, Ord, Show, Functor, Foldable, Traversable)

@@ -22,7 +22,6 @@ import Backend.Target
 import Syntax
 import Syntax.Abstract
 import qualified Syntax.Sized.Closed as Closed
-import qualified Syntax.Sized.Converted as Converted
 
 newtype Level = Level Int
   deriving (Eq, Num, Ord, Show)
@@ -34,8 +33,8 @@ data TCMState = TCMState
   { tcLocation :: SourceLoc
   , tcContext :: HashMap Name (Definition Expr Void, Type Void)
   , tcConstrs :: HashMap Constr (Set (Name, Type Void))
-  , tcConvertedSignatures :: HashMap Name (Converted.Signature Converted.Expr Closed.Expr Void)
-  , tcReturnDirections :: HashMap Name RetDir
+  , tcConvertedSignatures :: HashMap Name Closed.FunSignature
+  , tcSignatures :: HashMap Name (Signature ReturnIndirect)
   , tcIndent :: !Int
   , tcFresh :: !Int
   , tcLevel :: !Level
@@ -50,7 +49,7 @@ emptyTCMState target handle verbosity = TCMState
   , tcContext = mempty
   , tcConstrs = mempty
   , tcConvertedSignatures = mempty
-  , tcReturnDirections = mempty
+  , tcSignatures = mempty
   , tcIndent = 0
   , tcFresh = 0
   , tcLevel = Level 1
@@ -149,13 +148,6 @@ addContext prog = modify $ \s -> s
       ConstrDef c t <- quantifiedConstrTypes d defType $ const Implicit
       return (c, Set.fromList [(n, t)])
 
-addConvertedSignatures
-  :: HashMap Name (Converted.Signature Converted.Expr Closed.Expr c)
-  -> TCM ()
-addConvertedSignatures p = modify $ \s -> s { tcConvertedSignatures = p' <> tcConvertedSignatures s }
-  where
-    p' = fmap (const $ error "addConvertedSignatures") <$> p
-
 definition :: Name -> TCM (Definition Expr v, Expr v)
 definition name = do
   mres <- gets $ HashMap.lookup name . tcContext
@@ -180,38 +172,38 @@ constructor
   => Either Constr QConstr
   -> TCM (Set (Name, Type v))
 constructor (Right qc@(QConstr n _)) = Set.singleton . (,) n <$> qconstructor qc
-constructor (Left c) 
+constructor (Left c)
   = gets
   $ maybe mempty (Set.map $ second vacuous)
   . HashMap.lookup c
   . tcConstrs
 
 -------------------------------------------------------------------------------
--- Converted
+-- Signatures
+addConvertedSignatures
+  :: HashMap Name Closed.FunSignature
+  -> TCM ()
+addConvertedSignatures p
+  = modify $ \s -> s { tcConvertedSignatures = p <> tcConvertedSignatures s }
+
 convertedSignature
   :: Name
-  -> TCM (Converted.Signature Converted.Expr Closed.Expr Void)
-convertedSignature name = do
-  mres <- gets $ HashMap.lookup name . tcConvertedSignatures
-  maybe (throwError $ "Not in scope: converted " ++ show name)
-        return
-        mres
+  -> TCM (Maybe Closed.FunSignature)
+convertedSignature name = gets $ HashMap.lookup name . tcConvertedSignatures
 
--------------------------------------------------------------------------------
--- Return directions
-returnDirection
+addSignatures
+  :: HashMap Name (Signature ReturnIndirect)
+  -> TCM ()
+addSignatures p = modify $ \s -> s { tcSignatures = p <> tcSignatures s }
+
+signature
   :: Name
-  -> TCM RetDir
-returnDirection name = do
-  mres <- gets $ HashMap.lookup name . tcReturnDirections
-  maybe (throwError $ "Not in scope: lifted " ++ show name)
+  -> TCM (Signature ReturnIndirect)
+signature name = do
+  mres <- gets $ HashMap.lookup name . tcSignatures
+  maybe (throwError $ "Not in scope: signature for " ++ show name)
         return
         mres
-
-addReturnDirections :: [(Name, RetDir)] -> TCM ()
-addReturnDirections dirs = modify $ \s -> s
-  { tcReturnDirections = HashMap.fromList dirs <> tcReturnDirections s
-  }
 
 -------------------------------------------------------------------------------
 -- General constructor queries

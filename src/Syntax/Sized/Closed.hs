@@ -21,10 +21,13 @@ data Expr v
   | Let NameHint (Expr v) (Scope1 Expr v)
   | Case (Expr v) (Branches QConstr () Expr v)
   | Prim (Primitive (Expr v))
+  | PrimFun (RetDir, Vector Direction) (Expr v)
   | Anno (Expr v) (Type v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 type Type = Expr
+
+type FunSignature = (Telescope () Type Void, Scope Tele Type Void)
 
 -------------------------------------------------------------------------------
 -- Smart constructors
@@ -37,14 +40,18 @@ apps e es = Call e es
 sized :: Literal -> Expr v -> Expr v
 sized = flip Anno . Lit
 
-sizeDir :: Expr v -> Direction
-sizeDir (Lit 0) = Void
-sizeDir (Lit 1) = Direct
-sizeDir _ = Indirect
+sizeOf :: Expr v -> Expr v
+sizeOf (Anno _ sz) = sz
+sizeOf _ = error "sizeOf"
 
+{-
 sExprDir :: Expr v -> Direction
 sExprDir (Anno _ sz) = sizeDir sz
 sExprDir _ = error "sExprDir"
+-}
+
+sizedSizesOf :: Functor f => f (Expr v) -> f (Expr v)
+sizedSizesOf = fmap (sized 1 . sizeOf)
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -72,6 +79,7 @@ instance GlobalBind Expr where
     Let h e s -> Let h (bind f g e) (bound f g s)
     Case e brs -> Case (bind f g e) (bound f g brs)
     Prim p -> Prim (bind f g <$> p)
+    PrimFun sig e -> PrimFun sig (bind f g e)
     Anno e t -> Anno (bind f g e) (bind f g t)
 
 instance (Eq v, IsString v, Pretty v)
@@ -93,5 +101,7 @@ instance (Eq v, IsString v, Pretty v)
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> indent 2 (prettyM brs)
     Prim p -> prettyM $ pretty <$> p
+    PrimFun sig e -> parens `above` annoPrec $
+      prettyM e <+> "@" <+> prettyM (show sig)
     Anno e t -> parens `above` annoPrec $
       prettyM e <+> ":" <+> prettyM t

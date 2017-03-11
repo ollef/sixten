@@ -92,10 +92,10 @@ data MetaVar = MetaVar
   { metaHint :: !NameHint
   , metaId :: !Int
   , metaLocation :: !Location
-  , metaReturnIndirect :: !MetaReturnIndirect -- ^ If callable.
+  , metaFunSig :: Maybe (RetDirM, Vector Direction)
   }
 
-exists :: NameHint -> Location -> MetaReturnIndirect -> TCM MetaVar
+exists :: NameHint -> Location -> Maybe (RetDirM, Vector Direction) -> TCM MetaVar
 exists h loc call = MetaVar h <$> fresh <*> pure loc <*> pure call
 
 instance Eq MetaVar where
@@ -108,8 +108,8 @@ instance Hashable MetaVar where
   hashWithSalt s = hashWithSalt s . metaId
 
 infer
-  :: Expr ClosureDir MetaVar
-  -> TCM (Expr RetDirM MetaVar, Location)
+  :: Expr MetaVar
+  -> TCM (Expr MetaVar, Location)
 infer expr = case expr of
   Var v -> return (Var v, metaLocation v)
   Global g -> return (Global g, MProjection)
@@ -117,20 +117,24 @@ infer expr = case expr of
   Con c es -> do
     es' <- mapM infer es
     return (Con c $ fst <$> es', MOutParam)  -- TODO: Can be improved.
-  Call ClosureDir f es -> call (ReturnIndirect MOutParam) f es
-  Call (NonClosureDir Void) f es -> call ReturnVoid f es
-  Call (NonClosureDir Direct) f es -> call ReturnDirect f es
-  Call (NonClosureDir Indirect) f es -> do
-    returnDir <- inferIndirectReturnDir f
-    (f', _) <- infer f
-    locatedEs <- mapM (bitraverse infer pure) es
-    let es' = (\((e, _), d) -> (e, d)) <$> locatedEs
-        locs = [l | ((_, l), Indirect) <- locatedEs]
-    loc <- foldM maxMetaReturnIndirect returnDir locs
-    return (Call (ReturnIndirect returnDir) f' es', loc)
+  Call f es -> do
+    (retDir, argDirs) <- inferFunction f $ Vector.length es
+    case retDir of
+      ReturnIndirect mretIndirect -> do
+        (f', _) <- infer f
+        locatedEs <- mapM infer es
+        let es' = fst <$> locatedEs
+            locs = [l | ((_, l), Indirect) <- Vector.zip locatedEs argDirs]
+        loc <- foldM maxMetaReturnIndirect mretIndirect locs
+        return (Call f' es', loc)
+      _ -> do
+        (f', _) <- infer f
+        locatedEs <- mapM infer es
+        let es' = fst <$> locatedEs
+        return (Call f' es', MOutParam)
   Let h e s -> do
     (e', eloc) <- infer e
-    v <- exists h eloc MOutParam
+    v <- exists h eloc Nothing
     (s', sloc) <- infer $ instantiate1 (pure v) s
     return (Let h e' $ abstract1 v s', sloc)
   Case e brs -> do
@@ -140,24 +144,21 @@ infer expr = case expr of
   Prim p -> do
     p' <- mapM (fmap fst . infer) p
     return (Prim p', MOutParam)
+  PrimFun sig e -> do
+    (e', loc) <- infer e
+    return (PrimFun sig e', loc)
   Anno e t -> do
     (e', eLoc) <- infer e
     (t', _tLoc) <- infer t
     return (Anno e' t', eLoc)
-  where
-    call dir f es = do
-      (f', _) <- infer f
-      locatedEs <- mapM (bitraverse infer pure) es
-      let es' = (\((e, _), d) -> (e, d)) <$> locatedEs
-      return (Call dir f' es', MOutParam)
 
 inferBranches
   :: Location
-  -> Branches c () (Expr ClosureDir) MetaVar
-  -> TCM (Branches c () (Expr RetDirM) MetaVar, Location)
+  -> Branches c () Expr MetaVar
+  -> TCM (Branches c () Expr MetaVar, Location)
 inferBranches loc (ConBranches cbrs) = do
   locatedCBrs <- forM cbrs $ \(c, tele, brScope) -> do
-    vs <- forMTele tele $ \h _ _ -> exists h loc MOutParam
+    vs <- forMTele tele $ \h _ _ -> exists h loc Nothing
     let abstr = abstract $ teleAbstraction vs
         br = instantiateTele pure vs brScope
     sizes <- forMTele tele $ \_ _ s -> do
@@ -184,62 +185,77 @@ inferBranches loc (NoBranches typ) = do
   (typ', _loc) <- infer typ
   return (NoBranches typ', loc) -- TODO Is this location correct?
 
-inferIndirectReturnDir
-  :: Expr ClosureDir MetaVar
-  -> TCM MetaReturnIndirect
-inferIndirectReturnDir expr = case expr of
-  Var v -> return $ metaReturnIndirect v
+inferFunction
+  :: Expr MetaVar
+  -> Int
+  -> TCM (RetDirM, Vector Direction)
+inferFunction expr arity = case expr of
+  Var v -> return $ fromMaybe def $ metaFunSig v
   Global g -> do
-    dir <- returnDirection g
-    return $ case dir of
-      ReturnIndirect res -> fromReturnIndirect res
-      _ -> MOutParam
-  _ -> return MOutParam
+    sig <- signature g
+    return $ case sig of
+      FunctionSig retDir argDirs -> (fromReturnIndirect <$> retDir, argDirs)
+      _ -> def
+  PrimFun (retDir, argDirs) _ -> return (fromReturnIndirect <$> retDir, argDirs)
+  _ -> return def
+  where
+    def = (ReturnIndirect MOutParam, Vector.replicate arity Indirect)
 
 inferDefinition
   :: MetaVar
-  -> Definition ClosureDir (Expr ClosureDir) MetaVar
-  -> TCM (Definition RetDirM (Expr RetDirM) MetaVar)
-inferDefinition v (FunctionDef vis (Function mretDir args s)) = do
-  vs <- forMTele args $ \h _ _ -> exists h MProjection MOutParam
+  -> Definition Expr MetaVar
+  -> TCM (Definition Expr MetaVar, Signature MetaReturnIndirect)
+inferDefinition MetaVar {metaFunSig = Just (retDir, argDirs)} (FunctionDef vis (Function cl args s)) = do
+  vs <- forMTele args $ \h _ _ -> exists h MProjection Nothing
   args' <- forMTele args $ \h d szScope -> do
     let sz = instantiateTele pure vs szScope
     (sz', _szLoc) <- infer sz
     let szScope' = abstract (teleAbstraction vs) sz'
     return (h, d, szScope')
   let e = instantiateTele pure vs s
-      vdir = metaReturnIndirect v
-  retDir <- case mretDir of
-    ClosureDir -> do
-      unifyMetaReturnIndirect MOutParam vdir
-      return Indirect
-    NonClosureDir retDir -> return retDir
   (e', loc) <- infer e
-  glbdir <- maxMetaReturnIndirect loc vdir
-  unifyMetaReturnIndirect glbdir vdir
-  let retDir' = toReturnDirection vdir retDir
-      s' = abstract (teleAbstraction vs) e'
-  return $ FunctionDef vis $ Function retDir' (Telescope args') s'
-inferDefinition _ (ConstantDef vis (Constant dir e))
-  = ConstantDef vis . Constant dir . fst <$> infer e
+  case retDir of
+    ReturnIndirect m -> do
+      glbdir <- maxMetaReturnIndirect loc m
+      unifyMetaReturnIndirect glbdir m
+    ReturnVoid -> return ()
+    ReturnDirect -> return ()
+  let s' = abstract (teleAbstraction vs) e'
+  return (FunctionDef vis $ Function cl (Telescope args') s', FunctionSig retDir argDirs)
+inferDefinition _ (ConstantDef vis (Constant e)) = do
+  (e', _loc) <- infer e
+  return (ConstantDef vis $ Constant e', ConstantSig $ sizeDir $ sizeOf e)
+inferDefinition _ _ = error "ReturnDirection.inferDefinition"
 
 generaliseDefs
-  :: Vector (Definition RetDirM (Expr RetDirM) MetaVar)
-  -> TCM (Vector (Definition RetDir (Expr RetDir) MetaVar))
+  :: Vector (Definition Expr MetaVar, Signature MetaReturnIndirect)
+  -> TCM (Vector (Definition Expr MetaVar, Signature ReturnIndirect))
 generaliseDefs
   = traverse
-  $ bitraverseDefinition (traverse $ toReturnIndirect Projection) pure
+  $ bitraverse pure (traverse $ toReturnIndirect Projection)
 
 inferRecursiveDefs
-  :: Vector (Name, Definition ClosureDir (Expr ClosureDir) Void)
-  -> TCM (Vector (Name, Definition RetDir (Expr RetDir) Void))
+  :: Vector (Name, Definition Expr Void)
+  -> TCM (Vector (Name, Definition Expr Void, Signature ReturnIndirect))
 inferRecursiveDefs defs = do
   let names = fst <$> defs
 
   evars <- Vector.forM defs $ \(v, d) -> do
     logPretty 30 "InferDirection.inferRecursiveDefs 1" (v, show <$> d)
     let h = fromName v
-    exists h MProjection =<< existsMetaReturnIndirect
+        funSig = case d of
+          FunctionDef _ (Function cl args s) ->
+            Just
+              ( returnDir
+              , forTele args $ \_ _ s' -> sizeDir $ fromScope s'
+              )
+            where
+              returnDir = case (cl, fromScope s) of
+                (NonClosure, Anno _ t) -> toReturnDirection Nothing $ sizeDir t
+                _ -> ReturnIndirect (Just MOutParam)
+          ConstantDef {} -> Nothing
+    funSig' <- traverse (bitraverse (traverse $ maybe existsMetaReturnIndirect pure) pure) funSig
+    exists h MProjection funSig'
 
   let expose name = case Vector.elemIndex name names of
         Nothing -> global name
@@ -264,7 +280,7 @@ inferRecursiveDefs defs = do
       vf :: MetaVar -> TCM b
       vf v = throwError $ "inferRecursiveDefs " ++ show v
 
-  forM (Vector.zip names genDefs) $ \(name, def) -> do
+  forM (Vector.zip names genDefs) $ \(name, (def ,sig)) -> do
     let unexposedDef = bound unexpose global def
     unexposedDef' <- traverse vf unexposedDef
-    return (name, unexposedDef')
+    return (name, unexposedDef', sig)

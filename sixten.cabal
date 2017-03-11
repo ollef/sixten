@@ -63,7 +63,6 @@ executable sixten
                        Syntax.Pattern
                        Syntax.Primitive
                        Syntax.Sized.Closed
-                       Syntax.Sized.Converted
                        Syntax.Sized.Lifted
                        Syntax.Sized.SLambda
                        Syntax.SourceLoc

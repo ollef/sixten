@@ -14,7 +14,6 @@ import Data.Monoid
 import qualified Data.Traversable as Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
-import Data.Void
 
 import Backend.LLVM
 import Backend.Target
@@ -25,8 +24,6 @@ import Syntax.Direction
 import Syntax.Hint
 import Syntax.Name
 import Syntax.Primitive
-import qualified Syntax.Sized.Closed as Closed
-import qualified Syntax.Sized.Converted as Converted
 import Syntax.Sized.Lifted
 import Syntax.Telescope
 import Util
@@ -35,8 +32,7 @@ import Util
 -- Generation environment
 data GenEnv = GenEnv
   { constrArity :: QConstr -> Maybe Int
-  , signatures :: Name -> Maybe (Converted.Signature Converted.Expr Closed.Expr Void)
-  , returnDirections :: Name -> Maybe RetDir
+  , signatures :: Name -> Maybe (Signature ReturnIndirect)
   }
 
 type Gen = ReaderT GenEnv (State LLVMState)
@@ -103,7 +99,7 @@ directed d v = case d of
 
 -------------------------------------------------------------------------------
 -- Generation
-generateExpr :: Gen (Operand Int) -> Expr RetDir Var -> Gen Var
+generateExpr :: Gen (Operand Int) -> Expr Var -> Gen Var
 generateExpr genSz expr = case expr of
   Var v -> return v
   Global g -> generateGlobal g
@@ -111,9 +107,10 @@ generateExpr genSz expr = case expr of
   Con qc es -> do
     sz <- genSz
     generateCon sz qc es
-  Call retDir funExpr es -> do
-    fun <- generateFunOp funExpr retDir $ snd <$> es
-    args <- mapM (uncurry generateDirectedExpr) es
+  Call funExpr es -> do
+    (retDir, argDirs) <- funSignature funExpr $ Vector.length es
+    fun <- generateFunOp funExpr retDir argDirs
+    args <- mapM (uncurry generateDirectedExpr) $ Vector.zip es argDirs
     case retDir of
       ReturnVoid -> do
         emit $ varCall voidT fun args
@@ -150,13 +147,14 @@ generateExpr genSz expr = case expr of
       (_, Just directRets) -> fmap DirectVar $ "case-result" =: phiInt directRets
       (_, Nothing) -> fmap IndirectVar $ "case-result" =: phiPtr (first snd <$> rets)
   Prim p -> generatePrim p
+  PrimFun _ e -> generateExpr genSz e
   Anno e typ -> do
     let genSz' = do
           szVar <- generateExpr generateTypeSize typ
           loadVar "size" szVar
     generateExpr genSz' e
 
-storeExpr :: Gen (Operand Int) -> Expr RetDir Var -> Operand Ptr -> Gen ()
+storeExpr :: Gen (Operand Int) -> Expr Var -> Operand Ptr -> Gen ()
 storeExpr genSz expr ret = case expr of
   Var v -> do
     sz <- genSz
@@ -167,9 +165,10 @@ storeExpr genSz expr ret = case expr of
     varcpy ret v sz
   Lit l -> emit $ store (shower l) ret
   Con qc es -> storeCon qc es ret
-  Call retDir funExpr es -> do
-    fun <- generateFunOp funExpr retDir $ snd <$> es
-    args <- mapM (uncurry generateDirectedExpr) es
+  Call funExpr es -> do
+    (retDir, argDirs) <- funSignature funExpr $ Vector.length es
+    fun <- generateFunOp funExpr retDir argDirs
+    args <- mapM (uncurry generateDirectedExpr) $ Vector.zip es argDirs
     case retDir of
       ReturnVoid -> emit $ varCall voidT fun args
       ReturnIndirect OutParam -> emit $ varCall voidT fun $ Vector.snoc args $ IndirectVar ret
@@ -188,11 +187,24 @@ storeExpr genSz expr ret = case expr of
     res <- generatePrim p
     intRes <- loadVar "loaded-prim" res
     emit $ store intRes ret
+  PrimFun _ e -> storeExpr genSz e ret
   Anno e typ -> do
     let genSz' = do
           szVar <- generateExpr generateTypeSize typ
           loadVar "size" szVar
     storeExpr genSz' e ret
+
+funSignature :: Expr Var -> Int -> Gen (RetDir, Vector Direction)
+funSignature expr arity = case expr of
+  Global g -> do
+    msig <- asks (($ g) . signatures)
+    return $ case msig of
+      Just (FunctionSig retDir argDirs) -> (retDir, argDirs)
+      _ -> def
+  PrimFun sig _ -> return sig
+  _ -> return def
+  where
+    def = (ReturnIndirect OutParam, Vector.replicate arity Indirect)
 
 generateIntSize :: Gen (Operand Int)
 generateIntSize = do
@@ -210,13 +222,13 @@ generatePiSize = do
   loadVar "size" v
 
 generateDirectedExpr
-  :: Expr RetDir Var
+  :: Expr Var
   -> Direction
   -> Gen Var
 generateDirectedExpr expr dir
   = generateExpr (error "generateDirectedExpr sz") expr >>= directed dir
 
-gcAllocExpr :: Expr RetDir Var -> Gen (Operand Ptr)
+gcAllocExpr :: Expr Var -> Gen (Operand Ptr)
 gcAllocExpr (Anno expr typ) = do
   szVar <- generateExpr generateTypeSize typ
   szInt <- loadVar "size" szVar
@@ -225,7 +237,7 @@ gcAllocExpr (Anno expr typ) = do
   return ref
 gcAllocExpr _ = error "gcAllocExpr"
 
-generateCon :: Operand Int -> QConstr -> Vector (Expr RetDir Var) -> Gen Var
+generateCon :: Operand Int -> QConstr -> Vector (Expr Var) -> Gen Var
 generateCon _ Builtin.Ref es = do
   sizes <- mapM (loadVar "size" <=< generateExpr generateIntSize . sizeOf) es
   (is, fullSize) <- adds sizes
@@ -240,7 +252,7 @@ generateCon sz qc es = do
   storeCon qc es ret
   return $ IndirectVar ret
 
-storeCon :: QConstr -> Vector (Expr RetDir Var) -> Operand Ptr -> Gen ()
+storeCon :: QConstr -> Vector (Expr Var) -> Operand Ptr -> Gen ()
 storeCon Builtin.Ref es ret = do
   v <- generateCon "1" Builtin.Ref es
   i <- loadVar mempty v
@@ -254,7 +266,7 @@ storeCon qc es ret = do
     index <- "index" =: getElementPtr ret i
     storeExpr (pure sz) e index
 
-generateFunOp :: Expr RetDir Var -> RetDir -> Vector Direction -> Gen (Operand Fun)
+generateFunOp :: Expr Var -> RetDir -> Vector Direction -> Gen (Operand Fun)
 generateFunOp (Global g) _ _ = return $ global g
 generateFunOp e retDir argDirs = do
   funVar <- generateExpr generatePiSize e
@@ -264,29 +276,24 @@ generateFunOp e retDir argDirs = do
 
 generateGlobal :: Name -> Gen Var
 generateGlobal g = do
-  mdef <- asks (($ g) . signatures)
-  case mdef of
-    Just (Converted.Constant Void _) -> return VoidVar
-    Just (Converted.Constant Direct _) ->
+  msig <- asks (($ g) . signatures)
+  case msig of
+    Just (ConstantSig Void) -> return VoidVar
+    Just (ConstantSig Direct) ->
       return $ IndirectVar $ global g
-    Just (Converted.Constant Indirect _) -> do
+    Just (ConstantSig Indirect) -> do
       ptr <- "global" =: loadPtr (global g)
       return $ IndirectVar ptr
-    Just (Converted.Function _ args _) -> do
-      mretDir <- asks (($ g) . returnDirections)
-      case mretDir of
-        Nothing -> error "generateGlobal"
-        Just retDir ->
-          return
-            $ DirectVar
-            $ ptrToIntExpr
-            $ bitcastFunToPtrExpr (global g) retDir $ teleAnnotations args
-    _ -> return $ DirectVar $ global g
+    Just (FunctionSig retDir args) -> return
+      $ DirectVar
+      $ ptrToIntExpr
+      $ bitcastFunToPtrExpr (global g) retDir args
+    _ -> return $ IndirectVar $ global g
 
 generateBranches
-  :: Expr RetDir Var
-  -> Branches QConstr () (Expr RetDir) Var
-  -> (Expr RetDir Var -> Gen a)
+  :: Expr Var
+  -> Branches QConstr () Expr Var
+  -> (Expr Var -> Gen a)
   -> Gen [(a, Operand Label)]
 generateBranches caseExpr branches brCont = do
   postLabel <- Operand . text <$> freshenName "after-branch"
@@ -412,7 +419,7 @@ generateBranches caseExpr branches brCont = do
       return $ (defaultContResult, afterDefaultLabel) : contResults
 
 generatePrim
-  :: Primitive (Expr RetDir Var)
+  :: Primitive (Expr Var)
   -> Gen Var
 generatePrim (Primitive dir xs) = do
   strs <- forM xs $ \x -> case x of
@@ -424,7 +431,7 @@ generatePrim (Primitive dir xs) = do
   case dir of
     Void -> do
       emit instr
-      return $ VoidVar
+      return VoidVar
     Direct -> do
       ret <- "prim" =: instr
       return $ DirectVar ret
@@ -432,9 +439,18 @@ generatePrim (Primitive dir xs) = do
       ret <- "prim" =: instr
       return $ IndirectVar ret
 
-generateConstant :: Visibility -> Name -> Constant (Expr RetDir) Var -> Gen C
-generateConstant visibility name (Constant dir e) = do
-  let gname = unOperand $ global name
+generateConstant :: Visibility -> Name -> Constant Expr Var -> Gen C
+generateConstant visibility name (Constant e) = do
+  msig <- asks (($ name) . signatures)
+  let dir = case msig of
+        Just (ConstantSig d) -> d
+        _ -> error "generateConstant"
+      typVal = case dir of
+        Void -> pointer "null"
+        Direct -> integer "0"
+        Indirect -> pointer "null"
+
+      gname = unOperand $ global name
       initName = unOperand $ global $ name <> "-init"
       vis | visibility == Private = "private"
           | otherwise = ""
@@ -450,15 +466,15 @@ generateConstant visibility name (Constant dir e) = do
   emit returnVoid
   emitRaw "}"
   return $ "  call fastcc" <+> voidT <+> initName <> "()"
-  where
-    typVal = case dir of
-      Void -> pointer "null"
-      Direct -> integer "0"
-      Indirect -> pointer "null"
 
-generateFunction :: Visibility -> Name -> Function RetDir (Expr RetDir) Var -> Gen ()
-generateFunction visibility name (Function retDir args funScope) = do
-  vs <- forMTele args $ \h d _sz -> do
+generateFunction :: Visibility -> Name -> Function Expr Var -> Gen ()
+generateFunction visibility name (Function _ args funScope) = do
+  msig <- asks (($ name) . signatures)
+  let (retDir, argDirs) = case msig of
+        Just (FunctionSig rd ad) -> (rd, ad)
+        _ -> error "generateFunction"
+  vs <- iforMTele args $ \i h _ _sz -> do
+    let d = argDirs Vector.! i
     n <- text <$> freshWithHint h
     return $ case d of
       Void -> VoidVar
@@ -495,7 +511,7 @@ generateFunction visibility name (Function retDir args funScope) = do
     go (DirectVar n) = [integer n]
     go (IndirectVar n) = [pointer n]
 
-generateDefinition :: Name -> Definition RetDir (Expr RetDir) Var -> Gen C
+generateDefinition :: Name -> Definition Expr Var -> Gen C
 generateDefinition name def = case def of
   ConstantDef v c -> generateConstant v name c
   FunctionDef v f -> do

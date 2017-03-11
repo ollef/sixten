@@ -41,7 +41,6 @@ import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
 import qualified Syntax.Concrete.Unscoped as Unscoped
 import qualified Syntax.Sized.Closed as Closed
-import qualified Syntax.Sized.Converted as Converted
 import qualified Syntax.Sized.Lifted as Lifted
 import qualified Syntax.Sized.SLambda as SLambda
 import TCM
@@ -70,23 +69,32 @@ processAbstractGroup
   -> TCM [(LLVM.B, LLVM.B)]
 processAbstractGroup
   = addGroupToContext
+
   >=> slamGroup
   >=> prettyGroup "SLammed:" absurd
+
   >=> closeGroup
   >=> prettyGroup "Closed" absurd
+
+  >=> liftGroup
+  >>=> prettyGroup "Lambda-lifted" absurd
+
   >=> closureConvertGroup
   >=> prettyGroup "Closure-converted" absurd
+
   >=> processConvertedGroup
 
 processConvertedGroup
-  :: [(Name, Converted.Expr Void)]
+  :: [(Name, Lifted.Definition Closed.Expr Void)]
   -> TCM [(LLVM.B, LLVM.B)]
 processConvertedGroup
-  = liftGroup
-  >>=> prettyGroup "Lambda-lifted" absurd
+  = liftConvertedGroup
+  >>=> prettyGroup "Lambda-lifted (2)" absurd
+
   >=> inferGroupDirections
-  >=> addReturnDirectionsToContext
+  >=> addSignaturesToContext
   >=> prettyGroup "Directed (lifted)" absurd
+
   >=> generateGroup
 
 infixr 1 >>=>
@@ -205,45 +213,48 @@ closeGroup defs = forM defs $ \(x, e) -> do
   e'' <- traverse (throwError . ("closeGroup " ++) . show) e'
   return (x, e'')
 
-closureConvertGroup
-  :: [(Name, Closed.Expr Void)]
-  -> TCM [(Name, Converted.Expr Void)]
-closureConvertGroup defs = do
-  sigs <- forM defs $ \(x, e) -> (,) x <$> ClosureConvert.createSignature (vacuous e)
-  addConvertedSignatures $ HashMap.fromList sigs
-  forM sigs $ \(x, sig) ->
-    (,) x . fmap (error "closureConvertGroup conv") <$> ClosureConvert.convertSignature (error "closureConvertGroup sig" <$> sig)
-
 liftGroup
-  :: [(Name, Converted.Expr Void)]
-  -> TCM [[(Name, Lifted.Definition ClosureDir (Lifted.Expr ClosureDir) Void)]]
+  :: [(Name, Closed.Expr Void)]
+  -> TCM [[(Name, Lifted.Definition Lifted.Expr Void)]]
 liftGroup defs = fmap (Lifted.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
+  let (e', fs) = liftToDefinition name e
+  return $ (name, e') : fmap (second $ Lifted.FunctionDef Private) fs
+
+closureConvertGroup
+  :: [(Name, Lifted.Definition Lifted.Expr Void)]
+  -> TCM [(Name, Lifted.Definition Closed.Expr Void)]
+closureConvertGroup = ClosureConvert.convertDefinitions
+
+liftConvertedGroup
+  :: [(Name, Lifted.Definition Closed.Expr Void)]
+  -> TCM [[(Name, Lifted.Definition Lifted.Expr Void)]]
+liftConvertedGroup defs = fmap (Lifted.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
   let (e', fs) = liftDefinition name e
-  addConvertedSignatures $ HashMap.fromList $ fmap Lifted.signature <$> fs
   return $ (name, e') : fmap (second $ Lifted.FunctionDef Private) fs
 
 inferGroupDirections
-  :: [(Name, Lifted.Definition ClosureDir (Lifted.Expr ClosureDir) Void)]
-  -> TCM [(Name, Lifted.Definition RetDir (Lifted.Expr RetDir) Void)]
+  :: [(Name, Lifted.Definition Lifted.Expr Void)]
+  -> TCM [(Name, Lifted.Definition Lifted.Expr Void, Signature ReturnIndirect)]
 inferGroupDirections
   = fmap Vector.toList . ReturnDirection.inferRecursiveDefs . Vector.fromList
 
-addReturnDirectionsToContext
-  :: [(Name, Lifted.Definition RetDir (Lifted.Expr RetDir) Void)]
-  -> TCM [(Name, Lifted.Definition RetDir (Lifted.Expr RetDir) Void)]
-addReturnDirectionsToContext defs = do
-  addReturnDirections [(n, retDir) | (n, Lifted.FunctionDef _ (Lifted.Function retDir _ _)) <- defs]
-  return defs
+addSignaturesToContext
+  :: [(Name, Lifted.Definition Lifted.Expr Void, Signature ReturnIndirect)]
+  -> TCM [(Name, Lifted.Definition Lifted.Expr Void)]
+addSignaturesToContext defs = do
+  let sigs = HashMap.fromList [(n, sig) | (n, _, sig) <- defs]
+  logShow 11 "signatures" sigs
+  addSignatures sigs
+  return [(n, def) | (n, def, _) <- defs]
 
 generateGroup
-  :: [(Name, Lifted.Definition RetDir (Lifted.Expr RetDir) Void)]
+  :: [(Name, Lifted.Definition Lifted.Expr Void)]
   -> TCM [(LLVM.B, LLVM.B)]
 generateGroup defs = do
   target <- gets tcTarget
   qcindex <- qconstructorIndex
-  sigs <- gets tcConvertedSignatures
-  retDirs <- gets tcReturnDirections
-  let env = Generate.GenEnv qcindex (`HashMap.lookup` sigs) (`HashMap.lookup` retDirs)
+  sigs <- gets tcSignatures
+  let env = Generate.GenEnv qcindex (`HashMap.lookup` sigs)
   return $ flip map defs $ \(x, e) ->
     bimap (($ LLVM.targetConfig target) . LLVM.unC) (fold . intersperse "\n")
       $ Generate.runGen
@@ -312,7 +323,7 @@ processFile file output target logHandle verbosity = do
   where
     process resolved = do
       addContext Builtin.context
-      addConvertedSignatures $ Converted.signature <$> Builtin.convertedContext
+      addConvertedSignatures Builtin.convertedSignatures
       builtins <- processConvertedGroup $ HashMap.toList Builtin.convertedContext
       results <- processResolved resolved
       return $ builtins ++ results
