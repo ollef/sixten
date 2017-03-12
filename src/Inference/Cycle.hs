@@ -67,7 +67,7 @@ detectDefCycles defs = do
           $ Err
             (Just "Circular definition")
             ([ "The definition of " <> Leijen.red printedHeadVar <> " is circular."
-            , "It depeends on " <> Leijen.dullblue (head printedCycle)
+            , "It depends on " <> Leijen.dullblue (head printedCycle)
             ] ++
             ["which depends " <> Leijen.dullblue v' | v' <- drop 1 printedCycle]
             )
