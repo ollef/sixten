@@ -20,7 +20,7 @@ Compiler
   Simplify/make consistent all the type synonyms
   Clean up MetaVar handling (not all modules need the full generality)
   Make code generation use TCM
-  Rename TCM to SixtM
+  Rename TCM to VIX
 Error messages
   Write own error printer
   Make error message footnotes contain metavars
