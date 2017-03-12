@@ -7,20 +7,20 @@ import qualified Data.Vector as Vector
 
 import qualified Builtin
 import Meta
-import TCM
+import VIX
 import Syntax
 import Syntax.Abstract
 import Util
 
 whnf
   :: AbstractM
-  -> TCM AbstractM
+  -> VIX AbstractM
 whnf = whnf' False
 
 whnf'
   :: Bool
   -> AbstractM
-  -> TCM AbstractM
+  -> VIX AbstractM
 whnf' expandTypeReps expr = do
   modifyIndent succ
   res <- case expr of
@@ -51,7 +51,7 @@ whnf' expandTypeReps expr = do
 
 normalise
   :: AbstractM
-  -> TCM AbstractM
+  -> VIX AbstractM
 normalise expr = do
   logMeta 40 "normalise e" expr
   modifyIndent succ

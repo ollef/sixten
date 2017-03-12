@@ -10,7 +10,7 @@ import Meta
 import Syntax
 import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.SLambda as SLambda
-import TCM
+import VIX
 import TopoSort
 import Util
 
@@ -20,7 +20,7 @@ type CExprM = Closed.Expr Meta
 
 type BrsM e = Branches QConstr () e Meta
 
-closeExpr :: ExprM -> TCM CExprM
+closeExpr :: ExprM -> VIX CExprM
 closeExpr expr = case expr of
   SLambda.Var v -> return $ Closed.Var v
   SLambda.Global g -> return $ Closed.Global g
@@ -43,7 +43,7 @@ closeExpr expr = case expr of
 closeLambda
   :: Telescope () SLambda.Expr Meta
   -> Scope Tele SLambda.Expr Meta
-  -> TCM CExprM
+  -> VIX CExprM
 closeLambda tele lamScope = do
   sortedFvs <- do
     let fvs = toHashSet tele <> toHashSet lamScope
@@ -79,7 +79,7 @@ closeLambda tele lamScope = do
     impure [a] = a
     impure _ = error "closeLambda"
 
-closeBranches :: BrsM SLambda.Expr -> TCM (BrsM Closed.Expr)
+closeBranches :: BrsM SLambda.Expr -> VIX (BrsM Closed.Expr)
 closeBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(qc, tele, brScope) -> do
     vs <- forTeleWithPrefixM tele $ \h () s vs -> do

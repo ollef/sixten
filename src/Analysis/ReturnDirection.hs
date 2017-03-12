@@ -16,17 +16,17 @@ import Data.Void
 
 import Syntax hiding (Definition, bitraverseDefinition)
 import Syntax.Sized.Lifted
-import TCM
+import VIX
 
 data MetaReturnIndirect
   = MProjection
   | MOutParam
-  | MRef (STRef (World TCM) (Maybe MetaReturnIndirect))
+  | MRef (STRef (World VIX) (Maybe MetaReturnIndirect))
   deriving Eq
 
 type RetDirM = ReturnDirection MetaReturnIndirect
 
-existsMetaReturnIndirect :: TCM MetaReturnIndirect
+existsMetaReturnIndirect :: VIX MetaReturnIndirect
 existsMetaReturnIndirect = liftST $ MRef <$> newSTRef Nothing
 
 instance Show MetaReturnIndirect where
@@ -38,7 +38,7 @@ fromReturnIndirect :: ReturnIndirect -> MetaReturnIndirect
 fromReturnIndirect Projection = MProjection
 fromReturnIndirect OutParam = MOutParam
 
-toReturnIndirect :: ReturnIndirect -> MetaReturnIndirect -> TCM ReturnIndirect
+toReturnIndirect :: ReturnIndirect -> MetaReturnIndirect -> VIX ReturnIndirect
 toReturnIndirect def m = do
   m' <- normaliseMetaReturnIndirect m
   return $ case m' of
@@ -46,7 +46,7 @@ toReturnIndirect def m = do
     MOutParam -> OutParam
     MRef _ -> def
 
-normaliseMetaReturnIndirect :: MetaReturnIndirect -> TCM MetaReturnIndirect
+normaliseMetaReturnIndirect :: MetaReturnIndirect -> VIX MetaReturnIndirect
 normaliseMetaReturnIndirect MProjection = return MProjection
 normaliseMetaReturnIndirect MOutParam = return MOutParam
 normaliseMetaReturnIndirect m@(MRef ref) = do
@@ -58,13 +58,13 @@ normaliseMetaReturnIndirect m@(MRef ref) = do
       liftST $ writeSTRef ref $ Just m''
       return m''
 
-maxMetaReturnIndirect :: MetaReturnIndirect -> MetaReturnIndirect -> TCM MetaReturnIndirect
+maxMetaReturnIndirect :: MetaReturnIndirect -> MetaReturnIndirect -> VIX MetaReturnIndirect
 maxMetaReturnIndirect m1 m2 = do
   m1' <- normaliseMetaReturnIndirect m1
   m2' <- normaliseMetaReturnIndirect m2
   maxMetaReturnIndirect' m1' m2'
 
-maxMetaReturnIndirect' :: MetaReturnIndirect -> MetaReturnIndirect -> TCM MetaReturnIndirect
+maxMetaReturnIndirect' :: MetaReturnIndirect -> MetaReturnIndirect -> VIX MetaReturnIndirect
 maxMetaReturnIndirect' MOutParam _ = return MOutParam
 maxMetaReturnIndirect' _ MOutParam = return MOutParam
 maxMetaReturnIndirect' MProjection m = return m
@@ -74,13 +74,13 @@ maxMetaReturnIndirect' m@(MRef _) (MRef ref2) = do
   liftST $ writeSTRef ref2 $ Just m
   return m
 
-unifyMetaReturnIndirect :: MetaReturnIndirect -> MetaReturnIndirect -> TCM ()
+unifyMetaReturnIndirect :: MetaReturnIndirect -> MetaReturnIndirect -> VIX ()
 unifyMetaReturnIndirect m1 m2 = do
   m1' <- normaliseMetaReturnIndirect m1
   m2' <- normaliseMetaReturnIndirect m2
   unifyMetaReturnIndirect' m1' m2'
 
-unifyMetaReturnIndirect' :: MetaReturnIndirect -> MetaReturnIndirect -> TCM ()
+unifyMetaReturnIndirect' :: MetaReturnIndirect -> MetaReturnIndirect -> VIX ()
 unifyMetaReturnIndirect' m1 m2 | m1 == m2 = return ()
 unifyMetaReturnIndirect' m (MRef ref2) = liftST $ writeSTRef ref2 $ Just m
 unifyMetaReturnIndirect' (MRef ref1) m = liftST $ writeSTRef ref1 $ Just m
@@ -95,7 +95,7 @@ data MetaVar = MetaVar
   , metaFunSig :: Maybe (RetDirM, Vector Direction)
   }
 
-exists :: NameHint -> Location -> Maybe (RetDirM, Vector Direction) -> TCM MetaVar
+exists :: NameHint -> Location -> Maybe (RetDirM, Vector Direction) -> VIX MetaVar
 exists h loc call = MetaVar h <$> fresh <*> pure loc <*> pure call
 
 instance Eq MetaVar where
@@ -109,7 +109,7 @@ instance Hashable MetaVar where
 
 infer
   :: Expr MetaVar
-  -> TCM (Expr MetaVar, Location)
+  -> VIX (Expr MetaVar, Location)
 infer expr = case expr of
   Var v -> return (Var v, metaLocation v)
   Global g -> return (Global g, MProjection)
@@ -151,7 +151,7 @@ inferCall
   -> Vector Direction
   -> Expr MetaVar
   -> Vector (Expr MetaVar)
-  -> TCM (Expr MetaVar, MetaReturnIndirect)
+  -> VIX (Expr MetaVar, MetaReturnIndirect)
 inferCall con (ReturnIndirect mretIndirect) argDirs f es = do
   (f', _) <- infer f
   locatedEs <- mapM infer es
@@ -168,7 +168,7 @@ inferCall con _ _ f es = do
 inferBranches
   :: Location
   -> Branches c () Expr MetaVar
-  -> TCM (Branches c () Expr MetaVar, Location)
+  -> VIX (Branches c () Expr MetaVar, Location)
 inferBranches loc (ConBranches cbrs) = do
   locatedCBrs <- forM cbrs $ \(c, tele, brScope) -> do
     vs <- forMTele tele $ \h _ _ -> exists h loc Nothing
@@ -201,7 +201,7 @@ inferBranches loc (NoBranches typ) = do
 inferFunction
   :: Expr MetaVar
   -> Int
-  -> TCM (RetDirM, Vector Direction)
+  -> VIX (RetDirM, Vector Direction)
 inferFunction expr arity = case expr of
   Var v -> return $ fromMaybe def $ metaFunSig v
   Global g -> do
@@ -216,7 +216,7 @@ inferFunction expr arity = case expr of
 inferDefinition
   :: MetaVar
   -> Definition Expr MetaVar
-  -> TCM (Definition Expr MetaVar, Signature MetaReturnIndirect)
+  -> VIX (Definition Expr MetaVar, Signature MetaReturnIndirect)
 inferDefinition MetaVar {metaFunSig = Just (retDir, argDirs)} (FunctionDef vis (Function cl args s)) = do
   vs <- forMTele args $ \h _ _ -> exists h MProjection Nothing
   args' <- forMTele args $ \h d szScope -> do
@@ -241,14 +241,14 @@ inferDefinition _ _ = error "ReturnDirection.inferDefinition"
 
 generaliseDefs
   :: Vector (Definition Expr MetaVar, Signature MetaReturnIndirect)
-  -> TCM (Vector (Definition Expr MetaVar, Signature ReturnIndirect))
+  -> VIX (Vector (Definition Expr MetaVar, Signature ReturnIndirect))
 generaliseDefs
   = traverse
   $ bitraverse pure (traverse $ toReturnIndirect Projection)
 
 inferRecursiveDefs
   :: Vector (Name, Definition Expr Void)
-  -> TCM (Vector (Name, Definition Expr Void, Signature ReturnIndirect))
+  -> VIX (Vector (Name, Definition Expr Void, Signature ReturnIndirect))
 inferRecursiveDefs defs = do
   let names = fst <$> defs
 
@@ -289,7 +289,7 @@ inferRecursiveDefs defs = do
         Just index -> global
           $ fromMaybe (error "inferRecursiveDefs 2")
           $ names Vector.!? index
-      vf :: MetaVar -> TCM b
+      vf :: MetaVar -> VIX b
       vf v = throwError $ "inferRecursiveDefs " ++ show v
 
   forM (Vector.zip names genDefs) $ \(name, (def ,sig)) -> do

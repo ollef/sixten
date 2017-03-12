@@ -21,9 +21,9 @@ import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
 import qualified Syntax.Sized.SLambda as SLambda
-import TCM
+import VIX
 
-type Exists e = STRef (World TCM) (Either Level (e (MetaVar e)))
+type Exists e = STRef (World VIX) (Either Level (e (MetaVar e)))
 
 data MetaVar e = MetaVar
   { metaId   :: !Int
@@ -55,7 +55,7 @@ instance Show1 e => Show (MetaVar e) where
     showChar ' ' . showsPrec1 11 t . showChar ' ' . showsPrec 11 h .
     showChar ' ' . showString "<Ref>"
 
-forall :: NameHint -> e (MetaVar e) -> TCM (MetaVar e)
+forall :: NameHint -> e (MetaVar e) -> VIX (MetaVar e)
 forall hint typ = do
   i <- fresh
   logVerbose 20 $ "forall: " <> fromString (show i)
@@ -64,8 +64,8 @@ forall hint typ = do
 refineVar
   :: Applicative e
   => MetaVar e
-  -> (e (MetaVar e) -> TCM (e (MetaVar e)))
-  -> TCM (e (MetaVar e))
+  -> (e (MetaVar e) -> VIX (e (MetaVar e)))
+  -> VIX (e (MetaVar e))
 refineVar v@(metaRef -> Nothing) _ = return $ pure v
 refineVar v@(metaRef -> Just r) f = refineIfSolved r (pure v) f
 refineVar _ _ = error "refineVar impossible"
@@ -73,7 +73,7 @@ refineVar _ _ = error "refineVar impossible"
 showMeta
   :: (Functor e, Foldable e, Functor f, Foldable f, Pretty (f String), Pretty (e String))
   => f (MetaVar e)
-  -> TCM Doc
+  -> VIX Doc
 showMeta x = do
   vs <- foldMapM Set.singleton x
   let p (metaRef -> Just r) = solution r
@@ -94,40 +94,40 @@ logMeta
   => Int
   -> String
   -> f (MetaVar e)
-  -> TCM ()
+  -> VIX ()
 logMeta v s x = whenVerbose v $ do
   i <- gets tcIndent
   r <- showMeta x
-  TCM.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide r
+  VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide r
 
-existsAtLevel :: NameHint -> e (MetaVar e) -> Level -> TCM (MetaVar e)
+existsAtLevel :: NameHint -> e (MetaVar e) -> Level -> VIX (MetaVar e)
 existsAtLevel hint typ l = do
   i   <- fresh
   ref <- liftST $ newSTRef $ Left l
   logVerbose 20 $ "exists: " <> fromString (show i)
   return $ MetaVar i typ hint (Just ref)
 
-exists :: NameHint -> e (MetaVar e) -> TCM (MetaVar e)
+exists :: NameHint -> e (MetaVar e) -> VIX (MetaVar e)
 exists hint typ = existsAtLevel hint typ =<< level
 
 existsVar
   :: Applicative g
   => NameHint
   -> e (MetaVar e)
-  -> TCM (g (MetaVar e))
+  -> VIX (g (MetaVar e))
 existsVar hint typ = pure <$> exists hint typ
 
-solution :: Exists e -> TCM (Either Level (e (MetaVar e)))
+solution :: Exists e -> VIX (Either Level (e (MetaVar e)))
 solution = liftST . readSTRef
 
-solve :: Exists e -> e (MetaVar e) -> TCM ()
+solve :: Exists e -> e (MetaVar e) -> VIX ()
 solve r x = liftST $ writeSTRef r $ Right x
 
 refineIfSolved
   :: Exists e
   -> e (MetaVar e)
-  -> (e (MetaVar e) -> TCM (e (MetaVar e)))
-  -> TCM (e (MetaVar e))
+  -> (e (MetaVar e) -> VIX (e (MetaVar e)))
+  -> VIX (e (MetaVar e))
 refineIfSolved r d f = do
   sol <- solution r
   case sol of
@@ -141,7 +141,7 @@ foldMapM
   :: (Foldable e, Foldable f, Monoid m)
   => (MetaVar e -> m)
   -> f (MetaVar e)
-  -> TCM m
+  -> VIX m
 foldMapM f = foldrM go mempty
   where
     go v m = (<> m) . (<> f v) <$>
@@ -157,14 +157,14 @@ abstractM
   :: (Monad e, Traversable e, Show1 e)
   => (MetaVar e -> Maybe b)
   -> e (MetaVar e)
-  -> TCM (Scope b e (MetaVar e))
+  -> VIX (Scope b e (MetaVar e))
 abstractM f e = do
   e' <- zonk e
   changed <- liftST $ newSTRef False
   Scope . join <$> traverse (go changed) e'
   where
     -- go :: STRef s Bool -> MetaVar s
-    --    -> TCM (Expr (Var () (Expr (MetaVar s))))
+    --    -> VIX (Expr (Var () (Expr (MetaVar s))))
     go changed (f -> Just b) = do
       liftST $ writeSTRef changed True
       return $ pure $ B b
@@ -192,7 +192,7 @@ abstractM f e = do
 abstract1M
   :: MetaA
   -> AbstractM
-  -> TCM (ScopeM () Abstract.Expr)
+  -> VIX (ScopeM () Abstract.Expr)
 abstract1M v e = do
   logVerbose 20 $ "abstracting " <> fromString (show $ metaId v)
   abstractM (\v' -> if v == v' then Just () else Nothing) e
@@ -201,7 +201,7 @@ abstractDataDefM
   :: (MetaA -> Maybe b)
   -> DataDef Abstract.Expr MetaA
   -> AbstractM
-  -> TCM (DataDef Abstract.Expr (Var b MetaA))
+  -> VIX (DataDef Abstract.Expr (Var b MetaA))
 abstractDataDefM f (DataDef cs) typ = mdo
   let inst = instantiateTele pure vs
       vs = (\(_, _, _, v) -> v) <$> ps'
@@ -220,7 +220,7 @@ abstractDataDefM f (DataDef cs) typ = mdo
 zonkVar
   :: (Monad e, Traversable e)
   => MetaVar e
-  -> TCM (e (MetaVar e))
+  -> VIX (e (MetaVar e))
 zonkVar v@(metaRef -> Just r) = do
   sol <- solution r
   case sol of
@@ -236,13 +236,13 @@ zonkVar v = return $ pure v
 zonk
   :: (Monad e, Traversable e)
   => e (MetaVar e)
-  -> TCM (e (MetaVar e))
+  -> VIX (e (MetaVar e))
 zonk = fmap join . traverse zonkVar
 
 zonkBound
   :: (Monad e, Traversable e, Traversable (t e), Bound t)
   => t e (MetaVar e)
-  -> TCM (t e (MetaVar e))
+  -> VIX (t e (MetaVar e))
 zonkBound = fmap (>>>= id) . traverse zonkVar
 
 metaTelescope
@@ -259,7 +259,7 @@ metaTelescope vs =
 metaTelescopeM
   :: (Monad e, Traversable e, Show1 e)
   => Vector (a, MetaVar e)
-  -> TCM (Telescope a e (MetaVar e))
+  -> VIX (Telescope a e (MetaVar e))
 metaTelescopeM vs =
   fmap Telescope $ forM vs $ \(a, v) -> do
     s <- abstractM abstr $ metaType v

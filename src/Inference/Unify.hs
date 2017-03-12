@@ -19,9 +19,9 @@ import Inference.TypeOf
 import Meta
 import Syntax
 import Syntax.Abstract
-import TCM
+import VIX
 
-existsType :: Monad e => NameHint -> TCM (e MetaA)
+existsType :: Monad e => NameHint -> VIX (e MetaA)
 existsType n = existsVar n Builtin.Type
 
 occurs
@@ -29,7 +29,7 @@ occurs
   -> Level
   -> MetaA
   -> AbstractM
-  -> TCM ()
+  -> VIX ()
 occurs cxt l tv expr = traverse_ go expr
   where
     go tv'@(MetaVar _ typ _ mr)
@@ -72,7 +72,7 @@ occurs cxt l tv expr = traverse_ go expr
               Left l'    -> liftST $ writeSTRef r $ Left $ min l l'
               Right typ' -> traverse_ go typ'
 
-unify :: [(AbstractM, AbstractM)] -> AbstractM -> AbstractM -> TCM ()
+unify :: [(AbstractM, AbstractM)] -> AbstractM -> AbstractM -> VIX ()
 unify cxt type1 type2 = do
   logMeta 30 "unify t1" type1
   logMeta 30 "      t2" type2
@@ -80,7 +80,7 @@ unify cxt type1 type2 = do
   type2' <- whnf type2
   unify' ((type1', type2') : cxt) type1' type2'
 
-unify' :: [(AbstractM, AbstractM)] -> AbstractM -> AbstractM -> TCM ()
+unify' :: [(AbstractM, AbstractM)] -> AbstractM -> AbstractM -> VIX ()
 unify' cxt type1 type2
   | type1 == type2 = return ()
   | otherwise = case (type1, type2) of

@@ -14,13 +14,13 @@ import Text.Trifecta.Result(Err(Err), explain)
 import Syntax
 import Syntax.Concrete.Definition
 import Syntax.Concrete.Pattern
-import TCM
+import VIX
 
 equalisePats
   :: (Pretty v)
   => [Plicitness]
   -> [(Plicitness, Pat e v)]
-  -> TCM [(Plicitness, Pat e v)]
+  -> VIX [(Plicitness, Pat e v)]
 equalisePats [] pats = return pats
 equalisePats _ [] = return []
 equalisePats (Implicit:ps) ((Implicit, pat):pats)

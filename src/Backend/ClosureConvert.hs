@@ -16,14 +16,14 @@ import Meta
 import Syntax
 import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.Lifted as Lifted
-import TCM
+import VIX
 import Util
 
 type Meta = MetaVar Unit
 
 convertDefinitions
   :: [(Name, Lifted.Definition Lifted.Expr Void)]
-  -> TCM [(Name, Lifted.Definition Closed.Expr Void)]
+  -> VIX [(Name, Lifted.Definition Closed.Expr Void)]
 convertDefinitions defs = do
   funSigs <- forM defs $ \(name, def) -> case def of
     Lifted.FunctionDef _ (Lifted.Function _ tele scope) -> do
@@ -55,7 +55,7 @@ convertDefinitions defs = do
 
 convertDefinition
   :: Lifted.Definition Lifted.Expr Void
-  -> TCM (Lifted.Definition Closed.Expr Void)
+  -> VIX (Lifted.Definition Closed.Expr Void)
 convertDefinition (Lifted.FunctionDef vis (Lifted.Function cl tele scope)) = do
   vs <- forMTele tele $ \h () _ ->
     forall h Unit
@@ -79,7 +79,7 @@ convertDefinition (Lifted.ConstantDef vis (Lifted.Constant expr)) = do
     $ Lifted.Constant
     $ error "convertDefinition Constant" <$> expr'
 
-convertExpr :: Lifted.Expr Meta -> TCM (Closed.Expr Meta)
+convertExpr :: Lifted.Expr Meta -> VIX (Closed.Expr Meta)
 convertExpr expr = case expr of
   Lifted.Var v -> return $ Closed.Var v
   Lifted.Global g -> do
@@ -126,7 +126,7 @@ knownCall
   :: Name
   -> Closed.FunSignature
   -> Vector (Closed.Expr Meta)
-  -> TCM (Closed.Expr Meta)
+  -> VIX (Closed.Expr Meta)
 knownCall f (tele, returnTypeScope) args
   | numArgs < arity = do
     vs <- forM fArgs $ \_ -> forall mempty Unit
@@ -182,7 +182,7 @@ knownCall f (tele, returnTypeScope) args
 
 convertBranches
   :: Branches QConstr () Lifted.Expr Meta
-  -> TCM (Branches QConstr () Closed.Expr Meta)
+  -> VIX (Branches QConstr () Closed.Expr Meta)
 convertBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(qc, tele, brScope) -> do
     vs <- forMTele tele $ \h () _ ->

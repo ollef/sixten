@@ -9,11 +9,11 @@ import Inference.Normalise
 import Meta
 import Syntax
 import Syntax.Abstract
-import TCM
+import VIX
 
 typeOfM
   :: AbstractM
-  -> TCM AbstractM
+  -> VIX AbstractM
 typeOfM expr = do
   -- logMeta "typeOfM" expr
   modifyIndent succ
@@ -52,7 +52,7 @@ typeOfM expr = do
 
 typeOf
   :: AbstractM
-  -> TCM AbstractM
+  -> VIX AbstractM
 typeOf expr = do
   -- logMeta "typeOf" expr
   modifyIndent succ

@@ -43,19 +43,19 @@ import qualified Syntax.Concrete.Unscoped as Unscoped
 import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.Lifted as Lifted
 import qualified Syntax.Sized.SLambda as SLambda
-import TCM
+import VIX
 import Util
 
 processResolved
   :: HashMap Name (SourceLoc, Unscoped.Definition Name, Unscoped.Type Name)
-  -> TCM [(LLVM.B, LLVM.B)]
+  -> VIX [(LLVM.B, LLVM.B)]
 processResolved
   = pure . ScopeCheck.scopeCheckProgram
   >>=> processGroup
 
 processGroup
   :: [(Name, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]
-  -> TCM [(LLVM.B, LLVM.B)]
+  -> VIX [(LLVM.B, LLVM.B)]
 processGroup
   = prettyConcreteGroup "Concrete syntax" absurd
   >=> typeCheckGroup
@@ -66,7 +66,7 @@ processGroup
 
 processAbstractGroup
   :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
-  -> TCM [(LLVM.B, LLVM.B)]
+  -> VIX [(LLVM.B, LLVM.B)]
 processAbstractGroup
   = addGroupToContext
 
@@ -86,7 +86,7 @@ processAbstractGroup
 
 processConvertedGroup
   :: [(Name, Lifted.Definition Closed.Expr Void)]
-  -> TCM [(LLVM.B, LLVM.B)]
+  -> VIX [(LLVM.B, LLVM.B)]
 processConvertedGroup
   = liftConvertedGroup
   >>=> prettyGroup "Lambda-lifted (2)" absurd
@@ -106,21 +106,21 @@ prettyConcreteGroup
   => Text
   -> (v -> Name)
   -> [(Name, SourceLoc, Concrete.PatDefinition e v, e v)]
-  -> TCM [(Name, SourceLoc, Concrete.PatDefinition e v, e v)]
+  -> VIX [(Name, SourceLoc, Concrete.PatDefinition e v, e v)]
 prettyConcreteGroup str f defs = do
   whenVerbose 10 $ do
-    TCM.log $ "----- " <> str <> " -----"
+    VIX.log $ "----- " <> str <> " -----"
     forM_ defs $ \(n, _, d, t) -> do
       let t' = f <$> t
-      TCM.log
+      VIX.log
         $ showWide
         $ runPrettyM
         $ prettyM n <+> ":" <+> prettyM t'
-      TCM.log
+      VIX.log
         $ showWide
         $ runPrettyM
         $ prettyM (f <$> d)
-      TCM.log ""
+      VIX.log ""
   return defs
 
 prettyLocatedGroup
@@ -128,7 +128,7 @@ prettyLocatedGroup
   => Text
   -> (v -> Name)
   -> [(Name, x, Definition e v, e v)]
-  -> TCM [(Name, x, Definition e v, e v)]
+  -> VIX [(Name, x, Definition e v, e v)]
 prettyLocatedGroup x f defs = do
   void $ prettyTypedGroup x f $ (\(n, _, d, t) -> (n, d, t)) <$> defs
   return defs
@@ -138,21 +138,21 @@ prettyTypedGroup
   => Text
   -> (v -> Name)
   -> [(Name, Definition e v, e v)]
-  -> TCM [(Name, Definition e v, e v)]
+  -> VIX [(Name, Definition e v, e v)]
 prettyTypedGroup str f defs = do
   whenVerbose 10 $ do
-    TCM.log $ "----- " <> str <> " -----"
+    VIX.log $ "----- " <> str <> " -----"
     forM_ defs $ \(n, d, t) -> do
       let t' = f <$> t
-      TCM.log
+      VIX.log
         $ showWide
         $ runPrettyM
         $ prettyM n <+> ":" <+> prettyM t'
-      TCM.log
+      VIX.log
         $ showWide
         $ runPrettyM
         $ prettyM n <+> "=" <+> prettyTypedDef (f <$> d) t'
-      TCM.log ""
+      VIX.log ""
   return defs
 
 prettyGroup
@@ -160,27 +160,27 @@ prettyGroup
   => Text
   -> (v -> Name)
   -> [(Name, e v)]
-  -> TCM [(Name, e v)]
+  -> VIX [(Name, e v)]
 prettyGroup str f defs = do
   whenVerbose 10 $ do
-    TCM.log $ "----- " <> str <> " -----"
+    VIX.log $ "----- " <> str <> " -----"
     forM_ defs $ \(n, d) -> do
-      TCM.log
+      VIX.log
         $ showWide
         $ runPrettyM
         $ prettyM n <+> "=" <+> prettyM (f <$> d)
-      TCM.log ""
+      VIX.log ""
   return defs
 
 typeCheckGroup
   :: [(Name, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]
-  -> TCM [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  -> VIX [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
 typeCheckGroup
   = fmap Vector.toList . TypeCheck.checkRecursiveDefs . Vector.fromList
 
 simplifyGroup
   :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
-  -> TCM [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  -> VIX [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
 simplifyGroup defs = forM defs $ \(x, def, typ) ->
   return (x, simplifyDef globTerm def, simplifyExpr globTerm 0 typ)
   where
@@ -189,14 +189,14 @@ simplifyGroup defs = forM defs $ \(x, def, typ) ->
 
 addGroupToContext
   :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
-  -> TCM [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  -> VIX [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
 addGroupToContext defs = do
   addContext $ HashMap.fromList $ (\(n, d, t) -> (n, (d, t))) <$> defs
   return defs
 
 slamGroup
   :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
-  -> TCM [(Name, SLambda.Expr Void)]
+  -> VIX [(Name, SLambda.Expr Void)]
 slamGroup defs = sequence
   [ do
       d' <- SLam.slamDef $ vacuous d
@@ -207,7 +207,7 @@ slamGroup defs = sequence
 
 closeGroup
   :: [(Name, SLambda.Expr Void)]
-  -> TCM [(Name, Closed.Expr Void)]
+  -> VIX [(Name, Closed.Expr Void)]
 closeGroup defs = forM defs $ \(x, e) -> do
   e' <- closeExpr $ vacuous e
   e'' <- traverse (throwError . ("closeGroup " ++) . show) e'
@@ -215,32 +215,32 @@ closeGroup defs = forM defs $ \(x, e) -> do
 
 liftGroup
   :: [(Name, Closed.Expr Void)]
-  -> TCM [[(Name, Lifted.Definition Lifted.Expr Void)]]
+  -> VIX [[(Name, Lifted.Definition Lifted.Expr Void)]]
 liftGroup defs = fmap (Lifted.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
   let (e', fs) = liftToDefinition name e
   return $ (name, e') : fmap (second $ Lifted.FunctionDef Private) fs
 
 closureConvertGroup
   :: [(Name, Lifted.Definition Lifted.Expr Void)]
-  -> TCM [(Name, Lifted.Definition Closed.Expr Void)]
+  -> VIX [(Name, Lifted.Definition Closed.Expr Void)]
 closureConvertGroup = ClosureConvert.convertDefinitions
 
 liftConvertedGroup
   :: [(Name, Lifted.Definition Closed.Expr Void)]
-  -> TCM [[(Name, Lifted.Definition Lifted.Expr Void)]]
+  -> VIX [[(Name, Lifted.Definition Lifted.Expr Void)]]
 liftConvertedGroup defs = fmap (Lifted.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
   let (e', fs) = liftClosures name e
   return $ (name, e') : fmap (second $ Lifted.FunctionDef Private) fs
 
 inferGroupDirections
   :: [(Name, Lifted.Definition Lifted.Expr Void)]
-  -> TCM [(Name, Lifted.Definition Lifted.Expr Void, Signature ReturnIndirect)]
+  -> VIX [(Name, Lifted.Definition Lifted.Expr Void, Signature ReturnIndirect)]
 inferGroupDirections
   = fmap Vector.toList . ReturnDirection.inferRecursiveDefs . Vector.fromList
 
 addSignaturesToContext
   :: [(Name, Lifted.Definition Lifted.Expr Void, Signature ReturnIndirect)]
-  -> TCM [(Name, Lifted.Definition Lifted.Expr Void)]
+  -> VIX [(Name, Lifted.Definition Lifted.Expr Void)]
 addSignaturesToContext defs = do
   let sigs = HashMap.fromList [(n, sig) | (n, _, sig) <- defs]
   logShow 11 "signatures" sigs
@@ -249,7 +249,7 @@ addSignaturesToContext defs = do
 
 generateGroup
   :: [(Name, Lifted.Definition Lifted.Expr Void)]
-  -> TCM [(LLVM.B, LLVM.B)]
+  -> VIX [(LLVM.B, LLVM.B)]
 generateGroup defs = do
   target <- gets tcTarget
   qcindex <- qconstructorIndex
@@ -301,7 +301,7 @@ processFile file output target logHandle verbosity = do
     Trifecta.Failure xs -> return $ Error $ SyntaxError xs
     Trifecta.Success (ExceptT (Identity (Left err))) -> return $ Error $ ResolveError err
     Trifecta.Success (ExceptT (Identity (Right resolved))) -> do
-      procRes <- runTCM (process resolved) target logHandle verbosity
+      procRes <- runVIX (process resolved) target logHandle verbosity
       case procRes of
         Left err -> return $ Error $ TypeError $ Text.pack err
         Right res -> do

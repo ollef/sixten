@@ -35,7 +35,7 @@ import Syntax
 import qualified Syntax.Abstract as Abstract
 import Syntax.Abstract.Pattern as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
-import TCM
+import VIX
 import TopoSort
 import Util
 
@@ -47,11 +47,11 @@ newtype InstBelow = InstBelow Plicitness
   deriving (Eq, Ord)
 
 data Expected typ
-  = Infer (STRef (World TCM) typ) InstBelow
+  = Infer (STRef (World VIX) typ) InstBelow
   | Check typ
 
 -- | instExpected t2 t1 = e => e : t1 -> t2
-instExpected :: Expected Rhotype -> Polytype -> TCM (AbstractM -> TCM AbstractM)
+instExpected :: Expected Rhotype -> Polytype -> VIX (AbstractM -> VIX AbstractM)
 instExpected (Infer r instBelow) t = do
   (t', f) <- instantiateForalls t instBelow
   liftST $ writeSTRef r t'
@@ -60,7 +60,7 @@ instExpected (Check t2) t1 = subtype t1 t2
 
 --------------------------------------------------------------------------------
 -- Polytypes
-checkPoly :: ConcreteM -> Polytype -> TCM AbstractM
+checkPoly :: ConcreteM -> Polytype -> VIX AbstractM
 checkPoly expr typ = do
   logMeta 20 "checkPoly expr" expr
   logMeta 20 "checkPoly type" typ
@@ -70,7 +70,7 @@ checkPoly expr typ = do
   logMeta 20 "checkPoly res expr" res
   return res
 
-checkPoly' :: ConcreteM -> Polytype -> TCM AbstractM
+checkPoly' :: ConcreteM -> Polytype -> VIX AbstractM
 checkPoly' expr@(Concrete.Lam Implicit _ _) polyType
   = checkRho expr polyType
 checkPoly' expr polyType = do
@@ -85,7 +85,7 @@ instBelowExpr :: Concrete.Expr v -> InstBelow
 instBelowExpr (Concrete.Lam p _ _) = InstBelow p
 instBelowExpr _ = InstBelow Explicit
 
--- inferPoly :: ConcreteM -> InstBelow -> TCM (AbstractM, Polytype)
+-- inferPoly :: ConcreteM -> InstBelow -> VIX (AbstractM, Polytype)
 -- inferPoly expr instBelow = do
 --   logMeta 20 "inferPoly expr" expr
 --   modifyIndent succ
@@ -95,17 +95,17 @@ instBelowExpr _ = InstBelow Explicit
 --   logMeta 20 "inferPoly res typ" resType
 --   return (resExpr, resType)
 
--- inferPoly' :: ConcreteM -> InstBelow -> TCM (AbstractM, Polytype)
+-- inferPoly' :: ConcreteM -> InstBelow -> VIX (AbstractM, Polytype)
 -- inferPoly' expr instBelow = do
 --   (expr', exprType) <- inferRho expr instBelow
 --   generalise expr' exprType
 
-instantiateForalls :: Polytype -> InstBelow -> TCM (Rhotype, AbstractM -> TCM AbstractM)
+instantiateForalls :: Polytype -> InstBelow -> VIX (Rhotype, AbstractM -> VIX AbstractM)
 instantiateForalls typ instBelow = do
   typ' <- whnf typ
   instantiateForalls' typ' instBelow
 
-instantiateForalls' :: Polytype -> InstBelow -> TCM (Rhotype, AbstractM -> TCM AbstractM)
+instantiateForalls' :: Polytype -> InstBelow -> VIX (Rhotype, AbstractM -> VIX AbstractM)
 instantiateForalls' (Abstract.Pi h p t s) (InstBelow p')
   | p < p' = do
     v <- exists h t
@@ -116,7 +116,7 @@ instantiateForalls' typ _ = return (typ, pure)
 
 --------------------------------------------------------------------------------
 -- Rhotypes
-checkRho :: ConcreteM -> Rhotype -> TCM AbstractM
+checkRho :: ConcreteM -> Rhotype -> VIX AbstractM
 checkRho expr typ = do
   logMeta 20 "checkRho expr" expr
   logMeta 20 "checkRho type" typ
@@ -126,10 +126,10 @@ checkRho expr typ = do
   logMeta 20 "checkRho res expr" res
   return res
 
-checkRho' :: ConcreteM -> Rhotype -> TCM AbstractM
+checkRho' :: ConcreteM -> Rhotype -> VIX AbstractM
 checkRho' expr ty = tcRho expr (Check ty) (Just ty)
 
-inferRho :: ConcreteM -> InstBelow -> Maybe Rhotype -> TCM (AbstractM, Rhotype)
+inferRho :: ConcreteM -> InstBelow -> Maybe Rhotype -> VIX (AbstractM, Rhotype)
 inferRho expr instBelow expectedAppResult = do
   logMeta 20 "inferRho" expr
   modifyIndent succ
@@ -139,14 +139,14 @@ inferRho expr instBelow expectedAppResult = do
   logMeta 20 "inferRho res typ" resType
   return (resExpr, resType)
 
-inferRho' :: ConcreteM -> InstBelow -> Maybe Rhotype -> TCM (AbstractM, Rhotype)
+inferRho' :: ConcreteM -> InstBelow -> Maybe Rhotype -> VIX (AbstractM, Rhotype)
 inferRho' expr instBelow expectedAppResult = do
   ref <- liftST $ newSTRef $ error "inferRho: empty result"
   expr' <- tcRho expr (Infer ref instBelow) expectedAppResult
   typ <- liftST $ readSTRef ref
   return (expr', typ)
 
-tcRho :: ConcreteM -> Expected Rhotype -> Maybe Rhotype -> TCM AbstractM
+tcRho :: ConcreteM -> Expected Rhotype -> Maybe Rhotype -> VIX AbstractM
 tcRho expr expected expectedAppResult = case expr of
   Concrete.Var v -> do
     f <- instExpected expected $ metaType v
@@ -225,7 +225,7 @@ tcBranches
   :: ConcreteM
   -> [(Concrete.Pat (PatternScope Concrete.Expr MetaA) (), PatternScope Concrete.Expr MetaA)]
   -> Expected Rhotype
-  -> TCM AbstractM
+  -> VIX AbstractM
 tcBranches expr pbrs expected = do
   (expr', exprType) <- inferRho expr (InstBelow Explicit) Nothing
 
@@ -264,14 +264,14 @@ tcBranches expr pbrs expected = do
 --------------------------------------------------------------------------------
 -- Patterns
 data ExpectedPat typ
-  = InferPat (STRef (World TCM) typ)
+  = InferPat (STRef (World VIX) typ)
   | CheckPat typ
   | CheckPatVar MetaA
 
 instPatExpected
   :: ExpectedPat Polytype
   -> Polytype
-  -> TCM (AbstractM, AbstractM -> TCM AbstractM) -- ^ (expectedType, expectedType -> patType)
+  -> VIX (AbstractM, AbstractM -> VIX AbstractM) -- ^ (expectedType, expectedType -> patType)
 instPatExpected (InferPat r) patType = do
   liftST $ writeSTRef r patType
   return (patType, return)
@@ -287,20 +287,20 @@ checkPatVar
   :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
   -> MetaA
-  -> TCM (Abstract.Pat AbstractM MetaA, Vector MetaA)
+  -> VIX (Abstract.Pat AbstractM MetaA, Vector MetaA)
 checkPatVar pat vs v = tcPat pat vs $ CheckPatVar v
 
 checkPat
   :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
   -> Polytype
-  -> TCM (Abstract.Pat AbstractM MetaA, Vector MetaA)
+  -> VIX (Abstract.Pat AbstractM MetaA, Vector MetaA)
 checkPat pat vs expectedType = tcPat pat vs $ CheckPat expectedType
 
 checkPats
   :: Vector (Concrete.Pat (PatternScope Concrete.Expr MetaA) ())
   -> Vector MetaA
-  -> TCM (Vector (Abstract.Pat AbstractM MetaA), Vector MetaA)
+  -> VIX (Vector (Abstract.Pat AbstractM MetaA), Vector MetaA)
 checkPats pats vars = do
   unless (Vector.length pats == Vector.length vars)
     $ throwError "checkPats length mismatch"
@@ -314,7 +314,7 @@ checkPats pats vars = do
 inferPat
   :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
-  -> TCM (Abstract.Pat AbstractM MetaA, Vector MetaA, Polytype)
+  -> VIX (Abstract.Pat AbstractM MetaA, Vector MetaA, Polytype)
 inferPat pat vs = do
   ref <- liftST $ newSTRef $ error "inferPat: empty result"
   (pat', vs') <- tcPat pat vs $ InferPat ref
@@ -325,7 +325,7 @@ tcPat
   :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
   -> ExpectedPat Polytype
-  -> TCM (Abstract.Pat AbstractM MetaA, Vector MetaA)
+  -> VIX (Abstract.Pat AbstractM MetaA, Vector MetaA)
 tcPat pat vs expected = do
   whenVerbose 20 $ do
     shownPat <- bitraverse (showMeta . instantiatePatternVec pure vs) pure pat
@@ -342,7 +342,7 @@ tcPat'
   :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
   -> ExpectedPat Polytype
-  -> TCM (Abstract.Pat AbstractM MetaA, Vector MetaA)
+  -> VIX (Abstract.Pat AbstractM MetaA, Vector MetaA)
 tcPat' pat vs expected = case pat of
   Concrete.VarPat h () -> do
     v <- case expected of
@@ -405,9 +405,9 @@ tcPat' pat vs expected = case pat of
 
 viewPat
   :: AbstractM -- ^ expectedType
-  -> (AbstractM -> TCM AbstractM) -- ^ expectedType -> patType
+  -> (AbstractM -> VIX AbstractM) -- ^ expectedType -> patType
   -> Abstract.Pat AbstractM MetaA
-  -> TCM (Abstract.Pat AbstractM MetaA) -- ^ expectedType
+  -> VIX (Abstract.Pat AbstractM MetaA) -- ^ expectedType
 viewPat expectedType f p = do
   x <- forall mempty expectedType
   fx <- f $ pure x
@@ -421,7 +421,7 @@ viewPat expectedType f p = do
 instantiateDataType
   :: Applicative f
   => Name
-  -> TCM (AbstractM, Vector (Plicitness, f MetaA))
+  -> VIX (AbstractM, Vector (Plicitness, f MetaA))
 instantiateDataType typeName = mdo
   (_, dataTypeType) <- definition typeName
   let params = telescope dataTypeType
@@ -440,7 +440,7 @@ instantiateDataType typeName = mdo
 resolveConstr
   :: Either Constr QConstr
   -> Maybe Rhotype
-  -> TCM QConstr
+  -> VIX QConstr
 resolveConstr (Left c) expected = do
   typeName <- resolveConstrsType [Left c] expected
   return (QConstr typeName c)
@@ -449,7 +449,7 @@ resolveConstr (Right qc) _ = return qc
 resolveConstrsType
   :: [Either Constr QConstr]
   -> Maybe Rhotype
-  -> TCM Name
+  -> VIX Name
 resolveConstrsType cs expected = do
   mExpectedType <- expectedDataType
   possibleTypeSets <- forM cs $ \c -> do
@@ -484,7 +484,7 @@ resolveConstrsType cs expected = do
       ]
   where
     expectedDataType = join <$> traverse findExpectedDataType expected
-    findExpectedDataType :: AbstractM -> TCM (Maybe Name)
+    findExpectedDataType :: AbstractM -> VIX (Maybe Name)
     findExpectedDataType typ = do
       typ' <- whnf typ
       case typ' of
@@ -514,7 +514,7 @@ resolveConstrsType cs expected = do
 prenexConvert
   :: Polytype
   -> InstBelow
-  -> TCM (Vector (Plicitness, MetaA), Rhotype, AbstractM -> TCM AbstractM)
+  -> VIX (Vector (Plicitness, MetaA), Rhotype, AbstractM -> VIX AbstractM)
 prenexConvert typ instBelow = do
   typ' <- whnf typ
   prenexConvert' typ' instBelow
@@ -522,7 +522,7 @@ prenexConvert typ instBelow = do
 prenexConvert'
   :: Polytype
   -> InstBelow
-  -> TCM (Vector (Plicitness, MetaA), Rhotype, AbstractM -> TCM AbstractM)
+  -> VIX (Vector (Plicitness, MetaA), Rhotype, AbstractM -> VIX AbstractM)
 prenexConvert' (Abstract.Pi h p t resScope) (InstBelow p') | p < p' = do
   y <- forall h t
   let resType = Util.instantiate1 (pure y) resScope
@@ -548,7 +548,7 @@ prenexConvert' typ _ = return (mempty, typ, pure)
 --------------------------------------------------------------------------------
 -- Subtyping/subsumption
 -- | subtype t1 t2 = f => f : t1 -> t2
-subtype :: Polytype -> Polytype -> TCM (AbstractM -> TCM AbstractM)
+subtype :: Polytype -> Polytype -> VIX (AbstractM -> VIX AbstractM)
 subtype typ1 typ2 = do
   logMeta 30 "subtype t1" typ1
   logMeta 30 "        t2" typ2
@@ -559,7 +559,7 @@ subtype typ1 typ2 = do
   modifyIndent pred
   return res
 
-subtype' :: Polytype -> Polytype -> TCM (AbstractM -> TCM AbstractM)
+subtype' :: Polytype -> Polytype -> VIX (AbstractM -> VIX AbstractM)
 subtype' (Abstract.Pi h1 p1 argType1 retScope1) (Abstract.Pi h2 p2 argType2 retScope2)
   | p1 == p2 = do
     let h = h1 <> h2
@@ -579,7 +579,7 @@ subtype' typ1 typ2 = do
     f1 =<< lams <$> metaTelescopeM as
     <*> (abstractM (teleAbstraction $ snd <$> as) =<< f2 x)
 
-subtypeRho :: Polytype -> Rhotype -> InstBelow -> TCM (AbstractM -> TCM AbstractM)
+subtypeRho :: Polytype -> Rhotype -> InstBelow -> VIX (AbstractM -> VIX AbstractM)
 subtypeRho typ1 typ2 instBelow = do
   logMeta 30 "subtypeRho t1" typ1
   logMeta 30 "           t2" typ2
@@ -590,7 +590,7 @@ subtypeRho typ1 typ2 instBelow = do
   modifyIndent pred
   return res
 
-subtypeRho' :: Polytype -> Rhotype -> InstBelow -> TCM (AbstractM -> TCM AbstractM)
+subtypeRho' :: Polytype -> Rhotype -> InstBelow -> VIX (AbstractM -> VIX AbstractM)
 subtypeRho' typ1 typ2 _ | typ1 == typ2 = return pure
 subtypeRho' (Abstract.Pi h1 p1 argType1 retScope1) (Abstract.Pi h2 p2 argType2 retScope2) _
   | p1 == p2 = do
@@ -616,10 +616,10 @@ subtypeRho' typ1 typ2 _ = do
 funSubtypes
   :: Rhotype
   -> Vector Plicitness
-  -> TCM
+  -> VIX
     ( Telescope Plicitness Abstract.Expr MetaA
     , Scope Tele Abstract.Expr MetaA
-    , Vector (AbstractM -> TCM AbstractM)
+    , Vector (AbstractM -> VIX AbstractM)
     )
 funSubtypes startType plics = go plics startType mempty mempty mempty
   where
@@ -650,7 +650,7 @@ funSubtypes startType plics = go plics startType mempty mempty mempty
 funSubtype
   :: Rhotype
   -> Plicitness
-  -> TCM (NameHint, Rhotype, Scope1 Abstract.Expr MetaA, AbstractM -> TCM AbstractM)
+  -> VIX (NameHint, Rhotype, Scope1 Abstract.Expr MetaA, AbstractM -> VIX AbstractM)
 funSubtype typ p = do
   typ' <- whnf typ
   funSubtype' typ' p
@@ -658,7 +658,7 @@ funSubtype typ p = do
 funSubtype'
   :: Rhotype
   -> Plicitness
-  -> TCM (NameHint, Rhotype, Scope1 Abstract.Expr MetaA, AbstractM -> TCM AbstractM)
+  -> VIX (NameHint, Rhotype, Scope1 Abstract.Expr MetaA, AbstractM -> VIX AbstractM)
 funSubtype' (Abstract.Pi h p t s) p' | p == p' = return (h, t, s, pure)
 funSubtype' typ p = do
   argType <- existsType mempty
@@ -671,7 +671,7 @@ funSubtype' typ p = do
 subtypeFun
   :: Rhotype
   -> Plicitness
-  -> TCM (Rhotype, Scope1 Abstract.Expr MetaA, AbstractM -> TCM AbstractM)
+  -> VIX (Rhotype, Scope1 Abstract.Expr MetaA, AbstractM -> VIX AbstractM)
 subtypeFun typ p = do
   typ' <- whnf typ
   subtypeFun' typ' p
@@ -679,7 +679,7 @@ subtypeFun typ p = do
 subtypeFun'
   :: Rhotype
   -> Plicitness
-  -> TCM (Rhotype, Scope1 Abstract.Expr MetaA, AbstractM -> TCM AbstractM)
+  -> VIX (Rhotype, Scope1 Abstract.Expr MetaA, AbstractM -> VIX AbstractM)
 subtypeFun' (Abstract.Pi _ p t s) p' | p == p' = return (t, s, pure)
 subtypeFun' typ p = do
   argType <- existsType mempty
@@ -693,7 +693,7 @@ subtypeFun' typ p = do
 generalise
   :: AbstractM
   -> AbstractM
-  -> TCM (AbstractM, AbstractM)
+  -> VIX (AbstractM, AbstractM)
 generalise expr typ = do
   -- fvs <- (<>) <$> foldMapM (:[]) typ' <*> foldMapM (:[]) expr
   fvs <- foldMapM (:[]) typ -- <*> foldMapM (:[]) expr'
@@ -719,14 +719,14 @@ generalise expr typ = do
 -- Definitions
 checkConstrDef
   :: ConstrDef ConcreteM
-  -> TCM (ConstrDef AbstractM, AbstractM, AbstractM)
+  -> VIX (ConstrDef AbstractM, AbstractM, AbstractM)
 checkConstrDef (ConstrDef c typ) = do
   typ' <- zonk =<< checkPoly typ Builtin.Type
   (sizes, ret) <- go typ'
   let size = foldr Builtin.addInt (Abstract.Lit 0) sizes
   return (ConstrDef c typ', ret, size)
   where
-    go :: AbstractM -> TCM ([AbstractM], AbstractM)
+    go :: AbstractM -> VIX ([AbstractM], AbstractM)
     go (Abstract.Pi h _ t s) = do
       v <- forall h t
       (sizes, ret) <- go $ instantiate1 (pure v) s
@@ -737,7 +737,7 @@ checkDataType
   :: MetaA
   -> DataDef Concrete.Expr MetaA
   -> AbstractM
-  -> TCM (DataDef Abstract.Expr MetaA, AbstractM, AbstractM)
+  -> VIX (DataDef Abstract.Expr MetaA, AbstractM, AbstractM)
 checkDataType name (DataDef cs) typ = do
   typ' <- zonk typ
   logMeta 20 "checkDataType t" typ'
@@ -781,7 +781,7 @@ checkDataType name (DataDef cs) typ = do
 checkClauses
   :: NonEmpty (Concrete.Clause Concrete.Expr MetaA)
   -> Polytype
-  -> TCM AbstractM
+  -> VIX AbstractM
 checkClauses clauses polyType = do
   forM_ clauses $ logMeta 20 "checkClauses clause"
   logMeta 20 "checkClauses typ" polyType
@@ -815,12 +815,12 @@ checkClauses clauses polyType = do
       | Vector.length pats > 0 = InstBelow $ fst $ Vector.head pats
       | otherwise = instBelowExpr $ fromScope s
 
-    piPlicitnesses :: AbstractM -> TCM [Plicitness]
+    piPlicitnesses :: AbstractM -> VIX [Plicitness]
     piPlicitnesses t = do
       t' <- whnf t
       piPlicitnesses' t'
 
-    piPlicitnesses' :: AbstractM -> TCM [Plicitness]
+    piPlicitnesses' :: AbstractM -> VIX [Plicitness]
     piPlicitnesses' (Abstract.Pi h p t s) = do
       v <- forall h t
       (:) p <$> piPlicitnesses (instantiate1 (pure v) s)
@@ -829,7 +829,7 @@ checkClauses clauses polyType = do
 checkClausesRho
   :: NonEmpty (Concrete.Clause Concrete.Expr MetaA)
   -> Rhotype
-  -> TCM AbstractM
+  -> VIX AbstractM
 checkClausesRho clauses rhoType = do
   forM_ clauses $ logMeta 20 "checkClausesRho clause"
   logMeta 20 "checkClausesRho type" rhoType
@@ -878,7 +878,7 @@ checkDefType
   -> Concrete.PatDefinition Concrete.Expr MetaA
   -> SourceLoc
   -> AbstractM
-  -> TCM (Definition Abstract.Expr MetaA, AbstractM)
+  -> VIX (Definition Abstract.Expr MetaA, AbstractM)
 checkDefType v def loc typ = located (render loc) $ case def of
   Concrete.PatDefinition clauses -> do
     e' <- checkClauses clauses typ
@@ -891,7 +891,7 @@ generaliseDef
   :: Vector MetaA
   -> Definition Abstract.Expr MetaA
   -> AbstractM
-  -> TCM ( Definition Abstract.Expr MetaA
+  -> VIX ( Definition Abstract.Expr MetaA
          , AbstractM
          )
 generaliseDef vs (Definition e) t = do
@@ -915,7 +915,7 @@ abstractMs
   => t (Plicitness, MetaA)
   -> (NameHint -> Plicitness -> AbstractM -> ScopeM () Abstract.Expr -> AbstractM)
   -> AbstractM
-  -> TCM AbstractM
+  -> VIX AbstractM
 abstractMs vs c b = foldrM
   (\(p, v)  s -> c (metaHint v) p (metaType v) <$> abstract1M v s)
   b
@@ -926,7 +926,7 @@ generaliseDefs
             , Definition Abstract.Expr MetaA
             , AbstractM
             )
-  -> TCM (Vector ( Definition Abstract.Expr MetaA
+  -> VIX (Vector ( Definition Abstract.Expr MetaA
                  , AbstractM
                  )
          )
@@ -978,7 +978,7 @@ checkRecursiveDefs
             , Concrete.PatDefinition Concrete.Expr Void
             , Concrete.Expr Void
             )
-  -> TCM (Vector ( Name
+  -> VIX (Vector ( Name
                  , Definition Abstract.Expr Void
                  , Abstract.Expr Void
                  )
@@ -1021,7 +1021,7 @@ checkRecursiveDefs defs = do
         Just index -> global
           $ fromMaybe (error "checkRecursiveDefs 2")
           $ names Vector.!? index
-      vf :: MetaA -> TCM b
+      vf :: MetaA -> VIX b
       vf v = throwError $ "checkRecursiveDefs " ++ show v
 
   forM (Vector.zip names genDefs) $ \(name, (def, typ)) -> do

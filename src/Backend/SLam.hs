@@ -13,12 +13,12 @@ import Inference.Normalise
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Sized.SLambda as SLambda
-import TCM
+import VIX
 
-slamSized :: AbstractM -> TCM LambdaM
+slamSized :: AbstractM -> VIX LambdaM
 slamSized e = SLambda.Anno <$> slam e <*> (slam =<< whnf' True =<< typeOf e)
 
-slam :: AbstractM -> TCM LambdaM
+slam :: AbstractM -> VIX LambdaM
 slam expr = do
   logMeta 20 "slam expr" expr
   modifyIndent succ
@@ -70,7 +70,7 @@ slam expr = do
 slamBrances
   :: Pretty c
   => Branches c Plicitness Abstract.Expr MetaA
-  -> TCM (Branches c () SLambda.Expr MetaA)
+  -> VIX (Branches c () SLambda.Expr MetaA)
 slamBrances (ConBranches cbrs) = do
   logMeta 20 "slamBrances brs" $ ConBranches cbrs
   modifyIndent succ
@@ -100,6 +100,6 @@ slamBrances (NoBranches typ) = NoBranches <$> slam typ
 
 slamDef
   :: Definition Abstract.Expr MetaA
-  -> TCM LambdaM
+  -> VIX LambdaM
 slamDef (Definition e) = slamSized e
 slamDef (DataDefinition _ e) = slamSized e

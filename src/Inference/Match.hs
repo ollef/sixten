@@ -19,7 +19,7 @@ import Meta
 import Syntax
 import Syntax.Abstract
 import Syntax.Abstract.Pattern
-import TCM
+import VIX
 import Util
 
 type PatM = Pat AbstractM MetaA
@@ -42,21 +42,21 @@ matchSingle
   :: AbstractM
   -> PatM
   -> AbstractM
-  -> TCM (Expr (Var Fail MetaA))
+  -> VIX (Expr (Var Fail MetaA))
 matchSingle expr pat innerExpr
   = match [expr] [([pat], F <$> innerExpr)] $ F <$> innerExpr
 
 matchCase
   :: AbstractM
   -> [(PatM, AbstractM)]
-  -> TCM (Expr (Var Fail MetaA))
+  -> VIX (Expr (Var Fail MetaA))
 matchCase expr pats
   = match [expr] (bimap pure (fmap F) <$> pats) (pure $ B Fail)
 
 matchClauses
   :: [AbstractM]
   -> [([PatM], AbstractM)]
-  -> TCM (Expr (Var Fail MetaA))
+  -> VIX (Expr (Var Fail MetaA))
 matchClauses exprs pats
   = match exprs (fmap (fmap F) <$> pats) (pure $ B Fail)
 
@@ -64,13 +64,13 @@ type Match
   = [AbstractM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
   -> [Clause] -- ^ Clauses
   -> Expr (Var Fail MetaA) -- ^ The continuation for pattern match failure
-  -> TCM (Expr (Var Fail MetaA))
+  -> VIX (Expr (Var Fail MetaA))
 
 type NonEmptyMatch
   = [AbstractM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
   -> NonEmpty Clause -- ^ Clauses
   -> Expr (Var Fail MetaA) -- ^ The continuation for pattern match failure
-  -> TCM (Expr (Var Fail MetaA))
+  -> VIX (Expr (Var Fail MetaA))
 
 -- | Desugar pattern matching clauses
 match :: Match
@@ -133,7 +133,7 @@ matchCon expr exprs clauses expr0 = do
 conPatArgs
   :: QConstr
   -> AbstractM
-  -> TCM (Vector (Plicitness, PatM, AbstractM), Vector MetaA)
+  -> VIX (Vector (Plicitness, PatM, AbstractM), Vector MetaA)
 conPatArgs c typ = do
   typ' <- whnf typ
   let (_, args) = appsView typ'
@@ -149,7 +149,7 @@ conPatArgs c typ = do
 patternTelescope
   :: Vector MetaA
   -> Vector (a, Pat typ b, AbstractM)
-  -> TCM (Telescope a Expr MetaA)
+  -> VIX (Telescope a Expr MetaA)
 patternTelescope ys ps = Telescope <$> mapM go ps
   where
     go (p, pat, e) = do

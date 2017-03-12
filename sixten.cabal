@@ -67,7 +67,7 @@ executable sixten
                        Syntax.Sized.SLambda
                        Syntax.SourceLoc
                        Syntax.Telescope
-                       TCM
+                       VIX
                        TopoSort
                        Util
   build-depends:

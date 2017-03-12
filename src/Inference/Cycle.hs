@@ -13,12 +13,12 @@ import Text.Trifecta.Result(Err(Err), explain)
 import Meta
 import Syntax
 import Syntax.Abstract
-import TCM
+import VIX
 import TopoSort
 
 detectTypeRepCycles
   :: Vector (SourceLoc, (MetaA, Definition Expr MetaA, AbstractM))
-  -> TCM ()
+  -> VIX ()
 detectTypeRepCycles defs = do
   reps <- traverse
     (bitraverse pure zonk)
@@ -45,7 +45,7 @@ detectTypeRepCycles defs = do
 
 detectDefCycles
   :: Vector (SourceLoc, (MetaA, Definition Expr MetaA, AbstractM))
-  -> TCM ()
+  -> VIX ()
 detectDefCycles defs = do
   defExprs <- traverse
     (bitraverse pure zonk)

@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving, Rank2Types, TypeFamilies, OverloadedStrings #-}
-module TCM where
+module VIX where
 
 import Control.Monad.Except
 import Control.Monad.ST
@@ -29,7 +29,7 @@ newtype Level = Level Int
 instance Pretty Level where
   pretty (Level i) = pretty i
 
-data TCMState = TCMState
+data VIXState = VIXState
   { tcLocation :: SourceLoc
   , tcContext :: HashMap Name (Definition Expr Void, Type Void)
   , tcConstrs :: HashMap Constr (Set (Name, Type Void))
@@ -43,8 +43,8 @@ data TCMState = TCMState
   , tcTarget :: Target
   }
 
-emptyTCMState :: Target -> Handle -> Int -> TCMState
-emptyTCMState target handle verbosity = TCMState
+emptyVIXState :: Target -> Handle -> Int -> VIXState
+emptyVIXState target handle verbosity = VIXState
   { tcLocation = mempty
   , tcContext = mempty
   , tcConstrs = mempty
@@ -58,38 +58,38 @@ emptyTCMState target handle verbosity = TCMState
   , tcTarget = target
   }
 
-newtype TCM a = TCM (ExceptT String (StateT TCMState IO) a)
-  deriving (Functor, Applicative, Monad, MonadFix, MonadError String, MonadState TCMState, MonadIO)
+newtype VIX a = VIX (ExceptT String (StateT VIXState IO) a)
+  deriving (Functor, Applicative, Monad, MonadFix, MonadError String, MonadState VIXState, MonadIO)
 
-instance MonadST TCM where
-  type World TCM = RealWorld
-  liftST = TCM . liftST
+instance MonadST VIX where
+  type World VIX = RealWorld
+  liftST = VIX . liftST
 
-unTCM
-  :: TCM a
-  -> ExceptT String (StateT TCMState IO) a
-unTCM (TCM x) = x
+unVIX
+  :: VIX a
+  -> ExceptT String (StateT VIXState IO) a
+unVIX (VIX x) = x
 
-runTCM
-  :: TCM a
+runVIX
+  :: VIX a
   -> Target
   -> Handle
   -> Int
   -> IO (Either String a)
-runTCM tcm target handle verbosity
-  = evalStateT (runExceptT $ unTCM tcm)
-  $ emptyTCMState target handle verbosity
+runVIX vix target handle verbosity
+  = evalStateT (runExceptT $ unVIX vix)
+  $ emptyVIXState target handle verbosity
 
-fresh :: TCM Int
+fresh :: VIX Int
 fresh = do
   i <- gets tcFresh
   modify $ \s -> s {tcFresh = i + 1}
   return i
 
-level :: TCM Level
+level :: VIX Level
 level = gets tcLevel
 
-enterLevel :: TCM a -> TCM a
+enterLevel :: VIX a -> VIX a
 enterLevel x = do
   l <- level
   modify $ \s -> s {tcLevel = l + 1}
@@ -97,7 +97,7 @@ enterLevel x = do
   modify $ \s -> s {tcLevel = l}
   return r
 
-located :: SourceLoc -> TCM a -> TCM a
+located :: SourceLoc -> VIX a -> VIX a
 located loc m = do
   oldLoc <- gets tcLocation
   modify $ \s -> s { tcLocation = loc }
@@ -105,40 +105,40 @@ located loc m = do
   modify $ \s -> s { tcLocation = oldLoc }
   return res
 
-currentLocation :: TCM SourceLoc
+currentLocation :: VIX SourceLoc
 currentLocation = gets tcLocation
 
 -------------------------------------------------------------------------------
 -- Debugging
-log :: Text -> TCM ()
+log :: Text -> VIX ()
 log l = do
   h <- gets tcLogHandle
   liftIO $ Text.hPutStrLn h l
 
-logVerbose :: Int -> Text -> TCM ()
-logVerbose v l = whenVerbose v $ TCM.log l
+logVerbose :: Int -> Text -> VIX ()
+logVerbose v l = whenVerbose v $ VIX.log l
 
-modifyIndent :: (Int -> Int) -> TCM ()
+modifyIndent :: (Int -> Int) -> VIX ()
 modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
 
-logPretty :: Pretty a => Int -> String -> a -> TCM ()
+logPretty :: Pretty a => Int -> String -> a -> VIX ()
 logPretty v s x = whenVerbose v $ do
   i <- gets tcIndent
-  TCM.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide (pretty x)
+  VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide (pretty x)
 
-logShow :: Show a => Int -> String -> a -> TCM ()
+logShow :: Show a => Int -> String -> a -> VIX ()
 logShow v s x = whenVerbose v $ do
   i <- gets tcIndent
-  TCM.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> fromString (show x)
+  VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> fromString (show x)
 
-whenVerbose :: Int -> TCM () -> TCM ()
+whenVerbose :: Int -> VIX () -> VIX ()
 whenVerbose i m = do
   v <- gets tcVerbosity
   when (v >= i) m
 
 -------------------------------------------------------------------------------
 -- Working with abstract syntax
-addContext :: HashMap Name (Definition Expr Void, Type Void) -> TCM ()
+addContext :: HashMap Name (Definition Expr Void, Type Void) -> VIX ()
 addContext prog = modify $ \s -> s
   { tcContext = prog <> tcContext s
   , tcConstrs = HashMap.unionWith (<>) cs $ tcConstrs s
@@ -148,14 +148,14 @@ addContext prog = modify $ \s -> s
       ConstrDef c t <- quantifiedConstrTypes d defType $ const Implicit
       return (c, Set.fromList [(n, t)])
 
-definition :: Name -> TCM (Definition Expr v, Expr v)
+definition :: Name -> VIX (Definition Expr v, Expr v)
 definition name = do
   mres <- gets $ HashMap.lookup name . tcContext
   maybe (throwError $ "Not in scope: " ++ show name)
         (return . bimap vacuous vacuous)
         mres
 
-qconstructor :: QConstr -> TCM (Expr v)
+qconstructor :: QConstr -> VIX (Expr v)
 qconstructor qc@(QConstr n c) = do
   (def, typ) <- definition n
   case def of
@@ -170,7 +170,7 @@ qconstructor qc@(QConstr n c) = do
 constructor
   :: Ord v
   => Either Constr QConstr
-  -> TCM (Set (Name, Type v))
+  -> VIX (Set (Name, Type v))
 constructor (Right qc@(QConstr n _)) = Set.singleton . (,) n <$> qconstructor qc
 constructor (Left c)
   = gets
@@ -182,23 +182,23 @@ constructor (Left c)
 -- Signatures
 addConvertedSignatures
   :: HashMap Name Closed.FunSignature
-  -> TCM ()
+  -> VIX ()
 addConvertedSignatures p
   = modify $ \s -> s { tcConvertedSignatures = p <> tcConvertedSignatures s }
 
 convertedSignature
   :: Name
-  -> TCM (Maybe Closed.FunSignature)
+  -> VIX (Maybe Closed.FunSignature)
 convertedSignature name = gets $ HashMap.lookup name . tcConvertedSignatures
 
 addSignatures
   :: HashMap Name (Signature ReturnIndirect)
-  -> TCM ()
+  -> VIX ()
 addSignatures p = modify $ \s -> s { tcSignatures = p <> tcSignatures s }
 
 signature
   :: Name
-  -> TCM (Signature ReturnIndirect)
+  -> VIX (Signature ReturnIndirect)
 signature name = do
   mres <- gets $ HashMap.lookup name . tcSignatures
   maybe (throwError $ "Not in scope: signature for " ++ show name)
@@ -207,7 +207,7 @@ signature name = do
 
 -------------------------------------------------------------------------------
 -- General constructor queries
-qconstructorIndex :: TCM (QConstr -> Maybe Int)
+qconstructorIndex :: VIX (QConstr -> Maybe Int)
 qconstructorIndex = do
   cxt <- gets tcContext
   return $ \(QConstr n c) -> do
@@ -219,14 +219,14 @@ qconstructorIndex = do
 
 constrArity
   :: QConstr
-  -> TCM Int
+  -> VIX Int
 constrArity
   = fmap (teleLength . fst . pisView)
-  . (qconstructor :: QConstr -> TCM (Expr Void))
+  . (qconstructor :: QConstr -> VIX (Expr Void))
 
 constrIndex
   :: QConstr
-  -> TCM Int
+  -> VIX Int
 constrIndex qc@(QConstr n c) = do
   (DataDefinition (DataDef cs) _, _) <- definition n
   case List.findIndex ((== c) . constrName) cs of
