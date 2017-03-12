@@ -229,7 +229,7 @@ liftConvertedGroup
   :: [(Name, Lifted.Definition Closed.Expr Void)]
   -> TCM [[(Name, Lifted.Definition Lifted.Expr Void)]]
 liftConvertedGroup defs = fmap (Lifted.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
-  let (e', fs) = liftDefinition name e
+  let (e', fs) = liftClosures name e
   return $ (name, e') : fmap (second $ Lifted.FunctionDef Private) fs
 
 inferGroupDirections

@@ -114,14 +114,14 @@ liftDefinitionM (Lifted.ConstantDef vis (Lifted.Constant e)) = do
   e' <- liftExpr e
   return $ Lifted.ConstantDef vis $ Lifted.Constant e'
 
-liftDefinition
+liftClosures
   :: Name
   -> Lifted.Definition Closed.Expr Void
   -> (Lifted.Definition Lifted.Expr Void, [(Name, Lifted.Function Lifted.Expr Void)])
-liftDefinition name expr
+liftClosures name expr
   = second liftedFunctions
   $ runState (unLifted $ liftDefinitionM expr) LiftState
-  { freshNames = [name <> "-lifted-def" <> if n == 0 then "" else shower n | n <- [(0 :: Int)..]]
+  { freshNames = [name <> "-lifted-closure" <> if n == 0 then "" else shower n | n <- [(0 :: Int)..]]
   , liftedFunctions = mempty
   , isClosure = Lifted.IsClosure
   }
