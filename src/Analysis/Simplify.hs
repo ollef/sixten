@@ -115,8 +115,7 @@ etaLams glob applied tele scope = case go 0 $ fromScope scope of
         i' = i + 1
     go _ _ = Nothing
     etaAllowed e n
-      = n < len -- the resulting expression terminates since it's a lambda
-      || applied >= n -- termination doesn't matter since the expression is applied anyway
+      = applied >= n -- termination doesn't matter since the expression is applied anyway
       || terminates glob e -- Use glob for termination to e.g. avoid making `loop = loop` out of `loop x = loop x`
     len = teleLength tele
     as = teleAnnotations tele
