@@ -39,7 +39,7 @@ liftExpr expr = case expr of
   Closed.Lit l -> return $ Lifted.Lit l
   Closed.Con c es -> Lifted.Con c <$> mapM liftExpr es
   Closed.Lams tele s -> do
-    s' <- underScope liftExpr s
+    s' <- transverseScope liftExpr s
     tele' <- liftTelescope tele
     cl <- gets isClosure
     f <- liftFunction $ Lifted.Function cl tele' s'
@@ -55,18 +55,11 @@ liftExpr expr = case expr of
   Closed.Prim p -> Lifted.Prim <$> mapM liftExpr p
   Closed.Anno e t -> Lifted.Anno <$> liftExpr e <*> liftExpr t
 
-underScope
-  :: (Functor m, Monad e, Monad e')
-  => (e (Var b v) -> m (e' (Var b v)))
-  -> Scope b e v
-  -> m (Scope b e' v)
-underScope f s = toScope <$> f (fromScope s)
-
 liftBranches
   :: Branches QConstr () Closed.Expr v
   -> Lift (Branches QConstr () Lifted.Expr v)
 liftBranches (ConBranches cbrs) = ConBranches <$> sequence
-  [ (,,) qc <$> liftTelescope tele <*> underScope liftExpr s
+  [ (,,) qc <$> liftTelescope tele <*> transverseScope liftExpr s
   | (qc, tele, s) <- cbrs
   ]
 liftBranches (LitBranches lbrs def) = LitBranches <$> sequence
@@ -79,14 +72,14 @@ liftTelescope
   :: Telescope d Closed.Expr v
   -> Lift (Telescope d Lifted.Expr v)
 liftTelescope (Telescope tele) = Telescope
-  <$> mapM (\(h, d, s) -> (,,) h d <$> underScope liftExpr s) tele
+  <$> mapM (\(h, d, s) -> (,,) h d <$> transverseScope liftExpr s) tele
 
 liftToDefinitionM
   :: Closed.Expr Void
   -> Lift (Lifted.Definition Lifted.Expr Void)
 liftToDefinitionM (Closed.Anno (Closed.Lams tele s) _) = do
   tele' <- liftTelescope tele
-  s' <- underScope liftExpr s
+  s' <- transverseScope liftExpr s
   return $ Lifted.FunctionDef Public $ Lifted.Function Lifted.NonClosure tele' s'
 liftToDefinitionM sexpr
   = Lifted.ConstantDef Public . Lifted.Constant <$> liftExpr sexpr
@@ -108,7 +101,7 @@ liftDefinitionM
   -> Lift (Lifted.Definition Lifted.Expr Void)
 liftDefinitionM (Lifted.FunctionDef vis (Lifted.Function cl tele s)) = do
   tele' <- liftTelescope tele
-  s' <- underScope liftExpr s
+  s' <- transverseScope liftExpr s
   return $ Lifted.FunctionDef vis $ Lifted.Function cl tele' s'
 liftDefinitionM (Lifted.ConstantDef vis (Lifted.Constant e)) = do
   e' <- liftExpr e

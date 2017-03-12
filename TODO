@@ -12,8 +12,6 @@ Codegen
   Should things of known size > 1 be passed as LLVM arrays?
   Use e.g. llvm-hs-kaleidoscope for llvm?
 Compiler
-  Look into a class for "(bi)transverse" (monadic/applicative hoisting)?
-    Replace `Lift.underScope`
   Add printing to compiler passes that are not VIX (make a MonadLog class?)
   Simplify/make consistent all the type synonyms
   Clean up MetaVar handling (not all modules need the full generality)
