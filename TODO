@@ -13,13 +13,10 @@ Codegen
     Make literals llvm `constant`s
   Should things of known size > 1 be passed as LLVM arrays?
   Use e.g. llvm-hs-kaleidoscope for llvm?
-  Change primfun to primcall or something?
-  Make calling things other than globals and primfuns an error
 Compiler
   Look into a class for "(bi)transverse" (monadic/applicative hoisting)?
     Replace `Lift.underScope`
   Add printing to compiler passes that are not TCM (make a MonadLog class?)
-  * Make converted signatures contain converted exprs to get rid of the back-and-forth conversions between slambda representations?
   Simplify/make consistent all the type synonyms
   Clean up MetaVar handling (not all modules need the full generality)
   Make code generation use TCM

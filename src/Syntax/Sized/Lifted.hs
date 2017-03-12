@@ -20,10 +20,10 @@ data Expr v
   | Lit Literal
   | Con QConstr (Vector (Expr v)) -- ^ Fully applied
   | Call (Expr v) (Vector (Expr v)) -- ^ Fully applied, only global
+  | PrimCall RetDir (Expr v) (Vector (Expr v, Direction))
   | Let NameHint (Expr v) (Scope1 Expr v)
   | Case (Expr v) (Branches QConstr () Expr v)
   | Prim (Primitive (Expr v))
-  | PrimFun (RetDir, Vector Direction) (Expr v)
   | Anno (Expr v) (Type v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
@@ -83,10 +83,10 @@ instance GlobalBind Expr where
     Lit l -> Lit l
     Con c es -> Con c (bind f g <$> es)
     Call e es -> Call (bind f g e) (bind f g <$> es)
+    PrimCall retDir e es -> PrimCall retDir (bind f g e) (first (bind f g) <$> es)
     Let h e s -> Let h (bind f g e) (bound f g s)
     Case e brs -> Case (bind f g e) (bound f g brs)
     Prim p -> Prim $ bind f g <$> p
-    PrimFun sig e -> PrimFun sig (bind f g e)
     Anno e t -> Anno (bind f g e) (bind f g t)
 
 instance GlobalBound Constant where
@@ -114,6 +114,7 @@ instance (Eq v, IsString v, Pretty v)
     Lit l -> prettyM l
     Con c es -> prettyApps (prettyM c) $ prettyM <$> es
     Call e es -> prettyApps (prettyM e) $ prettyM <$> es
+    PrimCall retDir f es -> "primcall" <+> prettyAnnotation retDir (prettyApps (prettyM f) $ (\(e, d) -> prettyAnnotation d $ prettyM e) <$> es)
     Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
       "let" <+> prettyM n <+> "=" <+> prettyM e <+> "in" <+>
         prettyM (Util.instantiate1 (pure $ fromName n) s)
@@ -121,8 +122,6 @@ instance (Eq v, IsString v, Pretty v)
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> indent 2 (prettyM brs)
     Prim p -> prettyM $ pretty <$> p
-    PrimFun sig e -> parens `above` annoPrec $
-      prettyM e <+> "@" <+> prettyM (show sig)
     Anno e t -> parens `above` annoPrec $
       prettyM e <+> ":" <+> prettyM t
 

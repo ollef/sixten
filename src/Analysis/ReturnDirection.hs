@@ -119,19 +119,15 @@ infer expr = case expr of
     return (Con c $ fst <$> es', MOutParam)  -- TODO: Can be improved.
   Call f es -> do
     (retDir, argDirs) <- inferFunction f $ Vector.length es
-    case retDir of
-      ReturnIndirect mretIndirect -> do
-        (f', _) <- infer f
-        locatedEs <- mapM infer es
-        let es' = fst <$> locatedEs
-            locs = [l | ((_, l), Indirect) <- Vector.zip locatedEs argDirs]
-        loc <- foldM maxMetaReturnIndirect mretIndirect locs
-        return (Call f' es', loc)
-      _ -> do
-        (f', _) <- infer f
-        locatedEs <- mapM infer es
-        let es' = fst <$> locatedEs
-        return (Call f' es', MOutParam)
+    inferCall Call retDir argDirs f es
+  PrimCall retDir f es -> do
+    let (args, argDirs) = Vector.unzip es
+    inferCall
+      (\f' es' -> PrimCall retDir f' $ Vector.zip es' argDirs)
+      (fromReturnIndirect <$> retDir)
+      argDirs
+      f
+      args
   Let h e s -> do
     (e', eloc) <- infer e
     v <- exists h eloc Nothing
@@ -144,13 +140,30 @@ infer expr = case expr of
   Prim p -> do
     p' <- mapM (fmap fst . infer) p
     return (Prim p', MOutParam)
-  PrimFun sig e -> do
-    (e', loc) <- infer e
-    return (PrimFun sig e', loc)
   Anno e t -> do
     (e', eLoc) <- infer e
     (t', _tLoc) <- infer t
     return (Anno e' t', eLoc)
+
+inferCall
+  :: (Expr MetaVar -> Vector (Expr MetaVar) -> Expr MetaVar)
+  -> ReturnDirection MetaReturnIndirect
+  -> Vector Direction
+  -> Expr MetaVar
+  -> Vector (Expr MetaVar)
+  -> TCM (Expr MetaVar, MetaReturnIndirect)
+inferCall con (ReturnIndirect mretIndirect) argDirs f es = do
+  (f', _) <- infer f
+  locatedEs <- mapM infer es
+  let es' = fst <$> locatedEs
+      locs = [l | ((_, l), Indirect) <- Vector.zip locatedEs argDirs]
+  loc <- foldM maxMetaReturnIndirect mretIndirect locs
+  return (con f' es', loc)
+inferCall con _ _ f es = do
+  (f', _) <- infer f
+  locatedEs <- mapM infer es
+  let es' = fst <$> locatedEs
+  return (con f' es', MOutParam)
 
 inferBranches
   :: Location
@@ -196,7 +209,6 @@ inferFunction expr arity = case expr of
     return $ case sig of
       FunctionSig retDir argDirs -> (fromReturnIndirect <$> retDir, argDirs)
       _ -> def
-  PrimFun (retDir, argDirs) _ -> return (fromReturnIndirect <$> retDir, argDirs)
   _ -> return def
   where
     def = (ReturnIndirect MOutParam, Vector.replicate arity Indirect)

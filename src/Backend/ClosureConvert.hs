@@ -3,6 +3,7 @@ module Backend.ClosureConvert where
 
 import Control.Applicative
 import Control.Monad.Except
+import Data.Bitraversable
 import qualified Data.HashMap.Lazy as HashMap
 import Data.Maybe
 import Data.Monoid
@@ -98,6 +99,10 @@ convertExpr expr = case expr of
     e' <- convertExpr e
     es' <- mapM convertExpr es
     return $ unknownCall e' es'
+  Lifted.PrimCall retDir e es -> do
+    e' <- convertExpr e
+    es' <- mapM (bitraverse convertExpr pure) es
+    return $ Closed.PrimCall retDir e' es'
   Lifted.Let h e bodyScope -> do
     e' <- convertExpr e
     v <- forall h Unit
@@ -107,7 +112,6 @@ convertExpr expr = case expr of
     return $ Closed.Let h e' bodyScope'
   Lifted.Case e brs -> Closed.Case <$> convertExpr e <*> convertBranches brs
   Lifted.Prim p -> Closed.Prim <$> mapM convertExpr p
-  Lifted.PrimFun sig e -> Closed.PrimFun sig <$> convertExpr e
   Lifted.Anno e t -> Closed.Anno <$> convertExpr e <*> convertExpr t
 
 unknownCall

@@ -268,10 +268,6 @@ apply numArgs
         $ Closed.Call (global FailName) $ pure $ Closed.sized 1 (Closed.Lit 1)
     )
   where
-    sig arity =
-      ( ReturnIndirect OutParam
-      , Vector.replicate (arity + 1) Direct <> Vector.replicate arity Indirect
-      )
     br :: Int -> Closed.Expr (Var Tele (Var Tele Void))
     br arity
       | numArgs < arity
@@ -288,18 +284,18 @@ apply numArgs
         $ (\n -> Closed.sized 1 $ Closed.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs
         <|> (\n -> flip Closed.Anno (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + Tele numArgs + n) <$> Vector.enumFromN 0 numArgs
       | numArgs == arity
-        = Closed.Call (Closed.PrimFun (sig arity) $ Closed.Var $ B 0)
-        $ Vector.cons (Closed.sized 1 $ Closed.Var $ F $ B 0)
-        $ (\n -> Closed.sized 1 $ Closed.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs
-        <|> (\n -> flip Closed.Anno (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + Tele numArgs + n) <$> Vector.enumFromN 0 numArgs
+        = Closed.PrimCall (ReturnIndirect OutParam) (Closed.Var $ B 0)
+        $ Vector.cons (Closed.sized 1 $ Closed.Var $ F $ B 0, Direct)
+        $ (\n -> (Closed.sized 1 $ Closed.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN 0 numArgs
+        <|> (\n -> (flip Closed.Anno (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + Tele numArgs + n, Indirect)) <$> Vector.enumFromN 0 numArgs
       | otherwise
         = Closed.Call (global $ applyName $ numArgs - arity)
         $ Vector.cons
           (Closed.sized 1
-          $ Closed.Call (Closed.PrimFun (sig arity) $ Closed.Var $ B 0)
-          $ Vector.cons (Closed.sized 1 $ Closed.Var $ F $ B 0)
-          $ (\n -> Closed.sized 1 $ Closed.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 arity
-          <|> (\n -> flip Closed.Anno (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + fromIntegral numArgs + n) <$> Vector.enumFromN 0 arity)
+          $ Closed.PrimCall (ReturnIndirect OutParam) (Closed.Var $ B 0)
+          $ Vector.cons (Closed.sized 1 $ Closed.Var $ F $ B 0, Direct)
+          $ (\n -> (Closed.sized 1 $ Closed.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN 0 arity
+          <|> (\n -> (flip Closed.Anno (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + fromIntegral numArgs + n, Indirect)) <$> Vector.enumFromN 0 arity)
         $ (\n -> Closed.sized 1 $ Closed.Var $ F $ B $ 1 + n) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
         <|> (\n -> flip Closed.Anno (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + fromIntegral numArgs + n) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
 

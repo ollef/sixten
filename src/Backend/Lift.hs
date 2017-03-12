@@ -3,6 +3,7 @@ module Backend.Lift where
 
 import Control.Monad.State
 import Data.Bifunctor
+import Data.Bitraversable
 import Data.Monoid
 import Data.Void
 
@@ -44,12 +45,14 @@ liftExpr expr = case expr of
     f <- liftFunction $ Lifted.Function cl tele' s'
     return $ Lifted.Global f
   Closed.Call e es -> Lifted.Call <$> liftExpr e <*> mapM liftExpr es
+  Closed.PrimCall retDir e es -> Lifted.PrimCall retDir
+    <$> liftExpr e
+    <*> traverse (bitraverse liftExpr pure) es
   Closed.Let h e s -> Lifted.Let h
     <$> liftExpr e
     <*> fmap toScope (liftExpr $ fromScope s)
   Closed.Case e brs -> Lifted.Case <$> liftExpr e <*> liftBranches brs
   Closed.Prim p -> Lifted.Prim <$> mapM liftExpr p
-  Closed.PrimFun sig e -> Lifted.PrimFun sig <$> liftExpr e
   Closed.Anno e t -> Lifted.Anno <$> liftExpr e <*> liftExpr t
 
 underScope

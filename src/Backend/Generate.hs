@@ -109,23 +109,8 @@ generateExpr genSz expr = case expr of
     generateCon sz qc es
   Call funExpr es -> do
     (retDir, argDirs) <- funSignature funExpr $ Vector.length es
-    fun <- generateFunOp funExpr retDir argDirs
-    args <- mapM (uncurry generateDirectedExpr) $ Vector.zip es argDirs
-    case retDir of
-      ReturnVoid -> do
-        emit $ varCall voidT fun args
-        return VoidVar
-      ReturnIndirect OutParam -> do
-        sz <- genSz
-        ret <- "call-return" =: alloca sz
-        emit $ varCall voidT fun $ Vector.snoc args $ IndirectVar ret
-        return $ IndirectVar ret
-      ReturnIndirect Projection -> do
-        ret <- "call-return" =: varCall pointerT fun args
-        return $ IndirectVar ret
-      ReturnDirect -> do
-        ret <- "call-return" =: varCall integerT fun args
-        return $ DirectVar ret
+    generateCall genSz retDir funExpr $ Vector.zip es argDirs
+  PrimCall retDir funExpr es -> generateCall genSz retDir funExpr es
   Let _h e s -> do
     v <- generateExpr (error "generateExpr sz") e
     generateExpr genSz $ Bound.instantiate1 (pure v) s
@@ -147,12 +132,37 @@ generateExpr genSz expr = case expr of
       (_, Just directRets) -> fmap DirectVar $ "case-result" =: phiInt directRets
       (_, Nothing) -> fmap IndirectVar $ "case-result" =: phiPtr (first snd <$> rets)
   Prim p -> generatePrim p
-  PrimFun _ e -> generateExpr genSz e
   Anno e typ -> do
     let genSz' = do
           szVar <- generateExpr generateTypeSize typ
           loadVar "size" szVar
     generateExpr genSz' e
+
+generateCall
+  :: Gen (Operand Int)
+  -> RetDir
+  -> Expr Var
+  -> Vector (Expr Var, Direction)
+  -> Gen Var
+generateCall genSz retDir funExpr es = do
+  let argDirs = snd <$> es
+  fun <- generateFunOp funExpr retDir argDirs
+  args <- mapM (uncurry generateDirectedExpr) es
+  case retDir of
+    ReturnVoid -> do
+      emit $ varCall voidT fun args
+      return VoidVar
+    ReturnIndirect OutParam -> do
+      sz <- genSz
+      ret <- "call-return" =: alloca sz
+      emit $ varCall voidT fun $ Vector.snoc args $ IndirectVar ret
+      return $ IndirectVar ret
+    ReturnIndirect Projection -> do
+      ret <- "call-return" =: varCall pointerT fun args
+      return $ IndirectVar ret
+    ReturnDirect -> do
+      ret <- "call-return" =: varCall integerT fun args
+      return $ DirectVar ret
 
 storeExpr :: Gen (Operand Int) -> Expr Var -> Operand Ptr -> Gen ()
 storeExpr genSz expr ret = case expr of
@@ -167,18 +177,8 @@ storeExpr genSz expr ret = case expr of
   Con qc es -> storeCon qc es ret
   Call funExpr es -> do
     (retDir, argDirs) <- funSignature funExpr $ Vector.length es
-    fun <- generateFunOp funExpr retDir argDirs
-    args <- mapM (uncurry generateDirectedExpr) $ Vector.zip es argDirs
-    case retDir of
-      ReturnVoid -> emit $ varCall voidT fun args
-      ReturnIndirect OutParam -> emit $ varCall voidT fun $ Vector.snoc args $ IndirectVar ret
-      ReturnIndirect Projection -> do
-        res <- "call-return" =: varCall pointerT fun args
-        sz <- genSz
-        wordcpy ret res sz
-      ReturnDirect -> do
-        res <- "call-return" =: varCall integerT fun args
-        emit $ store res ret
+    storeCall genSz retDir funExpr (Vector.zip es argDirs) ret
+  PrimCall retDir funExpr es -> storeCall genSz retDir funExpr es ret
   Let _h e s -> do
     v <- generateExpr (error "storeExpr sz") e
     storeExpr genSz (Bound.instantiate1 (pure v) s) ret
@@ -187,12 +187,33 @@ storeExpr genSz expr ret = case expr of
     res <- generatePrim p
     intRes <- loadVar "loaded-prim" res
     emit $ store intRes ret
-  PrimFun _ e -> storeExpr genSz e ret
   Anno e typ -> do
     let genSz' = do
           szVar <- generateExpr generateTypeSize typ
           loadVar "size" szVar
     storeExpr genSz' e ret
+
+storeCall
+  :: Gen (Operand Int)
+  -> RetDir
+  -> Expr Var
+  -> Vector (Expr Var, Direction)
+  -> Operand Ptr
+  -> Gen ()
+storeCall genSz retDir funExpr es ret = do
+  let argDirs = snd <$> es
+  fun <- generateFunOp funExpr retDir argDirs
+  args <- mapM (uncurry generateDirectedExpr) es
+  case retDir of
+    ReturnVoid -> emit $ varCall voidT fun args
+    ReturnIndirect OutParam -> emit $ varCall voidT fun $ Vector.snoc args $ IndirectVar ret
+    ReturnIndirect Projection -> do
+      res <- "call-return" =: varCall pointerT fun args
+      sz <- genSz
+      wordcpy ret res sz
+    ReturnDirect -> do
+      res <- "call-return" =: varCall integerT fun args
+      emit $ store res ret
 
 funSignature :: Expr Var -> Int -> Gen (RetDir, Vector Direction)
 funSignature expr arity = case expr of
@@ -201,7 +222,6 @@ funSignature expr arity = case expr of
     return $ case msig of
       Just (FunctionSig retDir argDirs) -> (retDir, argDirs)
       _ -> def
-  PrimFun sig _ -> return sig
   _ -> return def
   where
     def = (ReturnIndirect OutParam, Vector.replicate arity Indirect)
