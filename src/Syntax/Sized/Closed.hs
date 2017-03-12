@@ -44,12 +44,6 @@ sizeOf :: Expr v -> Expr v
 sizeOf (Anno _ sz) = sz
 sizeOf _ = error "sizeOf"
 
-{-
-sExprDir :: Expr v -> Direction
-sExprDir (Anno _ sz) = sizeDir sz
-sExprDir _ = error "sExprDir"
--}
-
 sizedSizesOf :: Functor f => f (Expr v) -> f (Expr v)
 sizedSizesOf = fmap (sized 1 . sizeOf)
 

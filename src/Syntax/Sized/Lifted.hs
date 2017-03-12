@@ -69,19 +69,6 @@ sizeDir (Lit 0) = Void
 sizeDir (Lit 1) = Direct
 sizeDir _ = Indirect
 
--- toClosed :: Expr v -> Closed.Expr v
--- toClosed expr = case expr of
---   Var v -> Closed.Var v
---   Global v -> Closed.Global v
---   Lit l -> Closed.Lit l
---   Con qc es -> Closed.Con qc $ toClosed <$> es
---   Call e es -> Closed.Call (toClosed e) $ toClosed <$> es
---   Let h e s -> Closed.Let h (toClosed e) (hoist toClosed s)
---   Case e brs -> Closed.Case (toClosed e) $ hoist toClosed brs
---   Prim p -> Closed.Prim $ toClosed <$> p
---   PrimFun sig e -> Closed.PrimFun sig $ toClosed e
---   Anno e t -> Closed.Anno (toClosed e) (toClosed t)
-
 -------------------------------------------------------------------------------
 -- Instances
 instance Eq1 Expr
