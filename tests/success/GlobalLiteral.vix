@@ -1,0 +1,3 @@
+lit = 123
+
+test = printInt lit

@@ -474,18 +474,23 @@ generateConstant visibility name (Constant e) = do
       initName = unOperand $ global $ name <> "-init"
       vis | visibility == Private = "private"
           | otherwise = ""
-  emitRaw $ Instr $ gname <+> "= unnamed_addr global" <+> vis <+> typVal <> ", align" <+> align
-  emitRaw $ Instr ""
-  emitRaw $ Instr $ "define private fastcc" <+> voidT <+> initName <> "() {"
-  case dir of
-    Void -> storeExpr (error "generateConstant Void sz") e $ global name
-    Direct -> storeExpr (error "generateConstant Direct sz") e $ global name
-    Indirect -> do
-      ptr <- gcAllocExpr e
-      emit $ storePtr ptr $ global name
-  emit returnVoid
-  emitRaw "}"
-  return $ "  call fastcc" <+> voidT <+> initName <> "()"
+  case (e, dir) of
+    (Anno (Lit l) _, Direct) -> do
+      emitRaw $ Instr $ gname <+> "= " <+> vis <+> "unnamed_addr constant" <+> integer (shower l) <> ", align" <+> align
+      return mempty
+    _ -> do
+      emitRaw $ Instr $ gname <+> "= " <+> vis <+> "unnamed_addr global" <+> typVal <> ", align" <+> align
+      emitRaw $ Instr ""
+      emitRaw $ Instr $ "define private fastcc" <+> voidT <+> initName <> "() {"
+      case dir of
+        Void -> storeExpr (error "generateConstant Void sz") e $ global name
+        Direct -> storeExpr (error "generateConstant Direct sz") e $ global name
+        Indirect -> do
+          ptr <- gcAllocExpr e
+          emit $ storePtr ptr $ global name
+      emit returnVoid
+      emitRaw "}"
+      return $ "  call fastcc" <+> voidT <+> initName <> "()"
 
 generateFunction :: Visibility -> Name -> Function Expr Var -> Gen ()
 generateFunction visibility name (Function _ args funScope) = do

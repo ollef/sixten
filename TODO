@@ -9,8 +9,6 @@ Matching
   Parse and typecheck view patterns
 Codegen
   Arity inference
-  Globals
-    Make literals llvm `constant`s
   Should things of known size > 1 be passed as LLVM arrays?
   Use e.g. llvm-hs-kaleidoscope for llvm?
 Compiler
