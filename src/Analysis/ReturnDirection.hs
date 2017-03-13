@@ -118,7 +118,7 @@ infer expr = case expr of
     es' <- mapM infer es
     return (Con c $ fst <$> es', MOutParam)  -- TODO: Can be improved.
   Call f es -> do
-    (retDir, argDirs) <- inferFunction f $ Vector.length es
+    (retDir, argDirs) <- inferFunction f
     inferCall Call retDir argDirs f es
   PrimCall retDir f es -> do
     let (args, argDirs) = Vector.unzip es
@@ -200,9 +200,8 @@ inferBranches loc (NoBranches typ) = do
 
 inferFunction
   :: Expr MetaVar
-  -> Int
   -> VIX (RetDirM, Vector Direction)
-inferFunction expr arity = case expr of
+inferFunction expr = case expr of
   Var v -> return $ fromMaybe def $ metaFunSig v
   Global g -> do
     sig <- signature g

@@ -222,7 +222,7 @@ funSignature expr arity = case expr of
     return $ case msig of
       Just (FunctionSig retDir argDirs) -> (retDir, argDirs)
       _ -> def
-  _ -> return def
+  _ -> error "Generate.funSignature non-global"
   where
     def = (ReturnIndirect OutParam, Vector.replicate arity Indirect)
 
