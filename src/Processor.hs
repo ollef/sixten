@@ -218,7 +218,7 @@ liftGroup
   -> VIX [[(Name, Lifted.Definition Lifted.Expr Void)]]
 liftGroup defs = fmap (Lifted.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
   let (e', fs) = liftToDefinition name e
-  return $ (name, e') : fmap (second $ Lifted.FunctionDef Private) fs
+  return $ (name, e') : fmap (second $ Lifted.FunctionDef Private Lifted.NonClosure) fs
 
 closureConvertGroup
   :: [(Name, Lifted.Definition Lifted.Expr Void)]
@@ -230,7 +230,7 @@ liftConvertedGroup
   -> VIX [[(Name, Lifted.Definition Lifted.Expr Void)]]
 liftConvertedGroup defs = fmap (Lifted.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
   let (e', fs) = liftClosures name e
-  return $ (name, e') : fmap (second $ Lifted.FunctionDef Private) fs
+  return $ (name, e') : fmap (second $ Lifted.FunctionDef Private Lifted.IsClosure) fs
 
 inferGroupDirections
   :: [(Name, Lifted.Definition Lifted.Expr Void)]

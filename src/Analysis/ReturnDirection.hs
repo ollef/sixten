@@ -210,13 +210,13 @@ inferFunction expr = case expr of
       _ -> def
   _ -> return def
   where
-    def = (ReturnIndirect MOutParam, Vector.replicate arity Indirect)
+    def = error "ReturnDirection.inferFunction non-function"
 
 inferDefinition
   :: MetaVar
   -> Definition Expr MetaVar
   -> VIX (Definition Expr MetaVar, Signature MetaReturnIndirect)
-inferDefinition MetaVar {metaFunSig = Just (retDir, argDirs)} (FunctionDef vis (Function cl args s)) = do
+inferDefinition MetaVar {metaFunSig = Just (retDir, argDirs)} (FunctionDef vis cl (Function args s)) = do
   vs <- forMTele args $ \h _ _ -> exists h MProjection Nothing
   args' <- forMTele args $ \h d szScope -> do
     let sz = instantiateTele pure vs szScope
@@ -232,7 +232,7 @@ inferDefinition MetaVar {metaFunSig = Just (retDir, argDirs)} (FunctionDef vis (
     ReturnVoid -> return ()
     ReturnDirect -> return ()
   let s' = abstract (teleAbstraction vs) e'
-  return (FunctionDef vis $ Function cl (Telescope args') s', FunctionSig retDir argDirs)
+  return (FunctionDef vis cl $ Function (Telescope args') s', FunctionSig retDir argDirs)
 inferDefinition _ (ConstantDef vis (Constant e)) = do
   (e', _loc) <- infer e
   return (ConstantDef vis $ Constant e', ConstantSig $ sizeDir $ sizeOf e)
@@ -255,7 +255,7 @@ inferRecursiveDefs defs = do
     logPretty 30 "InferDirection.inferRecursiveDefs 1" (v, show <$> d)
     let h = fromName v
         funSig = case d of
-          FunctionDef _ (Function cl args s) ->
+          FunctionDef _ cl (Function args s) ->
             Just
               ( returnDir
               , forTele args $ \_ _ s' -> sizeDir $ fromScope s'

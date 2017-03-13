@@ -493,7 +493,7 @@ generateConstant visibility name (Constant e) = do
       return $ "  call fastcc" <+> voidT <+> initName <> "()"
 
 generateFunction :: Visibility -> Name -> Function Expr Var -> Gen ()
-generateFunction visibility name (Function _ args funScope) = do
+generateFunction visibility name (Function args funScope) = do
   msig <- asks (($ name) . signatures)
   let (retDir, argDirs) = case msig of
         Just (FunctionSig rd ad) -> (rd, ad)
@@ -539,6 +539,6 @@ generateFunction visibility name (Function _ args funScope) = do
 generateDefinition :: Name -> Definition Expr Var -> Gen C
 generateDefinition name def = case def of
   ConstantDef v c -> generateConstant v name c
-  FunctionDef v f -> do
+  FunctionDef v _ f -> do
     generateFunction v name f
     return mempty

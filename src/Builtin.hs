@@ -211,12 +211,12 @@ convertedContext = HashMap.fromList $ concat
     intT = LLVM.integerT
     voidT = LLVM.voidT
     constDef = Lifted.ConstantDef Public . Lifted.Constant
-    funDef tele = Lifted.FunctionDef Public . Lifted.Function Lifted.NonClosure tele
+    funDef tele = Lifted.FunctionDef Public Lifted.NonClosure . Lifted.Function tele
 
 convertedSignatures :: HashMap Name Closed.FunSignature
 convertedSignatures = flip HashMap.mapMaybeWithKey convertedContext $ \name def ->
   case def of
-    Lifted.FunctionDef _ (Lifted.Function _ tele s) -> case fromScope s of
+    Lifted.FunctionDef _ _ (Lifted.Function tele s) -> case fromScope s of
       Closed.Anno _ t -> Just (tele, toScope t)
       _ -> error $ "Builtin.convertedSignatures " <> show name
     Lifted.ConstantDef _ _ -> Nothing
@@ -247,8 +247,8 @@ deref e
 
 apply :: Int -> Lifted.Definition Closed.Expr Void
 apply numArgs
-  = Lifted.FunctionDef Public
-  $ Lifted.Function Lifted.NonClosure
+  = Lifted.FunctionDef Public Lifted.NonClosure
+  $ Lifted.Function
     (Telescope
     $ Vector.cons ("this", (), slit 1)
     $ (\n -> (fromText $ "size" <> shower (unTele n), (), slit 1)) <$> Vector.enumFromN 0 numArgs
@@ -309,8 +309,8 @@ addInts = Vector.foldr1 go
 
 pap :: Int -> Int -> Lifted.Definition Closed.Expr Void
 pap k m
-  = Lifted.FunctionDef Public
-  $ Lifted.Function Lifted.NonClosure
+  = Lifted.FunctionDef Public Lifted.NonClosure
+  $ Lifted.Function
     (Telescope
     $ Vector.cons ("this", (), slit 1)
     $ (\n -> (fromText $ "size" <> shower (unTele n), (), slit 1)) <$> Vector.enumFromN 0 k

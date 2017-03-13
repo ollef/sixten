@@ -29,21 +29,21 @@ data Expr v
 
 type Type = Expr
 
-data IsClosure
-  = IsClosure
-  | NonClosure
-  deriving (Eq, Ord, Show)
-
 data Function expr v
-  = Function IsClosure (Telescope () expr v) (Scope Tele expr v)
+  = Function (Telescope () expr v) (Scope Tele expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 data Constant expr v
   = Constant (expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
+data IsClosure
+  = NonClosure
+  | IsClosure
+  deriving (Eq, Ord, Show)
+
 data Definition expr v
-  = FunctionDef Visibility (Function expr v)
+  = FunctionDef Visibility IsClosure (Function expr v)
   | ConstantDef Visibility (Constant expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
@@ -93,10 +93,10 @@ instance GlobalBound Constant where
   bound f g (Constant expr) = Constant $ bind f g expr
 
 instance GlobalBound Function where
-  bound f g (Function cl args s) = Function cl (bound f g args) $ bound f g s
+  bound f g (Function args s) = Function (bound f g args) $ bound f g s
 
 instance GlobalBound Definition where
-  bound f g (FunctionDef vis fdef) = FunctionDef vis $ bound f g fdef
+  bound f g (FunctionDef vis cl fdef) = FunctionDef vis cl $ bound f g fdef
   bound f g (ConstantDef vis cdef) = ConstantDef vis $ bound f g cdef
 
 instance Applicative Expr where
@@ -127,8 +127,8 @@ instance (Eq v, IsString v, Pretty v)
 
 instance (Eq v, IsString v, Pretty v, Pretty (expr v), Monad expr)
   => Pretty (Function expr v) where
-  prettyM (Function cl vs s) = parens `above` absPrec $
-    withNameHints (teleNames vs) $ \ns -> prettyAnnotation cl $
+  prettyM (Function vs s) = parens `above` absPrec $
+    withNameHints (teleNames vs) $ \ns ->
       "\\" <> prettyTeleVars ns vs <> "." <+>
       associate absPrec (prettyM $ instantiateTele (pure . fromName) ns s)
 
@@ -143,4 +143,4 @@ instance (Eq v, IsString v, Pretty v, Pretty (expr v))
 instance (Eq v, IsString v, Pretty v, Pretty (expr v), Monad expr)
   => Pretty (Syntax.Sized.Lifted.Definition expr v) where
   prettyM (ConstantDef v c) = prettyM v <+> prettyM c
-  prettyM (FunctionDef v f) = prettyM v <+> prettyM f
+  prettyM (FunctionDef v cl f) = prettyM v <+> prettyAnnotation cl (prettyM f)

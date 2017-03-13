@@ -26,7 +26,7 @@ convertDefinitions
   -> VIX [(Name, Lifted.Definition Closed.Expr Void)]
 convertDefinitions defs = do
   funSigs <- forM defs $ \(name, def) -> case def of
-    Lifted.FunctionDef _ (Lifted.Function _ tele scope) -> do
+    Lifted.FunctionDef _ _ (Lifted.Function tele scope) -> do
       vs <- forMTele tele $ \h () _ ->
         forall h Unit
 
@@ -56,7 +56,7 @@ convertDefinitions defs = do
 convertDefinition
   :: Lifted.Definition Lifted.Expr Void
   -> VIX (Lifted.Definition Closed.Expr Void)
-convertDefinition (Lifted.FunctionDef vis (Lifted.Function cl tele scope)) = do
+convertDefinition (Lifted.FunctionDef vis cl (Lifted.Function tele scope)) = do
   vs <- forMTele tele $ \h () _ ->
     forall h Unit
 
@@ -69,8 +69,8 @@ convertDefinition (Lifted.FunctionDef vis (Lifted.Function cl tele scope)) = do
   expr' <- convertExpr expr
   let scope' = abstract abstr expr'
   return
-    $ Lifted.FunctionDef vis
-    $ Lifted.Function cl tele''
+    $ Lifted.FunctionDef vis cl
+    $ Lifted.Function tele''
     $ error "convertDefinition Function" <$> scope'
 convertDefinition (Lifted.ConstantDef vis (Lifted.Constant expr)) = do
   expr' <- convertExpr $ vacuous expr

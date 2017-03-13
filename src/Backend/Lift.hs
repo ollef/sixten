@@ -15,7 +15,6 @@ import Util
 data LiftState = LiftState
   { freshNames :: [Name]
   , liftedFunctions :: [(Name, Lifted.Function Lifted.Expr Void)]
-  , isClosure :: Lifted.IsClosure
   }
 
 newtype Lift a = Lift { unLifted :: State LiftState a }
@@ -41,8 +40,7 @@ liftExpr expr = case expr of
   Closed.Lams tele s -> do
     s' <- transverseScope liftExpr s
     tele' <- liftTelescope tele
-    cl <- gets isClosure
-    f <- liftFunction $ Lifted.Function cl tele' s'
+    f <- liftFunction $ Lifted.Function tele' s'
     return $ Lifted.Global f
   Closed.Call e es -> Lifted.Call <$> liftExpr e <*> mapM liftExpr es
   Closed.PrimCall retDir e es -> Lifted.PrimCall retDir
@@ -80,7 +78,7 @@ liftToDefinitionM
 liftToDefinitionM (Closed.Anno (Closed.Lams tele s) _) = do
   tele' <- liftTelescope tele
   s' <- transverseScope liftExpr s
-  return $ Lifted.FunctionDef Public $ Lifted.Function Lifted.NonClosure tele' s'
+  return $ Lifted.FunctionDef Public Lifted.NonClosure $ Lifted.Function tele' s'
 liftToDefinitionM sexpr
   = Lifted.ConstantDef Public . Lifted.Constant <$> liftExpr sexpr
 
@@ -93,16 +91,15 @@ liftToDefinition name expr
   $ runState (unLifted $ liftToDefinitionM expr) LiftState
   { freshNames = [name <> "-lifted" <> if n == 0 then "" else shower n | n <- [(0 :: Int)..]]
   , liftedFunctions = mempty
-  , isClosure = Lifted.NonClosure
   }
 
 liftDefinitionM
   :: Lifted.Definition Closed.Expr Void
   -> Lift (Lifted.Definition Lifted.Expr Void)
-liftDefinitionM (Lifted.FunctionDef vis (Lifted.Function cl tele s)) = do
+liftDefinitionM (Lifted.FunctionDef vis cl (Lifted.Function tele s)) = do
   tele' <- liftTelescope tele
   s' <- transverseScope liftExpr s
-  return $ Lifted.FunctionDef vis $ Lifted.Function cl tele' s'
+  return $ Lifted.FunctionDef vis cl $ Lifted.Function tele' s'
 liftDefinitionM (Lifted.ConstantDef vis (Lifted.Constant e)) = do
   e' <- liftExpr e
   return $ Lifted.ConstantDef vis $ Lifted.Constant e'
@@ -116,5 +113,4 @@ liftClosures name expr
   $ runState (unLifted $ liftDefinitionM expr) LiftState
   { freshNames = [name <> "-lifted-closure" <> if n == 0 then "" else shower n | n <- [(0 :: Int)..]]
   , liftedFunctions = mempty
-  , isClosure = Lifted.IsClosure
   }
