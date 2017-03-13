@@ -128,7 +128,6 @@ emitLabel l
   , currentLabel = l
   }
 
-
 -------------------------------------------------------------------------------
 -- * Working with names
 -------------------------------------------------------------------------------
@@ -171,6 +170,9 @@ freshName = do
 freshWithHint :: MonadState LLVMState m => NameHint -> m B
 freshWithHint (NameHint (Hint (Just (Name name)))) = freshenName name
 freshWithHint (NameHint (Hint Nothing)) = freshName
+
+freshLabel :: MonadState LLVMState m => B -> m (Operand Label)
+freshLabel name = Operand . text <$> freshenName name
 
 -------------------------------------------------------------------------------
 -- * Operands

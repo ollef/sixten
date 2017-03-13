@@ -316,7 +316,7 @@ generateBranches
   -> (Expr Var -> Gen a)
   -> Gen [(a, Operand Label)]
 generateBranches caseExpr branches brCont = do
-  postLabel <- Operand . text <$> freshenName "after-branch"
+  postLabel <- freshLabel "after-branch"
   case branches of
     NoBranches _ -> do
       void $ generateExpr (error "generateBranches sz") caseExpr
@@ -325,7 +325,7 @@ generateBranches caseExpr branches brCont = do
     ConBranches ((Builtin.Ref, tele, brScope) NonEmpty.:| []) -> mdo
       exprInt <- loadVar "case-expr-int" =<< generateExpr (error "generateBranches Con sz") caseExpr
       expr <- "case-expr" =: intToPtr exprInt
-      branchLabel <- Operand . text <$> freshenName Builtin.RefName
+      branchLabel <- freshLabel Builtin.RefName
 
       emit $ branch branchLabel
       emitLabel branchLabel
@@ -350,7 +350,7 @@ generateBranches caseExpr branches brCont = do
 
     ConBranches ((QConstr _ (Constr constrName), tele, brScope) NonEmpty.:| []) -> mdo
       expr <- indirect "case-expr" =<< generateExpr (error "generateBranches single Con sz") caseExpr
-      branchLabel <- Operand . text <$> freshenName constrName
+      branchLabel <- freshLabel constrName
 
       emit $ branch branchLabel
       emitLabel branchLabel
@@ -381,10 +381,10 @@ generateBranches caseExpr branches brCont = do
 
       branchLabels <- Traversable.forM cbrs' $ \(qc@(QConstr _ (Constr constrName)), _, _) -> do
         Just qcIndex <- constrIndex qc
-        branchLabel <- Operand . text <$> freshenName constrName
+        branchLabel <- freshLabel constrName
         return (qcIndex, branchLabel)
 
-      failLabel <- Operand . text <$> freshenName "pattern-match-failed"
+      failLabel <- freshLabel "pattern-match-failed"
       emit $ switch e0 failLabel branchLabels
 
       contResults <- Traversable.forM (zip cbrs' branchLabels) $ \((_, tele, brScope), (_, branchLabel)) -> mdo
@@ -418,10 +418,10 @@ generateBranches caseExpr branches brCont = do
       e0 <- loadVar "lit" =<< generateExpr generateIntSize caseExpr
 
       branchLabels <- Traversable.forM lbrs' $ \(l, _) -> do
-        branchLabel <- Operand . text <$> freshenName (shower l)
+        branchLabel <- freshLabel $ shower l
         return (fromIntegral l, branchLabel)
 
-      defaultLabel <- Operand . text <$> freshenName "default"
+      defaultLabel <- freshLabel "default"
       emit $ switch e0 defaultLabel branchLabels
 
       contResults <- Traversable.forM (zip lbrs' branchLabels) $ \((_, br), (_, brLabel)) -> do
