@@ -1,0 +1,13 @@
+data Unit = unit
+
+data Tuple A B = tuple A B
+
+Vector : Int -> Type -> Type
+Vector 0 _ = Unit
+Vector n a = Tuple a (Vector (subInt n 1) a)
+
+sumVec : forall n. Vector n Int -> Int
+sumVec 0 unit = 0
+sumVec n (tuple x xs) = addInt x (sumVec xs)
+
+test = printInt (sumVec (tuple 1 (tuple 2 (tuple 3 unit))))
