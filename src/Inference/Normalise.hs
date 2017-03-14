@@ -35,8 +35,9 @@ whnf' expandTypeReps expr = do
     Lit _ -> return expr
     Pi {} -> return expr
     Lam {} -> return expr
-    Builtin.AddInt x y -> binOp 0 (+) Builtin.AddInt (whnf' expandTypeReps) x y
-    Builtin.MaxInt x y -> binOp 0 max Builtin.MaxInt (whnf' expandTypeReps) x y
+    Builtin.SubInt x y -> binOp Nothing (Just 0) (-) Builtin.SubInt (whnf' expandTypeReps) x y
+    Builtin.AddInt x y -> binOp (Just 0) (Just 0) (+) Builtin.AddInt (whnf' expandTypeReps) x y
+    Builtin.MaxInt x y -> binOp (Just 0) (Just 0) max Builtin.MaxInt (whnf' expandTypeReps) x y
     App e1 p e2 -> do
       e1' <- whnf' expandTypeReps e1
       case e1' of
@@ -66,8 +67,9 @@ normalise expr = do
     Lit _ -> return expr
     Pi n p a s -> normaliseScope n p (Pi n p) a s
     Lam n p a s -> normaliseScope n p (Lam n p) a s
-    Builtin.AddInt x y -> binOp 0 (+) Builtin.AddInt normalise x y
-    Builtin.MaxInt x y -> binOp 0 max Builtin.MaxInt normalise x y
+    Builtin.SubInt x y -> binOp Nothing (Just 0) (-) Builtin.SubInt normalise x y
+    Builtin.AddInt x y -> binOp (Just 0) (Just 0) (+) Builtin.AddInt normalise x y
+    Builtin.MaxInt x y -> binOp (Just 0) (Just 0) max Builtin.MaxInt normalise x y
     App e1 p e2 -> do
       e1' <- normalise e1
       e2' <- normalise e2
@@ -119,19 +121,20 @@ normalise expr = do
 
 binOp
   :: Monad m
-  => Literal
+  => Maybe Literal
+  -> Maybe Literal
   -> (Literal -> Literal -> Literal)
   -> (Expr v -> Expr v -> Expr v)
   -> (Expr v -> m (Expr v))
   -> Expr v
   -> Expr v
   -> m (Expr v)
-binOp zero op cop norm x y = do
+binOp lzero rzero op cop norm x y = do
     x' <- norm x
     y' <- norm y
     case (x', y') of
-      (Lit m, _) | m == zero -> return y'
-      (_, Lit n) | n == zero -> return x'
+      (Lit m, _) | Just m == lzero -> return y'
+      (_, Lit n) | Just n == rzero -> return x'
       (Lit m, Lit n) -> return $ Lit $ op m n
       _ -> return $ cop x' y'
 
