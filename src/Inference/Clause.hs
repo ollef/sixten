@@ -16,20 +16,59 @@ import Syntax.Concrete.Definition
 import Syntax.Concrete.Pattern
 import VIX
 
-equalisePats
-  :: (Pretty v)
+exactlyEqualisePats
+  :: Pretty v
   => [Plicitness]
   -> [(Plicitness, Pat e v)]
   -> VIX [(Plicitness, Pat e v)]
-equalisePats [] pats = return pats
+exactlyEqualisePats [] [] = return []
+exactlyEqualisePats [] ((p, pat):_) = do
+  loc <- currentLocation
+  throwError
+    $ show
+    $ explain loc
+    $ Err (Just "Too many patterns for type")
+    [ "Found the pattern:" Leijen.<+> Leijen.red (runPrettyM $ prettyAnnotation p (prettyM $ first (const ()) pat)) <> "."
+    , "Expected: no more patterns."
+    ]
+    mempty
+exactlyEqualisePats (Implicit:ps) ((Implicit, pat):pats)
+  = (:) (Implicit, pat) <$> exactlyEqualisePats ps pats
+exactlyEqualisePats (Explicit:ps) ((Explicit, pat):pats)
+  = (:) (Explicit, pat) <$> exactlyEqualisePats ps pats
+exactlyEqualisePats (Implicit:ps) pats
+  = (:) (Implicit, WildcardPat) <$> exactlyEqualisePats ps pats
+exactlyEqualisePats (Explicit:_) ((Implicit, pat):_)
+  = throwExpectedExplicit pat
+exactlyEqualisePats (Explicit:_) [] = do
+  loc <- currentLocation
+  throwError
+    $ show
+    $ explain loc
+    $ Err (Just "Not enough patterns for type")
+    [ "Found the pattern: no patterns."
+    , "Expected: an explicit patter."
+    ]
+    mempty
+
+equalisePats
+  :: Pretty v
+  => [Plicitness]
+  -> [(Plicitness, Pat e v)]
+  -> VIX [(Plicitness, Pat e v)]
 equalisePats _ [] = return []
+equalisePats [] pats = return pats
 equalisePats (Implicit:ps) ((Implicit, pat):pats)
   = (:) (Implicit, pat) <$> equalisePats ps pats
 equalisePats (Explicit:ps) ((Explicit, pat):pats)
   = (:) (Explicit, pat) <$> equalisePats ps pats
-equalisePats (Implicit:ps) pats@((Explicit, _):_)
+equalisePats (Implicit:ps) pats
   = (:) (Implicit, WildcardPat) <$> equalisePats ps pats
-equalisePats (Explicit:_) ((Implicit, pat):_) = do
+equalisePats (Explicit:_) ((Implicit, pat):_)
+  = throwExpectedExplicit pat
+
+throwExpectedExplicit :: Pretty v => Pat e v -> VIX a
+throwExpectedExplicit pat = do
   loc <- currentLocation
   throwError
     $ show

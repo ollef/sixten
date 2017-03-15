@@ -369,10 +369,9 @@ tcPat' pat vs expected = case pat of
     let paramsTele = telescope (typeType :: AbstractM)
         numParams = teleLength paramsTele
         (tele, retScope) = pisView conType
+        argPlics = Vector.drop numParams $ teleAnnotations tele
 
-    pats' <- Vector.fromList <$> equalisePats
-      (Vector.toList $ Vector.drop numParams $ teleAnnotations tele)
-      (Vector.toList pats)
+    pats' <- Vector.fromList <$> exactlyEqualisePats (Vector.toList argPlics) (Vector.toList pats)
 
     typeVars <- forTeleWithPrefixM tele $ \h _ s typeVars ->
       exists h $ instantiateTele pure typeVars s
