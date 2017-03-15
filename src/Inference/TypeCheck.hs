@@ -297,20 +297,6 @@ checkPat
   -> VIX (Abstract.Pat AbstractM MetaA, Vector MetaA)
 checkPat pat vs expectedType = tcPat pat vs $ CheckPat expectedType
 
-checkPats
-  :: Vector (Concrete.Pat (PatternScope Concrete.Expr MetaA) ())
-  -> Vector MetaA
-  -> VIX (Vector (Abstract.Pat AbstractM MetaA), Vector MetaA)
-checkPats pats vars = do
-  unless (Vector.length pats == Vector.length vars)
-    $ throwError "checkPats length mismatch"
-  (results, vs) <- foldlM go mempty $ Vector.zip pats vars
-  return (Vector.reverse $ Vector.fromList results, vs)
-  where
-    go (resultPats, vs) (pat, v) = do
-      (resultPat, vs') <- checkPatVar pat vs v
-      return (resultPat : resultPats, vs')
-
 inferPat
   :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
@@ -320,6 +306,21 @@ inferPat pat vs = do
   (pat', vs') <- tcPat pat vs $ InferPat ref
   typ <- liftST $ readSTRef ref
   return (pat', vs', typ)
+
+tcPats
+  :: Vector (Concrete.Pat (PatternScope Concrete.Expr MetaA) ())
+  -> Vector MetaA
+  -> Vector (ExpectedPat Polytype)
+  -> VIX (Vector (Abstract.Pat AbstractM MetaA), Vector MetaA)
+tcPats pats vs expecteds = do
+  unless (Vector.length pats == Vector.length expecteds)
+    $ throwError "tcPats length mismatch"
+  (results, vs') <- foldlM go (mempty, vs) $ Vector.zip pats expecteds
+  return (Vector.reverse $ Vector.fromList results, vs')
+  where
+    go (resultPats, vs') (pat, expected) = do
+      (resultPat, vs'') <- tcPat pat vs' expected
+      return (resultPat : resultPats, vs'')
 
 tcPat
   :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
@@ -366,8 +367,7 @@ tcPat' pat vs expected = case pat of
     (_, typeType) <- definition typeName
     conType <- qconstructor qc
 
-    let paramsTele = telescope (typeType :: AbstractM)
-        numParams = teleLength paramsTele
+    let numParams = teleLength $ telescope typeType
         (tele, retScope) = pisView conType
         argPlics = Vector.drop numParams $ teleAnnotations tele
 
@@ -377,19 +377,15 @@ tcPat' pat vs expected = case pat of
       exists h $ instantiateTele pure typeVars s
 
     let retType = instantiateTele pure typeVars retScope
+        (paramVars, argVars) = Vector.splitAt numParams typeVars
 
-    let go (revPats, vs') ((p, pat'), v) = do
-          (pat'', vs'') <- checkPat pat' vs' $ metaType v
-          return ((p, pat'', metaType v) : revPats, vs'')
-          -- TODO unify the var with the pat
+    (pats'', vs') <- tcPats (snd <$> pats') vs $ CheckPat . metaType <$> argVars
 
-    (revPats, vs') <- foldlM go (mempty, vs)
-      $ Vector.zip pats'
-      $ Vector.drop numParams typeVars
-    let pats'' = Vector.fromList $ reverse revPats
+    let pats''' = Vector.zip3 argPlics pats'' $ metaType <$> argVars
+        params = Vector.zip (teleAnnotations tele) $ pure <$> paramVars
 
     (expectedType, f) <- instPatExpected expected retType
-    p <- viewPat expectedType f $ Abstract.ConPat qc pats''
+    p <- viewPat expectedType f $ Abstract.ConPat qc params pats'''
 
     return (p, vs')
   Concrete.AnnoPat s p -> do
@@ -415,6 +411,24 @@ viewPat expectedType f p = do
   else do
     fExpr <- Abstract.Lam mempty Explicit expectedType <$> abstract1M x fx
     return $ Abstract.ViewPat fExpr p
+
+patToTerm
+  :: Abstract.Pat AbstractM MetaA
+  -> AbstractM
+  -> VIX (Maybe AbstractM)
+patToTerm pat typ = case pat of
+  Abstract.VarPat _ v -> return $ Just $ Abstract.Var v
+  Abstract.WildcardPat -> do
+    res <- exists mempty typ
+    return $ Just $ pure res
+  Abstract.ConPat qc params pats -> do
+    mterms <- mapM (\(p, pat', typ') -> fmap ((,) p) <$> patToTerm pat' typ') pats
+    case sequence mterms of
+      Nothing -> return Nothing
+      Just terms -> return $ Just $
+        apps (Abstract.Con qc) $ params <> terms
+  Abstract.LitPat l -> return $ Just $ Abstract.Lit l
+  Abstract.ViewPat{} -> return Nothing
 
 {-
 instantiateDataType
@@ -846,7 +860,7 @@ checkClausesRho clauses rhoType = do
   modifyIndent succ
 
   clauses' <- forM clauses $ \(Concrete.Clause pats bodyScope) -> do
-    (pats', patVars) <- checkPats (snd <$> pats) argVars
+    (pats', patVars) <- tcPats (snd <$> pats) mempty $ CheckPatVar <$> argVars
     let body = instantiatePatternVec pure patVars bodyScope
     body' <- checkRho body returnType
     return (pats', body')

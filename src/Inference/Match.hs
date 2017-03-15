@@ -124,7 +124,7 @@ matchCon expr exprs clauses expr0 = do
   return $ fatBar (Case (F <$> expr) (ConBranches cbrs')) expr0
   where
     firstCon = constr . firstPattern
-    constr (ConPat c _) = c
+    constr (ConPat c _ _) = c
     constr _ = error "match constr"
     constructors typeName = do
       (DataDefinition (DataDef cs) _, _ :: Expr ()) <- definition typeName
@@ -194,6 +194,6 @@ matchView expr exprs clauses = match (App f Explicit expr : exprs) $ NonEmpty.to
 decon :: [Clause] -> [Clause]
 decon clauses = [(unpat pat <> pats, b) | (pat:pats, b) <- clauses]
   where
-    unpat (ConPat _ pats) = Vector.toList $ snd3 <$> pats
+    unpat (ConPat _ _ pats) = Vector.toList $ snd3 <$> pats
     unpat (LitPat _) = mempty
     unpat _ = error "match unpat"

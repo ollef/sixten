@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, MonadComprehensions, OverloadedStrings #-}
 module Syntax.Abstract.Pattern where
 
+import Control.Applicative
 import Control.Monad
 import Data.Bifoldable
 import Data.Bifunctor
@@ -16,7 +17,10 @@ data Pat typ b
   = VarPat !NameHint b
   | WildcardPat
   | LitPat Literal
-  | ConPat QConstr (Vector (Plicitness, Pat typ b, typ))
+  | ConPat
+      QConstr
+      (Vector (Plicitness, typ)) -- ^ Parameters
+      (Vector (Plicitness, Pat typ b, typ))
   | ViewPat typ (Pat typ b)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
@@ -32,7 +36,7 @@ instance Monad (Pat typ) where
       fb -> fb
     WildcardPat -> WildcardPat
     LitPat l -> LitPat l
-    ConPat c pats -> ConPat c [(a, p >>= f, typ) | (a, p, typ) <- pats]
+    ConPat c ps pats -> ConPat c ps [(a, p >>= f, typ) | (a, p, typ) <- pats]
     ViewPat t p -> ViewPat t $ p >>= f
 
 instance Bifunctor Pat where bimap = bimapDefault
@@ -43,7 +47,7 @@ instance Bitraversable Pat where
     VarPat h b -> VarPat h <$> g b
     WildcardPat -> pure WildcardPat
     LitPat l -> pure $ LitPat l
-    ConPat c pats -> ConPat c <$> traverse (bitraverse (bitraverse f g) f) pats
+    ConPat c ps pats -> ConPat c <$> traverse (traverse f) ps <*> traverse (bitraverse (bitraverse f g) f) pats
     ViewPat t p -> ViewPat <$> f t <*> bitraverse f g p
 
 patternHint :: Pat typ b -> NameHint
@@ -76,6 +80,8 @@ instance (Pretty typ, Pretty b) => Pretty (Pat typ b) where
     VarPat _ b -> prettyM b
     WildcardPat -> "_"
     LitPat l -> prettyM l
-    ConPat c args -> prettyApps (prettyM c) $ (\(p, arg, _typ) -> prettyAnnotation p $ prettyM arg) <$> args
+    ConPat c ps args -> prettyApps (prettyM c)
+      $ (\(p, e) -> prettyTightApp "~" $ prettyAnnotation p $ prettyM e) <$> ps
+      <|> (\(p, arg, _typ) -> prettyAnnotation p $ prettyM arg) <$> args
     ViewPat t p -> parens `above` arrPrec $
       prettyM t <+> "->" <+> prettyM p
