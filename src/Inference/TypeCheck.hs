@@ -367,22 +367,29 @@ tcPat' pat vs expected = case pat of
     (_, typeType) <- definition typeName
     conType <- qconstructor qc
 
-    let numParams = teleLength $ telescope typeType
+    let paramsTele = telescope typeType
+        numParams = teleLength paramsTele
         (tele, retScope) = pisView conType
         argPlics = Vector.drop numParams $ teleAnnotations tele
 
     pats' <- Vector.fromList <$> exactlyEqualisePats (Vector.toList argPlics) (Vector.toList pats)
 
-    typeVars <- forTeleWithPrefixM tele $ \h _ s typeVars ->
-      exists h $ instantiateTele pure typeVars s
+    paramVars <- forTeleWithPrefixM paramsTele $ \h _ s paramVars ->
+      exists h $ instantiateTele pure paramVars s
 
-    let retType = instantiateTele pure typeVars retScope
-        (paramVars, argVars) = Vector.splitAt numParams typeVars
+    let argTele = instantiatePrefix (pure <$> paramVars) tele
 
-    (pats'', vs') <- tcPats (snd <$> pats') vs $ CheckPat . metaType <$> argVars
+    argVars <- forTeleWithPrefixM argTele $ \h _ s argVars -> do
+      let typeVars = paramVars <> argVars
+      forall h $ instantiateTele pure typeVars s
+
+    let typeVars = paramVars <> argVars
+        retType = instantiateTele pure typeVars retScope
+
+    (pats'', vs') <- tcPats (snd <$> pats') vs $ CheckPatVar <$> argVars
 
     let pats''' = Vector.zip3 argPlics pats'' $ metaType <$> argVars
-        params = Vector.zip (teleAnnotations tele) $ pure <$> paramVars
+        params = Vector.zip (teleAnnotations paramsTele) $ pure <$> paramVars
 
     (expectedType, f) <- instPatExpected expected retType
     p <- viewPat expectedType f $ Abstract.ConPat qc params pats'''
