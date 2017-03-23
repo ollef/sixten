@@ -8,6 +8,6 @@ Vector n a = Tuple a (Vector (subInt n 1) a)
 
 sumVec : forall n. Vector n Int -> Int
 sumVec 0 unit = 0
-sumVec n (tuple x xs) = addInt x (sumVec xs)
+sumVec n (tuple x xs) = addInt x (sumVec (subInt n 1) xs)
 
 test = printInt (sumVec 3 (tuple 1 (tuple 2 (tuple 3 unit))))
