@@ -109,7 +109,15 @@ matchCon expr exprs clauses expr0 = do
 
   cbrs <- forM cs $ \c -> do
     let clausesStartingWithC = NonEmpty.filter ((== c) . firstCon) clauses
-    (ps, ys) <- conPatArgs c =<< typeOfM expr
+    -- TODO Is there a nicer way to do this?
+    params <- case clausesStartingWithC of
+      firstClause:_ -> return $ typeParams $ firstPattern firstClause
+      [] -> do
+        typ <- typeOfM expr
+        typ' <- whnf typ
+        let (_, params) = appsView typ'
+        return $ Vector.fromList params
+    (ps, ys) <- conPatArgs c params
 
     let exprs' = (pure <$> Vector.toList ys) ++ exprs
     rest <- match exprs' (decon clausesStartingWithC) (pure $ B Fail)
@@ -137,14 +145,12 @@ matchCon expr exprs clauses expr0 = do
 
 conPatArgs
   :: QConstr
-  -> AbstractM
+  -> Vector (Plicitness, AbstractM)
   -> VIX (Vector (Plicitness, PatM, AbstractM), Vector MetaA)
-conPatArgs c typ = do
-  typ' <- whnf typ
-  let (_, args) = appsView typ'
+conPatArgs c params = do
   ctype <- qconstructor c
   let (tele, _) = pisView (ctype :: AbstractM)
-      tele' = instantiatePrefix (snd <$> Vector.fromList args) tele
+      tele' = instantiatePrefix (snd <$> params) tele
   vs <- forTeleWithPrefixM tele' $ \h _ s vs ->
     forall h $ instantiateTele pure vs s
   let ps = (\(p, v) -> (p, VarPat (metaHint v) v, metaType v))
