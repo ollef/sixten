@@ -10,4 +10,4 @@ sumVec : forall n. Vector n Int -> Int
 sumVec 0 unit = 0
 sumVec n (tuple x xs) = addInt x (sumVec xs)
 
-test = printInt (sumVec (tuple 1 (tuple 2 (tuple 3 unit))))
+test = printInt (sumVec 3 (tuple 1 (tuple 2 (tuple 3 unit))))
