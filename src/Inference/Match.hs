@@ -19,8 +19,8 @@ import Meta
 import Syntax
 import Syntax.Abstract
 import Syntax.Abstract.Pattern
-import VIX
 import Util
+import VIX
 
 type PatM = Pat AbstractM MetaA
 type Clause =
@@ -29,6 +29,7 @@ type Clause =
   )
 
 data Fail = Fail
+  deriving (Eq, Ord, Show)
 
 fatBar :: Expr (Var Fail v) -> Expr (Var Fail v) -> Expr (Var Fail v)
 fatBar e e' = case foldMap (bifoldMap (:[]) mempty) e of
@@ -87,7 +88,8 @@ match xs clauses expr0
   $ NonEmpty.groupBy ((==) `on` patternType . firstPattern) clauses
 
 firstPattern :: ([c], b) -> c
-firstPattern = head . fst
+firstPattern ([], _) = error $ "Match.firstPattern "
+firstPattern (c:_, _) = c
 
 matchMix :: NonEmptyMatch
 matchMix (expr:exprs) clauses@(clause NonEmpty.:| _) expr0
@@ -123,7 +125,10 @@ matchCon expr exprs clauses expr0 = do
 
   return $ fatBar (Case (F <$> expr) (ConBranches cbrs')) expr0
   where
-    firstCon = constr . firstPattern
+    firstCon (c:_, _) = constr c
+    firstCon _ = error "firstCon "
+    typeParams (ConPat _ ps _) = ps
+    typeParams _ = error "match typeParams"
     constr (ConPat c _ _) = c
     constr _ = error "match constr"
     constructors typeName = do
