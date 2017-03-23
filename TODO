@@ -21,6 +21,8 @@ Error messages
   Write own error printer
   Make error message footnotes contain metavars
 Language
+  * Make sizes bytes and add builtin Byte type
+  * Add Nat type that is more matchable
   * Let(rec) definitions
   Named implicit arguments (maybe names should be mandatory?)
   Laziness
