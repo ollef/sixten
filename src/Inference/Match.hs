@@ -11,6 +11,7 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Monoid
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
+import Prelude.Extras
 
 import qualified Builtin
 import Inference.Normalise
@@ -30,6 +31,20 @@ type Clause =
 
 data Fail = Fail
   deriving (Eq, Ord, Show)
+
+-- TODO can we get rid of this?
+abstractF
+  :: (GlobalBind e, Traversable e, Show1 e)
+  => (Var Fail (MetaVar e) -> Maybe b)
+  -> e (Var Fail (MetaVar e))
+  -> VIX (Scope b e (Var Fail (MetaVar e)))
+abstractF f e = do
+  failVar <- forall mempty $ global Builtin.FailName
+  let e' = unvar (\Fail -> failVar) id <$> e
+      explicitFail v | v == failVar = B Fail
+                     | otherwise = F v
+  s <- abstractM (f . explicitFail) e'
+  return $ explicitFail <$> s
 
 fatBar :: Expr (Var Fail v) -> Expr (Var Fail v) -> Expr (Var Fail v)
 fatBar e e' = case foldMap (bifoldMap (:[]) mempty) e of
@@ -121,8 +136,7 @@ matchCon expr exprs clauses expr0 = do
 
     let exprs' = (pure <$> Vector.toList ys) ++ exprs
     rest <- match exprs' (decon clausesStartingWithC) (pure $ B Fail)
-    rest' <- fromScope <$> zonkBound (toScope rest)
-    let restScope = abstract (unvar (\Fail -> Nothing) $ teleAbstraction ys) rest'
+    restScope <- abstractF (teleAbstraction $ F <$> ys) rest
     tele <- patternTelescope ys ps
     return (c, F <$> tele, restScope)
 
@@ -140,7 +154,7 @@ matchCon expr exprs clauses expr0 = do
     constr (ConPat c _ _) = c
     constr _ = error "match constr"
     constructors typeName = do
-      (DataDefinition (DataDef cs) _, _ :: Expr ()) <- definition typeName
+      (DataDefinition (DataDef cs) _, _) <- definition typeName
       return $ QConstr typeName . constrName <$> cs
 
 conPatArgs
@@ -164,8 +178,8 @@ patternTelescope
 patternTelescope ys ps = Telescope <$> mapM go ps
   where
     go (p, pat, e) = do
-      e' <- zonk e
-      return (patternHint pat, p, abstract (teleAbstraction ys) e')
+      s <- abstractM (teleAbstraction ys) e
+      return (patternHint pat, p, s)
 
 matchLit :: AbstractM -> NonEmptyMatch
 matchLit expr exprs clauses expr0 = do
