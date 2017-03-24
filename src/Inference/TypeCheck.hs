@@ -1016,7 +1016,7 @@ checkRecursiveDefs defs = do
     evars <- Vector.forM names $ \name -> do
       let hint = fromName name
       typ <- existsType hint
-      forall hint (typ :: AbstractM)
+      forall hint typ
 
     let expose name = case Vector.elemIndex name names of
           Nothing -> global name
