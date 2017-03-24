@@ -233,6 +233,10 @@ inferDefinition MetaVar {metaFunSig = Just (retDir, argDirs)} (FunctionDef vis c
     ReturnDirect -> return ()
   let s' = abstract (teleAbstraction vs) e'
   return (FunctionDef vis cl $ Function (Telescope args') s', FunctionSig retDir argDirs)
+inferDefinition _ (ConstantDef vis (Constant (Anno (Global glob) sz))) = do
+  sig <- signature glob
+  (sz', _szLoc) <- infer sz
+  return (ConstantDef vis $ Constant $ Anno (Global glob) sz', fromReturnIndirect <$> sig)
 inferDefinition _ (ConstantDef vis (Constant e)) = do
   (e', _loc) <- infer e
   return (ConstantDef vis $ Constant e', ConstantSig $ sizeDir $ sizeOf e)

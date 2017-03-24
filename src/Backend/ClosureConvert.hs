@@ -45,6 +45,9 @@ convertDefinitions defs = do
           typeScope = error "convertDefinitions"
             <$> abstract abstr convertedType
       return $ Just (name, (tele', typeScope))
+    Lifted.ConstantDef _ (Lifted.Constant (Lifted.Anno (Lifted.Global glob) _)) -> do
+      msig <- convertedSignature glob
+      return $ (,) name <$> msig
     _ -> return Nothing
 
   addConvertedSignatures $ HashMap.fromList $ catMaybes funSigs
@@ -72,6 +75,17 @@ convertDefinition (Lifted.FunctionDef vis cl (Lifted.Function tele scope)) = do
     $ Lifted.FunctionDef vis cl
     $ Lifted.Function tele''
     $ error "convertDefinition Function" <$> scope'
+convertDefinition (Lifted.ConstantDef vis (Lifted.Constant expr@(Lifted.Anno (Lifted.Global glob) sz))) = do
+  msig <- convertedSignature glob
+  expr' <- case msig of
+    Nothing -> convertExpr $ vacuous expr
+    Just _ -> do
+      sz' <- convertExpr $ vacuous sz
+      return $ Closed.Anno (Closed.Global glob) sz'
+  return
+    $ Lifted.ConstantDef vis
+    $ Lifted.Constant
+    $ error "convertDefinition Constant" <$> expr'
 convertDefinition (Lifted.ConstantDef vis (Lifted.Constant expr)) = do
   expr' <- convertExpr $ vacuous expr
   return

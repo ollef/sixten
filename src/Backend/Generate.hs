@@ -462,35 +462,40 @@ generatePrim (Primitive dir xs) = do
 generateConstant :: Visibility -> Name -> Constant Expr Var -> Gen C
 generateConstant visibility name (Constant e) = do
   msig <- asks (($ name) . signatures)
-  let dir = case msig of
-        Just (ConstantSig d) -> d
-        _ -> error "generateConstant"
-      typVal = case dir of
-        Void -> pointer "null"
-        Direct -> integer "0"
-        Indirect -> pointer "null"
-
-      gname = unOperand $ global name
-      initName = unOperand $ global $ name <> "-init"
+  let gname = unOperand $ global name
       vis | visibility == Private = "private"
           | otherwise = ""
-  case (e, dir) of
-    (Anno (Lit l) _, Direct) -> do
-      emitRaw $ Instr $ gname <+> "= " <+> vis <+> "unnamed_addr constant" <+> integer (shower l) <> ", align" <+> align
-      return mempty
-    _ -> do
-      emitRaw $ Instr $ gname <+> "= " <+> vis <+> "unnamed_addr global" <+> typVal <> ", align" <+> align
-      emitRaw $ Instr ""
-      emitRaw $ Instr $ "define private fastcc" <+> voidT <+> initName <> "() {"
-      case dir of
-        Void -> storeExpr (error "generateConstant Void sz") e $ global name
-        Direct -> storeExpr (error "generateConstant Direct sz") e $ global name
-        Indirect -> do
-          ptr <- gcAllocExpr e
-          emit $ storePtr ptr $ global name
-      emit returnVoid
-      emitRaw "}"
-      return $ "  call fastcc" <+> voidT <+> initName <> "()"
+  case msig of
+    Just (ConstantSig dir) ->
+      case (e, dir) of
+        (Anno (Lit l) _, Direct) -> do
+          emitRaw $ Instr $ gname <+> "=" <+> vis <+> "unnamed_addr constant" <+> integer (shower l) <> ", align" <+> align
+          return mempty
+        _ -> do
+          let typVal = case dir of
+                Void -> pointer "null"
+                Direct -> integer "0"
+                Indirect -> pointer "null"
+              initName = unOperand $ global $ name <> "-init"
+          emitRaw $ Instr $ gname <+> "=" <+> vis <+> "unnamed_addr global" <+> typVal <> ", align" <+> align
+          emitRaw $ Instr ""
+          emitRaw $ Instr $ "define private fastcc" <+> voidT <+> initName <> "() {"
+          case dir of
+            Void -> storeExpr (error "generateConstant Void sz") e $ global name
+            Direct -> storeExpr (error "generateConstant Direct sz") e $ global name
+            Indirect -> do
+              ptr <- gcAllocExpr e
+              emit $ storePtr ptr $ global name
+          emit returnVoid
+          emitRaw "}"
+          return $ "  call fastcc" <+> voidT <+> initName <> "()"
+    Just (FunctionSig retDir argDirs) -> case e of
+      Anno (Global glob) _ -> do
+        let funType = functionT retDir argDirs
+        emitRaw $ Instr $ gname <+> "=" <+> vis <+> "unnamed_addr alias" <+> funType <> "," <+> funType <> "*" <+> unOperand (global glob)
+        return mempty
+      _ -> error "generateConstant"
+    _ -> error "generateConstant"
 
 generateFunction :: Visibility -> Name -> Function Expr Var -> Gen ()
 generateFunction visibility name (Function args funScope) = do

@@ -347,20 +347,14 @@ undef = Operand "undef"
 bitcastToFun :: Operand Ptr -> RetDir -> Vector Direction -> Instr Fun
 bitcastToFun i retDir ds = Instr
   $ "bitcast" <+> pointer i <+> "to"
-  <+> retType <+> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList ds <|> [retArg]) <> ")*"
-  where
-    (retType, retArg) = case retDir of
-      ReturnVoid -> (voidT, mempty)
-      ReturnDirect -> (integerT, mempty)
-      ReturnIndirect OutParam -> (voidT, pure pointerT)
-      ReturnIndirect Projection -> (pointerT, mempty)
-    go Void = []
-    go Direct = [integerT]
-    go Indirect = [pointerT]
+  <+> functionT retDir ds <> "*"
 
 bitcastFunToPtrExpr :: Operand Fun -> RetDir -> Vector Direction -> Operand Ptr
 bitcastFunToPtrExpr i retDir ds = Operand
-  $ "bitcast" <+> "(" <> retType <+> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList ds <|> [retArg]) <> ")*" <+> unOperand i <+> "to" <+> pointerT <> ")"
+  $ "bitcast" <+> "(" <> functionT retDir ds <> "*" <+> unOperand i <+> "to" <+> pointerT <> ")"
+
+functionT :: RetDir -> Vector Direction -> C
+functionT retDir ds = retType <+> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList ds <|> [retArg]) <> ")"
   where
     (retType, retArg) = case retDir of
       ReturnVoid -> (voidT, mempty)
