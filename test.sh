@@ -9,18 +9,18 @@ for file in tests/success/*.vix
 do
   if [ -f $file-expected ];
   then
-    sixten test $file --expected $file-expected
+    sixten test $file --expected $file-expected "$@"
   else
-    sixten test $file
+    sixten test $file "$@"
   fi
 done
 
 for file in tests/syntax-error/*.vix
 do
-  sixten test $file --expect-syntax-error
+  sixten test $file --expect-syntax-error "$@"
 done
 
 for file in tests/type-error/*.vix
 do
-  sixten test $file --expect-type-error
+  sixten test $file --expect-type-error "$@"
 done
