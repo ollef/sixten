@@ -1,9 +1,9 @@
-{-# LANGUAGE ScopedTypeVariables #-}
 module Inference.Match where
 
 import Control.Monad.Except
 import Data.Bifoldable
 import Data.Bifunctor
+import Data.Bitraversable
 import Data.Foldable
 import Data.Function
 import Data.List.NonEmpty(NonEmpty)
@@ -194,17 +194,23 @@ matchLit expr exprs clauses expr0 = do
     lit _ = error "match lit"
 
 matchVar :: AbstractM -> NonEmptyMatch
-matchVar expr exprs clauses
-  = match exprs $ NonEmpty.toList $ go <$> clauses
+matchVar expr exprs clauses expr0 = do
+  clauses' <- traverse go clauses
+  match exprs (NonEmpty.toList clauses') expr0
   where
-    go :: Clause -> Clause
-    go (VarPat _ y:ps, s) = (ps, subst y (F <$> expr) s)
-    go (WildcardPat:ps, s) = (ps, s)
+    go :: Clause -> VIX Clause
+    go (VarPat _ y:ps, s) = do
+      ps' <- forM ps $ flip bitraverse pure $ \t -> do
+        t' <- zonk t
+        return $ subst y expr t'
+      s' <- fromScope <$> zonkBound (toScope s)
+      return (ps', subst (F y) (F <$> expr) s')
+    go (WildcardPat:ps, s) = return (ps, s)
     go _ = error "match var"
-    subst v e e' = e' >>= unvar (pure . B) f
+    subst v e e' = e' >>= f
       where
         f i | i == v = e
-            | otherwise = pure $ F i
+            | otherwise = pure i
 
 matchView :: AbstractM -> NonEmptyMatch
 matchView expr exprs clauses = match (App f Explicit expr : exprs) $ NonEmpty.toList $ deview <$> clauses
