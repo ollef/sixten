@@ -1,0 +1,26 @@
+data Unit = unit
+
+data Tuple A B = tuple A B
+
+data Nat = Z | S (Ptr Nat)
+
+addNat : Ptr Nat -> Ptr Nat -> Ptr Nat
+addNat (Ref Z) n = n
+addNat (Ref (S m)) n = Ref (S (addNat m n))
+
+Vector : Ptr Nat -> Type -> Type
+Vector (Ref Z) _ = Unit
+Vector (Ref (S n)) a = Tuple a (Vector n a)
+
+sum : forall n. Vector n Int -> Int
+sum (Ref Z) unit = 0
+sum (Ref (S n)) (tuple x xs) = addInt x (sum n xs)
+
+append : forall a m n. Vector m a -> Vector n a -> Vector (addNat m n) a
+append _ (Ref Z) n unit ys = ys
+append a (Ref (S m)) n (tuple x xs) ys = tuple x (append a m n xs ys)
+
+two = Ref (S (Ref (S (Ref Z))))
+three = Ref (S (Ref (S (Ref (S (Ref Z))))))
+
+test = printInt (sum (addNat three two) (append Int three two (tuple 1 (tuple 2 (tuple 3 unit))) (tuple 12 (tuple 13 unit))))
