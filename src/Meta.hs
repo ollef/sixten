@@ -1,7 +1,6 @@
-{-# LANGUAGE DefaultSignatures, FlexibleInstances, MultiParamTypeClasses, RecursiveDo, ViewPatterns, OverloadedStrings, TypeFamilies #-}
+{-# LANGUAGE ViewPatterns, OverloadedStrings #-}
 module Meta where
 
-import Control.Applicative
 import Control.Monad.Except
 import Control.Monad.State
 import Control.Monad.ST.Class
@@ -14,7 +13,6 @@ import qualified Data.Set as Set
 import Data.STRef
 import Data.String
 import Data.Vector(Vector)
-import qualified Data.Vector as Vector
 import Prelude.Extras
 
 import Syntax
@@ -196,26 +194,6 @@ abstract1M
 abstract1M v e = do
   logVerbose 20 $ "abstracting " <> fromString (show $ metaId v)
   abstractM (\v' -> if v == v' then Just () else Nothing) e
-
-abstractDataDefM
-  :: (MetaA -> Maybe b)
-  -> DataDef Abstract.Expr MetaA
-  -> AbstractM
-  -> VIX (DataDef Abstract.Expr (Var b MetaA))
-abstractDataDefM f (DataDef cs) typ = mdo
-  let inst = instantiateTele pure vs
-      vs = (\(_, _, _, v) -> v) <$> ps'
-  typ' <- zonk typ
-  ps' <- forMTele (telescope typ') $ \h a s -> do
-    let is = inst s
-    v <- forall h is
-    return (h, a, is, v)
-  let f' x = F <$> f x <|> B . Tele <$> Vector.elemIndex x vs
-  acs <- forM cs $ \c -> traverse (fmap (toScope . fmap assoc . fromScope) . abstractM f' . inst) c
-  return $ DataDef acs
-  where
-    assoc :: Var (Var a b) c -> Var a (Var b c)
-    assoc = unvar (unvar B (F . B)) (F . F)
 
 zonkVar
   :: (Monad e, Traversable e)
