@@ -888,6 +888,8 @@ checkClausesRho clauses rhoType = do
   let returnType = instantiateTele pure argVars returnTypeScope
       body' = body >>= unvar (\Match.Fail -> Builtin.Fail returnType) pure
 
+  logMeta 25 "checkClausesRho body res" body'
+
   result <- foldrM
     (\(p, (f, v)) e ->
       f =<< Abstract.Lam (metaHint v) p (metaType v) <$> abstract1M v e)
