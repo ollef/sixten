@@ -12,7 +12,6 @@ Codegen
   Arity inference
   Should things of known size > 1 be passed as LLVM arrays?
   Use llvm-hs for llvm
-  Reuse calling convention of global aliases
 Compiler
   Add printing to compiler passes that are not VIX (make a MonadLog class?)
   Simplify/make consistent all the type synonyms
