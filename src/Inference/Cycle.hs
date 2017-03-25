@@ -90,7 +90,7 @@ occurrenceDepths = go 0 . fmap Just
       Lam _ _ t s -> go d t <> go (d + 1) (inst s)
       App e1 _ e2 -> go d e1 <> go d e2
       Let _ e s -> go d e <> go d (inst s)
-      Case e brs -> go d e <> case brs of
+      Case e brs retType -> go d e <> go d retType <> case brs of
         ConBranches cbrs -> concat
           [ go d (inst scope) <> concat [ go d $ inst s | (_, _, s) <- tele ]
           | (_, Telescope tele, scope) <- cbrs
@@ -100,4 +100,3 @@ occurrenceDepths = go 0 . fmap Just
           | (_, e') <- lbrs
           ]
           <> go d def
-        NoBranches typ -> go d typ

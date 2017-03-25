@@ -36,11 +36,12 @@ simplifyExpr glob !applied expr = case expr of
       (simplifyExpr glob (applied + 1) e1)
       p
       (simplifyExpr glob 0 e2)
-  Case e brs ->
+  Case e brs retType ->
     runIdentity
       $ chooseBranch
         (simplifyExpr glob 0 e)
         (simplifyBranches glob applied brs)
+        (simplifyExpr glob 0 retType)
         (Identity . simplifyExpr glob applied)
   Let h e s -> let_ glob h (simplifyExpr glob 0 e) (simplifyScope glob applied s)
 
@@ -61,7 +62,6 @@ simplifyBranches glob applied (ConBranches cbrs) = ConBranches
 simplifyBranches glob applied (LitBranches lbrs def) = LitBranches
   [(l, simplifyExpr glob applied e) | (l, e) <- lbrs]
   $ simplifyExpr glob applied def
-simplifyBranches glob _ (NoBranches typ) = NoBranches $ simplifyExpr glob 0 typ
 
 simplifyTele
   :: (Name -> Bool)

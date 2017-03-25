@@ -64,7 +64,6 @@ liftBranches (LitBranches lbrs def) = LitBranches <$> sequence
   [ (,) l <$> liftExpr e
   | (l, e) <- lbrs
   ] <*> liftExpr def
-liftBranches (NoBranches sz) = NoBranches <$> liftExpr sz
 
 liftTelescope
   :: Telescope d Closed.Expr v

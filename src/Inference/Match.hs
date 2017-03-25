@@ -58,67 +58,72 @@ matchSingle
   :: AbstractM
   -> PatM
   -> AbstractM
+  -> AbstractM
   -> VIX (Expr (Var Fail MetaA))
-matchSingle expr pat innerExpr
-  = match [expr] [([pat], F <$> innerExpr)] $ F <$> innerExpr
+matchSingle expr pat innerExpr retType
+  = match (F <$> retType) [expr] [([pat], F <$> innerExpr)] $ F <$> innerExpr
 
 matchCase
   :: AbstractM
   -> [(PatM, AbstractM)]
+  -> AbstractM
   -> VIX (Expr (Var Fail MetaA))
-matchCase expr pats
-  = match [expr] (bimap pure (fmap F) <$> pats) (pure $ B Fail)
+matchCase expr pats retType
+  = match (F <$> retType) [expr] (bimap pure (fmap F) <$> pats) (pure $ B Fail)
 
 matchClauses
   :: [AbstractM]
   -> [([PatM], AbstractM)]
+  -> AbstractM
   -> VIX (Expr (Var Fail MetaA))
-matchClauses exprs pats
-  = match exprs (fmap (fmap F) <$> pats) (pure $ B Fail)
+matchClauses exprs pats retType
+  = match (F <$> retType) exprs (fmap (fmap F) <$> pats) (pure $ B Fail)
 
 type Match
-  = [AbstractM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
+  = Type (Var Fail MetaA) -- ^ Return type
+  -> [AbstractM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
   -> [Clause] -- ^ Clauses
   -> Expr (Var Fail MetaA) -- ^ The continuation for pattern match failure
   -> VIX (Expr (Var Fail MetaA))
 
 type NonEmptyMatch
-  = [AbstractM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
+  = Type (Var Fail MetaA) -- ^ Return type
+  -> [AbstractM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
   -> NonEmpty Clause -- ^ Clauses
   -> Expr (Var Fail MetaA) -- ^ The continuation for pattern match failure
   -> VIX (Expr (Var Fail MetaA))
 
 -- | Desugar pattern matching clauses
 match :: Match
-match _ [] expr0 = return expr0
-match [] clauses expr0 = return $ foldr go expr0 clauses
+match _ _ [] expr0 = return expr0
+match _ [] clauses expr0 = return $ foldr go expr0 clauses
   where
     go :: Clause -> Expr (Var Fail MetaA) -> Expr (Var Fail MetaA)
     go ([], s) x = fatBar s x
     go _ _ = error "match go"
-match xs clauses expr0
+match retType xs clauses expr0
   = foldrM
-    (matchMix xs)
+    (matchMix retType xs)
     expr0
   $ NonEmpty.groupBy ((==) `on` patternType . firstPattern) clauses
 
 firstPattern :: ([c], b) -> c
-firstPattern ([], _) = error $ "Match.firstPattern "
+firstPattern ([], _) = error "Match.firstPattern"
 firstPattern (c:_, _) = c
 
 matchMix :: NonEmptyMatch
-matchMix (expr:exprs) clauses@(clause NonEmpty.:| _) expr0
-  = f expr exprs clauses expr0
+matchMix retType (expr:exprs) clauses@(clause NonEmpty.:| _) expr0
+  = f expr retType exprs clauses expr0
   where
     f = case patternType $ firstPattern clause of
       VarPatType -> matchVar
       LitPatType -> matchLit
       ConPatType -> matchCon
       ViewPatType _ -> matchView
-matchMix _ _ _ = error "matchMix"
+matchMix _ _ _ _ = error "matchMix"
 
 matchCon :: AbstractM -> NonEmptyMatch
-matchCon expr exprs clauses expr0 = do
+matchCon expr retType exprs clauses expr0 = do
   let (QConstr typeName _) = firstCon $ NonEmpty.head clauses
   cs <- constructors typeName
 
@@ -135,17 +140,12 @@ matchCon expr exprs clauses expr0 = do
     (ps, ys) <- conPatArgs c params
 
     let exprs' = (pure <$> Vector.toList ys) ++ exprs
-    rest <- match exprs' (decon clausesStartingWithC) (pure $ B Fail)
+    rest <- match retType exprs' (decon clausesStartingWithC) (pure $ B Fail)
     restScope <- abstractF (teleAbstraction $ F <$> ys) rest
     tele <- patternTelescope ys ps
     return (c, F <$> tele, restScope)
 
-  cbrs' <- maybe
-    (throwError "matchCon: empty branches")
-    return
-    (NonEmpty.nonEmpty cbrs)
-
-  return $ fatBar (Case (F <$> expr) (ConBranches cbrs')) expr0
+  return $ fatBar (Case (F <$> expr) (ConBranches cbrs) retType) expr0
   where
     firstCon (c:_, _) = constr c
     firstCon _ = error "firstCon "
@@ -182,21 +182,21 @@ patternTelescope ys ps = Telescope <$> mapM go ps
       return (patternHint pat, p, s)
 
 matchLit :: AbstractM -> NonEmptyMatch
-matchLit expr exprs clauses expr0 = do
+matchLit expr retType exprs clauses expr0 = do
   let ls = NonEmpty.nub $ (lit . firstPattern) <$> clauses
   lbrs <- forM ls $ \l -> do
     let clausesStartingWithL = NonEmpty.filter ((== LitPat l) . firstPattern) clauses
-    rest <- match exprs (decon clausesStartingWithL) (pure $ B Fail)
+    rest <- match retType exprs (decon clausesStartingWithL) (pure $ B Fail)
     return (l, rest)
-  return $ Case (F <$> expr) $ LitBranches lbrs expr0
+  return $ Case (F <$> expr) (LitBranches lbrs expr0) retType
   where
     lit (LitPat l) = l
     lit _ = error "match lit"
 
 matchVar :: AbstractM -> NonEmptyMatch
-matchVar expr exprs clauses expr0 = do
+matchVar expr retType exprs clauses expr0 = do
   clauses' <- traverse go clauses
-  match exprs (NonEmpty.toList clauses') expr0
+  match retType exprs (NonEmpty.toList clauses') expr0
   where
     go :: Clause -> VIX Clause
     go (VarPat _ y:ps, s) = do
@@ -213,7 +213,7 @@ matchVar expr exprs clauses expr0 = do
             | otherwise = pure i
 
 matchView :: AbstractM -> NonEmptyMatch
-matchView expr exprs clauses = match (App f Explicit expr : exprs) $ NonEmpty.toList $ deview <$> clauses
+matchView expr retType exprs clauses = match retType (App f Explicit expr : exprs) $ NonEmpty.toList $ deview <$> clauses
   where
     f = case clauses of
       (ViewPat t _:_, _) NonEmpty.:| _ -> t

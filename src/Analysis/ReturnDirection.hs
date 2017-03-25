@@ -194,9 +194,6 @@ inferBranches _loc (LitBranches lbrs def) = do
   let (lbrs', locs) = NonEmpty.unzip locatedLbrs
   loc <- foldM maxMetaReturnIndirect defloc locs
   return (LitBranches lbrs' def', loc)
-inferBranches loc (NoBranches typ) = do
-  (typ', _loc) <- infer typ
-  return (NoBranches typ', loc) -- TODO Is this location correct?
 
 inferFunction
   :: Expr MetaVar

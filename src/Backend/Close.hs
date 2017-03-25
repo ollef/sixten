@@ -94,4 +94,3 @@ closeBranches (ConBranches cbrs) = fmap ConBranches $
     return (qc, tele'', brScope')
 closeBranches (LitBranches lbrs def) = LitBranches
   <$> mapM (\(l, e) -> (,) l <$> closeExpr e) lbrs <*> closeExpr def
-closeBranches (NoBranches sz) = NoBranches <$> closeExpr sz

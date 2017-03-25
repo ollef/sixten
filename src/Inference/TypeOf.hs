@@ -2,7 +2,6 @@
 module Inference.TypeOf where
 
 import Control.Monad.Except
-import qualified Data.List.NonEmpty as NonEmpty
 
 import qualified Builtin
 import Inference.Normalise
@@ -40,12 +39,7 @@ typeOfM expr = do
       eType <- typeOfM e
       v <- forall h eType
       typeOfM $ instantiate1 (pure v) s
-    Case _ (ConBranches ((_, tele, brScope) NonEmpty.:| _)) -> do
-      vs <- forTeleWithPrefixM tele $ \h _ s vs ->
-        forall h $ instantiateTele pure vs s
-      typeOfM $ instantiateTele pure vs brScope
-    Case _ (LitBranches _ def) -> typeOfM def
-    Case _ (NoBranches t) -> return t
+    Case _ _ retType -> return retType
   modifyIndent pred
   -- logMeta "typeOfM res" =<< zonk t
   return t
@@ -79,12 +73,7 @@ typeOf expr = do
       eType <- typeOf e
       v <- forall h eType
       typeOf $ instantiate1 (pure v) s
-    Case _ (ConBranches ((_, tele, brScope) NonEmpty.:| _)) -> do
-      vs <- forTeleWithPrefixM tele $ \h _ s vs ->
-        forall h $ instantiateTele pure vs s
-      typeOf $ instantiateTele pure vs brScope
-    Case _ (LitBranches _ def) -> typeOf def
-    Case _ (NoBranches t) -> return t
+    Case _ _ retType -> return retType
   modifyIndent pred
   -- logMeta "typeOf res" =<< zonk t
   return t

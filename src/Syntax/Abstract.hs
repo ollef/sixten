@@ -19,7 +19,7 @@ data Expr v
   | Lam !NameHint !Plicitness (Type v) (Scope1 Expr v)
   | App (Expr v) !Plicitness (Expr v)
   | Let !NameHint (Expr v) (Scope1 Expr v)
-  | Case (Expr v) (Branches QConstr Plicitness Expr v)
+  | Case (Expr v) (Branches QConstr Plicitness Expr v) (Type v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 -- | Synonym for documentation purposes
@@ -38,7 +38,7 @@ instance GlobalBind Expr where
     Lam h a t s -> Lam h a (bind f g t) (bound f g s)
     App e1 a e2 -> App (bind f g e1) a (bind f g e2)
     Let h e s -> Let h (bind f g e) (bound f g s)
-    Case e brs -> Case (bind f g e) (bound f g brs)
+    Case e brs retType -> Case (bind f g e) (bound f g brs) (bind f g retType)
 
 instance Syntax Expr where
   lam = Lam
@@ -93,5 +93,6 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
     Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
       "let" <+> prettyM n <+> "=" <+> inviolable (prettyM e) <+> "in"
       <+> prettyM (Util.instantiate1 (pure $ fromName n) s)
-    Case e brs -> parens `above` casePrec $
-      "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (prettyM brs)
+    Case e brs retType -> parens `above` casePrec $
+      "case" <+> inviolable (prettyM e) <+> "of" <+> parens (prettyM retType)
+        <$$> indent 2 (prettyM brs)

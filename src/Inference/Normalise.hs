@@ -44,9 +44,9 @@ whnf' expandTypeReps expr = do
         Lam _ p' _ s | p == p' -> whnf' expandTypeReps $ Util.instantiate1 e2 s
         _ -> return expr
     Let _ e s -> whnf' expandTypeReps $ instantiate1 e s
-    Case e brs -> do
+    Case e brs retType -> do
       e' <- whnf' expandTypeReps e
-      chooseBranch e' brs $ whnf' expandTypeReps
+      chooseBranch e' brs retType $ whnf' expandTypeReps
   modifyIndent pred
   return res
 
@@ -79,11 +79,11 @@ normalise expr = do
     Let _ e s -> do
       e' <- normalise e
       normalise $ instantiate1 e' s
-    Case e brs -> do
+    Case e brs retType -> do
       e' <- whnf e
-      res <- chooseBranch e' brs whnf
+      res <- chooseBranch e' brs retType whnf
       case res of
-        Case e'' brs' -> Case e'' <$> case brs' of
+        Case e'' brs' retType' -> Case e'' <$> (case brs' of
           ConBranches cbrs -> ConBranches
             <$> sequence
               [ uncurry ((,,) qc) <$> normaliseTelescope tele s
@@ -91,9 +91,8 @@ normalise expr = do
               ]
           LitBranches lbrs def -> LitBranches
             <$> sequence [(,) l <$> normalise br | (l, br) <- lbrs]
-            <*> normalise def
-          NoBranches typ -> NoBranches
-            <$> normalise typ
+            <*> normalise def)
+          <*> normalise retType'
         _ -> return res
   modifyIndent pred
   logMeta 40 "normalise res" res
@@ -142,16 +141,17 @@ chooseBranch
   :: Monad m
   => Expr v
   -> Branches QConstr Plicitness Expr v
+  -> Expr v
   -> (Expr v -> m (Expr v))
   -> m (Expr v)
-chooseBranch (Lit l) (LitBranches lbrs def) k = k chosenBranch
+chooseBranch (Lit l) (LitBranches lbrs def) _ k = k chosenBranch
   where
     chosenBranch = head $ [br | (l', br) <- NonEmpty.toList lbrs, l == l'] ++ [def]
-chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs) k =
+chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs) _ k =
   k $ instantiateTele snd (Vector.drop (Vector.length argsv - numConArgs) argsv) chosenBranch
   where
     argsv = Vector.fromList args
-    (numConArgs, chosenBranch) = case [(teleLength tele, br) | (qc', tele, br) <- NonEmpty.toList cbrs, qc == qc'] of
+    (numConArgs, chosenBranch) = case [(teleLength tele, br) | (qc', tele, br) <- cbrs, qc == qc'] of
       [br] -> br
       _ -> error "Normalise.chooseBranch"
-chooseBranch e brs _ = return $ Case e brs
+chooseBranch e brs retType _ = return $ Case e brs retType

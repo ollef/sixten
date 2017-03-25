@@ -55,7 +55,7 @@ slam expr = do
                 <> iforTele tele (\i _ a _ -> (a, pure $ B $ Tele i))
     Abstract.Con _qc -> throwError "slam impossible"
     Abstract.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamSized e2
-    Abstract.Case e brs -> SLambda.Case <$> slamSized e <*> slamBrances brs
+    Abstract.Case e brs _retType -> SLambda.Case <$> slamSized e <*> slamBranches brs
     Abstract.Let h e scope -> do
       t <- whnf' True =<< typeOf e
       v <- forall h t
@@ -67,12 +67,12 @@ slam expr = do
   logMeta 20 "slam res" res
   return res
 
-slamBrances
+slamBranches
   :: Pretty c
   => Branches c Plicitness Abstract.Expr MetaA
   -> VIX (Branches c () SLambda.Expr MetaA)
-slamBrances (ConBranches cbrs) = do
-  logMeta 20 "slamBrances brs" $ ConBranches cbrs
+slamBranches (ConBranches cbrs) = do
+  logMeta 20 "slamBranches brs" $ ConBranches cbrs
   modifyIndent succ
   cbrs' <- forM cbrs $ \(c, tele, brScope) -> do
     tele' <- forTeleWithPrefixM tele $ \h a s tele' -> do
@@ -90,13 +90,12 @@ slamBrances (ConBranches cbrs) = do
     brScope' <- slam $ instantiateTele pure vs brScope
     return (c, tele'', abstract abstr brScope')
   modifyIndent pred
-  logMeta 20 "slamBrances res" $ ConBranches cbrs'
+  logMeta 20 "slamBranches res" $ ConBranches cbrs'
   return $ ConBranches cbrs'
-slamBrances (LitBranches lbrs d)
+slamBranches (LitBranches lbrs d)
   = LitBranches
     <$> sequence [(,) l <$> slam e | (l, e) <- lbrs]
     <*> slam d
-slamBrances (NoBranches typ) = NoBranches <$> slam typ
 
 slamDef
   :: Definition Abstract.Expr MetaA

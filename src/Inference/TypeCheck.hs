@@ -171,7 +171,7 @@ tcRho expr expected expectedAppResult = case expr of
     body' <- enterLevel $ checkPoly body Builtin.Type
     f <- instExpected expected Builtin.Type
     x <- forall h patType
-    body'' <- matchSingle (pure x) pat' body'
+    body'' <- matchSingle (pure x) pat' body' Builtin.Type
     let body''' = body'' >>= unvar (\Match.Fail -> Builtin.Fail Builtin.Type) pure
     f =<< Abstract.Pi h p patType <$> abstract1M x body'''
   Concrete.Lam p pat bodyScope -> do
@@ -182,7 +182,7 @@ tcRho expr expected expectedAppResult = case expr of
         let body = instantiatePatternVec pure vs bodyScope
         (body', bodyType) <- enterLevel $ inferRho body (InstBelow Explicit) Nothing
         argVar <- forall h argType
-        body'' <- matchSingle (pure argVar) pat' body'
+        body'' <- matchSingle (pure argVar) pat' body' bodyType
         let body''' = body'' >>= unvar (\Match.Fail -> Builtin.Fail bodyType) pure
         bodyScope' <- abstract1M argVar body'''
         bodyTypeScope <- abstract1M argVar bodyType
@@ -196,7 +196,7 @@ tcRho expr expected expectedAppResult = case expr of
             bodyType = Util.instantiate1 patExpr bodyTypeScope
         body' <- enterLevel $ checkPoly body bodyType
         argVar <- forall h' argType
-        body'' <- matchSingle (pure argVar) pat' body'
+        body'' <- matchSingle (pure argVar) pat' body' bodyType
         let body''' = body'' >>= unvar (\Match.Fail -> Builtin.Fail bodyType) pure
         fResult =<< Abstract.Lam h' p argType <$> abstract1M argVar body'''
   Concrete.App fun p arg -> do
@@ -254,13 +254,8 @@ tcBranches expr pbrs expected = do
 
   f <- instExpected expected resType
 
-  matched <- case inferredBranches of
-    [] -> return $ Abstract.Case expr' $ NoBranches resType
-    _ -> do
-      matched <- matchCase expr' inferredBranches
-      return $ matched >>= unvar (\Match.Fail -> Builtin.Fail resType) pure
-
-  f matched
+  matched <- matchCase expr' inferredBranches resType
+  f $ matched >>= unvar (\Match.Fail -> Builtin.Fail resType) pure
 
 --------------------------------------------------------------------------------
 -- Patterns
@@ -881,12 +876,14 @@ checkClausesRho clauses rhoType = do
   argVars <- forTeleWithPrefixM (addTeleNames argTele $ Concrete.patternHint <$> firstPats) $ \h _ s argVars ->
     forall h $ instantiateTele pure argVars s
 
+  let returnType = instantiateTele pure argVars returnTypeScope
+
   body <- matchClauses
     (Vector.toList $ pure <$> argVars)
     (NonEmpty.toList $ first Vector.toList <$> clauses')
+    returnType
 
-  let returnType = instantiateTele pure argVars returnTypeScope
-      body' = body >>= unvar (\Match.Fail -> Builtin.Fail returnType) pure
+  let body' = body >>= unvar (\Match.Fail -> Builtin.Fail returnType) pure
 
   logMeta 25 "checkClausesRho body res" body'
 
