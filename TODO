@@ -10,19 +10,26 @@ Matching
   Add tests for exactlyEqualisePats
 Codegen
   Arity inference
-  Should things of known size > 1 be passed as LLVM arrays?
   Use llvm-hs for llvm
+  General cleanup
+    Cases: direct returns
+    Operand . unOperand
 Compiler
   Add printing to compiler passes that are not VIX (make a MonadLog class?)
   Simplify/make consistent all the type synonyms
   Clean up MetaVar handling (not all modules need the full generality)
   Make code generation use VIX
   Try to get rid of zonking in normal TC operation
+  Rename tc* VIXState accessors to vix*?
 Error messages
   Write own error printer
   Make error message footnotes contain metavars
 Language
-  * Make sizes bytes and add builtin Byte type
+  * Add builtin Byte type
+    - Add alignment to type representation
+      alignment (Tuple A B) = max (alignment A) (alignment B)
+      size (Tuple A B) = size A + padding (size A) (alignment B) + size B
+      padding byteIndex align = nearestBiggerMultiple align byteIndex - byteIndex
   * Add Nat type that is more matchable
   * Let(rec) definitions
   Named implicit arguments (maybe names should be mandatory?)

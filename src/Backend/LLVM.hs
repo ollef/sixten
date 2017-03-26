@@ -16,7 +16,8 @@ import Data.Text(Text)
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import Backend.Target
+import Backend.Target(Target)
+import qualified Backend.Target as Target
 import qualified Pretty
 import Syntax.Direction
 import Syntax.Hint
@@ -42,10 +43,10 @@ targetConfig :: Target -> Config
 targetConfig t = cfg
   where
     cfg = Config
-      { cfgAlign = shower $ ptrAlign t
-      , cfgPtrSize = shower $ ptrBytes t
-      , cfgIntegerT = "i" <> shower (ptrBits t)
-      , cfgPointerT = cfgIntegerT cfg <> "*"
+      { cfgAlign = shower $ Target.ptrAlign t
+      , cfgPtrSize = shower $ Target.ptrBytes t
+      , cfgIntegerT = "i" <> shower (Target.intBits t)
+      , cfgPointerT = "i8*"
       }
 
 -------------------------------------------------------------------------------
@@ -75,12 +76,29 @@ unC (C f) = f
 instance IsString C where
   fromString = text . fromString
 
-ptrSize :: Operand Int
-ptrSize = Operand $ C cfgPtrSize
-align, integerT, pointerT :: C
+align, voidT, integerT, pointerT :: C
+-- ptrSize = C cfgPtrSize
 align = C cfgAlign
+voidT = "void"
 integerT = C cfgIntegerT
 pointerT = C cfgPointerT
+
+data Direct = Void | Int | Array
+  deriving (Eq, Ord, Show)
+
+directType :: Size -> Direct
+directType 0 = Void
+directType sz | sz <= 8 = Int
+directType _ = Array
+
+directT :: Size -> C
+directT sz = case directType sz of
+  Void -> "void"
+  Int -> "i" <> shower (sz * 8)
+  Array -> "[" <> shower sz <+> "x" <+> "i8]"
+
+indirectT :: C
+indirectT = pointerT
 
 (<+>) :: C -> C -> C
 C f <+> C g = C $ \c -> case (f c, g c) of
@@ -95,6 +113,7 @@ infixr 6 <+>
 -------------------------------------------------------------------------------
 data LLVMState = LLVMState
   { config :: Config
+  , target :: Target
   , boundNames :: HashSet B
   , freeNames :: [B]
   , currentLabel :: Operand Label
@@ -104,6 +123,7 @@ data LLVMState = LLVMState
 runLLVM :: State LLVMState a -> Target -> (a, [B])
 runLLVM s t = second (reverse . instructions) $ runState s LLVMState
   { config = targetConfig t
+  , target = t
   , boundNames = mempty
   , freeNames = do
     n <- [(0 :: Int)..]
@@ -187,13 +207,11 @@ newtype Instr a = Instr C deriving (Show, IsString, Monoid)
 unInstr :: Instr a -> C
 unInstr (Instr c) = c
 
+data Array
 data Ptr
 data PtrPtr
 data Fun
 data Label
-
-voidT :: C
-voidT = "void"
 
 global :: Name -> Operand a
 global (Name b) = Operand $ "@" <> text (escape b)
@@ -203,6 +221,9 @@ integer o = integerT <+> unOperand o
 
 pointer :: Operand Ptr -> C
 pointer o = pointerT <+> unOperand o
+
+direct :: Size -> Operand Direct -> C
+direct sz o = directT sz <+> unOperand o
 
 label :: Operand Label -> C
 label o = "label" <+> unOperand o
@@ -239,30 +260,16 @@ memcpy
   -> Operand Ptr
   -> Operand Int
   -> m ()
-memcpy dst src sz = do
-  src' <- "src" =: Instr ("bitcast" <+> pointer src <+> "to i8*")
-  dst' <- "dst" =: Instr ("bitcast" <+> pointer dst <+> "to i8*")
-  emit $ Instr
-    $ "call" <+> voidT <+> "@llvm.memcpy.p0i8.p0i8." <> integerT <> "(i8*"
-    <+> unOperand dst' <> ", i8*" <+> unOperand src' <> ","
-    <+> integer sz <> ", i32" <+> align <> ", i1 false)"
-
-wordcpy
-  :: MonadState LLVMState m
-  => Operand Ptr
-  -> Operand Ptr
-  -> Operand Int
-  -> m ()
-wordcpy dst src wordSize = do
-  byteSize <- "byte-size" =: mul wordSize ptrSize
-  memcpy dst src byteSize
+memcpy dst src sz = emit $ Instr
+  $ "call" <+> voidT <+> "@llvm.memcpy.p0i8.p0i8." <> integerT <> "("
+  <> pointer dst <> "," <+> pointer src <> ","
+  <+> integer sz <> ", i32" <+> align <> ", i1 false)"
 
 gcAlloc
   :: MonadState LLVMState m
   => Operand Int
   -> m (Operand Ptr)
-gcAlloc wordSize = do
-  byteSize <- "byte-size" =: mul wordSize ptrSize
+gcAlloc byteSize = do
   byteRef <- "byteref" =: Instr ("call i8* @GC_malloc(" <> integer byteSize <> ")")
   "ref" =: Instr ("bitcast" <+> "i8*" <+> unOperand byteRef <+> "to" <+> pointerT)
 
@@ -270,12 +277,12 @@ getElementPtr
   :: Operand Ptr
   -> Operand Int
   -> Instr Ptr
-getElementPtr x i = Instr $ "getelementptr" <+> integerT <> "," <+> pointer x <> "," <+> integer i
+getElementPtr x i = Instr $ "getelementptr i8," <+> pointer x <> "," <+> integer i
 
 alloca
   :: Operand Int
   -> Instr Ptr
-alloca sz = Instr $ "alloca" <+> integerT <> "," <+> integer sz <> ", align" <+> align
+alloca sz = Instr $ "alloca i8," <+> integer sz <> ", align" <+> align
 
 intToPtr
   :: Operand Int
@@ -295,21 +302,57 @@ ptrToIntExpr p = Operand $ "ptrtoint" <+> "(" <> pointer p <+> "to" <+> integerT
 branch :: Operand Label -> Instr ()
 branch l = Instr $ "br" <+> label l
 
-load
-  :: Operand Ptr
-  -> Instr Int
-load x = Instr $ "load" <+> integerT <> "," <+> pointer x
+loadDirect
+  :: MonadState LLVMState m
+  => Size
+  -> Operand Ptr
+  -> m (Operand Direct)
+loadDirect sz o = case directType sz of
+  Void -> return "0"
+  Int -> nonVoidCase
+  Array -> nonVoidCase
+  where
+    nonVoidCase = do
+      directPtr <- "direct-ptr" =: Instr ("bitcast" <+> pointer o <+> "to" <+> directT sz <> "*")
+      "result" =: Instr ("load" <+> directT sz <> "," <+> directT sz <> "*" <+> unOperand directPtr)
+
+storeDirect
+  :: MonadState LLVMState m
+  => Size
+  -> Operand Direct
+  -> Operand Ptr
+  -> m ()
+storeDirect sz src dst = case directType sz of
+  Void -> return ()
+  Int -> nonVoidCase
+  Array -> nonVoidCase
+  where
+    nonVoidCase = do
+      directPtr <- "direct-ptr" =: Instr ("bitcast" <+> pointer dst <+> "to" <+> directT sz <> "*")
+      emit $ Instr ("store" <+> direct sz src <> "," <+> directT sz <> "*" <+> unOperand directPtr)
 
 loadPtr
   :: Operand PtrPtr
   -> Instr Ptr
 loadPtr x = Instr $ "load" <+> pointerT <> "," <+> pointerT <> "*" <+> unOperand x
 
-store
-  :: Operand Int
+loadInt
+  :: MonadState LLVMState m
+  => NameHint
   -> Operand Ptr
-  -> Instr ()
-store x p = Instr $ "store" <+> integer x <> "," <+> pointer p
+  -> m (Operand Int)
+loadInt h ptr = do
+  intPtr <- "ptr" =: Instr ("bitcast" <+> pointer ptr <+> "to" <+> integerT <> "*")
+  h =: Instr ("load" <+> integerT <> "," <+> integerT <> "*" <+> unOperand intPtr)
+
+storeInt
+  :: MonadState LLVMState m
+  => Operand Int
+  -> Operand Ptr
+  -> m ()
+storeInt x ptr = do
+  intPtr <- "ptr" =: Instr ("bitcast" <+> pointer ptr <+> "to" <+> integerT <> "*")
+  emit $ Instr $ "store" <+> integer x <> "," <+> integerT <> "*" <+> unOperand intPtr
 
 storePtr
   :: Operand Ptr
@@ -357,12 +400,13 @@ functionT :: RetDir -> Vector Direction -> C
 functionT retDir ds = retType <+> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList ds <|> [retArg]) <> ")"
   where
     (retType, retArg) = case retDir of
-      ReturnVoid -> (voidT, mempty)
-      ReturnDirect -> (integerT, mempty)
+      ReturnDirect sz -> (directT sz, mempty)
       ReturnIndirect OutParam -> (voidT, pure pointerT)
       ReturnIndirect Projection -> (pointerT, mempty)
-    go Void = []
-    go Direct = [integerT]
+    go (Direct sz) = case directType sz of
+      Void -> []
+      Int -> [directT sz]
+      Array -> [directT sz]
     go Indirect = [pointerT]
 
 exit :: Int -> Instr ()
@@ -371,8 +415,9 @@ exit n = Instr $ "call" <+> voidT <+> "@exit(i32" <+> shower n <> ")"
 returnVoid :: Instr ()
 returnVoid = Instr $ "ret" <+> voidT
 
-returnInt :: Operand Int -> Instr ()
-returnInt o = Instr $ "ret" <+> integer o
+returnDirect :: Size -> Operand Direct -> Instr ()
+returnDirect 0 _ = Instr "ret void"
+returnDirect sz o = Instr $ "ret" <+> direct sz o
 
 returnPtr :: Operand Ptr -> Instr ()
 returnPtr o = Instr $ "ret" <+> pointer o

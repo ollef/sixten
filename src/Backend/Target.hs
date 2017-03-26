@@ -9,9 +9,9 @@ import Pretty
 
 data Target = Target
   { architecture :: String
-  , ptrBits :: Int
-  , ptrBytes :: Int
-  , ptrAlign :: Int
+  , ptrBits :: Integer
+  , ptrBytes :: Integer
+  , ptrAlign :: Integer
   } deriving (Eq, Ord, Show)
 
 x86 :: Target
@@ -29,6 +29,10 @@ x86_64 = Target
   , ptrBytes = 8
   , ptrAlign = 8
   }
+
+intBytes, intBits :: Target -> Integer
+intBytes = ptrBytes
+intBits = ptrBits
 
 targets :: [Target]
 targets = [x86, x86_64]

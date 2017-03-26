@@ -5,6 +5,7 @@ import Control.Applicative
 import Control.Monad.Except
 import Control.Monad.ST()
 import Control.Monad.ST.Class
+import Control.Monad.State
 import Data.Bifunctor
 import Data.Bitraversable
 import Data.Foldable as Foldable
@@ -24,6 +25,7 @@ import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import Text.Trifecta.Result(Err(Err), explain)
 
 import Analysis.Simplify
+import qualified Backend.Target as Target
 import qualified Builtin
 import Inference.Clause
 import Inference.Cycle
@@ -36,9 +38,9 @@ import Syntax
 import qualified Syntax.Abstract as Abstract
 import Syntax.Abstract.Pattern as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
-import VIX
 import TopoSort
 import Util
+import VIX
 
 type Polytype = AbstractM
 type Monotype = AbstractM
@@ -775,10 +777,12 @@ checkDataType name (DataDef cs) typ = do
 
   mapM_ (unify [] constrRetType) rets
 
+  tagSize <- gets $ Target.intBytes . tcTarget
+
   let addTagSize = case cs of
         [] -> id
         [_] -> id
-        _ -> Builtin.addInt $ Abstract.Lit 1
+        _ -> Builtin.addInt $ Abstract.Lit tagSize
 
       typeSize = addTagSize
                $ foldr Builtin.maxInt (Abstract.Lit 0) sizes

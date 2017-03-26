@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, OverloadedStrings, TypeFamilies #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings, PatternSynonyms, TypeFamilies #-}
 module Syntax.Sized.Closed where
 
 import Control.Monad
@@ -38,15 +38,11 @@ apps e es = Call e es
 
 -------------------------------------------------------------------------------
 -- Helpers
-sized :: Literal -> Expr v -> Expr v
-sized = flip Anno . Lit
+pattern Sized sz e = Anno e sz
 
 sizeOf :: Expr v -> Expr v
 sizeOf (Anno _ sz) = sz
 sizeOf _ = error "sizeOf"
-
-sizedSizesOf :: Functor f => f (Expr v) -> f (Expr v)
-sizedSizesOf = fmap (sized 1 . sizeOf)
 
 -------------------------------------------------------------------------------
 -- Instances

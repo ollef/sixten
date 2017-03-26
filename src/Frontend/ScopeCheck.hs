@@ -11,8 +11,8 @@ import qualified Data.HashSet as HashSet
 import qualified Data.Vector as Vector
 import Data.Void
 
-import qualified Builtin
 import Syntax
+import qualified Syntax.Abstract as Abstract
 import Syntax.Concrete.Pattern
 import qualified Syntax.Concrete.Scoped as Scoped
 import qualified Syntax.Concrete.Unscoped as Unscoped
@@ -27,9 +27,10 @@ runScopeCheck m constrDefs = (a, s)
     (a, s, ~()) = runRWS m constrDefs mempty
 
 scopeCheckProgram
-  :: HashMap Name (SourceLoc, Unscoped.Definition Name, Unscoped.Type Name)
+  :: HashMap Name (Definition Abstract.Expr Void, Abstract.Type Void)
+  -> HashMap Name (SourceLoc, Unscoped.Definition Name, Unscoped.Type Name)
   -> [[(Name, SourceLoc, Scoped.PatDefinition Scoped.Expr Void, Scoped.Type Void)]]
-scopeCheckProgram defs = do
+scopeCheckProgram builtinContext defs = do
   let checkedDefDeps = for (HashMap.toList defs) $ \(n, (loc, def, typ)) -> do
         let (def', defDeps) = runScopeCheck (scopeCheckDefinition def) lookupConstr
             (typ', typDeps) = runScopeCheck (scopeCheckExpr typ) lookupConstr
@@ -47,7 +48,7 @@ scopeCheckProgram defs = do
       , c <- constrName <$> d
       ] <>
       [ HashMap.singleton c $ HashSet.singleton n
-      | (n, (DataDefinition d _, _)) <- HashMap.toList Builtin.context
+      | (n, (DataDefinition d _, _)) <- HashMap.toList builtinContext
       , c <- constrNames d
       ]
     lookupConstr c = HashMap.lookupDefault mempty c constrs

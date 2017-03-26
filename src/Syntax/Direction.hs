@@ -1,38 +1,37 @@
 {-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, OverloadedStrings #-}
 module Syntax.Direction where
 
+import Data.Monoid
 import Data.Vector(Vector)
 
 import Pretty
 import Syntax.Annotation
+import Util
 
-data Direction = Void | Direct | Indirect
+type Size = Integer
+
+data Direction = Direct Size | Indirect
   deriving (Eq, Ord, Show)
 
 instance Pretty Direction where
-  prettyM Void = "void"
-  prettyM Direct = "direct"
+  prettyM (Direct sz) = "direct(" <> prettyM sz <> ")"
   prettyM Indirect = "indirect"
 
 instance PrettyAnnotation Direction where
-  prettyAnnotation Void = prettyTightApp "0~"
-  prettyAnnotation Direct = id
+  prettyAnnotation (Direct sz) = prettyTightApp (shower sz <> "~")
   prettyAnnotation Indirect = prettyTightApp "&"
 
 data ReturnDirection a
-  = ReturnVoid
-  | ReturnDirect
+  = ReturnDirect Size
   | ReturnIndirect a
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 instance Pretty a => Pretty (ReturnDirection a) where
-  prettyM ReturnVoid = "void"
-  prettyM ReturnDirect = "direct"
+  prettyM (ReturnDirect sz) = "direct(" <> prettyM sz <> ")"
   prettyM (ReturnIndirect a) = "indirect" <+> prettyM a
 
 instance PrettyAnnotation a => PrettyAnnotation (ReturnDirection a) where
-  prettyAnnotation ReturnVoid = prettyTightApp "0~"
-  prettyAnnotation ReturnDirect = id
+  prettyAnnotation (ReturnDirect sz) = prettyTightApp (shower sz <> "~")
   prettyAnnotation (ReturnIndirect a) = prettyAnnotation a
 
 data ReturnIndirect
@@ -51,8 +50,7 @@ instance Pretty ReturnIndirect where
 type RetDir = ReturnDirection ReturnIndirect
 
 toReturnDirection :: d -> Direction -> ReturnDirection d
-toReturnDirection _ Void = ReturnVoid
-toReturnDirection _ Direct = ReturnDirect
+toReturnDirection _ (Direct sz) = ReturnDirect sz
 toReturnDirection d Indirect = ReturnIndirect d
 
 data ClosureDir

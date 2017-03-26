@@ -12,6 +12,8 @@ import qualified Data.Vector as Vector
 import Data.Void
 
 import qualified Backend.LLVM as LLVM
+import Backend.Target(Target)
+import qualified Backend.Target as Target
 import Syntax
 import Syntax.Abstract as Abstract
 import qualified Syntax.Sized.Closed as Closed
@@ -72,25 +74,25 @@ maxInt e (Lit 0) = e
 maxInt (Lit m) (Lit n) = Lit $ max m n
 maxInt e e' = MaxInt e e'
 
-context :: HashMap Name (Definition Expr Void, Type Void)
-context = HashMap.fromList
-  [ (TypeName, opaque (Lit 1) Type)
+context :: Target -> HashMap Name (Definition Expr Void, Type Void)
+context target = HashMap.fromList
+  [ (TypeName, opaque typeRep Type)
   , (SizeOfName, opaque piRep $ arrow Explicit Type IntType)
-  , (PtrName, dataType (Lam mempty Explicit Type $ Scope $ Lit 1)
+  , (PtrName, dataType (Lam mempty Explicit Type $ Scope ptrSize)
                        (arrow Explicit Type Type)
                        [ ConstrDef RefName $ toScope $ fmap B $ arrow Explicit (pure 0)
                                            $ app (Global PtrName) Explicit (pure 0)
                        ])
-  , (IntName, opaque (Lit 1) Type)
+  , (IntName, opaque intSize Type)
   , (AddIntName, opaque piRep $ arrow Explicit IntType $ arrow Explicit IntType IntType)
   , (SubIntName, opaque piRep $ arrow Explicit IntType $ arrow Explicit IntType IntType)
   , (MaxIntName, opaque piRep $ arrow Explicit IntType $ arrow Explicit IntType IntType)
   , (PrintIntName, opaque piRep $ arrow Explicit IntType IntType)
-  , (PiTypeName, opaque (Lit 1) Type)
+  , (PiTypeName, opaque ptrSize Type)
   , (UnitName, dataType (Lit 0)
                         Type
                         [ConstrDef UnitConstrName $ toScope $ Global UnitName])
-  , ( FailName , opaque piRep $ namedPi "T" Explicit Type $ pure "T")
+  , (FailName, opaque piRep $ namedPi "T" Explicit Type $ pure "T")
   ]
   where
     piRep = Global PiTypeName
@@ -99,36 +101,39 @@ context = HashMap.fromList
     dataType sz t xs = (DataDefinition (DataDef xs) sz, cl t)
     namedPi :: Name -> Plicitness -> Type Name -> Expr Name -> Expr Name
     namedPi n p t e = Pi (fromName n) p t $ abstract1 n e
+    intSize = Lit $ Target.intBytes target
+    ptrSize = Lit $ Target.ptrBytes target
+    typeRep = intSize
 
-convertedContext :: HashMap Name (Lifted.Definition Closed.Expr Void)
-convertedContext = HashMap.fromList $ concat
+convertedContext :: Target -> HashMap Name (Lifted.Definition Closed.Expr Void)
+convertedContext target = HashMap.fromList $ concat
   [[( TypeName
-    , constDef $ Closed.sized 1 $ Closed.Lit 1
+    , constDef $ Closed.Sized intSize intSize
     )
   , (SizeOfName
-    , funDef (Telescope $ pure (mempty, (), slit 1))
-      $ Scope $ Closed.sized 1 $ pure $ B 0
+    , funDef (Telescope $ pure (mempty, (), Scope $ global TypeName))
+      $ Scope $ Closed.Sized intSize $ pure $ B 0
     )
   , ( PiTypeName
-    , constDef $ Closed.sized 1 $ Closed.Lit 1
+    , constDef $ Closed.Sized intSize ptrSize
     )
   , ( PtrName
-    , funDef (Telescope $ pure (mempty, (), slit 1))
-      $ Scope $ Closed.sized 1 $ Closed.Lit 1
+    , funDef (Telescope $ pure (mempty, (), Scope $ global TypeName))
+      $ Scope $ Closed.Sized intSize ptrSize
     )
   , ( IntName
-    , constDef $ Closed.sized 1 $ Closed.Lit 1
+    , constDef $ Closed.Sized intSize intSize
     )
   , ( AddIntName
     , funDef
         (Telescope
-        $ Vector.fromList [ (mempty, (), slit 1)
-                          , (mempty, (), slit 1)
+        $ Vector.fromList [ (mempty, (), Scope intSize)
+                          , (mempty, (), Scope intSize)
                           ])
       $ Scope
-      $ Closed.sized 1
+      $ Closed.Sized intSize
       $ Closed.Prim
-      $ Primitive Direct
+      $ Primitive (Direct $ Target.intBytes target)
       [TextPart $ "add " <> intT <> " "
       , pure $ Closed.Var $ B 0
       , ", "
@@ -138,13 +143,13 @@ convertedContext = HashMap.fromList $ concat
   , ( SubIntName
     , funDef
         (Telescope
-        $ Vector.fromList [ (mempty, (), slit 1)
-                          , (mempty, (), slit 1)
+        $ Vector.fromList [ (mempty, (), Scope intSize)
+                          , (mempty, (), Scope intSize)
                           ])
       $ Scope
-      $ Closed.sized 1
+      $ Closed.Sized intSize
       $ Closed.Prim
-      $ Primitive Direct
+      $ Primitive (Direct $ Target.intBytes target)
       [TextPart $ "sub " <> intT <> " "
       , pure $ Closed.Var $ B 0
       , ", "
@@ -154,19 +159,19 @@ convertedContext = HashMap.fromList $ concat
   , ( MaxIntName
     , funDef
         (Telescope
-        $ Vector.fromList [ (mempty, (), slit 1)
-                          , (mempty, (), slit 1)
+        $ Vector.fromList [ (mempty, (), Scope intSize)
+                          , (mempty, (), Scope intSize)
                           ])
       $ Scope
-      $ Closed.sized 1
+      $ Closed.Sized intSize
       $ Closed.Let "lt"
-      (Closed.sized 1
+      (Closed.Sized intSize
       $ Closed.Prim
-      $ Primitive Direct
+      $ Primitive (Direct $ Target.intBytes target)
       [TextPart $ "icmp ugt " <> intT <> " ", pure $ Closed.Var $ B 0, ", ", pure $ Closed.Var $ B 1])
       $ toScope
       $ Closed.Prim
-      $ Primitive Direct
+      $ Primitive (Direct $ Target.intBytes target)
       ["select i1 ", pure $ Closed.Var $ B ()
       , TextPart $ ", " <> intT <> " "
       , pure $ Closed.Var $ F $ B 0
@@ -177,13 +182,13 @@ convertedContext = HashMap.fromList $ concat
   , ( PrintIntName
     , funDef
         (Telescope
-        $ Vector.fromList [(mempty, (), slit 1)])
+        $ Vector.fromList [(mempty, (), Scope intSize)])
       $ Scope
-      $ Closed.sized 1
+      $ Closed.Sized intSize
       $ Closed.Let "res"
-      (Closed.sized 1
+      (Closed.Sized intSize
       $ Closed.Prim
-      $ Primitive Direct
+      $ Primitive (Direct $ Target.intBytes target)
       [TextPart $ "call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([5 x i8], [5 x i8]* @size_t-format, i32 0, i32 0), " <> intT <> " "
       , pure $ Closed.Var $ B 0, ")"
       ])
@@ -191,49 +196,42 @@ convertedContext = HashMap.fromList $ concat
       $ Closed.Lit 0
     )
   , ( UnitName
-    , constDef $ Closed.sized 1 $ Closed.Lit 0
+    , constDef $ Closed.Sized intSize $ Closed.Lit 0
     )
   , ( FailName
     , funDef
         (Telescope
-        $ Vector.fromList [(mempty, (), slit 1)])
+        $ Vector.fromList [(mempty, (), Scope intSize)])
       $ Scope
-      $ flip Closed.Anno (Closed.Var $ B 0)
+      $ Closed.Sized (Closed.Var $ B 0)
       $ Closed.Prim
-      $ Primitive Void
+      $ Primitive (Direct 0)
       [TextPart $ "call " <> voidT <> " @exit(i32 1)"]
     )
   ]
-  , [(papName left given, pap left given) | given <- [1..maxArity - 1], left <- [1..maxArity - given]]
-  , [(applyName arity, apply arity) | arity <- [1..maxArity]]
+  , [(papName left given, pap target left given) | given <- [1..maxArity - 1], left <- [1..maxArity - given]]
+  , [(applyName arity, apply target arity) | arity <- [1..maxArity]]
   ]
   where
     intT = LLVM.integerT
     voidT = LLVM.voidT
     constDef = Lifted.ConstantDef Public . Lifted.Constant
     funDef tele = Lifted.FunctionDef Public Lifted.NonClosure . Lifted.Function tele
+    intSize = Closed.Lit $ Target.intBytes target
+    ptrSize = Closed.Lit $ Target.ptrBytes target
 
-convertedSignatures :: HashMap Name Closed.FunSignature
-convertedSignatures = flip HashMap.mapMaybeWithKey convertedContext $ \name def ->
-  case def of
-    Lifted.FunctionDef _ _ (Lifted.Function tele s) -> case fromScope s of
-      Closed.Anno _ t -> Just (tele, toScope t)
-      _ -> error $ "Builtin.convertedSignatures " <> show name
-    Lifted.ConstantDef _ _ -> Nothing
+convertedSignatures :: Target -> HashMap Name Closed.FunSignature
+convertedSignatures target
+  = flip HashMap.mapMaybeWithKey (convertedContext target) $ \name def ->
+    case def of
+      Lifted.FunctionDef _ _ (Lifted.Function tele s) -> case fromScope s of
+        Closed.Anno _ t -> Just (tele, toScope t)
+        _ -> error $ "Builtin.convertedSignatures " <> show name
+      Lifted.ConstantDef _ _ -> Nothing
 
--- TODO move these
-slit :: Literal -> Scope b Closed.Expr v
-slit n = Scope $ Closed.Lit n
-
-svarb :: b -> Scope b Closed.Expr a
-svarb = Scope . Closed.Var . B
-
-maxArity :: Num n => n
-maxArity = 6
-
-deref :: Closed.Expr v -> Closed.Expr v
-deref e
-  = Closed.Case (Closed.sized 1 e)
+deref :: Target -> Closed.Expr v -> Closed.Expr v
+deref target e
+  = Closed.Case (Closed.Sized intSize e)
   $ ConBranches
   $ pure
     ( Ref
@@ -244,94 +242,110 @@ deref e
     )
   where
     unknownSize = global "Builtin.deref.UnknownSize"
+    intSize = Closed.Lit $ Target.ptrBytes target
 
-apply :: Int -> Lifted.Definition Closed.Expr Void
-apply numArgs
+maxArity :: Num n => n
+maxArity = 6
+
+apply :: Target -> Int -> Lifted.Definition Closed.Expr Void
+apply target numArgs
   = Lifted.FunctionDef Public Lifted.NonClosure
   $ Lifted.Function
     (Telescope
-    $ Vector.cons ("this", (), slit 1)
-    $ (\n -> (fromText $ "size" <> shower (unTele n), (), slit 1)) <$> Vector.enumFromN 0 numArgs
-    <|> (\n -> (fromText $ "x" <> shower (unTele n), (), svarb $ 1 + n)) <$> Vector.enumFromN 0 numArgs)
+    $ Vector.cons ("this", (), Scope ptrSize)
+    $ (\n -> (fromText $ "size" <> shower (unTele n), (), Scope intSize)) <$> Vector.enumFromN 0 numArgs
+    <|> (\n -> (fromText $ "x" <> shower (unTele n), (), Scope $ pure $ B $ 1 + n)) <$> Vector.enumFromN 0 numArgs)
   $ toScope
-  $ flip Closed.Anno (Closed.Global "Builtin.apply.unknownSize")
-  $ Closed.Case (deref $ Closed.Var $ B 0)
+  $ Closed.Sized (Closed.Global "Builtin.apply.unknownSize")
+  $ Closed.Case (deref target $ Closed.Var $ B 0)
   $ ConBranches
   $ pure
     ( Closure
     , Telescope
-      $ Vector.fromList [("f_unknown", (), slit 1), ("n", (), slit 1)]
+      $ Vector.fromList [("f_unknown", (), Scope ptrSize), ("n", (), Scope intSize)]
     , toScope
-      $ Closed.Case (Closed.sized 1 $ Closed.Var $ B 1)
+      $ Closed.Case (Closed.Sized intSize $ Closed.Var $ B 1)
       $ LitBranches
         [(fromIntegral arity, br arity) | arity <- 1 :| [2..maxArity]]
-        $ Closed.Call (global FailName) $ pure $ Closed.sized 1 (Closed.Lit 1)
+        $ Closed.Call (global FailName) $ pure $ Closed.Sized intSize (Closed.Lit 1)
     )
   where
+    intSize = Closed.Lit $ Target.intBytes target
+    ptrSize = Closed.Lit $ Target.ptrBytes target
+
+    directPtr = Direct $ Target.ptrBytes target
+    directInt = Direct $ Target.intBytes target
+
     br :: Int -> Closed.Expr (Var Tele (Var Tele Void))
     br arity
       | numArgs < arity
         = Closed.Con Ref
         $ pure
-        $ flip Closed.Anno
-          (addInts
-          $ Vector.cons (Closed.Lit $ fromIntegral $ 3 + numArgs)
-          $ (\n -> Closed.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs)
-        $ Closed.Con Closure
-        $ Vector.cons (Closed.sized 1 $ global $ papName (arity - numArgs) numArgs)
-        $ Vector.cons (Closed.sized 1 $ Closed.Lit $ fromIntegral $ arity - numArgs)
-        $ Vector.cons (Closed.sized 1 $ Closed.Var $ F $ B 0)
-        $ (\n -> Closed.sized 1 $ Closed.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs
-        <|> (\n -> flip Closed.Anno (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + Tele numArgs + n) <$> Vector.enumFromN 0 numArgs
+        $ sizedCon target (Closed.Lit 0) Closure
+        $ Vector.cons (Closed.Sized ptrSize $ global $ papName (arity - numArgs) numArgs)
+        $ Vector.cons (Closed.Sized intSize $ Closed.Lit $ fromIntegral $ arity - numArgs)
+        $ Vector.cons (Closed.Sized ptrSize $ Closed.Var $ F $ B 0)
+        $ (\n -> Closed.Sized intSize $ Closed.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs
+        <|> (\n -> Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + Tele numArgs + n) <$> Vector.enumFromN 0 numArgs
       | numArgs == arity
         = Closed.PrimCall (ReturnIndirect OutParam) (Closed.Var $ B 0)
-        $ Vector.cons (Closed.sized 1 $ Closed.Var $ F $ B 0, Direct)
-        $ (\n -> (Closed.sized 1 $ Closed.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN 0 numArgs
-        <|> (\n -> (flip Closed.Anno (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + Tele numArgs + n, Indirect)) <$> Vector.enumFromN 0 numArgs
+        $ Vector.cons (Closed.Sized ptrSize $ Closed.Var $ F $ B 0, directPtr)
+        $ (\n -> (Closed.Sized intSize $ Closed.Var $ F $ B $ 1 + n, directInt)) <$> Vector.enumFromN 0 numArgs
+        <|> (\n -> (Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + Tele numArgs + n, Indirect)) <$> Vector.enumFromN 0 numArgs
       | otherwise
         = Closed.Call (global $ applyName $ numArgs - arity)
         $ Vector.cons
-          (Closed.sized 1
+          (Closed.Sized ptrSize
           $ Closed.PrimCall (ReturnIndirect OutParam) (Closed.Var $ B 0)
-          $ Vector.cons (Closed.sized 1 $ Closed.Var $ F $ B 0, Direct)
-          $ (\n -> (Closed.sized 1 $ Closed.Var $ F $ B $ 1 + n, Direct)) <$> Vector.enumFromN 0 arity
-          <|> (\n -> (flip Closed.Anno (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + fromIntegral numArgs + n, Indirect)) <$> Vector.enumFromN 0 arity)
-        $ (\n -> Closed.sized 1 $ Closed.Var $ F $ B $ 1 + n) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
-        <|> (\n -> flip Closed.Anno (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + fromIntegral numArgs + n) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
+          $ Vector.cons (Closed.Sized ptrSize $ Closed.Var $ F $ B 0, directPtr)
+          $ (\n -> (Closed.Sized intSize $ Closed.Var $ F $ B $ 1 + n, directInt)) <$> Vector.enumFromN 0 arity
+          <|> (\n -> (Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + fromIntegral numArgs + n, Indirect)) <$> Vector.enumFromN 0 arity)
+        $ (\n -> Closed.Sized intSize $ Closed.Var $ F $ B $ 1 + n) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
+        <|> (\n -> Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + fromIntegral numArgs + n) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
 
-addInts :: Vector (Closed.Expr v) -> Closed.Expr v
-addInts = Vector.foldr1 go
-  where
-    go x y
-      = Closed.Call (global AddIntName)
-      $ Vector.cons (Closed.Anno x $ Closed.Lit 1)
-      $ pure $ Closed.Anno y (Closed.Lit 1)
-
-pap :: Int -> Int -> Lifted.Definition Closed.Expr Void
-pap k m
+pap :: Target -> Int -> Int -> Lifted.Definition Closed.Expr Void
+pap target k m
   = Lifted.FunctionDef Public Lifted.NonClosure
   $ Lifted.Function
     (Telescope
-    $ Vector.cons ("this", (), slit 1)
-    $ (\n -> (fromText $ "size" <> shower (unTele n), (), slit 1)) <$> Vector.enumFromN 0 k
-    <|> (\n -> (fromText $ "x" <> shower (unTele n), (), svarb $ 1 + n)) <$> Vector.enumFromN 0 k)
+    $ Vector.cons ("this", (), Scope intSize)
+    $ (\n -> (fromText $ "size" <> shower (unTele n), (), Scope intSize)) <$> Vector.enumFromN 0 k
+    <|> (\n -> (fromText $ "x" <> shower (unTele n), (), Scope $ pure $ B $ 1 + n)) <$> Vector.enumFromN 0 k)
   $ toScope
-  $ flip Closed.Anno (Closed.Global "Builtin.pap.unknownSize")
-  $ Closed.Case (deref $ Closed.Var $ B 0)
+  $ Closed.Sized (Closed.Global "Builtin.pap.unknownSize")
+  $ Closed.Case (deref target $ Closed.Var $ B 0)
   $ ConBranches
   $ pure
     ( Closure
     , Telescope
-      $ Vector.cons ("_", (), slit 1)
-      $ Vector.cons ("_", (), slit 1)
-      $ Vector.cons ("that", (), slit 1)
-      $ (\n -> (fromText $ "size" <> shower (unTele n), (), slit 1)) <$> Vector.enumFromN 0 m
-      <|> (\n -> (fromText $ "y" <> shower (unTele n), (), svarb $ 3 + n)) <$> Vector.enumFromN 0 m
+      $ Vector.cons ("_", (), Scope intSize)
+      $ Vector.cons ("_", (), Scope intSize)
+      $ Vector.cons ("that", (), Scope intSize)
+      $ (\n -> (fromText $ "size" <> shower (unTele n), (), Scope intSize)) <$> Vector.enumFromN 0 m
+      <|> (\n -> (fromText $ "y" <> shower (unTele n), (), Scope $ pure $ B $ 3 + n)) <$> Vector.enumFromN 0 m
     , toScope
       $ Closed.Call (global $ applyName $ m + k)
-      $ Vector.cons (Closed.sized 1 $ Closed.Var $ B 2)
-      $ (\n -> Closed.sized 1 $ Closed.Var $ B $ 3 + n) <$> Vector.enumFromN 0 m
-      <|> (\n -> Closed.sized 1 $ Closed.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 k
-      <|> (\n -> flip Closed.Anno (Closed.Var $ B $ 3 + n) $ Closed.Var $ B $ 3 + Tele m + n) <$> Vector.enumFromN 0 m
-      <|> (\n -> flip Closed.Anno (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + Tele k + n) <$> Vector.enumFromN 0 k
+      $ Vector.cons (Closed.Sized ptrSize $ Closed.Var $ B 2)
+      $ (\n -> Closed.Sized intSize $ Closed.Var $ B $ 3 + n) <$> Vector.enumFromN 0 m
+      <|> (\n -> Closed.Sized intSize $ Closed.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 k
+      <|> (\n -> Closed.Sized (Closed.Var $ B $ 3 + n) $ Closed.Var $ B $ 3 + Tele m + n) <$> Vector.enumFromN 0 m
+      <|> (\n -> Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + Tele k + n) <$> Vector.enumFromN 0 k
     )
+  where
+    intSize = Closed.Lit $ Target.intBytes target
+    ptrSize = Closed.Lit $ Target.ptrBytes target
+
+addInts :: Target -> Vector (Closed.Expr v) -> Closed.Expr v
+addInts target = Vector.foldr1 go
+  where
+    go x y
+      = Closed.Call (global AddIntName)
+      $ Vector.cons (Closed.Anno x intSize)
+      $ pure $ Closed.Anno y intSize
+    intSize = Closed.Lit $ Target.intBytes target
+
+sizedCon :: Target -> Closed.Expr v -> QConstr -> Vector (Closed.Expr v) -> Closed.Expr v
+sizedCon target tagSize qc args
+  = Closed.Sized (addInts target $ Vector.cons tagSize argSizes) (Closed.Con qc args)
+  where
+    argSizes = Closed.sizeOf <$> args

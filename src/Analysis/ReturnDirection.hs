@@ -226,8 +226,7 @@ inferDefinition MetaVar {metaFunSig = Just (retDir, argDirs)} (FunctionDef vis c
     ReturnIndirect m -> do
       glbdir <- maxMetaReturnIndirect loc m
       unifyMetaReturnIndirect glbdir m
-    ReturnVoid -> return ()
-    ReturnDirect -> return ()
+    ReturnDirect _ -> return ()
   let s' = abstract (teleAbstraction vs) e'
   return (FunctionDef vis cl $ Function (Telescope args') s', FunctionSig retDir argDirs)
 inferDefinition _ (ConstantDef vis (Constant (Anno (Global glob) sz))) = do

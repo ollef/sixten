@@ -3,6 +3,7 @@ module Backend.ClosureConvert where
 
 import Control.Applicative
 import Control.Monad.Except
+import Control.Monad.State
 import Data.Bitraversable
 import qualified Data.HashMap.Lazy as HashMap
 import Data.Maybe
@@ -11,13 +12,14 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 
+import qualified Backend.Target as Target
 import qualified Builtin
 import Meta
 import Syntax
 import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.Lifted as Lifted
-import VIX
 import Util
+import VIX
 
 type Meta = MetaVar Unit
 
@@ -107,12 +109,12 @@ convertExpr expr = case expr of
     es' <- mapM convertExpr es
     msig <- convertedSignature g
     case msig of
-      Nothing -> return $ unknownCall (Closed.Global g) es'
+      Nothing -> unknownCall (Closed.Global g) es'
       Just sig -> knownCall g sig es'
   Lifted.Call e es -> do
     e' <- convertExpr e
     es' <- mapM convertExpr es
-    return $ unknownCall e' es'
+    unknownCall e' es'
   Lifted.PrimCall retDir e es -> do
     e' <- convertExpr e
     es' <- mapM (bitraverse convertExpr pure) es
@@ -131,10 +133,14 @@ convertExpr expr = case expr of
 unknownCall
   :: Closed.Expr Meta
   -> Vector (Closed.Expr Meta)
-  -> Closed.Expr Meta
-unknownCall e es
-  = Closed.Call (global $ Builtin.applyName $ Vector.length es)
-  $ Vector.cons (Closed.sized 1 e) $ Closed.sizedSizesOf es <|> es
+  -> VIX (Closed.Expr Meta)
+unknownCall e es = do
+  ptrSize <- gets (Closed.Lit . Target.ptrBytes . tcTarget)
+  intSize <- gets (Closed.Lit . Target.intBytes . tcTarget)
+  return
+    $ Closed.Call (global $ Builtin.applyName $ Vector.length es)
+    $ Vector.cons (Closed.Sized ptrSize e)
+    $ (Closed.Sized intSize . Closed.sizeOf <$> es) <|> es
 
 knownCall
   :: Name
@@ -144,34 +150,41 @@ knownCall
 knownCall f (tele, returnTypeScope) args
   | numArgs < arity = do
     vs <- forM fArgs $ \_ -> forall mempty Unit
+    target <- gets tcTarget
+    let intSize, ptrSize :: Closed.Expr v
+        intSize = Closed.Lit $ Target.intBytes target
+        ptrSize = Closed.Lit $ Target.ptrBytes target
     let returnType = instantiateTele pure vs $ vacuous returnTypeScope
         go v | i < Vector.length fArgs1 = B $ Tele $ 2 + i
              | otherwise = F $ Tele $ 1 + numXs - numArgs + i
           where
             i = fromMaybe (error "knownCall elemIndex") $ Vector.elemIndex v vs
+    let tele' = Telescope
+          $ Vector.cons ("x_this", (), Scope ptrSize)
+          $ (\h -> (h, (), Scope intSize)) <$> xs
+          <|> (\(n, h) -> (h, (), Scope $ pure $ B $ 1 + Tele n)) <$> Vector.indexed xs
     let fNumArgs = Closed.Lams tele'
           $ toScope
           $ fmap B
-          $ Closed.Case (Builtin.deref $ Closed.Var 0)
+          $ Closed.Case (Builtin.deref target $ Closed.Var 0)
           $ ConBranches
           $ pure
             ( Builtin.Closure
-            , Telescope $ Vector.cons (mempty, (), Builtin.slit 1)
-                        $ Vector.cons (mempty, (), Builtin.slit 1) clArgs'
+            , Telescope $ Vector.cons (mempty, (), Scope intSize)
+                        $ Vector.cons (mempty, (), Scope intSize) clArgs'
             , toScope
-            $ flip Closed.Anno (go <$> returnType)
+            $ Closed.Sized (go <$> returnType)
             $ Closed.Call (global f) fArgs
             )
     return
       $ Closed.Con Builtin.Ref
       $ pure
-      $ flip Closed.Anno (Builtin.addInts $ Vector.cons (Closed.Lit 2) $ Closed.sizeOf <$> args)
-      $ Closed.Con Builtin.Closure
-      $ Vector.cons (Closed.sized 1 fNumArgs)
-      $ Vector.cons (Closed.sized 1 $ Closed.Lit $ fromIntegral $ arity - numArgs) args
+      $ Builtin.sizedCon target (Closed.Lit 0) Builtin.Closure
+      $ Vector.cons (Closed.Sized ptrSize fNumArgs)
+      $ Vector.cons (Closed.Sized intSize $ Closed.Lit $ fromIntegral $ arity - numArgs) args
   | numArgs == arity
     = return $ Closed.Call (global f) args
-  | otherwise = return $ do
+  | otherwise = do
     let (knownArgs, unknownArgs) = Vector.splitAt arity args
     unknownCall (Closed.Call (global f) knownArgs) unknownArgs
   where
@@ -188,11 +201,6 @@ knownCall f (tele, returnTypeScope) args
     xs = Vector.drop numArgs $ teleNames tele
     numXs = Vector.length xs
     fArgs = fArgs1 <> fArgs2
-    tele'
-      = Telescope
-      $ Vector.cons ("x_this", (), Builtin.slit 1)
-      $ (\h -> (h, (), Builtin.slit 1)) <$> xs
-      <|> (\(n, h) -> (h, (), Builtin.svarb $ 1 + Tele n)) <$> Vector.indexed xs
 
 convertBranches
   :: Branches QConstr () Lifted.Expr Meta

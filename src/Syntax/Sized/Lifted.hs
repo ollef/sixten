@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, MonadComprehensions, OverloadedStrings #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings, PatternSynonyms #-}
 module Syntax.Sized.Lifted where
 
 import Control.Monad
@@ -57,16 +57,14 @@ dependencyOrder defs = fmap (\n -> (n, m HashMap.! n)) <$> topoSort (second (bou
 
 -------------------------------------------------------------------------------
 -- Helpers
-sized :: Literal -> Expr v -> Expr v
-sized = flip Anno . Lit
+pattern Sized sz e = Anno e sz
 
 sizeOf :: Expr v -> Expr v
 sizeOf (Anno _ sz) = sz
 sizeOf _ = error "Lifted.sizeOf"
 
 sizeDir :: Expr v -> Direction
-sizeDir (Lit 0) = Void
-sizeDir (Lit 1) = Direct
+sizeDir (Lit n) = Direct n
 sizeDir _ = Indirect
 
 -------------------------------------------------------------------------------

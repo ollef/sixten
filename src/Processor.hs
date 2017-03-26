@@ -47,10 +47,11 @@ import VIX
 import Util
 
 processResolved
-  :: HashMap Name (SourceLoc, Unscoped.Definition Name, Unscoped.Type Name)
+  :: HashMap Name (Definition Abstract.Expr Void, Abstract.Type Void)
+  -> HashMap Name (SourceLoc, Unscoped.Definition Name, Unscoped.Type Name)
   -> VIX [(LLVM.B, LLVM.B)]
-processResolved
-  = pure . ScopeCheck.scopeCheckProgram
+processResolved context
+  = pure . ScopeCheck.scopeCheckProgram context
   >>=> processGroup
 
 processGroup
@@ -321,9 +322,12 @@ processFile file output target logHandle verbosity = do
             outputStrLn "}"
           return Success
   where
+    context = Builtin.context target
+    convertedSignatures = Builtin.convertedSignatures target
+    convertedContext = Builtin.convertedContext target
     process resolved = do
-      addContext Builtin.context
-      addConvertedSignatures Builtin.convertedSignatures
-      builtins <- processConvertedGroup $ HashMap.toList Builtin.convertedContext
-      results <- processResolved resolved
+      addContext context
+      addConvertedSignatures convertedSignatures
+      builtins <- processConvertedGroup $ HashMap.toList convertedContext
+      results <- processResolved context resolved
       return $ builtins ++ results
