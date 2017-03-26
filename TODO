@@ -17,6 +17,7 @@ Compiler
   Simplify/make consistent all the type synonyms
   Clean up MetaVar handling (not all modules need the full generality)
   Make code generation use VIX
+  Try to get rid of zonking in normal TC operation
 Error messages
   Write own error printer
   Make error message footnotes contain metavars
@@ -35,13 +36,18 @@ Language
   Modules
   Mixfix definitions and noncompounds?
   Inductive families
+    Forcing
+    Compute the size of a type by pattern-matching on indices if possible, allowing the definition of e.g. flat vectors:
+      data Vector n A where
+        Nil : Vector 0 A
+        Cons : forall {n}. A -> Vector n A -> Vector (S n) a
   FFI & More general way to define builtins (extern LLVM, C?)
   Strings
   IO
 Optimisations
   Inlining
   Common subexpressions
-  * Tagged pointers
+  Tagged pointers
     Reorder data to enable more?
   Join point let bindings
 Runtime
