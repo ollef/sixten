@@ -305,16 +305,17 @@ branch l = Instr $ "br" <+> label l
 loadDirect
   :: MonadState LLVMState m
   => Size
+  -> NameHint
   -> Operand Ptr
   -> m (Operand Direct)
-loadDirect sz o = case directType sz of
+loadDirect sz h o = case directType sz of
   Void -> return "0"
   Int -> nonVoidCase
   Array -> nonVoidCase
   where
     nonVoidCase = do
       directPtr <- "direct-ptr" =: Instr ("bitcast" <+> pointer o <+> "to" <+> directT sz <> "*")
-      "result" =: Instr ("load" <+> directT sz <> "," <+> directT sz <> "*" <+> unOperand directPtr)
+      h =: Instr ("load" <+> directT sz <> "," <+> directT sz <> "*" <+> unOperand directPtr)
 
 storeDirect
   :: MonadState LLVMState m

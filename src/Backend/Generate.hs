@@ -50,13 +50,12 @@ data Var
   | DirectVar Size (Operand Direct)
   deriving Show
 
--- TODO remove NameHint?
 loadVar :: Size -> NameHint -> Var -> Gen (Operand Direct)
 loadVar _ _ VoidVar = return "0"
 loadVar sz _ (DirectVar sz' o)
   | sz == sz' = return o
   | otherwise = error "loadVar size mismatch"
-loadVar sz _h (IndirectVar o) = loadDirect sz o
+loadVar sz h (IndirectVar o) = loadDirect sz h o
 
 loadIntVar :: NameHint -> Var -> Gen (Operand Int)
 loadIntVar h v = do

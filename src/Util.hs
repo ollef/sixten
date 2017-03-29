@@ -21,7 +21,7 @@ import qualified Data.Text as Text
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-type Scope1  = Scope ()
+type Scope1 = Scope ()
 type Literal = Integer
 type Size = Integer
 
