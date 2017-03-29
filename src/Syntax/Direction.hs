@@ -8,8 +8,6 @@ import Pretty
 import Syntax.Annotation
 import Util
 
-type Size = Integer
-
 data Direction = Direct Size | Indirect
   deriving (Eq, Ord, Show)
 
