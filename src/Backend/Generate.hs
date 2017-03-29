@@ -124,14 +124,21 @@ generateExpr expr typ = case expr of
   Let _h e s -> do
     v <- generateExpr e $ unknownSize "let"
     generateExpr (Bound.instantiate1 (pure v) s) typ
-  Case e brs -> do
-    -- TODO: Make direct if known size
-    rets <- generateBranches e brs $ \br -> do
-      v <- generateExpr br typ
-      indirect mempty v
-    case rets of
-      [] -> return $ IndirectVar undef
-      _ -> fmap IndirectVar $ "case-result" =: phiPtr rets
+  Case e brs -> case typ of
+    Lit sz -> do
+      rets <- generateBranches e brs $ \br -> do
+        v <- generateExpr br typ
+        loadVar sz "case-result" v
+      case rets of
+        [] -> return $ DirectVar sz undef
+        _ -> fmap (DirectVar sz) $ "case-result" =: phiDirect sz rets
+    _ -> do
+      rets <- generateBranches e brs $ \br -> do
+        v <- generateExpr br typ
+        indirect mempty v
+      case rets of
+        [] -> return $ IndirectVar undef
+        _ -> fmap IndirectVar $ "case-result" =: phiPtr rets
   Prim p -> generatePrim p
   Anno e typ' -> generateExpr e typ'
 

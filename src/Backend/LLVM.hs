@@ -378,11 +378,12 @@ phiPtr xs = Instr
   $ "phi" <+> pointerT
   <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> unOperand v <> "," <+> unOperand l <> "]") <$> xs)
 
-phiInt
-  :: [(Operand Int, Operand Label)]
-  -> Instr Int
-phiInt xs = Instr
-  $ "phi" <+> integerT
+phiDirect
+  :: Size
+  -> [(Operand Direct, Operand Label)]
+  -> Instr Direct
+phiDirect sz xs = Instr
+  $ "phi" <+> directT sz
   <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> unOperand v <> "," <+> unOperand l <> "]") <$> xs)
 
 undef :: Operand a

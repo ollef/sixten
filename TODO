@@ -11,8 +11,6 @@ Matching
 Codegen
   Arity inference
   Use llvm-hs for llvm
-  General cleanup
-    Cases: direct returns
 Compiler
   Add printing to compiler passes that are not VIX (make a MonadLog class?)
   Simplify/make consistent all the type synonyms
