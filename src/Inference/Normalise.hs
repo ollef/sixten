@@ -23,32 +23,44 @@ whnf'
   -> VIX AbstractM
 whnf' expandTypeReps expr = do
   modifyIndent succ
-  res <- case expr of
-    Var v -> refineVar v $ whnf' expandTypeReps
-    Global g -> do
-      (d, _) <- definition g
-      case d of
-        Definition e -> whnf' expandTypeReps e
-        DataDefinition _ e | expandTypeReps -> whnf' expandTypeReps e
-        _ -> return expr
-    Con _ -> return expr
-    Lit _ -> return expr
-    Pi {} -> return expr
-    Lam {} -> return expr
-    Builtin.SubInt x y -> binOp Nothing (Just 0) (-) Builtin.SubInt (whnf' expandTypeReps) x y
-    Builtin.AddInt x y -> binOp (Just 0) (Just 0) (+) Builtin.AddInt (whnf' expandTypeReps) x y
-    Builtin.MaxInt x y -> binOp (Just 0) (Just 0) max Builtin.MaxInt (whnf' expandTypeReps) x y
-    App e1 p e2 -> do
-      e1' <- whnf' expandTypeReps e1
-      case e1' of
-        Lam _ p' _ s | p == p' -> whnf' expandTypeReps $ Util.instantiate1 e2 s
-        _ -> return expr
-    Let _ e s -> whnf' expandTypeReps $ instantiate1 e s
-    Case e brs retType -> do
-      e' <- whnf' expandTypeReps e
-      chooseBranch e' brs retType $ whnf' expandTypeReps
+  logMeta 40 ("whnf e " ++ show expandTypeReps) expr
+  res <- uncurry go $ appsView expr
+  logMeta 40 ("whnf res " ++ show expandTypeReps) res
   modifyIndent pred
   return res
+  where
+    go f [] = whnfInner expandTypeReps f
+    go f es@((p, e):es') = do
+      f' <- whnfInner expandTypeReps f
+      case f' of
+        Lam _ p' _ s | p == p' -> go (Util.instantiate1 e s) es'
+        _ -> case apps f' es of
+          Builtin.SubInt x y -> binOp Nothing (Just 0) (-) Builtin.SubInt (whnf' expandTypeReps) x y
+          Builtin.AddInt x y -> binOp (Just 0) (Just 0) (+) Builtin.AddInt (whnf' expandTypeReps) x y
+          Builtin.MaxInt x y -> binOp (Just 0) (Just 0) max Builtin.MaxInt (whnf' expandTypeReps) x y
+          expr' -> return expr'
+
+whnfInner
+  :: Bool
+  -> AbstractM
+  -> VIX AbstractM
+whnfInner expandTypeReps expr = case expr of
+  Var v -> refineVar v $ whnf' expandTypeReps
+  Global g -> do
+    (d, _) <- definition g
+    case d of
+      Definition e -> whnf' expandTypeReps e
+      DataDefinition _ e | expandTypeReps -> whnf' expandTypeReps e
+      _ -> return expr
+  Con _ -> return expr
+  Lit _ -> return expr
+  Pi {} -> return expr
+  Lam {} -> return expr
+  App {} -> return expr
+  Let _ e s -> whnf' expandTypeReps $ instantiate1 e s
+  Case e brs retType -> do
+    e' <- whnf' expandTypeReps e
+    chooseBranch e' brs retType $ whnf' expandTypeReps
 
 normalise
   :: AbstractM
