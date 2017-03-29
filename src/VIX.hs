@@ -165,7 +165,10 @@ qconstructor qc@(QConstr n c) = do
         [] -> throwError $ "Not in scope: constructor " ++ show qc
         [cdef] -> return $ constrType cdef
         _ -> throwError $ "Ambiguous constructor: " ++ show qc
-    Definition _ -> throwError $ "Not a data type: " ++ show n
+    Definition _ -> no
+    Opaque -> no
+  where
+    no = throwError $ "Not a data type: " ++ show n
 
 constructor
   :: Ord v

@@ -93,6 +93,7 @@ simplifyDef glob (Definition e)
   = Definition $ simplifyExpr glob 0 e
 simplifyDef glob (DataDefinition d rep)
   = DataDefinition d $ simplifyExpr glob 0 rep
+simplifyDef _ Opaque = Opaque
 
 etaLams
   :: (Name -> Bool)

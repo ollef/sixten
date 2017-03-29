@@ -102,3 +102,4 @@ slamDef
   -> VIX LambdaM
 slamDef (Definition e) = slamSized e
 slamDef (DataDefinition _ e) = slamSized e
+slamDef Opaque = throwError "slam opaque"

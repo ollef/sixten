@@ -936,6 +936,10 @@ generaliseDef vs (DataDefinition (DataDef cs) rep) typ = do
   where
     f v = pure $ maybe (F v) (B . Tele) (v `Vector.elemIndex` vs)
     g = pure . B . (+ Tele (length vs))
+generaliseDef vs Opaque typ = do
+  unless (Vector.null vs) $
+    throwError "generaliseDef opaque"
+  return (Opaque, typ)
 
 abstractMs
   :: Foldable t

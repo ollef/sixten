@@ -76,34 +76,34 @@ maxInt e e' = MaxInt e e'
 
 context :: Target -> HashMap Name (Definition Expr Void, Type Void)
 context target = HashMap.fromList
-  [ (TypeName, opaque typeRep Type)
-  , (SizeOfName, opaque piRep $ arrow Explicit Type IntType)
+  [ (TypeName, opaqueData typeRep Type)
+  , (SizeOfName, opaque $ arrow Explicit Type IntType)
   , (PtrName, dataType (Lam mempty Explicit Type $ Scope ptrSize)
                        (arrow Explicit Type Type)
                        [ ConstrDef RefName $ toScope $ fmap B $ arrow Explicit (pure 0)
                                            $ app (Global PtrName) Explicit (pure 0)
                        ])
-  , (IntName, opaque intSize Type)
-  , (AddIntName, opaque piRep $ arrow Explicit IntType $ arrow Explicit IntType IntType)
-  , (SubIntName, opaque piRep $ arrow Explicit IntType $ arrow Explicit IntType IntType)
-  , (MaxIntName, opaque piRep $ arrow Explicit IntType $ arrow Explicit IntType IntType)
-  , (PrintIntName, opaque piRep $ arrow Explicit IntType IntType)
-  , (PiTypeName, opaque ptrSize Type)
+  , (IntName, opaqueData intRep Type)
+  , (AddIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
+  , (SubIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
+  , (MaxIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
+  , (PrintIntName, opaque $ arrow Explicit IntType IntType)
+  , (PiTypeName, opaqueData ptrSize Type)
   , (UnitName, dataType (Lit 0)
                         Type
                         [ConstrDef UnitConstrName $ toScope $ Global UnitName])
-  , (FailName, opaque piRep $ namedPi "T" Explicit Type $ pure "T")
+  , (FailName, opaque $ namedPi "T" Explicit Type $ pure "T")
   ]
   where
-    piRep = Global PiTypeName
     cl = fromMaybe (error "Builtin not closed") . closed
-    opaque sz t = dataType sz t mempty
+    opaqueData sz t = dataType sz t mempty
+    opaque t = (Opaque, cl t)
     dataType sz t xs = (DataDefinition (DataDef xs) sz, cl t)
     namedPi :: Name -> Plicitness -> Type Name -> Expr Name -> Expr Name
     namedPi n p t e = Pi (fromName n) p t $ abstract1 n e
-    intSize = Lit $ Target.intBytes target
+    intRep = Lit $ Target.intBytes target
     ptrSize = Lit $ Target.ptrBytes target
-    typeRep = intSize
+    typeRep = intRep
 
 convertedContext :: Target -> HashMap Name (Lifted.Definition Closed.Expr Void)
 convertedContext target = HashMap.fromList $ concat
