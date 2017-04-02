@@ -43,7 +43,6 @@ import Util
 import VIX
 
 type Polytype = AbstractM
-type Monotype = AbstractM
 type Rhotype = AbstractM -- No top-level foralls
 
 newtype InstBelow = InstBelow Plicitness
