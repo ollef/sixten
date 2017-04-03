@@ -1,4 +1,4 @@
-data Void where
+type Void where
 
 loop : {A : Type} -> A -> Void
 loop x = loop x

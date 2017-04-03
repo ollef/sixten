@@ -1,8 +1,8 @@
-data Nat where
+type Nat where
   Zero : Nat
   Succ : Ptr Nat -> Nat
 
-data Bool where
+type Bool where
   False True : Bool
 
 deref p = case p of
@@ -29,7 +29,7 @@ one = Ref (Succ zero)
 two = Ref (Succ one)
 three = Ref (Succ two)
 
-data List a where
+type List a where
   Nil : List a
   Cons : a -> Ptr (List a) -> List a
 

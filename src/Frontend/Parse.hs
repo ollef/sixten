@@ -299,7 +299,7 @@ def
     mkDef f = (\ps e n -> ParsedClause (f n) (Unscoped.Clause ps e)) <$> (Vector.fromList <$> manyPatterns) <*% symbol "=" <*>% expr
 
 dataDef :: Parser (TopLevelParsed Name)
-dataDef = ParsedData <$ reserved "data" <*>% ident <*> manyTypedBindings <*>%
+dataDef = ParsedData <$ reserved "type" <*>% ident <*> manyTypedBindings <*>%
   (concat <$% reserved "where" <*> manyIndentedSameCol conDef
   <|> id <$% symbol "=" <*>% sepBySI adtConDef (symbol "|"))
   where

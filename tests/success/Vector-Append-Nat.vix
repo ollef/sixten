@@ -1,8 +1,8 @@
-data Unit = unit
+type Unit = unit
 
-data Tuple A B = tuple A B
+type Tuple A B = tuple A B
 
-data Nat = Z | S (Ptr Nat)
+type Nat = Z | S (Ptr Nat)
 
 addNat : Ptr Nat -> Ptr Nat -> Ptr Nat
 addNat (Ref Z) n = n

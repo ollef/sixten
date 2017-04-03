@@ -1,4 +1,4 @@
-data A = A1 | A2
+type A = A1 | A2
 
 test1 A1 b = \c. c
 test1 A2 b c {d} {e} = c

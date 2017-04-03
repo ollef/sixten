@@ -4,11 +4,11 @@ deref p = case p of Ref t -> t
 the : (A : Type) -> A -> A
 the _ a = a
 
-data List (A : Type) where
+type List (A : Type) where
   Nil : List A
   Cons : A -> Ptr (List A) -> List A
 
-data List2 (A : Type) where
+type List2 (A : Type) where
   Nil2 : List2 A
   Cons2 : A -> Ptr (List2 A) -> List2 A
 

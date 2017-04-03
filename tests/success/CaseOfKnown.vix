@@ -1,4 +1,4 @@
-data Tree a = Leaf a | Fork (Ptr (Tree a)) (Ptr (Tree a))
+type Tree a = Leaf a | Fork (Ptr (Tree a)) (Ptr (Tree a))
 
 test = printInt case Leaf 123 of
   Leaf n -> n

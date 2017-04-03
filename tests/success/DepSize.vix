@@ -1,13 +1,13 @@
 deref : forall {A}. Ptr A -> A
 deref p = case p of Ref a -> a
 
-data Unit where
+type Unit where
   unit : Unit
 
-data Tuple A B where
+type Tuple A B where
   tuple : A -> B -> Tuple A B
 
-data Nat where
+type Nat where
   Zero : Nat
   Succ : Ptr Nat -> Nat
 

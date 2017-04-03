@@ -1,6 +1,6 @@
-data Unit = unit
+type Unit = unit
 
-data Tuple a b = tuple a b
+type Tuple a b = tuple a b
 
 Vector : Int -> Type -> Type
 Vector 0 _ = Unit

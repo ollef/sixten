@@ -1,7 +1,7 @@
-data Unit where
+type Unit where
   unit : Unit
 
-data Void where
+type Void where
 
 absurd : {A : Type} -> Void -> A
 absurd x = case x of

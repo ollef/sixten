@@ -1,13 +1,13 @@
 deref : forall {t}. Ptr t -> t
 deref p = case p of Ref t -> t
 
-data List a = Nil | Cons a (Ptr (List a))
+type List a = Nil | Cons a (Ptr (List a))
 
-data Bool
+type Bool
   = False
   | True
 
-data Maybe a
+type Maybe a
   = Nothing
   | Just a
 

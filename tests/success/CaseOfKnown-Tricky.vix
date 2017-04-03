@@ -1,4 +1,4 @@
-data Tree a b c = Leaf a b c a b c | Fork (Ptr (Tree a b c)) (Ptr (Tree a b c)) | Nil
+type Tree a b c = Leaf a b c a b c | Fork (Ptr (Tree a b c)) (Ptr (Tree a b c)) | Nil
 
 test = printInt case Leaf 111 222 333 444 555 666 of
   Leaf x1 x2 x3 x4 x5 x6 -> x4

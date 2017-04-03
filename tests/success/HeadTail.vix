@@ -2,7 +2,7 @@ deref : {a : Type} -> Ptr a -> a
 deref ptr = case ptr of
   Ref a -> a
 
-data List a where
+type List a where
   Nil : List a
   Cons : a -> Ptr (List a) -> List a
 

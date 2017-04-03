@@ -1,4 +1,4 @@
-data Tree a where
+type Tree a where
   Leaf : a -> Tree a
   Fork : Ptr (Tree a) -> Ptr (Tree a) -> Tree a
 

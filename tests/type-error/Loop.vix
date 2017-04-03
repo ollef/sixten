@@ -1,4 +1,4 @@
-data Unit where
+type Unit where
   unit : Unit
 
 loop : Unit

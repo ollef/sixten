@@ -1,4 +1,4 @@
-data Impl where
+type Impl where
   impl1 : forall {A : Type}. Ptr A -> Impl
   impl2 : forall {A : Type}{B : Type}. Ptr A -> Ptr B -> Impl
 

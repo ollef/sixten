@@ -1,4 +1,4 @@
-data Unit = unit
+type Unit = unit
 
 loop unit = loop unit
 
@@ -10,7 +10,7 @@ test4 = \(x y z : Int). (loop unit) x y z
 test5 : Int -> Int -> Int -> Int
 test5 = \(x y z : Int). (loop unit) x y z
 
-data List a = Nil | Cons a (Ptr (List a))
+type List a = Nil | Cons a (Ptr (List a))
 
 map f (Ref Nil) = Ref Nil
 map f (Ref (Cons x xs)) = Ref (Cons (f x) (map f xs))

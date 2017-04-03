@@ -1,4 +1,4 @@
-data List (A : Type) where
+type List (A : Type) where
   Nil : List A
   Cons : A -> Ptr (List A) -> List A
 

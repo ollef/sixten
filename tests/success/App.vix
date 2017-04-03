@@ -9,7 +9,7 @@ app = APP
 
 app2 f x = APP f x
 
-data List a = Nil | Cons a (Ptr (List a))
+type List a = Nil | Cons a (Ptr (List a))
 
 map f (Ref Nil) = Ref Nil
 map f (Ref (Cons x xs)) = Ref (Cons (f x) (map f xs))

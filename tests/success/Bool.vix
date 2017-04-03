@@ -1,4 +1,4 @@
-data Bool where
+type Bool where
   True : Bool
   False : Bool
 

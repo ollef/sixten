@@ -1,11 +1,11 @@
 the : (A : Type) -> A -> A
 the A a = a
 
-data Bool2 where
+type Bool2 where
   True : Bool2
   False : Bool2
 
-data Bool where
+type Bool where
   True : Bool
   False : Bool
 
@@ -20,11 +20,11 @@ test (b : Bool) = case b of
   False -> 0
   True -> 1
 
-data List a where
+type List a where
   Nil : List a
   Cons : a -> Ptr (List a) -> List a
 
-data Maybe a where
+type Maybe a where
   Nothing : Maybe a
   Just : a -> Maybe a
 

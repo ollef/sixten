@@ -8,7 +8,7 @@ highlight def link sixtenIdentifier Identifier
 highlight def link sixtenType Type
 highlight def link sixtenDefinition Function
 highlight def link sixtenNumber Number
-highlight def link sixtenDataKeyword Keyword
+highlight def link sixtenTypeKeyword Keyword
 highlight def link sixtenCaseKeyword Conditional
 highlight def link sixtenForall Keyword
 highlight def link sixtenLambda Keyword
@@ -25,7 +25,7 @@ syn match sixtenIdentifier "[_a-z][a-zA-Z0-9_']*" contained
 syn match sixtenType "\<[A-Z][a-zA-Z0-9_']*\>"
 syn match sixtenDefinition "^\s*\([_a-zA-Z][a-zA-Z0-9_']*\_s*\)\+:"
 syn match sixtenNumber "\<[0-9]\+\>"
-syn keyword sixtenDataKeyword data where
+syn keyword sixtenTypeKeyword type where
 syn keyword sixtenCaseKeyword case of
 syn keyword sixtenForall forall
 syn match sixtenLambda "\\"

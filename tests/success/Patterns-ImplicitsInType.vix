@@ -1,5 +1,5 @@
-data A = A1 | A2
-data B = B1 | B2
+type A = A1 | A2
+type B = B1 | B2
 
 test1 : {b : B} -> A -> A
 test1 A1 = A2

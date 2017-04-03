@@ -1,4 +1,4 @@
-data List a = Nil | Cons a (Ptr (List a))
+type List a = Nil | Cons a (Ptr (List a))
 
 ones = Ref (Cons 1 ones)
 

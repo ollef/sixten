@@ -1,2 +1,2 @@
-data A = A1 | A2 B
-data B = B1 | B2 A
+type A = A1 | A2 B
+type B = B1 | B2 A
