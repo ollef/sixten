@@ -29,6 +29,7 @@ Language
       padding byteIndex align = nearestBiggerMultiple align byteIndex - byteIndex
   * Add Nat type that is more matchable
   * Let(rec) definitions
+  * Rename "data" to "type"
   Named implicit arguments (maybe names should be mandatory?)
   Laziness
   * Type classes
@@ -58,4 +59,4 @@ Runtime
   Do real GC with LLVM gcroots etc
   Closures
     Store the arity as a bitfield where the highest set bit determines the
-    arity, and the other bits determine the arguments of size 1
+    arity, and the other bits determine the arguments of size 8
