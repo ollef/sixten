@@ -22,7 +22,6 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 type Scope1 = Scope ()
-type Literal = Integer
 type Size = Integer
 
 unusedVar :: (Monad f, Traversable f) => f (Var b a) -> Maybe (f a)

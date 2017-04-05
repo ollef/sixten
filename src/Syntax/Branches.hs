@@ -17,6 +17,7 @@ import Prelude.Extras
 import Pretty
 import Syntax.Annotation
 import Syntax.GlobalBind
+import Syntax.Literal
 import Syntax.Name
 import Syntax.Telescope
 import Util

@@ -18,7 +18,6 @@ import Text.Trifecta.Delta
 import Syntax
 import Syntax.Concrete.Pattern
 import Syntax.Concrete.Unscoped as Unscoped
-import Util
 
 type Input = Text
 newtype Parser a = Parser {runParser :: StateT Delta Trifecta.Parser a}
@@ -168,7 +167,7 @@ symbol :: String -> Parser Name
 symbol = fmap (Name . Text.pack) . Trifecta.token . Trifecta.symbol
 
 literal :: Parser Literal
-literal = Trifecta.token $ Trifecta.try Trifecta.integer
+literal = Integer <$> Trifecta.token (Trifecta.try Trifecta.integer)
 
 constructor :: Parser Constr
 constructor = nameToConstr <$> ident

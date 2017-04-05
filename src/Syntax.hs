@@ -15,6 +15,7 @@ import Syntax.Definition as X
 import Syntax.Direction as X
 import Syntax.GlobalBind as X
 import Syntax.Hint as X
+import Syntax.Literal as X
 import Syntax.Name as X
 import Syntax.Pattern as X
 import Syntax.Primitive as X

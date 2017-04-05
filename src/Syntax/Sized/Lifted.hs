@@ -64,7 +64,7 @@ sizeOf (Anno _ sz) = sz
 sizeOf _ = error "Lifted.sizeOf"
 
 sizeDir :: Expr v -> Direction
-sizeDir (Lit n) = Direct n
+sizeDir (Lit (Integer n)) = Direct n
 sizeDir _ = Indirect
 
 -------------------------------------------------------------------------------

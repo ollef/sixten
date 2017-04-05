@@ -15,6 +15,7 @@ import qualified Data.Text as Text
 import Data.Text(Text)
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
+import Data.Word
 
 import Backend.Target(Target)
 import qualified Backend.Target as Target
@@ -76,11 +77,12 @@ unC (C f) = f
 instance IsString C where
   fromString = text . fromString
 
-align, voidT, integerT, pointerT :: C
+align, voidT, integerT, byteT, pointerT :: C
 -- ptrSize = C cfgPtrSize
 align = C cfgAlign
 voidT = "void"
 integerT = C cfgIntegerT
+byteT = C $ const "i8"
 pointerT = C cfgPointerT
 
 data Direct = Void | Int | Array
@@ -219,6 +221,9 @@ global (Name b) = Operand $ "@" <> text (escape b)
 integer :: Operand Int -> C
 integer o = integerT <+> unOperand o
 
+byte :: Operand Word8 -> C
+byte o = byteT <+> unOperand o
+
 pointer :: Operand Ptr -> C
 pointer o = pointerT <+> unOperand o
 
@@ -355,6 +360,15 @@ storeInt x ptr = do
   intPtr <- "ptr" =: Instr ("bitcast" <+> pointer ptr <+> "to" <+> integerT <> "*")
   emit $ Instr $ "store" <+> integer x <> "," <+> integerT <> "*" <+> unOperand intPtr
 
+storeByte
+  :: MonadState LLVMState m
+  => Operand Word8
+  -> Operand Ptr
+  -> m ()
+storeByte x ptr = do
+  intPtr <- "ptr" =: Instr ("bitcast" <+> pointer ptr <+> "to" <+> byteT <> "*")
+  emit $ Instr $ "store" <+> byte x <> "," <+> byteT <> "*" <+> unOperand intPtr
+
 storePtr
   :: Operand Ptr
   -> Operand PtrPtr
@@ -369,6 +383,16 @@ switch
 switch e def brs = Instr
   $ "switch" <+> integer e <> "," <+> label def
   <+> "[" <> Foldable.fold (intersperse " " $ (\(i, l) -> integer (shower i) <> "," <+> label l) <$> brs)
+  <> "]"
+
+switch8
+  :: Operand Word8
+  -> Operand Label
+  -> [(Word8, Operand Label)]
+  -> Instr ()
+switch8 e def brs = Instr
+  $ "switch" <+> byte e <> "," <+> label def
+  <+> "[" <> Foldable.fold (intersperse " " $ (\(i, l) -> byte (shower i) <> "," <+> label l) <$> brs)
   <> "]"
 
 phiPtr

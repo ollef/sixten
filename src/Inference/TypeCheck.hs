@@ -158,7 +158,7 @@ tcRho expr expected expectedAppResult = case expr of
     f <- instExpected expected typ
     f $ Abstract.Global g
   Concrete.Lit l -> do
-    f <- instExpected expected Builtin.IntType
+    f <- instExpected expected $ typeOfLiteral l
     f $ Abstract.Lit l
   Concrete.Con con -> do
     qc <- resolveConstr con expectedAppResult
@@ -222,6 +222,12 @@ tcRho expr expected expectedAppResult = case expr of
     x <- existsVar mempty t
     f x
   Concrete.SourceLoc loc e -> located loc $ tcRho e expected expectedAppResult
+
+typeOfLiteral
+  :: Literal
+  -> Abstract.Expr v
+typeOfLiteral (Integer _) = Builtin.IntType
+typeOfLiteral (Byte _) = Builtin.ByteType
 
 tcBranches
   :: ConcreteM
@@ -743,7 +749,7 @@ checkConstrDef
 checkConstrDef (ConstrDef c typ) = do
   typ' <- zonk =<< checkPoly typ Builtin.Type
   (sizes, ret) <- go typ'
-  let size = foldr Builtin.addInt (Abstract.Lit 0) sizes
+  let size = foldr Builtin.addInt (Abstract.Lit $ Integer 0) sizes
   return (ConstrDef c typ', ret, size)
   where
     go :: AbstractM -> VIX ([AbstractM], AbstractM)
@@ -781,10 +787,10 @@ checkDataType name (DataDef cs) typ = do
   let addTagSize = case cs of
         [] -> id
         [_] -> id
-        _ -> Builtin.addInt $ Abstract.Lit tagSize
+        _ -> Builtin.addInt $ Abstract.Lit $ Integer tagSize
 
       typeSize = addTagSize
-               $ foldr Builtin.maxInt (Abstract.Lit 0) sizes
+               $ foldr Builtin.maxInt (Abstract.Lit $ Integer 0) sizes
 
   unify [] Builtin.Type =<< typeOfM constrRetType
 

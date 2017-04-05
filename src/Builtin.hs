@@ -23,6 +23,9 @@ import Util
 pattern IntName <- ((==) "Int" -> True) where IntName = "Int"
 pattern IntType = Global IntName
 
+pattern ByteName <- ((==) "Byte" -> True) where ByteName = "Byte"
+pattern ByteType = Global ByteName
+
 pattern AddIntName <- ((==) "addInt" -> True) where AddIntName = "addInt"
 pattern AddInt e1 e2 = App (App (Global AddIntName) Explicit e1) Explicit e2
 
@@ -63,15 +66,15 @@ papName :: Int -> Int -> Name
 papName k m = "pap_" <> shower k <> "_" <> shower m
 
 addInt :: Expr v -> Expr v -> Expr v
-addInt (Lit 0) e = e
-addInt e (Lit 0) = e
-addInt (Lit m) (Lit n) = Lit $ m + n
+addInt (Lit (Integer 0)) e = e
+addInt e (Lit (Integer 0)) = e
+addInt (Lit (Integer m)) (Lit (Integer n)) = Lit $ Integer $ m + n
 addInt e e' = AddInt e e'
 
 maxInt :: Expr v -> Expr v -> Expr v
-maxInt (Lit 0) e = e
-maxInt e (Lit 0) = e
-maxInt (Lit m) (Lit n) = Lit $ max m n
+maxInt (Lit (Integer 0)) e = e
+maxInt e (Lit (Integer 0)) = e
+maxInt (Lit (Integer m)) (Lit (Integer n)) = Lit $ Integer $ max m n
 maxInt e e' = MaxInt e e'
 
 context :: Target -> HashMap Name (Definition Expr Void, Type Void)
@@ -83,13 +86,14 @@ context target = HashMap.fromList
                        [ ConstrDef RefName $ toScope $ fmap B $ arrow Explicit (pure 0)
                                            $ app (Global PtrName) Explicit (pure 0)
                        ])
+  , (ByteName, opaqueData byteRep Type)
   , (IntName, opaqueData intRep Type)
   , (AddIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
   , (SubIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
   , (MaxIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
   , (PrintIntName, opaque $ arrow Explicit IntType IntType)
   , (PiTypeName, opaqueData ptrSize Type)
-  , (UnitName, dataType (Lit 0)
+  , (UnitName, dataType (Lit $ Integer 0)
                         Type
                         [ConstrDef UnitConstrName $ toScope $ Global UnitName])
   , (FailName, opaque $ namedPi "T" Explicit Type $ pure "T")
@@ -101,8 +105,9 @@ context target = HashMap.fromList
     dataType sz t xs = (DataDefinition (DataDef xs) sz, cl t)
     namedPi :: Name -> Plicitness -> Type Name -> Expr Name -> Expr Name
     namedPi n p t e = Pi (fromName n) p t $ abstract1 n e
-    intRep = Lit $ Target.intBytes target
-    ptrSize = Lit $ Target.ptrBytes target
+    byteRep = Lit $ Integer 1
+    intRep = Lit $ Integer $ Target.intBytes target
+    ptrSize = Lit $ Integer $ Target.ptrBytes target
     typeRep = intRep
 
 convertedContext :: Target -> HashMap Name (Lifted.Definition Closed.Expr Void)
@@ -123,6 +128,9 @@ convertedContext target = HashMap.fromList $ concat
     )
   , ( IntName
     , constDef $ Closed.Sized intSize intSize
+    )
+  , ( ByteName
+    , constDef $ Closed.Sized intSize byteSize
     )
   , ( AddIntName
     , funDef
@@ -193,10 +201,10 @@ convertedContext target = HashMap.fromList $ concat
       , pure $ Closed.Var $ B 0, ")"
       ])
       $ Scope
-      $ Closed.Lit 0
+      $ Closed.Lit $ Integer 0
     )
   , ( UnitName
-    , constDef $ Closed.Sized intSize $ Closed.Lit 0
+    , constDef $ Closed.Sized intSize $ Closed.Lit $ Integer 0
     )
   , ( FailName
     , funDef
@@ -217,8 +225,9 @@ convertedContext target = HashMap.fromList $ concat
     voidT = LLVM.voidT
     constDef = Lifted.ConstantDef Public . Lifted.Constant
     funDef tele = Lifted.FunctionDef Public Lifted.NonClosure . Lifted.Function tele
-    intSize = Closed.Lit $ Target.intBytes target
-    ptrSize = Closed.Lit $ Target.ptrBytes target
+    intSize = Closed.Lit $ Integer $ Target.intBytes target
+    byteSize = Closed.Lit $ Integer 1
+    ptrSize = Closed.Lit $ Integer $ Target.ptrBytes target
 
 convertedSignatures :: Target -> HashMap Name Closed.FunSignature
 convertedSignatures target
@@ -242,7 +251,7 @@ deref target e
     )
   where
     unknownSize = global "Builtin.deref.UnknownSize"
-    intSize = Closed.Lit $ Target.ptrBytes target
+    intSize = Closed.Lit $ Integer $ Target.ptrBytes target
 
 maxArity :: Num n => n
 maxArity = 6
@@ -266,12 +275,12 @@ apply target numArgs
     , toScope
       $ Closed.Case (Closed.Sized intSize $ Closed.Var $ B 1)
       $ LitBranches
-        [(fromIntegral arity, br arity) | arity <- 1 :| [2..maxArity]]
-        $ Closed.Call (global FailName) $ pure $ Closed.Sized intSize (Closed.Lit 1)
+        [(Integer $ fromIntegral arity, br arity) | arity <- 1 :| [2..maxArity]]
+        $ Closed.Call (global FailName) $ pure $ Closed.Sized intSize (Closed.Lit $ Integer 1)
     )
   where
-    intSize = Closed.Lit $ Target.intBytes target
-    ptrSize = Closed.Lit $ Target.ptrBytes target
+    intSize = Closed.Lit $ Integer $ Target.intBytes target
+    ptrSize = Closed.Lit $ Integer $ Target.ptrBytes target
 
     directPtr = Direct $ Target.ptrBytes target
     directInt = Direct $ Target.intBytes target
@@ -281,9 +290,9 @@ apply target numArgs
       | numArgs < arity
         = Closed.Con Ref
         $ pure
-        $ sizedCon target (Closed.Lit 0) Closure
+        $ sizedCon target (Closed.Lit $ Integer 0) Closure
         $ Vector.cons (Closed.Sized ptrSize $ global $ papName (arity - numArgs) numArgs)
-        $ Vector.cons (Closed.Sized intSize $ Closed.Lit $ fromIntegral $ arity - numArgs)
+        $ Vector.cons (Closed.Sized intSize $ Closed.Lit $ Integer $ fromIntegral $ arity - numArgs)
         $ Vector.cons (Closed.Sized ptrSize $ Closed.Var $ F $ B 0)
         $ (\n -> Closed.Sized intSize $ Closed.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs
         <|> (\n -> Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + Tele numArgs + n) <$> Vector.enumFromN 0 numArgs
@@ -332,8 +341,8 @@ pap target k m
       <|> (\n -> Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + Tele k + n) <$> Vector.enumFromN 0 k
     )
   where
-    intSize = Closed.Lit $ Target.intBytes target
-    ptrSize = Closed.Lit $ Target.ptrBytes target
+    intSize = Closed.Lit $ Integer $ Target.intBytes target
+    ptrSize = Closed.Lit $ Integer $ Target.ptrBytes target
 
 addInts :: Target -> Vector (Closed.Expr v) -> Closed.Expr v
 addInts target = Vector.foldr1 go
@@ -342,7 +351,7 @@ addInts target = Vector.foldr1 go
       = Closed.Call (global AddIntName)
       $ Vector.cons (Closed.Anno x intSize)
       $ pure $ Closed.Anno y intSize
-    intSize = Closed.Lit $ Target.intBytes target
+    intSize = Closed.Lit $ Integer $ Target.intBytes target
 
 sizedCon :: Target -> Closed.Expr v -> QConstr -> Vector (Closed.Expr v) -> Closed.Expr v
 sizedCon target tagSize qc args

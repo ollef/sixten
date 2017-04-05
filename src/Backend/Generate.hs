@@ -12,6 +12,7 @@ import Data.Monoid
 import qualified Data.Traversable as Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
+import Data.Word
 
 import Backend.LLVM
 import Backend.Target(Target)
@@ -21,6 +22,7 @@ import Syntax.Annotation
 import Syntax.Branches
 import Syntax.Direction
 import Syntax.Hint
+import Syntax.Literal
 import Syntax.Name
 import Syntax.Primitive
 import Syntax.Sized.Lifted
@@ -62,8 +64,14 @@ loadIntVar h v = do
   intSize <- gets $ Target.intBytes . target
   directInt <$> loadVar intSize h v
 
+loadByteVar :: NameHint -> Var -> Gen (Operand Word8)
+loadByteVar h v = directByte <$> loadVar 1 h v
+
 directInt :: Operand Direct -> Operand Int
 directInt = Operand . unOperand
+
+directByte :: Operand Direct -> Operand Word8
+directByte = Operand . unOperand
 
 intDirect :: Operand Int -> Operand Direct
 intDirect = Operand . unOperand
@@ -111,9 +119,11 @@ generateExpr :: Expr Var -> Expr Var -> Gen Var
 generateExpr expr typ = case expr of
   Var v -> return v
   Global g -> generateGlobal g
-  Lit l -> do
+  Lit (Integer l) -> do
     sz <- gets (Target.intBytes . target)
     return $ DirectVar sz $ shower l
+  Lit (Byte l) -> do
+    return $ DirectVar 1 $ shower l
   Con qc es -> do
     sz <- generateIntExpr typ
     generateCon sz qc es
@@ -125,7 +135,7 @@ generateExpr expr typ = case expr of
     v <- generateExpr e $ unknownSize "let"
     generateExpr (Bound.instantiate1 (pure v) s) typ
   Case e brs -> case typ of
-    Lit sz -> do
+    Lit (Integer sz) -> do
       rets <- generateBranches e brs $ \br -> do
         v <- generateExpr br typ
         loadVar sz "case-result" v
@@ -145,8 +155,13 @@ generateExpr expr typ = case expr of
 generateIntExpr :: Expr Var -> Gen (Operand Int)
 generateIntExpr expr = do
   intSize <- gets $ Target.intBytes . target
-  sizeVar <- generateExpr expr $ Lit intSize
+  sizeVar <- generateExpr expr $ Lit $ Integer intSize
   loadIntVar "size" sizeVar
+
+generateByteExpr :: Expr Var -> Gen (Operand Word8)
+generateByteExpr expr = do
+  sizeVar <- generateExpr expr $ Lit $ Integer 1
+  loadByteVar "size" sizeVar
 
 unknownSize :: Name -> Expr v
 unknownSize n = Global $ "unknownSize." <> n
@@ -186,7 +201,8 @@ storeExpr expr typ ret = case expr of
     sz <- generateIntExpr typ
     v <- generateGlobal g
     varcpy ret v sz
-  Lit l -> storeInt (shower l) ret
+  Lit (Integer l) -> storeInt (shower l) ret
+  Lit (Byte l) -> storeByte (shower l) ret
   Con qc es -> storeCon qc es ret
   Call funExpr es -> do
     (retDir, argDirs) <- funSignature funExpr $ Vector.length es
@@ -281,7 +297,7 @@ storeCon Builtin.Ref es ret = do
 storeCon qc es ret = do
   intSize <- gets $ Target.intBytes . target
   mqcIndex <- constrIndex qc
-  let es' = maybe id (Vector.cons . Sized (Lit intSize) . Lit . fromIntegral) mqcIndex es
+  let es' = maybe id (Vector.cons . Sized (Lit $ Integer intSize) . Lit . Integer . fromIntegral) mqcIndex es
   sizes <- mapM (generateIntExpr . sizeOf) es'
   (is, _) <- adds sizes
   Foldable.forM_ (zip (Vector.toList sizes) $ zip is $ Vector.toList es') $ \(sz, (i, Anno e _)) -> do
@@ -293,7 +309,7 @@ generateFunOp (Global g) _ _ = return $ global g
 generateFunOp e retDir argDirs = do
   ptrSize <- gets $ Target.ptrBytes . target
   let piSize = ptrSize
-  funVar <- generateExpr e $ Lit piSize
+  funVar <- generateExpr e $ Lit $ Integer piSize
   funInt <- loadVar ptrSize "func-int" funVar
   funPtr <- "func-ptr" =: intToPtr (directInt funInt)
   "func" =: bitcastToFun funPtr retDir argDirs
@@ -416,16 +432,41 @@ generateBranches caseExpr branches brCont = do
       emitLabel postLabel
       return contResults
 
-    LitBranches lbrs def -> do
+    LitBranches lbrs@((Integer _, _) NonEmpty.:| _) def -> do
       let lbrs' = NonEmpty.toList lbrs
       e0 <- generateIntExpr caseExpr
 
-      branchLabels <- Traversable.forM lbrs' $ \(l, _) -> do
+      branchLabels <- Traversable.forM lbrs' $ \(Integer l, _) -> do
         branchLabel <- freshLabel $ shower l
         return (fromIntegral l, branchLabel)
 
       defaultLabel <- freshLabel "default"
       emit $ switch e0 defaultLabel branchLabels
+
+      contResults <- Traversable.forM (zip lbrs' branchLabels) $ \((_, br), (_, brLabel)) -> do
+        emitLabel brLabel
+        contResult <- brCont br
+        afterBranchLabel <- gets currentLabel
+        emit $ branch postLabel
+        return (contResult, afterBranchLabel)
+
+      emitLabel defaultLabel
+      defaultContResult <- brCont def
+      afterDefaultLabel <- gets currentLabel
+      emit $ branch postLabel
+      emitLabel postLabel
+      return $ (defaultContResult, afterDefaultLabel) : contResults
+
+    LitBranches lbrs@((Byte _, _) NonEmpty.:| _) def -> do
+      let lbrs' = NonEmpty.toList lbrs
+      e0 <- generateByteExpr caseExpr
+
+      branchLabels <- Traversable.forM lbrs' $ \(Byte l, _) -> do
+        branchLabel <- freshLabel $ shower l
+        return (l, branchLabel)
+
+      defaultLabel <- freshLabel "default"
+      emit $ switch8 e0 defaultLabel branchLabels
 
       contResults <- Traversable.forM (zip lbrs' branchLabels) $ \((_, br), (_, brLabel)) -> do
         emitLabel brLabel
@@ -469,7 +510,7 @@ generateConstant visibility name (Constant e) = do
   case msig of
     Just (ConstantSig dir) ->
       case (e, dir) of
-        (Anno (Lit l) _, Direct sz) -> do
+        (Anno (Lit (Integer l)) _, Direct sz) -> do
           emitRaw $ Instr $ gname <+> "=" <+> vis <+> "unnamed_addr constant" <+> direct sz (shower l) <> ", align" <+> align
           return mempty
         _ -> do
@@ -482,8 +523,8 @@ generateConstant visibility name (Constant e) = do
           emitRaw $ Instr ""
           emitRaw $ Instr $ "define private fastcc" <+> voidT <+> initName <> "() {"
           case dir of
-            Direct 0 -> void $ generateExpr e $ Lit 0
-            Direct sz -> storeExpr e (Lit sz) $ Operand $ "bitcast" <+> "(" <> directT sz <> "*" <+> unOperand (global name) <+> "to" <+> pointerT <> ")"
+            Direct 0 -> void $ generateExpr e $ Lit $ Integer 0
+            Direct sz -> storeExpr e (Lit $ Integer sz) $ Operand $ "bitcast" <+> "(" <> directT sz <> "*" <+> unOperand (global name) <+> "to" <+> pointerT <> ")"
             Indirect -> do
               ptr <- gcAllocExpr e
               emit $ storePtr ptr $ global name
@@ -517,7 +558,7 @@ generateFunction visibility name (Function args funScope) = do
   case retDir of
     ReturnDirect sz -> do
       emitRaw $ Instr $ "define" <+> vis <+> "fastcc" <+> directT sz <+> unOperand (global name) <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList vs) <> ") {"
-      res <- generateExpr funExpr $ Lit sz
+      res <- generateExpr funExpr $ Lit $ Integer sz
       dres <- loadVar sz mempty res
       emit $ returnDirect sz dres
     ReturnIndirect OutParam -> do

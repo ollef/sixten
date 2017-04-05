@@ -132,9 +132,9 @@ normalise expr = do
 
 binOp
   :: Monad m
-  => Maybe Literal
-  -> Maybe Literal
-  -> (Literal -> Literal -> Literal)
+  => Maybe Integer
+  -> Maybe Integer
+  -> (Integer -> Integer -> Integer)
   -> (Expr v -> Expr v -> Expr v)
   -> (Expr v -> m (Expr v))
   -> Expr v
@@ -144,9 +144,9 @@ binOp lzero rzero op cop norm x y = do
     x' <- norm x
     y' <- norm y
     case (x', y') of
-      (Lit m, _) | Just m == lzero -> return y'
-      (_, Lit n) | Just n == rzero -> return x'
-      (Lit m, Lit n) -> return $ Lit $ op m n
+      (Lit (Integer m), _) | Just m == lzero -> return y'
+      (_, Lit (Integer n)) | Just n == rzero -> return x'
+      (Lit (Integer m), Lit (Integer n)) -> return $ Lit $ Integer $ op m n
       _ -> return $ cop x' y'
 
 chooseBranch

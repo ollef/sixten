@@ -135,8 +135,8 @@ unknownCall
   -> Vector (Closed.Expr Meta)
   -> VIX (Closed.Expr Meta)
 unknownCall e es = do
-  ptrSize <- gets (Closed.Lit . Target.ptrBytes . tcTarget)
-  intSize <- gets (Closed.Lit . Target.intBytes . tcTarget)
+  ptrSize <- gets (Closed.Lit . Integer . Target.ptrBytes . tcTarget)
+  intSize <- gets (Closed.Lit . Integer . Target.intBytes . tcTarget)
   return
     $ Closed.Call (global $ Builtin.applyName $ Vector.length es)
     $ Vector.cons (Closed.Sized ptrSize e)
@@ -152,8 +152,8 @@ knownCall f (tele, returnTypeScope) args
     vs <- forM fArgs $ \_ -> forall mempty Unit
     target <- gets tcTarget
     let intSize, ptrSize :: Closed.Expr v
-        intSize = Closed.Lit $ Target.intBytes target
-        ptrSize = Closed.Lit $ Target.ptrBytes target
+        intSize = Closed.Lit $ Integer $ Target.intBytes target
+        ptrSize = Closed.Lit $ Integer $ Target.ptrBytes target
     let returnType = instantiateTele pure vs $ vacuous returnTypeScope
         go v | i < Vector.length fArgs1 = B $ Tele $ 2 + i
              | otherwise = F $ Tele $ 1 + numXs - numArgs + i
@@ -179,9 +179,9 @@ knownCall f (tele, returnTypeScope) args
     return
       $ Closed.Con Builtin.Ref
       $ pure
-      $ Builtin.sizedCon target (Closed.Lit 0) Builtin.Closure
+      $ Builtin.sizedCon target (Closed.Lit $ Integer 0) Builtin.Closure
       $ Vector.cons (Closed.Sized ptrSize fNumArgs)
-      $ Vector.cons (Closed.Sized intSize $ Closed.Lit $ fromIntegral $ arity - numArgs) args
+      $ Vector.cons (Closed.Sized intSize $ Closed.Lit $ Integer $ fromIntegral $ arity - numArgs) args
   | numArgs == arity
     = return $ Closed.Call (global f) args
   | otherwise = do

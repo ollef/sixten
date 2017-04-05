@@ -12,7 +12,6 @@ import Data.Vector(Vector)
 
 import Syntax
 import Syntax.Concrete.Pattern
-import Util
 
 type Con = Either Constr QConstr
 
