@@ -135,8 +135,8 @@ unknownCall
   -> Vector (Closed.Expr Meta)
   -> VIX (Closed.Expr Meta)
 unknownCall e es = do
-  ptrSize <- gets (Closed.Lit . Integer . Target.ptrBytes . tcTarget)
-  intSize <- gets (Closed.Lit . Integer . Target.intBytes . tcTarget)
+  ptrSize <- gets (Closed.Lit . Integer . Target.ptrBytes . vixTarget)
+  intSize <- gets (Closed.Lit . Integer . Target.intBytes . vixTarget)
   return
     $ Closed.Call (global $ Builtin.applyName $ Vector.length es)
     $ Vector.cons (Closed.Sized ptrSize e)
@@ -150,7 +150,7 @@ knownCall
 knownCall f (tele, returnTypeScope) args
   | numArgs < arity = do
     vs <- forM fArgs $ \_ -> forall mempty Unit
-    target <- gets tcTarget
+    target <- gets vixTarget
     let intSize, ptrSize :: Closed.Expr v
         intSize = Closed.Lit $ Integer $ Target.intBytes target
         ptrSize = Closed.Lit $ Integer $ Target.ptrBytes target

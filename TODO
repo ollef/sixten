@@ -17,7 +17,6 @@ Compiler
   Clean up MetaVar handling (not all modules need the full generality)
   Make code generation use VIX
   Try to get rid of zonking in normal TC operation
-  Rename tc* VIXState accessors to vix*?
 Error messages
   Write own error printer
   Make error message footnotes contain metavars

@@ -252,9 +252,9 @@ generateGroup
   :: [(Name, Lifted.Definition Lifted.Expr Void)]
   -> VIX [(LLVM.B, LLVM.B)]
 generateGroup defs = do
-  target <- gets tcTarget
+  target <- gets vixTarget
   qcindex <- qconstructorIndex
-  sigs <- gets tcSignatures
+  sigs <- gets vixSignatures
   let env = Generate.GenEnv qcindex (`HashMap.lookup` sigs)
   return $ flip map defs $ \(x, e) ->
     bimap (($ LLVM.targetConfig target) . LLVM.unC) (fold . intersperse "\n")

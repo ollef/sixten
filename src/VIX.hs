@@ -30,32 +30,32 @@ instance Pretty Level where
   pretty (Level i) = pretty i
 
 data VIXState = VIXState
-  { tcLocation :: SourceLoc
-  , tcContext :: HashMap Name (Definition Expr Void, Type Void)
-  , tcConstrs :: HashMap Constr (Set (Name, Type Void))
-  , tcConvertedSignatures :: HashMap Name Closed.FunSignature
-  , tcSignatures :: HashMap Name (Signature ReturnIndirect)
-  , tcIndent :: !Int
-  , tcFresh :: !Int
-  , tcLevel :: !Level
-  , tcLogHandle :: !Handle
-  , tcVerbosity :: !Int
-  , tcTarget :: Target
+  { vixLocation :: SourceLoc
+  , vixContext :: HashMap Name (Definition Expr Void, Type Void)
+  , vixConstrs :: HashMap Constr (Set (Name, Type Void))
+  , vixConvertedSignatures :: HashMap Name Closed.FunSignature
+  , vixSignatures :: HashMap Name (Signature ReturnIndirect)
+  , vixIndent :: !Int
+  , vixFresh :: !Int
+  , vixLevel :: !Level
+  , vixLogHandle :: !Handle
+  , vixVerbosity :: !Int
+  , vixTarget :: Target
   }
 
 emptyVIXState :: Target -> Handle -> Int -> VIXState
 emptyVIXState target handle verbosity = VIXState
-  { tcLocation = mempty
-  , tcContext = mempty
-  , tcConstrs = mempty
-  , tcConvertedSignatures = mempty
-  , tcSignatures = mempty
-  , tcIndent = 0
-  , tcFresh = 0
-  , tcLevel = Level 1
-  , tcLogHandle = handle
-  , tcVerbosity = verbosity
-  , tcTarget = target
+  { vixLocation = mempty
+  , vixContext = mempty
+  , vixConstrs = mempty
+  , vixConvertedSignatures = mempty
+  , vixSignatures = mempty
+  , vixIndent = 0
+  , vixFresh = 0
+  , vixLevel = Level 1
+  , vixLogHandle = handle
+  , vixVerbosity = verbosity
+  , vixTarget = target
   }
 
 newtype VIX a = VIX (ExceptT String (StateT VIXState IO) a)
@@ -82,66 +82,66 @@ runVIX vix target handle verbosity
 
 fresh :: VIX Int
 fresh = do
-  i <- gets tcFresh
-  modify $ \s -> s {tcFresh = i + 1}
+  i <- gets vixFresh
+  modify $ \s -> s {vixFresh = i + 1}
   return i
 
 level :: VIX Level
-level = gets tcLevel
+level = gets vixLevel
 
 enterLevel :: VIX a -> VIX a
 enterLevel x = do
   l <- level
-  modify $ \s -> s {tcLevel = l + 1}
+  modify $ \s -> s {vixLevel = l + 1}
   r <- x
-  modify $ \s -> s {tcLevel = l}
+  modify $ \s -> s {vixLevel = l}
   return r
 
 located :: SourceLoc -> VIX a -> VIX a
 located loc m = do
-  oldLoc <- gets tcLocation
-  modify $ \s -> s { tcLocation = loc }
+  oldLoc <- gets vixLocation
+  modify $ \s -> s { vixLocation = loc }
   res <- m
-  modify $ \s -> s { tcLocation = oldLoc }
+  modify $ \s -> s { vixLocation = oldLoc }
   return res
 
 currentLocation :: VIX SourceLoc
-currentLocation = gets tcLocation
+currentLocation = gets vixLocation
 
 -------------------------------------------------------------------------------
 -- Debugging
 log :: Text -> VIX ()
 log l = do
-  h <- gets tcLogHandle
+  h <- gets vixLogHandle
   liftIO $ Text.hPutStrLn h l
 
 logVerbose :: Int -> Text -> VIX ()
 logVerbose v l = whenVerbose v $ VIX.log l
 
 modifyIndent :: (Int -> Int) -> VIX ()
-modifyIndent f = modify $ \s -> s {tcIndent = f $ tcIndent s}
+modifyIndent f = modify $ \s -> s {vixIndent = f $ vixIndent s}
 
 logPretty :: Pretty a => Int -> String -> a -> VIX ()
 logPretty v s x = whenVerbose v $ do
-  i <- gets tcIndent
+  i <- gets vixIndent
   VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide (pretty x)
 
 logShow :: Show a => Int -> String -> a -> VIX ()
 logShow v s x = whenVerbose v $ do
-  i <- gets tcIndent
+  i <- gets vixIndent
   VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> fromString (show x)
 
 whenVerbose :: Int -> VIX () -> VIX ()
 whenVerbose i m = do
-  v <- gets tcVerbosity
+  v <- gets vixVerbosity
   when (v >= i) m
 
 -------------------------------------------------------------------------------
 -- Working with abstract syntax
 addContext :: HashMap Name (Definition Expr Void, Type Void) -> VIX ()
 addContext prog = modify $ \s -> s
-  { tcContext = prog <> tcContext s
-  , tcConstrs = HashMap.unionWith (<>) cs $ tcConstrs s
+  { vixContext = prog <> vixContext s
+  , vixConstrs = HashMap.unionWith (<>) cs $ vixConstrs s
   } where
     cs = HashMap.fromList $ do
       (n, (DataDefinition d _, defType)) <- HashMap.toList prog
@@ -150,7 +150,7 @@ addContext prog = modify $ \s -> s
 
 definition :: Name -> VIX (Definition Expr v, Expr v)
 definition name = do
-  mres <- gets $ HashMap.lookup name . tcContext
+  mres <- gets $ HashMap.lookup name . vixContext
   maybe (throwError $ "Not in scope: " ++ show name)
         (return . bimap vacuous vacuous)
         mres
@@ -179,7 +179,7 @@ constructor (Left c)
   = gets
   $ maybe mempty (Set.map $ second vacuous)
   . HashMap.lookup c
-  . tcConstrs
+  . vixConstrs
 
 -------------------------------------------------------------------------------
 -- Signatures
@@ -187,23 +187,23 @@ addConvertedSignatures
   :: HashMap Name Closed.FunSignature
   -> VIX ()
 addConvertedSignatures p
-  = modify $ \s -> s { tcConvertedSignatures = p <> tcConvertedSignatures s }
+  = modify $ \s -> s { vixConvertedSignatures = p <> vixConvertedSignatures s }
 
 convertedSignature
   :: Name
   -> VIX (Maybe Closed.FunSignature)
-convertedSignature name = gets $ HashMap.lookup name . tcConvertedSignatures
+convertedSignature name = gets $ HashMap.lookup name . vixConvertedSignatures
 
 addSignatures
   :: HashMap Name (Signature ReturnIndirect)
   -> VIX ()
-addSignatures p = modify $ \s -> s { tcSignatures = p <> tcSignatures s }
+addSignatures p = modify $ \s -> s { vixSignatures = p <> vixSignatures s }
 
 signature
   :: Name
   -> VIX (Signature ReturnIndirect)
 signature name = do
-  mres <- gets $ HashMap.lookup name . tcSignatures
+  mres <- gets $ HashMap.lookup name . vixSignatures
   maybe (throwError $ "Not in scope: signature for " ++ show name)
         return
         mres
@@ -212,7 +212,7 @@ signature name = do
 -- General constructor queries
 qconstructorIndex :: VIX (QConstr -> Maybe Int)
 qconstructorIndex = do
-  cxt <- gets tcContext
+  cxt <- gets vixContext
   return $ \(QConstr n c) -> do
     (DataDefinition (DataDef constrDefs) _, _) <- HashMap.lookup n cxt
     case constrDefs of

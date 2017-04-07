@@ -782,7 +782,7 @@ checkDataType name (DataDef cs) typ = do
 
   mapM_ (unify [] constrRetType) rets
 
-  tagSize <- gets $ Target.intBytes . tcTarget
+  tagSize <- gets $ Target.intBytes . vixTarget
 
   let addTagSize = case cs of
         [] -> id
