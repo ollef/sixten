@@ -1,7 +1,5 @@
 Type checking
   Better checking for escaped vars
-  Can the special-case equations for unifying ints be done in a principled way?
-    Probably let that be handled by normalisation
   Propagate equalities from cases
   Sanity type-check the Abstract syntax
 Matching

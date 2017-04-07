@@ -91,16 +91,6 @@ unify' cxt type1 type2
     (_, appsView -> (Var v@(metaRef -> Just r), distinctForalls -> Just pvs)) -> solveVar (flip . unify) r v pvs type1
     (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) t1 t2 s1 s2
     (Lam h1 p1 t1 s1, Lam h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) t1 t2 s1 s2
-    (Lit (Integer 0), Builtin.AddInt x y) -> do
-      unify cxt (Lit (Integer 0)) x
-      unify cxt (Lit (Integer 0)) y
-    (Builtin.AddInt x y, Lit (Integer 0)) -> do
-      unify cxt x (Lit (Integer 0))
-      unify cxt y (Lit (Integer 0))
-    (Builtin.AddInt (Lit (Integer m)) y, Lit (Integer n)) -> unify cxt y $ Lit $ Integer $ n - m
-    (Builtin.AddInt y (Lit (Integer m)), Lit (Integer n)) -> unify cxt y $ Lit $ Integer $ n - m
-    (Lit (Integer n), Builtin.AddInt (Lit (Integer m)) y) -> unify cxt (Lit $ Integer $ n - m) y
-    (Lit (Integer n), Builtin.AddInt y (Lit (Integer m))) -> unify cxt (Lit $ Integer $ n - m) y
     -- Since we've already tried reducing the application, we can only hope to
     -- unify it pointwise.
     (App e1 a1 e1', App e2 a2 e2') | a1 == a2 -> do
