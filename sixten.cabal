@@ -17,6 +17,7 @@ executable sixten
   ghc-options:         -Wall -funbox-strict-fields
   main-is:             Main.hs
   other-modules:
+                       Analysis.Denat
                        Analysis.ReturnDirection
                        Analysis.Simplify
                        Backend.Close

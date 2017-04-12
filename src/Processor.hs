@@ -21,6 +21,7 @@ import System.IO
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import qualified Text.Trifecta as Trifecta
 
+import Analysis.Denat
 import qualified Analysis.ReturnDirection as ReturnDirection
 import Analysis.Simplify
 import Backend.Close
@@ -43,8 +44,8 @@ import qualified Syntax.Concrete.Unscoped as Unscoped
 import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.Lifted as Lifted
 import qualified Syntax.Sized.SLambda as SLambda
-import VIX
 import Util
+import VIX
 
 processResolved
   :: HashMap Name (Definition Abstract.Expr Void, Abstract.Type Void)
@@ -72,7 +73,10 @@ processAbstractGroup
   = addGroupToContext
 
   >=> slamGroup
-  >=> prettyGroup "SLammed:" absurd
+  >=> prettyGroup "SLammed" absurd
+
+  >=> denatGroup
+  >=> prettyGroup "Denaturalised" absurd
 
   >=> closeGroup
   >=> prettyGroup "Closed" absurd
@@ -198,13 +202,15 @@ addGroupToContext defs = do
 slamGroup
   :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
   -> VIX [(Name, SLambda.Expr Void)]
-slamGroup defs = sequence
-  [ do
-      d' <- SLam.slamDef $ vacuous d
-      d'' <- traverse (throwError . ("slamGroup " ++) . show) d'
-      return (x, d'')
-  | (x, d, _t) <- defs
-  ]
+slamGroup defs = forM defs $ \(x, d, _t) -> do
+  d' <- SLam.slamDef $ vacuous d
+  d'' <- traverse (throwError . ("slamGroup " ++) . show) d'
+  return (x, d'')
+
+denatGroup
+  :: [(Name, SLambda.Expr Void)]
+  -> VIX [(Name, SLambda.Expr Void)]
+denatGroup defs = return [(n, denat def) | (n, def) <- defs]
 
 closeGroup
   :: [(Name, SLambda.Expr Void)]

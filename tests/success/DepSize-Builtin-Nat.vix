@@ -1,0 +1,20 @@
+deref : forall {A}. Ptr A -> A
+deref p = case p of Ref a -> a
+
+type Unit where
+  unit : Unit
+
+type Tuple A B where
+  tuple : A -> B -> Tuple A B
+
+ntuple : forall (n : Nat). Type
+ntuple n = case n of
+  Zero -> Unit
+  Succ n' -> Tuple Int (ntuple n')
+
+test : ntuple (Succ (Succ Zero))
+test = tuple 0 (tuple 1 unit)
+
+lol = printInt case test of
+  tuple 0 (tuple 1 unit) -> 111
+  _ -> 222

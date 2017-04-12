@@ -1,6 +1,5 @@
 Type checking
   Better checking for escaped vars
-  Propagate equalities from cases
   Sanity type-check the Abstract syntax
 Matching
   Coverage and overlap checking
@@ -19,11 +18,10 @@ Error messages
   Write own error printer
   Make error message footnotes contain metavars
 Language
-  Add alignment to type representation
+  * Add alignment to type representation
     alignment (Tuple A B) = max (alignment A) (alignment B)
     size (Tuple A B) = size A + padding (size A) (alignment B) + size B
     padding byteIndex align = nearestBiggerMultiple align byteIndex - byteIndex
-  * Add Nat type that is more matchable
   * Let(rec) definitions
   Named implicit arguments (maybe names should be mandatory?)
   Laziness
@@ -35,14 +33,14 @@ Language
   Specialisation pragma
   Modules
   Mixfix definitions and noncompounds?
-  Inductive families
+  * Inductive families
     Forcing
-    Compute the size of a type by pattern-matching on indices if possible, allowing the definition of e.g. flat vectors:
-      data Vector n A where
+    Compute the representation of a type by pattern-matching on indices if possible, allowing the definition of e.g. flat vectors:
+      type Vector n A where
         Nil : Vector 0 A
         Cons : forall {n}. A -> Vector n A -> Vector (S n) a
   FFI & More general way to define builtins (extern LLVM, C?)
-  Strings
+  * Strings
   IO
 Optimisations
   Inlining

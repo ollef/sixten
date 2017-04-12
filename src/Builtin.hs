@@ -59,6 +59,17 @@ pattern Fail t = App (Global FailName) Explicit t
 
 pattern PiTypeName <- ((==) "Pi_" -> True) where PiTypeName = "Pi_"
 
+pattern NatName <- ((==) "Nat" -> True) where NatName = "Nat"
+pattern Nat = Global NatName
+
+pattern ZeroName <- ((==) "Zero" -> True) where ZeroName = "Zero"
+pattern ZeroConstr = QConstr NatName ZeroName
+pattern Zero = Con ZeroConstr
+
+pattern SuccName <- ((==) "Succ" -> True) where SuccName = "Succ"
+pattern SuccConstr = QConstr NatName SuccName
+pattern Succ x = App (Con SuccConstr) Explicit x
+
 applyName :: Int -> Name
 applyName n = "apply_" <> shower n
 
@@ -88,6 +99,10 @@ context target = HashMap.fromList
                        ])
   , (ByteName, opaqueData byteRep Type)
   , (IntName, opaqueData intRep Type)
+  , (NatName, dataType intRep Type
+      [ ConstrDef ZeroName $ Scope Nat
+      , ConstrDef SuccName $ Scope $ arrow Explicit Nat Nat
+      ])
   , (AddIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
   , (SubIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
   , (MaxIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
