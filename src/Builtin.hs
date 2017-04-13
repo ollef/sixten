@@ -187,7 +187,7 @@ convertedContext target = HashMap.fromList $ concat
                           ])
       $ Scope
       $ Closed.Sized intSize
-      $ Closed.Let "lt"
+      $ Closed.Let "gt"
       (Closed.Sized intSize
       $ Closed.Prim
       $ Primitive (Direct $ Target.intBytes target)
