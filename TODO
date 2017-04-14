@@ -40,7 +40,6 @@ Language
         Nil : Vector 0 A
         Cons : forall {n}. A -> Vector n A -> Vector (S n) a
   FFI & More general way to define builtins (extern LLVM, C?)
-  * Strings
   IO
 Optimisations
   Inlining

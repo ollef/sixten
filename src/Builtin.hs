@@ -80,11 +80,11 @@ pattern ArrayName <- ((==) "Array" -> True) where ArrayName = "Array"
 pattern MkArrayName <- ((==) "MkArray" -> True) where MkArrayName = "MkArray"
 pattern MkArrayConstr = QConstr ArrayName MkArrayName
 
-pattern TupleName <- ((==) "Tuple" -> True) where TupleName = "Tuple"
-pattern Tuple = Global TupleName
-pattern MkTupleName <- ((==) "MkTuple" -> True) where MkTupleName = "MkTuple"
-pattern MkTupleConstr = QConstr TupleName MkTupleName
-pattern MkTuple a b = App (App (Con MkTupleConstr) Explicit a) Explicit b
+pattern PairName <- ((==) "Pair" -> True) where PairName = "Pair"
+pattern Pair = Global PairName
+pattern MkPairName <- ((==) "MkPair" -> True) where MkPairName = "MkPair"
+pattern MkPairConstr = QConstr PairName MkPairName
+pattern MkPair a b = App (App (Con MkPairConstr) Explicit a) Explicit b
 
 applyName :: Int -> Name
 applyName n = "apply_" <> shower n

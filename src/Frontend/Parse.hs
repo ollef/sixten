@@ -10,6 +10,7 @@ import Data.Ord
 import Data.Text(Text)
 import qualified Data.Text as Text
 import qualified Data.Vector as Vector
+import qualified Text.Parser.Token as Token
 import qualified Text.Parser.Token.Highlight as Highlight
 import qualified Text.Trifecta as Trifecta
 import Text.Trifecta((<?>))
@@ -17,6 +18,7 @@ import Text.Trifecta.Delta
 
 import Syntax
 import Syntax.Concrete.Pattern
+import Syntax.Concrete.Literal
 import Syntax.Concrete.Unscoped as Unscoped
 
 type Input = Text
@@ -151,23 +153,24 @@ idStyle = Trifecta.IdentifierStyle "Dependent" start letter res Highlight.Identi
     res = HashSet.fromList ["forall", "_", "case", "of", "where"]
 
 ident :: Parser Name
-ident = Trifecta.token $ Trifecta.ident idStyle
+ident = Token.ident idStyle
 
 reserved :: String -> Parser ()
-reserved = Trifecta.token . Trifecta.reserve idStyle
+reserved = Token.reserve idStyle
 
 wildcard :: Parser ()
 wildcard = reserved "_"
 
 identOrWildcard :: Parser (Maybe Name)
-identOrWildcard = Just <$> ident
-               <|> Nothing <$ wildcard
+identOrWildcard
+  = Just <$> ident
+  <|> Nothing <$ wildcard
 
 symbol :: String -> Parser Name
-symbol = fmap (Name . Text.pack) . Trifecta.token . Trifecta.symbol
+symbol = fmap (Name . Text.pack) . Token.symbol
 
-literal :: Parser Literal
-literal = Integer <$> Trifecta.token (Trifecta.try Trifecta.integer)
+integer :: Parser Integer
+integer = Trifecta.try Token.integer
 
 constructor :: Parser Constr
 constructor = nameToConstr <$> ident
@@ -196,7 +199,7 @@ atomicPattern = locatedPat
   $ symbol "(" *>% pattern <*% symbol ")"
   <|> (\v -> VarPat (NameHint $ Hint $ Just v) v) <$> ident
   <|> WildcardPat <$ wildcard
-  <|> LitPat <$> literal
+  <|> literalPat
   <?> "atomic pattern"
 
 patternBinding :: Parser [(Plicitness, Pat (Type Name) Name)]
@@ -244,7 +247,7 @@ located p = (\(e Trifecta.:~ s) -> SourceLoc (Trifecta.render s) e) <$> Trifecta
 
 atomicExpr :: Parser (Expr Name)
 atomicExpr = located
-  $ Lit <$> literal
+  $ literal
   <|> Wildcard <$ wildcard
   <|> Var <$> ident
   <|> abstr (reserved "forall") Unscoped.pis
@@ -278,6 +281,18 @@ expr = located
       <|> (,) Explicit <$> atomicExpr
 
 -------------------------------------------------------------------------------
+-- * Literals
+literal :: Parser (Expr Name)
+literal
+  = Lit . Integer <$> integer
+  <|> string <$> Token.stringLiteral
+
+literalPat :: Parser (Pat (Type Name) Name)
+literalPat
+  = LitPat . Integer <$> integer
+  <|> stringPat <$> Token.stringLiteral
+
+-------------------------------------------------------------------------------
 -- * Definitions
 -- | A definition or type declaration on the top-level
 data TopLevelParsed v
@@ -309,4 +324,4 @@ dataDef = ParsedData <$ reserved "type" <*>% ident <*> manyTypedBindings <*>%
     adtConType es = Unscoped.pis ((\e -> (Explicit, AnnoPat e WildcardPat)) <$> es) Wildcard
 
 program :: Parser [(TopLevelParsed Name, Span)]
-program = Trifecta.whiteSpace >> dropAnchor (manySameCol $ dropAnchor topLevel)
+program = Token.whiteSpace >> dropAnchor (manySameCol $ dropAnchor topLevel)

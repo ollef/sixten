@@ -54,6 +54,7 @@ executable sixten
                        Syntax.Branches
                        Syntax.Class
                        Syntax.Concrete.Definition
+                       Syntax.Concrete.Literal
                        Syntax.Concrete.Pattern
                        Syntax.Concrete.Scoped
                        Syntax.Concrete.Unscoped
@@ -79,6 +80,7 @@ executable sixten
                        base >=4.8 && <4.10,
                        bifunctors,
                        bound,
+                       bytestring,
                        containers,
                        directory,
                        filepath,

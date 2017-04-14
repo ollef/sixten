@@ -9,9 +9,9 @@ module Syntax.Concrete.Scoped
 import Control.Monad
 import Data.Bifunctor
 import Data.Bitraversable
-import Data.Traversable
 import Data.Monoid
 import Data.String
+import Data.Traversable
 import Prelude.Extras
 
 import Syntax hiding (piView)

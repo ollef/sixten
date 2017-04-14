@@ -9,3 +9,7 @@ type Array A where
   MkArray : (n : Nat) -> Ptr (Vector n A) -> Array A
 
 type String = MkString (Array Byte)
+
+intToNat : Int -> Nat
+intToNat 0 = Zero
+intToNat n = Succ (intToNat (subInt n 1))

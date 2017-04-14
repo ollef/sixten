@@ -22,7 +22,7 @@ typeOfM expr = do
       return typ
     Var v -> return $ metaType v
     Con qc -> qconstructor qc
-    Lit _ -> return Builtin.IntType
+    Lit l -> return $ typeOfLiteral l
     Pi {} -> return Builtin.Type
     Lam h a t s -> do
       x <- forall h t
@@ -56,7 +56,7 @@ typeOf expr = do
       return typ
     Var v -> return $ metaType v
     Con qc -> qconstructor qc
-    Lit _ -> return Builtin.IntType
+    Lit l -> return $ typeOfLiteral l
     Pi {} -> return Builtin.Type
     Lam h a t s -> do
       x <- forall h t
@@ -77,3 +77,9 @@ typeOf expr = do
   modifyIndent pred
   -- logMeta "typeOf res" =<< zonk t
   return t
+
+typeOfLiteral
+  :: Literal
+  -> Expr v
+typeOfLiteral (Integer _) = Builtin.IntType
+typeOfLiteral (Byte _) = Builtin.ByteType

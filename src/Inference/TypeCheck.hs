@@ -223,12 +223,6 @@ tcRho expr expected expectedAppResult = case expr of
     f x
   Concrete.SourceLoc loc e -> located loc $ tcRho e expected expectedAppResult
 
-typeOfLiteral
-  :: Literal
-  -> Abstract.Expr v
-typeOfLiteral (Integer _) = Builtin.IntType
-typeOfLiteral (Byte _) = Builtin.ByteType
-
 tcBranches
   :: ConcreteM
   -> [(Concrete.Pat (PatternScope Concrete.Expr MetaA) (), PatternScope Concrete.Expr MetaA)]
@@ -352,8 +346,8 @@ tcPat' pat vs expected = case pat of
   Concrete.LitPat lit -> do
     (p, e) <- instPatExpected
       expected
-      Builtin.IntType
-      (Abstract.LitPat lit)
+      (typeOfLiteral lit)
+      (LitPat lit)
       (Abstract.Lit lit)
     return (p, e, vs)
   Concrete.ConPat c pats -> do
