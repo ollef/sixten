@@ -1,4 +1,4 @@
-type Unit = unit
+type Unit' = unit
 
 loop unit = loop unit
 

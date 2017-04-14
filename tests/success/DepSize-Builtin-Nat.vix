@@ -1,15 +1,15 @@
 deref : forall {A}. Ptr A -> A
 deref p = case p of Ref a -> a
 
-type Unit where
-  unit : Unit
+type Unit' where
+  unit : Unit'
 
 type Tuple A B where
   tuple : A -> B -> Tuple A B
 
 ntuple : forall (n : Nat). Type
 ntuple n = case n of
-  Zero -> Unit
+  Zero -> Unit'
   Succ n' -> Tuple Int (ntuple n')
 
 test : ntuple (Succ (Succ Zero))

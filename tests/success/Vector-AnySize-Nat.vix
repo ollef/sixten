@@ -1,14 +1,14 @@
-type Unit = unit
+type Unit' = unit
 
 type Tuple A B = tuple A B
 
-type Nat = Z | S (Ptr Nat)
+type Nat' = Z | S (Ptr Nat')
 
-Vector : Ptr Nat -> Type -> Type
-Vector (Ref Z) _ = Unit
-Vector (Ref (S n)) a = Tuple a (Vector n a)
+Vector' : Ptr Nat' -> Type -> Type
+Vector' (Ref Z) _ = Unit'
+Vector' (Ref (S n)) a = Tuple a (Vector' n a)
 
-sumVec : forall n. Vector n Int -> Int
+sumVec : forall n. Vector' n Int -> Int
 sumVec (Ref Z) unit = 0
 sumVec (Ref (S n)) (tuple x xs) = addInt x (sumVec n xs)
 

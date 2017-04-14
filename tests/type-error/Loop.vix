@@ -1,5 +1,5 @@
-type Unit where
-  unit : Unit
+type Unit' where
+  unit : Unit'
 
-loop : Unit
+loop : Unit'
 loop = loop

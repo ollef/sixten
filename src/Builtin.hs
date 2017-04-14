@@ -46,13 +46,15 @@ pattern SizeOfName <- ((==) "sizeOf" -> True) where SizeOfName = "sizeOf"
 pattern RefName <- ((==) "Ref" -> True) where RefName = "Ref"
 pattern PtrName <- ((==) "Ptr" -> True) where PtrName = "Ptr"
 
-pattern UnitName <- ((==) "Unit_" -> True) where UnitName = "Unit_"
-pattern UnitConstrName <- ((==) "unit_" -> True) where UnitConstrName = "unit_"
-pattern Unit = QConstr UnitName UnitConstrName
+pattern UnitName <- ((==) "Unit" -> True) where UnitName = "Unit"
+pattern UnitType = Global UnitName
+pattern MkUnitConstrName <- ((==) "MkUnit" -> True) where MkUnitConstrName = "MkUnit"
+pattern MkUnitConstr = QConstr UnitName MkUnitConstrName
+pattern MkUnit = Con MkUnitConstr
 
 pattern Closure <- ((== QConstr "Builtin" "CL") -> True) where Closure = QConstr "Builtin" "CL"
 
-pattern Ref <- ((== QConstr PtrName RefName) -> True) where Ref = QConstr PtrName RefName
+pattern Ref = QConstr PtrName RefName
 
 pattern FailName <- ((==) "fail" -> True) where FailName = "fail"
 pattern Fail t = App (Global FailName) Explicit t
@@ -69,6 +71,20 @@ pattern Zero = Con ZeroConstr
 pattern SuccName <- ((==) "Succ" -> True) where SuccName = "Succ"
 pattern SuccConstr = QConstr NatName SuccName
 pattern Succ x = App (Con SuccConstr) Explicit x
+
+pattern StringName <- ((==) "String" -> True) where StringName = "String"
+pattern MkStringName <- ((==) "MkString" -> True) where MkStringName = "MkString"
+pattern MkStringConstr = QConstr StringName MkStringName
+
+pattern ArrayName <- ((==) "Array" -> True) where ArrayName = "Array"
+pattern MkArrayName <- ((==) "MkArray" -> True) where MkArrayName = "MkArray"
+pattern MkArrayConstr = QConstr ArrayName MkArrayName
+
+pattern TupleName <- ((==) "Tuple" -> True) where TupleName = "Tuple"
+pattern Tuple = Global TupleName
+pattern MkTupleName <- ((==) "MkTuple" -> True) where MkTupleName = "MkTuple"
+pattern MkTupleConstr = QConstr TupleName MkTupleName
+pattern MkTuple a b = App (App (Con MkTupleConstr) Explicit a) Explicit b
 
 applyName :: Int -> Name
 applyName n = "apply_" <> shower n
@@ -108,9 +124,6 @@ context target = HashMap.fromList
   , (MaxIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
   , (PrintIntName, opaque $ arrow Explicit IntType IntType)
   , (PiTypeName, opaqueData ptrSize Type)
-  , (UnitName, dataType (Lit $ Integer 0)
-                        Type
-                        [ConstrDef UnitConstrName $ toScope $ Global UnitName])
   , (FailName, opaque $ namedPi "T" Explicit Type $ pure "T")
   ]
   where
@@ -217,9 +230,6 @@ convertedContext target = HashMap.fromList $ concat
       ])
       $ Scope
       $ Closed.Lit $ Integer 0
-    )
-  , ( UnitName
-    , constDef $ Closed.Sized intSize $ Closed.Lit $ Integer 0
     )
   , ( FailName
     , funDef

@@ -50,8 +50,8 @@ fatBar :: Expr (Var Fail v) -> Expr (Var Fail v) -> Expr (Var Fail v)
 fatBar e e' = case foldMap (bifoldMap (:[]) mempty) e of
   [] -> e
   [_] -> e >>= unvar (\Fail -> e') (pure . F)
-  _ -> Let mempty (Lam mempty Explicit (Global Builtin.UnitName) $ abstractNone e')
-    $ instantiateSome (\Fail -> App (pure $ B ()) Explicit (Con Builtin.Unit))
+  _ -> Let mempty (Lam mempty Explicit Builtin.UnitType $ abstractNone e')
+    $ instantiateSome (\Fail -> App (pure $ B ()) Explicit Builtin.MkUnit)
     $ F <$> toScope e
 
 matchSingle

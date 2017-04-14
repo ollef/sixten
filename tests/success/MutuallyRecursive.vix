@@ -1,6 +1,6 @@
-type Nat where
-  Zero : Nat
-  Succ : Ptr Nat -> Nat
+type Nat' where
+  Zero : Nat'
+  Succ : Ptr Nat' -> Nat'
 
 type Bool where
   False True : Bool
@@ -12,10 +12,12 @@ not b = case b of
   False -> True
   True -> False
 
+odd : Ptr Nat' -> Bool
 odd x = case deref x of
   Zero -> False
   Succ n -> even n
 
+even : Ptr Nat' -> Bool
 even x = case deref x of
   Zero -> True
   Succ n -> odd n
@@ -24,9 +26,13 @@ boolToInt b = case b of
   False -> 0
   True -> 1
 
+zero : Ptr Nat'
 zero = Ref Zero
+one : Ptr Nat'
 one = Ref (Succ zero)
+two : Ptr Nat'
 two = Ref (Succ one)
+three : Ptr Nat'
 three = Ref (Succ two)
 
 type List a where

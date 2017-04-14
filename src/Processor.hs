@@ -302,8 +302,9 @@ data Result
 
 processFile :: FilePath -> FilePath -> Target -> Handle -> Int -> IO Result
 processFile file output target logHandle verbosity = do
+  builtinParseResult <- Parse.parseFromFileEx Parse.program =<< getDataFileName "rts/Builtin.vix"
   parseResult <- Parse.parseFromFileEx Parse.program file
-  let resolveResult = Resolve.program <$> parseResult
+  let resolveResult = Resolve.program <$> ((<>) <$> builtinParseResult <*> parseResult)
   case resolveResult of
     Trifecta.Failure xs -> return $ Error $ SyntaxError xs
     Trifecta.Success (ExceptT (Identity (Left err))) -> return $ Error $ ResolveError err

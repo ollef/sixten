@@ -1,12 +1,12 @@
-type Unit = unit
+type Unit' = unit
 
 type Tuple A B = tuple A B
 
-Vector : Nat -> Type -> Type
-Vector Zero _ = Unit
-Vector (Succ n) a = Tuple a (Vector n a)
+Vector' : Nat -> Type -> Type
+Vector' Zero _ = Unit'
+Vector' (Succ n) a = Tuple a (Vector' n a)
 
-sumVec : forall n. Vector n Int -> Int
+sumVec : forall n. Vector' n Int -> Int
 sumVec Zero unit = 0
 sumVec (Succ n) (tuple x xs) = addInt x (sumVec n xs)
 

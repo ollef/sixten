@@ -1,0 +1,11 @@
+type Unit = MkUnit
+type Pair A B = MkPair A B
+
+Vector : Nat -> Type -> Type
+Vector Zero _ = Unit
+Vector (Succ n) A = Pair A (Vector n A)
+
+type Array A where
+  MkArray : (n : Nat) -> Ptr (Vector n A) -> Array A
+
+type String = MkString (Array Byte)
