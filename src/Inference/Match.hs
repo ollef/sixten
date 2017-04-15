@@ -13,6 +13,7 @@ import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 import Prelude.Extras
 
+import qualified Analysis.Simplify as Simplify
 import qualified Builtin
 import Inference.Normalise
 import Inference.TypeOf
@@ -48,11 +49,14 @@ abstractF f e = do
 
 fatBar :: Expr (Var Fail v) -> Expr (Var Fail v) -> Expr (Var Fail v)
 fatBar e e' = case foldMap (bifoldMap (:[]) mempty) e of
+  _ | Simplify.duplicable e' -> dup
   [] -> e
-  [_] -> e >>= unvar (\Fail -> e') (pure . F)
+  [_] -> dup
   _ -> Let mempty (Lam mempty Explicit Builtin.UnitType $ abstractNone e')
     $ instantiateSome (\Fail -> App (pure $ B ()) Explicit Builtin.MkUnit)
     $ F <$> toScope e
+  where
+    dup = e >>= unvar (\Fail -> e') (pure . F)
 
 matchSingle
   :: AbstractM
