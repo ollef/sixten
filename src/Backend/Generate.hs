@@ -32,7 +32,7 @@ import Util
 -------------------------------------------------------------------------------
 -- Generation environment
 data GenEnv = GenEnv
-  { constrArity :: QConstr -> Maybe Int
+  { constructorIndex :: QConstr -> Maybe Int
   , signatures :: Name -> Maybe (Signature ReturnIndirect)
   }
 
@@ -42,7 +42,7 @@ runGen :: GenEnv -> Gen a -> Target -> (a, [B])
 runGen f m = runLLVM $ runReaderT m f
 
 constrIndex :: QConstr -> Gen (Maybe Int)
-constrIndex qc = asks $ ($ qc) . constrArity
+constrIndex qc = asks $ ($ qc) . constructorIndex
 
 -------------------------------------------------------------------------------
 -- Vars
