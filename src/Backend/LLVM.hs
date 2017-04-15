@@ -209,7 +209,6 @@ newtype Instr a = Instr C deriving (Show, IsString, Monoid)
 unInstr :: Instr a -> C
 unInstr (Instr c) = c
 
-data Array
 data Ptr
 data PtrPtr
 data Fun
