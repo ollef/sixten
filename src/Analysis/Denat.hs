@@ -13,7 +13,7 @@ denat expr = case expr of
   Global _ -> expr
   Lit _ -> expr
   Con ZeroConstr _ -> Lit $ Integer 0
-  Con SuccConstr xs -> App (App (global AddIntName) (Lit $ Integer 1)) (denat $ xs Vector.! 0)
+  Con SuccConstr xs -> App (App (global AddIntName) (Lit $ Integer 1)) (denat $ Vector.head xs)
   Con c es -> Con c $ denat <$> es
   Lam h t e -> Lam h (denat t) (hoist denat e)
   App e1 e2 -> App (denat e1) (denat e2)
