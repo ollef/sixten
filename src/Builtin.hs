@@ -141,17 +141,17 @@ context target = HashMap.fromList
 convertedContext :: Target -> HashMap Name (Lifted.Definition Closed.Expr Void)
 convertedContext target = HashMap.fromList $ concat
   [[( TypeName
-    , constDef $ Closed.Sized intSize intSize
+    , constDef $ Closed.Sized typeSize typeSize
     )
   , (SizeOfName
-    , funDef (Telescope $ pure (mempty, (), Scope $ global TypeName))
+    , funDef (Telescope $ pure (mempty, (), Scope typeSize))
       $ Scope $ Closed.Sized intSize $ pure $ B 0
     )
   , ( PiTypeName
     , constDef $ Closed.Sized intSize ptrSize
     )
   , ( PtrName
-    , funDef (Telescope $ pure (mempty, (), Scope $ global TypeName))
+    , funDef (Telescope $ pure (mempty, (), Scope typeSize))
       $ Scope $ Closed.Sized intSize ptrSize
     )
   , ( IntName
@@ -251,6 +251,7 @@ convertedContext target = HashMap.fromList $ concat
     constDef = Lifted.ConstantDef Public . Lifted.Constant
     funDef tele = Lifted.FunctionDef Public Lifted.NonClosure . Lifted.Function tele
     intSize = Closed.Lit $ Integer $ Target.intBytes target
+    typeSize = intSize
     byteSize = Closed.Lit $ Integer 1
     ptrSize = Closed.Lit $ Integer $ Target.ptrBytes target
 
