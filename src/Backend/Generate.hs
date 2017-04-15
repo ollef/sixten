@@ -124,9 +124,7 @@ generateExpr expr typ = case expr of
     return $ DirectVar sz $ shower l
   Lit (Byte l) -> do
     return $ DirectVar 1 $ shower l
-  Con qc es -> do
-    sz <- generateIntExpr typ
-    generateCon sz qc es
+  Con qc es -> generateCon qc es typ
   Call funExpr es -> do
     (retDir, argDirs) <- funSignature funExpr $ Vector.length es
     generateCall retDir funExpr (Vector.zip es argDirs) typ
@@ -271,8 +269,8 @@ gcAllocExpr (Anno expr typ) = do
   return ref
 gcAllocExpr _ = error "gcAllocExpr"
 
-generateCon :: Operand Int -> QConstr -> Vector (Expr Var) -> Gen Var
-generateCon _ Builtin.Ref es = do
+generateCon :: QConstr -> Vector (Expr Var) -> Expr Var -> Gen Var
+generateCon Builtin.Ref es _ = do
   sizes <- mapM (generateIntExpr . sizeOf) es
   (is, fullSize) <- adds sizes
   ref <- gcAlloc fullSize
@@ -283,7 +281,9 @@ generateCon _ Builtin.Ref es = do
   refInt <- "ref-int" =: ptrToInt ref
   ptrSize <- gets $ Target.ptrBytes . target
   return $ DirectVar ptrSize $ intDirect refInt
-generateCon sz qc es = do
+generateCon _ _ (Lit (Integer 0)) = return VoidVar
+generateCon qc es typ = do
+  sz <- generateIntExpr typ
   ret <- "cons-cell" =: alloca sz
   storeCon qc es ret
   return $ IndirectVar ret
@@ -291,7 +291,7 @@ generateCon sz qc es = do
 storeCon :: QConstr -> Vector (Expr Var) -> Operand Ptr -> Gen ()
 storeCon Builtin.Ref es ret = do
   ptrSize <- gets $ Target.ptrBytes . target
-  v <- generateCon (Operand $ shower ptrSize) Builtin.Ref es
+  v <- generateCon Builtin.Ref es $ Lit $ Integer ptrSize
   i <- loadVar ptrSize mempty v
   storeDirect ptrSize i ret
 storeCon qc es ret = do
