@@ -20,6 +20,7 @@ highlight def link sixtenPipe Operator
 highlight def link sixtenLineComment Comment
 highlight def link sixtenBlockComment Comment
 highlight def link sixtenTodo Todo
+highlight def link sixtenForeignQuotes Operator
 
 syn match sixtenIdentifier "[_a-z][a-zA-Z0-9_']*" contained
 syn match sixtenType "\<[A-Z][a-zA-Z0-9_']*\>"
@@ -43,6 +44,29 @@ syn region sixtenBlockComment start="{-" end="-}"
   \ contains=
   \ sixtenBlockComment,
   \ sixtenTodo,
-\ @Spell
+  \ @Spell
 
 syn keyword sixtenTodo TODO FIXME contained
+
+function! IncludeFileTypeAsGroup(filetype, groupName) abort
+  if exists('b:current_syntax')
+    let s:current_syntax=b:current_syntax
+    " Remove current syntax definition, as some syntax files (e.g. cpp.vim)
+    " do nothing if b:current_syntax is defined.
+    unlet b:current_syntax
+  endif
+  execute 'syn include @'.a:groupName.' syntax/'.a:filetype.'.vim'
+  try
+    execute 'syn include @'.a:groupName.' after/syntax/'.a:filetype.'.vim'
+  catch
+  endtry
+  if exists('s:current_syntax')
+    let b:current_syntax=s:current_syntax
+  else
+    unlet b:current_syntax
+  endif
+endfunction
+
+call IncludeFileTypeAsGroup('c', 'CSyntax')
+
+syn region sixtenForeignC matchgroup=sixtenForeignQuotes start="(C|" end="|)" keepend contains=@CSyntax
