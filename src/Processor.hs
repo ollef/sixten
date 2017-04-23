@@ -61,16 +61,13 @@ processGroup
 processGroup
   = prettyConcreteGroup "Concrete syntax" absurd
   >=> typeCheckGroup
+
   >=> prettyTypedGroup "Abstract syntax" absurd
+
   >=> simplifyGroup
   >=> prettyTypedGroup "Simplified" absurd
-  >=> processAbstractGroup
 
-processAbstractGroup
-  :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
-  -> VIX [Generate.Generated Text]
-processAbstractGroup
-  = addGroupToContext
+  >=> addGroupToContext
 
   >=> slamGroup
   >=> prettyGroup "SLammed" vac
