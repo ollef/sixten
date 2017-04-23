@@ -326,22 +326,8 @@ processFile file output target logHandle verbosity = do
       procRes <- runVIX (process resolved) target logHandle verbosity
       case procRes of
         Left err -> return $ Error $ TypeError $ Text.pack err
-        Right res -> do
-          forwardDecls <- Text.readFile =<< getDataFileName "rts/forwarddecls.ll"
-          withFile output WriteMode $ \handle -> do
-            let outputStrLn = Text.hPutStrLn handle
-            outputStrLn forwardDecls
-            forM_ res $ \gen -> do
-              outputStrLn ""
-              outputStrLn $ Generate.generatedCode gen
-            outputStrLn ""
-            outputStrLn "define i32 @main() {"
-            outputStrLn "  call void @GC_init()"
-            forM_ res $ \gen -> do
-              let i = Generate.generated gen
-              unless (Text.null i) $ outputStrLn i
-            outputStrLn "  ret i32 0"
-            outputStrLn "}"
+        Right res -> withFile output WriteMode $ \handle -> do
+          Generate.writeLlvmModule res handle
           return Success
   where
     context = Builtin.context target

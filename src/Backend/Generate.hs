@@ -11,15 +11,18 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Monoid
 import Data.Text(Text)
 import qualified Data.Text as Text
+import qualified Data.Text.IO as Text
 import qualified Data.Traversable as Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Word
+import System.IO
 
 import Backend.LLVM
 import Backend.Target(Target)
 import qualified Backend.Target as Target
 import Builtin
+import Paths_sixten
 import Syntax.Annotation
 import Syntax.Branches
 import Syntax.Direction
@@ -596,3 +599,20 @@ generateDefinition name def = case def of
   FunctionDef v _ f -> do
     generateFunction v name f
     return mempty
+
+writeLlvmModule :: [Generated Text] -> Handle -> IO ()
+writeLlvmModule gens handle = do
+  forwardDecls <- Text.readFile =<< getDataFileName "rts/forwarddecls.ll"
+  let outputStrLn = Text.hPutStrLn handle
+  outputStrLn forwardDecls
+  forM_ gens $ \gen -> do
+    outputStrLn ""
+    outputStrLn $ generatedCode gen
+  outputStrLn ""
+  outputStrLn "define i32 @main() {"
+  outputStrLn "  call void @GC_init()"
+  forM_ gens $ \gen -> do
+    let i = generated gen
+    unless (Text.null i) $ outputStrLn i
+  outputStrLn "  ret i32 0"
+  outputStrLn "}"
