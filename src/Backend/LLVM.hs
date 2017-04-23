@@ -26,12 +26,10 @@ import Syntax.Name
 import Util
 import Util.Tsil
 
-type B = Text
-
 -------------------------------------------------------------------------------
 -- * Configs
 -------------------------------------------------------------------------------
-data Config = Config { cfgAlign, cfgPtrSize, cfgIntegerT, cfgPointerT :: B }
+data Config = Config { cfgAlign, cfgPtrSize, cfgIntegerT, cfgPointerT :: Text }
 
 prettyConfig :: Config
 prettyConfig = Config
@@ -117,13 +115,13 @@ infixr 6 <+>
 data LLVMState = LLVMState
   { config :: Config
   , target :: Target
-  , boundNames :: HashSet B
-  , freeNames :: [B]
+  , boundNames :: HashSet Text
+  , freeNames :: [Text]
   , currentLabel :: Operand Label
-  , instructions :: Tsil B
+  , instructions :: Tsil Text
   }
 
-runLLVM :: State LLVMState a -> Target -> (a, [B])
+runLLVM :: State LLVMState a -> Target -> (a, [Text])
 runLLVM s t = second (Foldable.toList . instructions) $ runState s LLVMState
   { config = targetConfig t
   , target = t
@@ -154,18 +152,18 @@ emitLabel l
 -------------------------------------------------------------------------------
 -- * Working with names
 -------------------------------------------------------------------------------
-escape :: B -> B
+escape :: Text -> Text
 escape b
   | validIdent b = b
   | otherwise = "\"" <> escapeQuotes b <> "\""
 
-escapeQuotes :: B -> B
+escapeQuotes :: Text -> Text
 escapeQuotes = Text.concatMap go
   where
     go '"' = "\\22"
     go c = Text.singleton c
 
-validIdent :: B -> Bool
+validIdent :: Text -> Bool
 validIdent str1 = case Text.uncons str1 of
   Nothing -> False
   Just (b, str2) -> startChar b && Text.all contChar str2
@@ -175,7 +173,7 @@ validIdent str1 = case Text.uncons str1 of
                || c `elem` ("-$._" :: String)
     contChar c = startChar c || isDigit c
 
-freshenName :: MonadState LLVMState m => B -> m B
+freshenName :: MonadState LLVMState m => Text -> m Text
 freshenName name = do
   bnames <- gets boundNames
   let candidates = name : [name <> shower n | n <- [(1 :: Int)..]]
@@ -184,17 +182,17 @@ freshenName name = do
   modify $ \s -> s { boundNames = bnames' }
   return $ "%" <> escape actualName
 
-freshName :: MonadState LLVMState m => m B
+freshName :: MonadState LLVMState m => m Text
 freshName = do
   name:fnames <- gets freeNames
   modify $ \s -> s { freeNames = fnames }
   freshenName name
 
-freshWithHint :: MonadState LLVMState m => NameHint -> m B
+freshWithHint :: MonadState LLVMState m => NameHint -> m Text
 freshWithHint (NameHint (Hint (Just (Name name)))) = freshenName name
 freshWithHint (NameHint (Hint Nothing)) = freshName
 
-freshLabel :: MonadState LLVMState m => B -> m (Operand Label)
+freshLabel :: MonadState LLVMState m => Text -> m (Operand Label)
 freshLabel name = Operand . text <$> freshenName name
 
 -------------------------------------------------------------------------------

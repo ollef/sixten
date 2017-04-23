@@ -53,14 +53,14 @@ import VIX
 processResolved
   :: HashMap Name (Definition Abstract.Expr Void, Abstract.Type Void)
   -> HashMap Name (SourceLoc, Unscoped.Definition Name, Unscoped.Type Name)
-  -> VIX [(LLVM.B, LLVM.B)]
+  -> VIX [(Text, Text)]
 processResolved context
   = pure . ScopeCheck.scopeCheckProgram context
   >>=> processGroup
 
 processGroup
   :: [(Name, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]
-  -> VIX [(LLVM.B, LLVM.B)]
+  -> VIX [(Text, Text)]
 processGroup
   = prettyConcreteGroup "Concrete syntax" absurd
   >=> typeCheckGroup
@@ -71,7 +71,7 @@ processGroup
 
 processAbstractGroup
   :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
-  -> VIX [(LLVM.B, LLVM.B)]
+  -> VIX [(Text, Text)]
 processAbstractGroup
   = addGroupToContext
 
@@ -97,7 +97,7 @@ processAbstractGroup
 
 processConvertedGroup
   :: [(Name, Sized.Definition Closed.Expr Void)]
-  -> VIX [(LLVM.B, LLVM.B)]
+  -> VIX [(Text, Text)]
 processConvertedGroup
   = liftConvertedGroup
   >>=> prettyGroup "Lambda-lifted (2)" vac
@@ -274,7 +274,7 @@ extractExternGroup defs = return $
 
 generateGroup
   :: [(Name, Extracted.Module (Sized.Definition Extracted.Expr Void))]
-  -> VIX [(LLVM.B, LLVM.B)]
+  -> VIX [(Text, Text)]
 generateGroup defs = do
   -- TODO compile the rest of the module
   target <- gets vixTarget

@@ -9,6 +9,7 @@ import qualified Data.Foldable as Foldable
 import Data.List
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Monoid
+import Data.Text(Text)
 import qualified Data.Traversable as Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
@@ -40,7 +41,7 @@ data GenEnv = GenEnv
 
 type Gen = ReaderT GenEnv (State LLVMState)
 
-runGen :: GenEnv -> Gen a -> Target -> (a, [B])
+runGen :: GenEnv -> Gen a -> Target -> (a, [Text])
 runGen f m = runLLVM $ runReaderT m f
 
 constrIndex :: QConstr -> Gen (Maybe Int)
