@@ -111,6 +111,7 @@ scopeCheckExpr expr = case expr of
   Unscoped.Case e pats -> Scoped.Case
     <$> scopeCheckExpr e
     <*> mapM (uncurry scopeCheckBranch) pats
+  Unscoped.ExternCode c -> Scoped.ExternCode <$> mapM scopeCheckExpr c
   Unscoped.Wildcard -> return Scoped.Wildcard
   Unscoped.SourceLoc loc e -> Scoped.SourceLoc loc <$> scopeCheckExpr e
 

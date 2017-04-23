@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, Rank2Types, OverloadedStrings #-}
 module Syntax.Definition where
 
+import Control.Monad.Morph
 import Data.Bifunctor
 import Data.Bitraversable
 import Data.String
@@ -16,6 +17,11 @@ data Definition expr v
   | DataDefinition (DataDef expr v) (expr v)
   | Opaque
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+instance MFunctor Definition where
+  hoist f (Definition e) = Definition $ f e
+  hoist f (DataDefinition d e) = DataDefinition (hoist f d) (f e)
+  hoist _ Opaque = Opaque
 
 instance GlobalBound Definition where
   bound f g (Definition e) = Definition $ bind f g e

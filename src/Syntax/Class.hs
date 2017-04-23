@@ -8,6 +8,7 @@ import Syntax.Annotation
 import Syntax.Hint
 import Syntax.Telescope
 import Util
+import Util.Tsil
 
 class (AppSyntax e, Monad e, Traversable e) => Syntax e where
   lam :: NameHint -> Plicitness -> e v -> Scope1 e v -> e v
@@ -24,10 +25,10 @@ apps :: (AppSyntax e, Foldable t) => e v -> t (Plicitness, e v) -> e v
 apps = Foldable.foldl' (uncurry . app)
 
 appsView :: AppSyntax e => e v -> (e v, [(Plicitness, e v)])
-appsView = second reverse . go
+appsView = second toList . go
   where
-    go (appView -> Just (e1, p, e2)) = second ((p, e2) :) $ go e1
-    go e = (e, [])
+    go (appView -> Just (e1, p, e2)) = second (`Snoc` (p, e2)) $ go e1
+    go e = (e, Nil)
 
 typeApp :: Syntax e => e v -> e v -> Maybe (e v)
 typeApp (piView -> Just (_, _, _, s)) e = Just $ Util.instantiate1 e s

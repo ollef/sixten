@@ -24,6 +24,7 @@ executable sixten
                        Analysis.Simplify
                        Backend.Close
                        Backend.ClosureConvert
+                       Backend.ExtractExtern
                        Backend.Generate
                        Backend.LLVM
                        Backend.Lift
@@ -68,6 +69,8 @@ executable sixten
                        Syntax.Pattern
                        Syntax.Primitive
                        Syntax.Sized.Closed
+                       Syntax.Sized.Definition
+                       Syntax.Sized.Extracted
                        Syntax.Sized.Lifted
                        Syntax.Sized.SLambda
                        Syntax.SourceLoc
@@ -75,6 +78,7 @@ executable sixten
                        VIX
                        TopoSort
                        Util
+                       Util.Tsil
   build-depends:
                        ansi-wl-pprint,
                        base >=4.8 && <4.10,

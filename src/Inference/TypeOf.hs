@@ -40,6 +40,7 @@ typeOfM expr = do
       v <- forall h eType
       typeOfM $ instantiate1 (pure v) s
     Case _ _ retType -> return retType
+    ExternCode _ retType -> return retType
   modifyIndent pred
   -- logMeta "typeOfM res" =<< zonk t
   return t
@@ -74,6 +75,7 @@ typeOf expr = do
       v <- forall h eType
       typeOf $ instantiate1 (pure v) s
     Case _ _ retType -> return retType
+    ExternCode _ retType -> return retType
   modifyIndent pred
   -- logMeta "typeOf res" =<< zonk t
   return t

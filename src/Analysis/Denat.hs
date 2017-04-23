@@ -20,6 +20,7 @@ denat expr = case expr of
   Let h e t s -> Let h (denat e) (denat t) (hoist denat s)
   Case e brs -> denatCase (denat e) brs
   Anno e t -> Anno (denat e) (denat t)
+  ExternCode c -> ExternCode (denat <$> c)
 
 denatCase
   :: Expr v

@@ -15,6 +15,7 @@ import Data.Vector(Vector)
 import Data.Void
 
 import Syntax hiding (Definition, bitraverseDefinition)
+import Syntax.Sized.Definition
 import Syntax.Sized.Lifted
 import VIX
 
@@ -111,9 +112,9 @@ infer
   :: Expr MetaVar
   -> VIX (Expr MetaVar, Location)
 infer expr = case expr of
-  Var v -> return (Var v, metaLocation v)
-  Global g -> return (Global g, MProjection)
-  Lit l -> return (Lit l, MOutParam)
+  Var v -> return (expr, metaLocation v)
+  Global _ -> return (expr, MProjection)
+  Lit _ -> return (expr, MOutParam)
   Con c es -> do
     es' <- mapM infer es
     return (Con c $ fst <$> es', MOutParam)  -- TODO: Can be improved.
@@ -144,6 +145,9 @@ infer expr = case expr of
     (e', eLoc) <- infer e
     (t', _tLoc) <- infer t
     return (Anno e' t', eLoc)
+  ExternCode c -> do
+    c' <- mapM (fmap fst . infer) c
+    return (ExternCode c', MOutParam)
 
 inferCall
   :: (Expr MetaVar -> Vector (Expr MetaVar) -> Expr MetaVar)

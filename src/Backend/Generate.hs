@@ -25,9 +25,11 @@ import Syntax.Hint
 import Syntax.Literal
 import Syntax.Name
 import Syntax.Primitive
-import Syntax.Sized.Lifted
+import Syntax.Sized.Definition
+import Syntax.Sized.Extracted
 import Syntax.Telescope
 import Util
+import Util.Tsil
 
 -------------------------------------------------------------------------------
 -- Generation environment
@@ -122,7 +124,7 @@ generateExpr expr typ = case expr of
   Lit (Integer l) -> do
     sz <- gets (Target.intBytes . target)
     return $ DirectVar sz $ shower l
-  Lit (Byte l) -> do
+  Lit (Byte l) ->
     return $ DirectVar 1 $ shower l
   Con qc es -> generateCon qc es typ
   Call funExpr es -> do
@@ -353,7 +355,7 @@ generateBranches caseExpr branches brCont = do
       emit $ branch branchLabel
       emitLabel branchLabel
       let teleVector = Vector.indexed $ unTelescope tele
-          inst = instantiateTele pure $ Vector.fromList (reverse revArgs)
+          inst = instantiateTele pure $ toVector args
           go (vs, index) (i, (h, (), s)) = do
             ptr <- h =: getElementPtr expr index
             nextIndex <- if i == Vector.length teleVector - 1
@@ -361,9 +363,9 @@ generateBranches caseExpr branches brCont = do
               else do
                 sz <- generateIntExpr $ inst s
                 "index" =: add index sz
-            return (IndirectVar ptr : vs, nextIndex)
+            return (Snoc vs $ IndirectVar ptr, nextIndex)
 
-      (revArgs, _) <- Foldable.foldlM go (mempty, "0") teleVector
+      (args, _) <- Foldable.foldlM go (mempty, "0") teleVector
       contResult <- brCont $ inst brScope
       afterBranchLabel <- gets currentLabel
       emit $ branch postLabel
@@ -377,7 +379,7 @@ generateBranches caseExpr branches brCont = do
       emit $ branch branchLabel
       emitLabel branchLabel
       let teleVector = Vector.indexed $ unTelescope tele
-          inst = instantiateTele pure $ Vector.fromList (reverse revArgs)
+          inst = instantiateTele pure $ toVector args
           go (vs, index) (i, (h, (), s)) = do
             ptr <- h =: getElementPtr expr index
             nextIndex <- if i == Vector.length teleVector - 1
@@ -385,9 +387,9 @@ generateBranches caseExpr branches brCont = do
               else do
                 sz <- generateIntExpr $ inst s
                 "index" =: add index sz
-            return (IndirectVar ptr : vs, nextIndex)
+            return (Snoc vs $ IndirectVar ptr, nextIndex)
 
-      (revArgs, _) <- Foldable.foldlM go (mempty, "0") teleVector
+      (args, _) <- Foldable.foldlM go (mempty, "0") teleVector
       contResult <- brCont $ inst brScope
       afterBranchLabel <- gets currentLabel
       emit $ branch postLabel
@@ -411,7 +413,7 @@ generateBranches caseExpr branches brCont = do
         emitLabel branchLabel
 
         let teleVector = Vector.indexed $ unTelescope tele
-            inst = instantiateTele pure $ Vector.fromList (reverse revArgs)
+            inst = instantiateTele pure $ toVector args
             go (vs, index) (i, (h, (), s)) = do
               ptr <- h =: getElementPtr expr index
               nextIndex <- if i == Vector.length teleVector - 1
@@ -419,9 +421,9 @@ generateBranches caseExpr branches brCont = do
                 else do
                   sz <- generateIntExpr $ inst s
                   "index" =: add index sz
-              return (IndirectVar ptr : vs, nextIndex)
+              return (Snoc vs $ IndirectVar ptr, nextIndex)
 
-        (revArgs, _) <- Foldable.foldlM go (mempty, shower intSize) teleVector
+        (args, _) <- Foldable.foldlM go (mempty, shower intSize) teleVector
         contResult <- brCont $ inst brScope
         afterBranchLabel <- gets currentLabel
         emit $ branch postLabel

@@ -24,6 +24,7 @@ import Syntax.Direction
 import Syntax.Hint
 import Syntax.Name
 import Util
+import Util.Tsil
 
 type B = Text
 
@@ -119,11 +120,11 @@ data LLVMState = LLVMState
   , boundNames :: HashSet B
   , freeNames :: [B]
   , currentLabel :: Operand Label
-  , instructions :: [B]
+  , instructions :: Tsil B
   }
 
 runLLVM :: State LLVMState a -> Target -> (a, [B])
-runLLVM s t = second (reverse . instructions) $ runState s LLVMState
+runLLVM s t = second (Foldable.toList . instructions) $ runState s LLVMState
   { config = targetConfig t
   , target = t
   , boundNames = mempty
@@ -136,7 +137,7 @@ runLLVM s t = second (reverse . instructions) $ runState s LLVMState
   }
 
 emitRaw :: MonadState LLVMState m => Instr a -> m ()
-emitRaw i = modify $ \s -> s { instructions = unC (unInstr i) (config s) : instructions s }
+emitRaw i = modify $ \s -> s { instructions = Snoc (instructions s) $ unC (unInstr i) (config s) }
 
 emit :: MonadState LLVMState m => Instr a -> m ()
 emit b = emitRaw ("  " <> b)
@@ -146,7 +147,7 @@ emitLabel l
   = modify
   -- Hackish way to remove the "%"
   $ \s -> s
-  { instructions = (Text.drop 1 (unC (unOperand l) (config s)) <> ":") : instructions s
+  { instructions = Snoc (instructions s) $ Text.drop 1 (unC (unOperand l) (config s)) <> ":"
   , currentLabel = l
   }
 
@@ -252,11 +253,11 @@ adds
   :: (MonadState LLVMState m, Foldable f)
   => f (Operand Int)
   -> m ([Operand Int], Operand Int)
-adds = fmap (first reverse) . Foldable.foldlM go ([], "0")
+adds = fmap (first Foldable.toList) . Foldable.foldlM go (Nil, "0")
   where
     go (ys, v) o = do
       name <- mempty =: add v o
-      return (v : ys, name)
+      return (Snoc ys v, name)
 
 memcpy
   :: MonadState LLVMState m

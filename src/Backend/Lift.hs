@@ -9,18 +9,19 @@ import Data.Void
 
 import Syntax
 import qualified Syntax.Sized.Closed as Closed
+import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Lifted as Lifted
 import Util
 
 data LiftState = LiftState
   { freshNames :: [Name]
-  , liftedFunctions :: [(Name, Lifted.Function Lifted.Expr Void)]
+  , liftedFunctions :: [(Name, Sized.Function Lifted.Expr Void)]
   }
 
-newtype Lift a = Lift { unLifted :: State LiftState a }
+newtype Lift a = Lift { runLift :: State LiftState a }
   deriving (Functor, Applicative, Monad, MonadState LiftState)
 
-liftFunction :: Lifted.Function Lifted.Expr Void -> Lift Name
+liftFunction :: Sized.Function Lifted.Expr Void -> Lift Name
 liftFunction f = do
   name:names <- gets freshNames
   modify $ \s -> s
@@ -40,7 +41,7 @@ liftExpr expr = case expr of
   Closed.Lams tele s -> do
     s' <- transverseScope liftExpr s
     tele' <- liftTelescope tele
-    f <- liftFunction $ Lifted.Function tele' s'
+    f <- liftFunction $ Sized.Function tele' s'
     return $ Lifted.Global f
   Closed.Call e es -> Lifted.Call <$> liftExpr e <*> mapM liftExpr es
   Closed.PrimCall retDir e es -> Lifted.PrimCall retDir
@@ -48,9 +49,10 @@ liftExpr expr = case expr of
     <*> traverse (bitraverse liftExpr pure) es
   Closed.Let h e s -> Lifted.Let h
     <$> liftExpr e
-    <*> fmap toScope (liftExpr $ fromScope s)
+    <*> transverseScope liftExpr s
   Closed.Case e brs -> Lifted.Case <$> liftExpr e <*> liftBranches brs
   Closed.Prim p -> Lifted.Prim <$> mapM liftExpr p
+  Closed.ExternCode c -> Lifted.ExternCode <$> mapM liftExpr c
   Closed.Anno e t -> Lifted.Anno <$> liftExpr e <*> liftExpr t
 
 liftBranches
@@ -73,43 +75,43 @@ liftTelescope (Telescope tele) = Telescope
 
 liftToDefinitionM
   :: Closed.Expr Void
-  -> Lift (Lifted.Definition Lifted.Expr Void)
+  -> Lift (Sized.Definition Lifted.Expr Void)
 liftToDefinitionM (Closed.Anno (Closed.Lams tele s) _) = do
   tele' <- liftTelescope tele
   s' <- transverseScope liftExpr s
-  return $ Lifted.FunctionDef Public Lifted.NonClosure $ Lifted.Function tele' s'
+  return $ Sized.FunctionDef Public Sized.NonClosure $ Sized.Function tele' s'
 liftToDefinitionM sexpr
-  = Lifted.ConstantDef Public . Lifted.Constant <$> liftExpr sexpr
+  = Sized.ConstantDef Public . Sized.Constant <$> liftExpr sexpr
 
 liftToDefinition
   :: Name
   -> Closed.Expr Void
-  -> (Lifted.Definition Lifted.Expr Void, [(Name, Lifted.Function Lifted.Expr Void)])
+  -> (Sized.Definition Lifted.Expr Void, [(Name, Sized.Function Lifted.Expr Void)])
 liftToDefinition name expr
   = second liftedFunctions
-  $ runState (unLifted $ liftToDefinitionM expr) LiftState
+  $ runState (runLift $ liftToDefinitionM expr) LiftState
   { freshNames = [name <> "-lifted" <> if n == 0 then "" else shower n | n <- [(0 :: Int)..]]
   , liftedFunctions = mempty
   }
 
 liftDefinitionM
-  :: Lifted.Definition Closed.Expr Void
-  -> Lift (Lifted.Definition Lifted.Expr Void)
-liftDefinitionM (Lifted.FunctionDef vis cl (Lifted.Function tele s)) = do
+  :: Sized.Definition Closed.Expr Void
+  -> Lift (Sized.Definition Lifted.Expr Void)
+liftDefinitionM (Sized.FunctionDef vis cl (Sized.Function tele s)) = do
   tele' <- liftTelescope tele
   s' <- transverseScope liftExpr s
-  return $ Lifted.FunctionDef vis cl $ Lifted.Function tele' s'
-liftDefinitionM (Lifted.ConstantDef vis (Lifted.Constant e)) = do
+  return $ Sized.FunctionDef vis cl $ Sized.Function tele' s'
+liftDefinitionM (Sized.ConstantDef vis (Sized.Constant e)) = do
   e' <- liftExpr e
-  return $ Lifted.ConstantDef vis $ Lifted.Constant e'
+  return $ Sized.ConstantDef vis $ Sized.Constant e'
 
 liftClosures
   :: Name
-  -> Lifted.Definition Closed.Expr Void
-  -> (Lifted.Definition Lifted.Expr Void, [(Name, Lifted.Function Lifted.Expr Void)])
+  -> Sized.Definition Closed.Expr Void
+  -> (Sized.Definition Lifted.Expr Void, [(Name, Sized.Function Lifted.Expr Void)])
 liftClosures name expr
   = second liftedFunctions
-  $ runState (unLifted $ liftDefinitionM expr) LiftState
+  $ runState (runLift $ liftDefinitionM expr) LiftState
   { freshNames = [name <> "-lifted-closure" <> if n == 0 then "" else shower n | n <- [(0 :: Int)..]]
   , liftedFunctions = mempty
   }

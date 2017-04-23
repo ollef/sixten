@@ -20,6 +20,7 @@ data Expr v
   | App (Expr v) !Plicitness (Expr v)
   | Let !NameHint (Expr v) (Scope1 Expr v)
   | Case (Expr v) (Branches QConstr Plicitness Expr v) (Type v)
+  | ExternCode (Extern (Expr v)) (Type v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 -- | Synonym for documentation purposes
@@ -39,6 +40,7 @@ instance GlobalBind Expr where
     App e1 a e2 -> App (bind f g e1) a (bind f g e2)
     Let h e s -> Let h (bind f g e) (bound f g s)
     Case e brs retType -> Case (bind f g e) (bound f g brs) (bind f g retType)
+    ExternCode c t -> ExternCode (bind f g <$> c) (bind f g t)
 
 instance Syntax Expr where
   lam = Lam
@@ -96,3 +98,5 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
     Case e brs retType -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+> "of" <+> parens (prettyM retType)
         <$$> indent 2 (prettyM brs)
+    ExternCode c t -> parens `above` annoPrec $
+      prettyM c <+> ":" <+> prettyM t

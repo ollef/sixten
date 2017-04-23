@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns, MonadComprehensions, OverloadedStrings #-}
 module Inference.Cycle where
 
+import Data.Foldable as Foldable
 import qualified Data.Vector as Vector
 import Control.Monad.Except
 import Data.Bitraversable
@@ -100,3 +101,4 @@ occurrenceDepths = go 0 . fmap Just
           | (_, e') <- lbrs
           ]
           <> go d def
+      ExternCode c t -> (Foldable.toList c >>= go d) <> go d t

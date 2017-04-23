@@ -21,6 +21,7 @@ data Expr v
   | Let NameHint (Expr v) (Type v) (Scope1 Expr v)
   | Case (Expr v) (Branches QConstr () Expr v)
   | Anno (Expr v) (Type v)
+  | ExternCode (Extern (Expr v))
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 type Type = Expr
@@ -62,6 +63,7 @@ instance GlobalBind Expr where
     Let h e t s -> Let h (bind f g e) (bind f g t) (bound f g s)
     Case e brs -> Case (bind f g e) (bound f g brs)
     Anno e t -> Anno (bind f g e) (bind f g t)
+    ExternCode c -> ExternCode (bind f g <$> c)
 
 instance (Eq v, IsString v, Pretty v)
       => Pretty (Expr v) where
@@ -84,3 +86,4 @@ instance (Eq v, IsString v, Pretty v)
         "\\" <> prettyTeleVarTypes ns tele <> "." <+>
         associate absPrec (prettyM $ instantiateTele (pure . fromName) ns s)
     Lam {} -> error "impossible prettyPrec lam"
+    ExternCode c -> prettyM c

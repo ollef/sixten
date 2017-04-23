@@ -1,3 +1,23 @@
+{-
+addInt : Int -> Int -> Int
+addInt x y = (C|return $x + $y;|)
+
+subInt : Int -> Int -> Int
+subInt x y = (C|return $x - $y;|)
+
+maxInt : Int -> Int -> Int
+maxInt x y = (C|return $x > $y ? $x : $y;|)
+
+printInt : Int -> Int
+printInt x = (C|
+  printf("%zd\n", $x);
+  return 0;
+|)
+
+fail : {T : Type} -> T
+fail {T} = (C|exit(1); return ($type:T)0; |)
+-}
+
 type Unit = MkUnit
 type Pair A B = MkPair A B
 

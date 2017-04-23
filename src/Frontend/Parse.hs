@@ -10,15 +10,14 @@ import Data.Ord
 import Data.Text(Text)
 import qualified Data.Text as Text
 import qualified Data.Vector as Vector
-import qualified Text.Parser.Token as Token
 import qualified Text.Parser.Token.Highlight as Highlight
 import qualified Text.Trifecta as Trifecta
 import Text.Trifecta((<?>))
 import Text.Trifecta.Delta
 
 import Syntax
-import Syntax.Concrete.Pattern
 import Syntax.Concrete.Literal
+import Syntax.Concrete.Pattern
 import Syntax.Concrete.Unscoped as Unscoped
 
 type Input = Text
@@ -153,10 +152,10 @@ idStyle = Trifecta.IdentifierStyle "Dependent" start letter res Highlight.Identi
     res = HashSet.fromList ["forall", "_", "case", "of", "where"]
 
 ident :: Parser Name
-ident = Token.ident idStyle
+ident = Trifecta.ident idStyle
 
 reserved :: String -> Parser ()
-reserved = Token.reserve idStyle
+reserved = Trifecta.reserve idStyle
 
 wildcard :: Parser ()
 wildcard = reserved "_"
@@ -167,10 +166,10 @@ identOrWildcard
   <|> Nothing <$ wildcard
 
 symbol :: String -> Parser Name
-symbol = fmap (Name . Text.pack) . Token.symbol
+symbol = fmap (Name . Text.pack) . Trifecta.symbol
 
 integer :: Parser Integer
-integer = Trifecta.try Token.integer
+integer = Trifecta.try Trifecta.integer
 
 constructor :: Parser Constr
 constructor = nameToConstr <$> ident
@@ -254,6 +253,7 @@ atomicExpr = located
   <|> abstr (symbol   "\\") Unscoped.lams
   <|> Case <$ reserved "case" <*>% expr <*% reserved "of" <*> branches
   -- <|> lett <$ reserved "let" <*>% manyIndentedSamecol def <*% reserved "in" <*> expr
+  <|> ExternCode <$> externCExpr
   <|> symbol "(" *>% expr <*% symbol ")"
   <?> "atomic expression"
   where
@@ -281,16 +281,33 @@ expr = located
       <|> (,) Explicit <$> atomicExpr
 
 -------------------------------------------------------------------------------
+-- * Extern C
+externCExpr :: Parser (Extern (Expr Name))
+externCExpr
+  = Extern C . fmap (either id $ ExternPart . Text.pack) <$ Trifecta.string "(C|" <*> go
+  <?> "Extern C expression"
+  where
+    go = consChar <$ Trifecta.char '\\' <*> Trifecta.anyChar <*> go
+      <|> (:) <$ Trifecta.char '$' <*> (Left <$> macroPart) <*> go
+      <|> [] <$ symbol "|)"
+      <|> consChar <$> Trifecta.anyChar <*> go
+    macroPart
+      = TypeMacroPart <$ Trifecta.string "type:" <*> atomicExpr
+      <|> ExprMacroPart <$> atomicExpr
+    consChar c (Right t : rest) = Right (c:t) : rest
+    consChar c rest = Right [c] : rest
+
+-------------------------------------------------------------------------------
 -- * Literals
 literal :: Parser (Expr Name)
 literal
   = Lit . Integer <$> integer
-  <|> string <$> Token.stringLiteral
+  <|> string <$> Trifecta.stringLiteral
 
 literalPat :: Parser (Pat (Type Name) Name)
 literalPat
   = LitPat . Integer <$> integer
-  <|> stringPat <$> Token.stringLiteral
+  <|> stringPat <$> Trifecta.stringLiteral
 
 -------------------------------------------------------------------------------
 -- * Definitions
@@ -324,4 +341,4 @@ dataDef = ParsedData <$ reserved "type" <*>% ident <*> manyTypedBindings <*>%
     adtConType es = Unscoped.pis ((\e -> (Explicit, AnnoPat e WildcardPat)) <$> es) Wildcard
 
 program :: Parser [(TopLevelParsed Name, Span)]
-program = Token.whiteSpace >> dropAnchor (manySameCol $ dropAnchor topLevel)
+program = Trifecta.whiteSpace >> dropAnchor (manySameCol $ dropAnchor topLevel)

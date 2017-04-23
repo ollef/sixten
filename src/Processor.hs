@@ -26,6 +26,7 @@ import qualified Analysis.ReturnDirection as ReturnDirection
 import Analysis.Simplify
 import Backend.Close
 import qualified Backend.ClosureConvert as ClosureConvert
+import qualified Backend.ExtractExtern as ExtractExtern
 import qualified Backend.Generate as Generate
 import Backend.Lift
 import qualified Backend.LLVM as LLVM
@@ -42,6 +43,8 @@ import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
 import qualified Syntax.Concrete.Unscoped as Unscoped
 import qualified Syntax.Sized.Closed as Closed
+import qualified Syntax.Sized.Definition as Sized
+import qualified Syntax.Sized.Extracted as Extracted
 import qualified Syntax.Sized.Lifted as Lifted
 import qualified Syntax.Sized.SLambda as SLambda
 import Util
@@ -73,34 +76,43 @@ processAbstractGroup
   = addGroupToContext
 
   >=> slamGroup
-  >=> prettyGroup "SLammed" absurd
+  >=> prettyGroup "SLammed" vac
 
   >=> denatGroup
-  >=> prettyGroup "Denaturalised" absurd
+  >=> prettyGroup "Denaturalised" vac
 
   >=> closeGroup
-  >=> prettyGroup "Closed" absurd
+  >=> prettyGroup "Closed" vac
 
   >=> liftGroup
-  >>=> prettyGroup "Lambda-lifted" absurd
+  >>=> prettyGroup "Lambda-lifted" vac
 
   >=> closureConvertGroup
-  >=> prettyGroup "Closure-converted" absurd
+  >=> prettyGroup "Closure-converted" vac
 
   >=> processConvertedGroup
+  where
+    vac :: Functor e => e Void -> e Name
+    vac = vacuous
 
 processConvertedGroup
-  :: [(Name, Lifted.Definition Closed.Expr Void)]
+  :: [(Name, Sized.Definition Closed.Expr Void)]
   -> VIX [(LLVM.B, LLVM.B)]
 processConvertedGroup
   = liftConvertedGroup
-  >>=> prettyGroup "Lambda-lifted (2)" absurd
+  >>=> prettyGroup "Lambda-lifted (2)" vac
 
   >=> inferGroupDirections
   >=> addSignaturesToContext
-  >=> prettyGroup "Directed (lifted)" absurd
+  >=> prettyGroup "Directed (lifted)" vac
+
+  >=> extractExternGroup
+  >=> prettyGroup "Extern extracted" (vac . Extracted.moduleInnards)
 
   >=> generateGroup
+  where
+    vac :: Functor e => e Void -> e Name
+    vac = vacuous
 
 infixr 1 >>=>
 (>>=>) :: Monad m => (a -> m [b]) -> (b -> m [c]) -> a -> m [c]
@@ -161,11 +173,11 @@ prettyTypedGroup str f defs = do
   return defs
 
 prettyGroup
-  :: (Pretty (e Name), Functor e)
+  :: Pretty p
   => Text
-  -> (v -> Name)
-  -> [(Name, e v)]
-  -> VIX [(Name, e v)]
+  -> (e -> p)
+  -> [(Name, e)]
+  -> VIX [(Name, e)]
 prettyGroup str f defs = do
   whenVerbose 10 $ do
     VIX.log $ "----- " <> str <> " -----"
@@ -173,7 +185,7 @@ prettyGroup str f defs = do
       VIX.log
         $ showWide
         $ runPrettyM
-        $ prettyM n <+> "=" <+> prettyM (f <$> d)
+        $ prettyM n <+> "=" <+> prettyM (f d)
       VIX.log ""
   return defs
 
@@ -222,51 +234,58 @@ closeGroup defs = forM defs $ \(x, e) -> do
 
 liftGroup
   :: [(Name, Closed.Expr Void)]
-  -> VIX [[(Name, Lifted.Definition Lifted.Expr Void)]]
-liftGroup defs = fmap (Lifted.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
+  -> VIX [[(Name, Sized.Definition Lifted.Expr Void)]]
+liftGroup defs = fmap (Sized.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
   let (e', fs) = liftToDefinition name e
-  return $ (name, e') : fmap (second $ Lifted.FunctionDef Private Lifted.NonClosure) fs
+  return $ (name, e') : fmap (second $ Sized.FunctionDef Private Sized.NonClosure) fs
 
 closureConvertGroup
-  :: [(Name, Lifted.Definition Lifted.Expr Void)]
-  -> VIX [(Name, Lifted.Definition Closed.Expr Void)]
+  :: [(Name, Sized.Definition Lifted.Expr Void)]
+  -> VIX [(Name, Sized.Definition Closed.Expr Void)]
 closureConvertGroup = ClosureConvert.convertDefinitions
 
 liftConvertedGroup
-  :: [(Name, Lifted.Definition Closed.Expr Void)]
-  -> VIX [[(Name, Lifted.Definition Lifted.Expr Void)]]
-liftConvertedGroup defs = fmap (Lifted.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
+  :: [(Name, Sized.Definition Closed.Expr Void)]
+  -> VIX [[(Name, Sized.Definition Lifted.Expr Void)]]
+liftConvertedGroup defs = fmap (Sized.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
   let (e', fs) = liftClosures name e
-  return $ (name, e') : fmap (second $ Lifted.FunctionDef Private Lifted.IsClosure) fs
+  return $ (name, e') : fmap (second $ Sized.FunctionDef Private Sized.IsClosure) fs
 
 inferGroupDirections
-  :: [(Name, Lifted.Definition Lifted.Expr Void)]
-  -> VIX [(Name, Lifted.Definition Lifted.Expr Void, Signature ReturnIndirect)]
+  :: [(Name, Sized.Definition Lifted.Expr Void)]
+  -> VIX [(Name, Sized.Definition Lifted.Expr Void, Signature ReturnIndirect)]
 inferGroupDirections
   = fmap Vector.toList . ReturnDirection.inferRecursiveDefs . Vector.fromList
 
 addSignaturesToContext
-  :: [(Name, Lifted.Definition Lifted.Expr Void, Signature ReturnIndirect)]
-  -> VIX [(Name, Lifted.Definition Lifted.Expr Void)]
+  :: [(Name, Sized.Definition Lifted.Expr Void, Signature ReturnIndirect)]
+  -> VIX [(Name, Sized.Definition Lifted.Expr Void)]
 addSignaturesToContext defs = do
   let sigs = HashMap.fromList [(n, sig) | (n, _, sig) <- defs]
   logShow 11 "signatures" sigs
   addSignatures sigs
   return [(n, def) | (n, def, _) <- defs]
 
+extractExternGroup
+  :: [(Name, Sized.Definition Lifted.Expr Void)]
+  -> VIX [(Name, Extracted.Module (Sized.Definition Extracted.Expr Void))]
+extractExternGroup defs = return $
+  flip map defs $ \(n, d) -> (n, ExtractExtern.extractDef n d)
+
 generateGroup
-  :: [(Name, Lifted.Definition Lifted.Expr Void)]
+  :: [(Name, Extracted.Module (Sized.Definition Extracted.Expr Void))]
   -> VIX [(LLVM.B, LLVM.B)]
 generateGroup defs = do
+  -- TODO compile the rest of the module
   target <- gets vixTarget
   qcindex <- qconstructorIndex
   sigs <- gets vixSignatures
   let env = Generate.GenEnv qcindex (`HashMap.lookup` sigs)
-  return $ flip map defs $ \(x, e) ->
+  return $ flip map defs $ \(x, m) ->
     bimap (($ LLVM.targetConfig target) . LLVM.unC) (fold . intersperse "\n")
       $ Generate.runGen
         env
-        (Generate.generateDefinition x $ vacuous e)
+        (Generate.generateDefinition x $ vacuous $ Extracted.moduleInnards m)
         target
 
 data Error

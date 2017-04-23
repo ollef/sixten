@@ -31,6 +31,7 @@ data Expr v
   | App (Expr v) !Plicitness (Expr v)
   | Let !NameHint (Expr v) (Scope1 Expr v)
   | Case (Expr v) [(Pat (PatternScope Type v) (), PatternScope Expr v)]
+  | ExternCode (Extern (Expr v))
   | Wildcard  -- ^ Attempt to infer it
   | SourceLoc !SourceLoc (Expr v)
   deriving (Show)
@@ -60,6 +61,7 @@ instance Eq v => Eq (Expr v) where
   App e1 p1 e1' == App e2 p2 e2' = e1 == e2 && p1 == p2 && e1' == e2'
   Let h1 e1 s1 == Let h2 e2 s2 = h1 == h2 && e1 == e2 && s1 == s2
   Case e1 brs1 == Case e2 brs2 = e1 == e2 && brs1 == brs2
+  ExternCode c == ExternCode c' = c == c'
   Wildcard == Wildcard = True
   SourceLoc _ e1 == e2 = e1 == e2
   e1 == SourceLoc _ e2 = e1 == e2
@@ -83,8 +85,9 @@ instance GlobalBind Expr where
     App e1 p e2 -> App (bind f g e1) p (bind f g e2)
     Let h e s -> Let h (bind f g e) (bound f g s)
     Case e brs -> Case (bind f g e) (bimap (first (bound f g)) (bound f g) <$> brs)
-    SourceLoc r e -> SourceLoc r (bind f g e)
+    ExternCode c -> ExternCode (bind f g <$> c)
     Wildcard -> Wildcard
+    SourceLoc r e -> SourceLoc r (bind f g e)
 
 instance Applicative Expr where
   pure = return
@@ -110,6 +113,7 @@ instance Traversable Expr where
     Case e brs -> Case
       <$> traverse f e
       <*> traverse (bitraverse (bitraverse (traverse f) pure) (traverse f)) brs
+    ExternCode c -> ExternCode <$> traverse (traverse f) c
     SourceLoc r e -> SourceLoc r <$> traverse f e
     Wildcard -> pure Wildcard
 
@@ -136,6 +140,7 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
       "in" <+> prettyM (Util.instantiate1 (pure $ fromName n) s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (vcat $ prettyBranch <$> brs)
+    ExternCode c -> prettyM c
     Wildcard -> "_"
     SourceLoc _ e -> prettyM e
     where

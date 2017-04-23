@@ -1,0 +1,5 @@
+add : Int -> Int -> Int -> Int
+add x y z = (C|
+  $type:Int result = $x + $y + $z;
+  return $x + $y;
+|)

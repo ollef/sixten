@@ -39,7 +39,9 @@ Language
       type Vector n A where
         Nil : Vector 0 A
         Cons : forall {n}. A -> Vector n A -> Vector (S n) a
-  FFI & More general way to define builtins (extern LLVM, C?)
+  * FFI & More general way to define builtins (extern LLVM, C?)
+    Add tests for FFI escaping
+    Remove primitive?
   IO
 Optimisations
   Inlining

@@ -39,6 +39,7 @@ closeExpr expr = case expr of
   SLambda.Anno e t -> Closed.Anno <$> closeExpr e <*> closeExpr t
   (bindingsViewM SLambda.lamView -> Just (tele, s)) -> closeLambda tele s
   SLambda.Lam {} -> throwError "closeExpr Lam"
+  SLambda.ExternCode c -> Closed.ExternCode <$> mapM closeExpr c
 
 closeLambda
   :: Telescope () SLambda.Expr Meta

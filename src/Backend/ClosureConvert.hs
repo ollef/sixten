@@ -17,6 +17,7 @@ import qualified Builtin
 import Meta
 import Syntax
 import qualified Syntax.Sized.Closed as Closed
+import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Lifted as Lifted
 import Util
 import VIX
@@ -24,11 +25,11 @@ import VIX
 type Meta = MetaVar Unit
 
 convertDefinitions
-  :: [(Name, Lifted.Definition Lifted.Expr Void)]
-  -> VIX [(Name, Lifted.Definition Closed.Expr Void)]
+  :: [(Name, Sized.Definition Lifted.Expr Void)]
+  -> VIX [(Name, Sized.Definition Closed.Expr Void)]
 convertDefinitions defs = do
   funSigs <- forM defs $ \(name, def) -> case def of
-    Lifted.FunctionDef _ _ (Lifted.Function tele scope) -> do
+    Sized.FunctionDef _ _ (Sized.Function tele scope) -> do
       vs <- forMTele tele $ \h () _ ->
         forall h Unit
 
@@ -47,7 +48,7 @@ convertDefinitions defs = do
           typeScope = error "convertDefinitions"
             <$> abstract abstr convertedType
       return $ Just (name, (tele', typeScope))
-    Lifted.ConstantDef _ (Lifted.Constant (Lifted.Anno (Lifted.Global glob) _)) -> do
+    Sized.ConstantDef _ (Sized.Constant (Lifted.Anno (Lifted.Global glob) _)) -> do
       msig <- convertedSignature glob
       return $ (,) name <$> msig
     _ -> return Nothing
@@ -59,9 +60,9 @@ convertDefinitions defs = do
     return (name, def')
 
 convertDefinition
-  :: Lifted.Definition Lifted.Expr Void
-  -> VIX (Lifted.Definition Closed.Expr Void)
-convertDefinition (Lifted.FunctionDef vis cl (Lifted.Function tele scope)) = do
+  :: Sized.Definition Lifted.Expr Void
+  -> VIX (Sized.Definition Closed.Expr Void)
+convertDefinition (Sized.FunctionDef vis cl (Sized.Function tele scope)) = do
   vs <- forMTele tele $ \h () _ ->
     forall h Unit
 
@@ -74,10 +75,10 @@ convertDefinition (Lifted.FunctionDef vis cl (Lifted.Function tele scope)) = do
   expr' <- convertExpr expr
   let scope' = abstract abstr expr'
   return
-    $ Lifted.FunctionDef vis cl
-    $ Lifted.Function tele''
+    $ Sized.FunctionDef vis cl
+    $ Sized.Function tele''
     $ error "convertDefinition Function" <$> scope'
-convertDefinition (Lifted.ConstantDef vis (Lifted.Constant expr@(Lifted.Anno (Lifted.Global glob) sz))) = do
+convertDefinition (Sized.ConstantDef vis (Sized.Constant expr@(Lifted.Anno (Lifted.Global glob) sz))) = do
   msig <- convertedSignature glob
   expr' <- case msig of
     Nothing -> convertExpr $ vacuous expr
@@ -85,14 +86,14 @@ convertDefinition (Lifted.ConstantDef vis (Lifted.Constant expr@(Lifted.Anno (Li
       sz' <- convertExpr $ vacuous sz
       return $ Closed.Anno (Closed.Global glob) sz'
   return
-    $ Lifted.ConstantDef vis
-    $ Lifted.Constant
+    $ Sized.ConstantDef vis
+    $ Sized.Constant
     $ error "convertDefinition Constant" <$> expr'
-convertDefinition (Lifted.ConstantDef vis (Lifted.Constant expr)) = do
+convertDefinition (Sized.ConstantDef vis (Sized.Constant expr)) = do
   expr' <- convertExpr $ vacuous expr
   return
-    $ Lifted.ConstantDef vis
-    $ Lifted.Constant
+    $ Sized.ConstantDef vis
+    $ Sized.Constant
     $ error "convertDefinition Constant" <$> expr'
 
 convertExpr :: Lifted.Expr Meta -> VIX (Closed.Expr Meta)
@@ -128,6 +129,7 @@ convertExpr expr = case expr of
     return $ Closed.Let h e' bodyScope'
   Lifted.Case e brs -> Closed.Case <$> convertExpr e <*> convertBranches brs
   Lifted.Prim p -> Closed.Prim <$> mapM convertExpr p
+  Lifted.ExternCode c -> Closed.ExternCode <$> mapM convertExpr c
   Lifted.Anno e t -> Closed.Anno <$> convertExpr e <*> convertExpr t
 
 unknownCall

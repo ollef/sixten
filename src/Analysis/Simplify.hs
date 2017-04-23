@@ -44,6 +44,10 @@ simplifyExpr glob !applied expr = case expr of
         (simplifyExpr glob 0 retType)
         (Identity . simplifyExpr glob applied)
   Let h e s -> let_ glob h (simplifyExpr glob 0 e) (simplifyScope glob applied s)
+  ExternCode c retType ->
+    ExternCode
+      (simplifyExpr glob 0 <$> c)
+      (simplifyExpr glob 0 retType)
 
 simplifyScope
   :: (Name -> Bool)
@@ -144,6 +148,7 @@ duplicable expr = case expr of
   App {} -> False
   Case {} -> False
   Let {} -> False
+  ExternCode {} -> False
 
 terminates :: (Name -> Bool) -> Expr v -> Bool
 terminates glob expr = case expr of
@@ -156,6 +161,7 @@ terminates glob expr = case expr of
   App e1 _ e2 -> terminatesWhenCalled glob e1 && terminates glob e2
   Case {} -> False
   Let _ e s -> terminates glob e && terminates glob (fromScope s)
+  ExternCode {} -> False
 
 terminatesWhenCalled :: (Name -> Bool) -> Expr v -> Bool
 terminatesWhenCalled glob expr = case expr of
@@ -168,3 +174,4 @@ terminatesWhenCalled glob expr = case expr of
   App {} -> False
   Case {} -> False
   Let _ e s -> terminates glob e && terminatesWhenCalled glob (fromScope s)
+  ExternCode {} -> False

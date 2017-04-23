@@ -60,7 +60,11 @@ whnfInner expandTypeReps expr = case expr of
   Let _ e s -> whnf' expandTypeReps $ instantiate1 e s
   Case e brs retType -> do
     e' <- whnf' expandTypeReps e
-    chooseBranch e' brs retType $ whnf' expandTypeReps
+    retType' <- whnf' expandTypeReps retType
+    chooseBranch e' brs retType' $ whnf' expandTypeReps
+  ExternCode c retType -> ExternCode
+    <$> mapM (whnf' expandTypeReps) c
+    <*> whnf' expandTypeReps retType
 
 normalise
   :: AbstractM
@@ -106,6 +110,7 @@ normalise expr = do
             <*> normalise def)
           <*> normalise retType'
         _ -> return res
+    ExternCode c retType -> ExternCode <$> mapM normalise c <*> normalise retType
   modifyIndent pred
   logMeta 40 "normalise res" res
   return res

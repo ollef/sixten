@@ -13,6 +13,7 @@ import Syntax.Class as X
 import Syntax.Data as X
 import Syntax.Definition as X
 import Syntax.Direction as X
+import Syntax.Extern as X
 import Syntax.GlobalBind as X
 import Syntax.Hint as X
 import Syntax.Literal as X

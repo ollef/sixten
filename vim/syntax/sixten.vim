@@ -20,7 +20,7 @@ highlight def link sixtenPipe Operator
 highlight def link sixtenLineComment Comment
 highlight def link sixtenBlockComment Comment
 highlight def link sixtenTodo Todo
-highlight def link sixtenForeignQuotes Operator
+highlight def link sixtenExternQuotes Operator
 
 syn match sixtenIdentifier "[_a-z][a-zA-Z0-9_']*" contained
 syn match sixtenType "\<[A-Z][a-zA-Z0-9_']*\>"
@@ -69,4 +69,4 @@ endfunction
 
 call IncludeFileTypeAsGroup('c', 'CSyntax')
 
-syn region sixtenForeignC matchgroup=sixtenForeignQuotes start="(C|" end="|)" keepend contains=@CSyntax
+syn region sixtenExternC matchgroup=sixtenExternQuotes start="(C|" end="|)" keepend contains=@CSyntax

@@ -43,7 +43,7 @@ resolveName (prog, prevName) (parsedDef, loc) = case parsedDef of
     return (prog', Just name)
   ParsedData name params dataDef -> do
     let pats = (\(p, n, t) -> (p, AnnoPat t $ VarPat (nameHint n) n)) <$> params
-        typ = Unscoped.pis pats (App (Global Builtin.TypeName) Implicit Wildcard)
+        typ = Unscoped.pis pats (Global Builtin.TypeName)
         tele = (\(p, n, t) -> (p, n, t)) <$> params
     prog' <- insertWithM mergeTypedDef name
       (Just (DataDefinition tele dataDef, loc), Just (typ, loc))

@@ -48,11 +48,12 @@ slam expr = do
           conType <- qconstructor qc
           let Just appliedConType = typeApps conType $ snd <$> es
               tele = telescope appliedConType
-          slam $ lams tele
-                $ Scope
-                $ apps (Abstract.Con qc)
-                $ Vector.fromList (fmap (pure . pure) <$> es)
-                <> iforTele tele (\i _ a _ -> (a, pure $ B $ Tele i))
+          slam
+            $ lams tele
+            $ Scope
+            $ apps (Abstract.Con qc)
+            $ Vector.fromList (fmap (pure . pure) <$> es)
+            <> iforTele tele (\i _ a _ -> (a, pure $ B $ Tele i))
     Abstract.Con _qc -> throwError "slam impossible"
     Abstract.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamSized e2
     Abstract.Case e brs _retType -> SLambda.Case <$> slamSized e <*> slamBranches brs
@@ -63,6 +64,7 @@ slam expr = do
       sz <- slam t
       body <- slamSized $ instantiate1 (pure v) scope
       return $ SLambda.Let h e' sz $ abstract1 v body
+    Abstract.ExternCode c _retType -> SLambda.ExternCode <$> slamExtern c
   modifyIndent pred
   logMeta 20 "slam res" res
   return res
@@ -96,6 +98,15 @@ slamBranches (LitBranches lbrs d)
   = LitBranches
     <$> sequence [(,) l <$> slam e | (l, e) <- lbrs]
     <*> slam d
+
+slamExtern
+  :: Extern (Abstract.Expr MetaA)
+  -> VIX (Extern (SLambda.Expr MetaA))
+slamExtern (Extern lang parts)
+  = fmap (Extern lang) $ forM parts $ \part -> case part of
+    ExternPart str -> return $ ExternPart str
+    ExprMacroPart e -> ExprMacroPart <$> slamSized e
+    TypeMacroPart t -> TypeMacroPart <$> (slam =<< whnf' True t)
 
 slamDef
   :: Definition Abstract.Expr MetaA

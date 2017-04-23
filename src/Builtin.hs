@@ -17,7 +17,7 @@ import qualified Backend.Target as Target
 import Syntax
 import Syntax.Abstract as Abstract
 import qualified Syntax.Sized.Closed as Closed
-import qualified Syntax.Sized.Lifted as Lifted
+import qualified Syntax.Sized.Definition as Sized
 import Util
 
 pattern IntName <- ((==) "Int" -> True) where IntName = "Int"
@@ -138,7 +138,7 @@ context target = HashMap.fromList
     ptrSize = Lit $ Integer $ Target.ptrBytes target
     typeRep = intRep
 
-convertedContext :: Target -> HashMap Name (Lifted.Definition Closed.Expr Void)
+convertedContext :: Target -> HashMap Name (Sized.Definition Closed.Expr Void)
 convertedContext target = HashMap.fromList $ concat
   [[( TypeName
     , constDef $ Closed.Sized typeSize typeSize
@@ -248,8 +248,8 @@ convertedContext target = HashMap.fromList $ concat
   where
     intT = LLVM.integerT
     voidT = LLVM.voidT
-    constDef = Lifted.ConstantDef Public . Lifted.Constant
-    funDef tele = Lifted.FunctionDef Public Lifted.NonClosure . Lifted.Function tele
+    constDef = Sized.ConstantDef Public . Sized.Constant
+    funDef tele = Sized.FunctionDef Public Sized.NonClosure . Sized.Function tele
     intSize = Closed.Lit $ Integer $ Target.intBytes target
     typeSize = intSize
     byteSize = Closed.Lit $ Integer 1
@@ -259,10 +259,10 @@ convertedSignatures :: Target -> HashMap Name Closed.FunSignature
 convertedSignatures target
   = flip HashMap.mapMaybeWithKey (convertedContext target) $ \name def ->
     case def of
-      Lifted.FunctionDef _ _ (Lifted.Function tele s) -> case fromScope s of
+      Sized.FunctionDef _ _ (Sized.Function tele s) -> case fromScope s of
         Closed.Anno _ t -> Just (tele, toScope t)
         _ -> error $ "Builtin.convertedSignatures " <> show name
-      Lifted.ConstantDef _ _ -> Nothing
+      Sized.ConstantDef _ _ -> Nothing
 
 deref :: Target -> Closed.Expr v -> Closed.Expr v
 deref target e
@@ -282,10 +282,10 @@ deref target e
 maxArity :: Num n => n
 maxArity = 6
 
-apply :: Target -> Int -> Lifted.Definition Closed.Expr Void
+apply :: Target -> Int -> Sized.Definition Closed.Expr Void
 apply target numArgs
-  = Lifted.FunctionDef Public Lifted.NonClosure
-  $ Lifted.Function
+  = Sized.FunctionDef Public Sized.NonClosure
+  $ Sized.Function
     (Telescope
     $ Vector.cons ("this", (), Scope ptrSize)
     $ (\n -> (fromText $ "size" <> shower (unTele n), (), Scope intSize)) <$> Vector.enumFromN 0 numArgs
@@ -338,10 +338,10 @@ apply target numArgs
         $ (\n -> Closed.Sized intSize $ Closed.Var $ F $ B $ 1 + n) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
         <|> (\n -> Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + fromIntegral numArgs + n) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
 
-pap :: Target -> Int -> Int -> Lifted.Definition Closed.Expr Void
+pap :: Target -> Int -> Int -> Sized.Definition Closed.Expr Void
 pap target k m
-  = Lifted.FunctionDef Public Lifted.NonClosure
-  $ Lifted.Function
+  = Sized.FunctionDef Public Sized.NonClosure
+  $ Sized.Function
     (Telescope
     $ Vector.cons ("this", (), Scope intSize)
     $ (\n -> (fromText $ "size" <> shower (unTele n), (), Scope intSize)) <$> Vector.enumFromN 0 k

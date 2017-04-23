@@ -23,6 +23,7 @@ data Expr v
   | Lam !Plicitness (Pat (Type v) Name) (Expr v)
   | App (Expr v) !Plicitness (Expr v)
   | Case (Expr v) [(Pat (Expr v) Name, Expr v)]
+  | ExternCode (Extern (Expr v))
   | Wildcard
   | SourceLoc !SourceLoc (Type v)
   deriving Show
@@ -73,6 +74,7 @@ instance Monad Expr where
     Lam p pat e -> Lam p (first (>>= f) pat) (e >>= f)
     App e1 p e2 -> App (e1 >>= f) p (e2 >>= f)
     Case e brs -> Case (e >>= f) [(first (>>= f) pat, br >>= f) | (pat, br) <- brs]
+    ExternCode c -> ExternCode $ (>>= f) <$> c
     Wildcard -> Wildcard
     SourceLoc loc e -> SourceLoc loc (e >>= f)
 
@@ -87,6 +89,7 @@ instance Traversable Expr where
     Lam p pat e -> Lam p <$> bitraverse (traverse f) pure pat <*> traverse f e
     App e1 p e2 -> App <$> traverse f e1 <*> pure p <*> traverse f e2
     Case e brs -> Case <$> traverse f e <*> traverse (bitraverse (bitraverse (traverse f) pure) (traverse f)) brs
+    ExternCode c -> ExternCode <$> traverse (traverse f) c
     Wildcard -> pure Wildcard
     SourceLoc loc e -> SourceLoc loc <$> traverse f e
 
@@ -104,5 +107,6 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
     App e1 p e2 -> prettyApp (prettyM e1) (prettyAnnotation p $ prettyM e2)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (vcat [prettyM pat <+> "->" <+> prettyM br | (pat, br) <- brs])
+    ExternCode c -> prettyM c
     Wildcard -> "_"
     SourceLoc _ e -> prettyM e

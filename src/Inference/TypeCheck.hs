@@ -40,6 +40,7 @@ import Syntax.Abstract.Pattern as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
 import TopoSort
 import Util
+import Util.Tsil
 import VIX
 
 type Polytype = AbstractM
@@ -178,7 +179,7 @@ tcRho expr expected expectedAppResult = case expr of
   Concrete.Lam p pat bodyScope -> do
     let h = Concrete.patternHint pat
     case expected of
-      Infer _ _ -> do
+      Infer {} -> do
         (pat', _, vs, argType) <- inferPat pat mempty
         let body = instantiatePatternVec pure vs bodyScope
         (body', bodyType) <- enterLevel $ inferRho body (InstBelow Explicit) Nothing
@@ -216,6 +217,11 @@ tcRho expr expected expectedAppResult = case expr of
         fun'' <- f1 fun'
         f2 $ Abstract.App fun'' p arg'
   Concrete.Case e brs -> tcBranches e brs expected
+  Concrete.ExternCode c -> do
+    c' <- mapM (\e -> fst <$> inferRho e (InstBelow Explicit) Nothing) c
+    returnType <- existsType mempty
+    f <- instExpected expected returnType
+    f $ Abstract.ExternCode c' returnType
   Concrete.Wildcard -> do
     t <- existsType mempty
     f <- instExpected expected t
@@ -645,10 +651,10 @@ funSubtypes startType plics = go plics startType mempty mempty mempty
   where
     go ps typ vs tele fs
       | Vector.null ps = do
-        let vars = Vector.reverse $ Vector.fromList vs
-            funs = Vector.reverse $ Vector.fromList fs
+        let vars = toVector vs
+            funs = toVector fs
             abstr = teleAbstraction vars
-        tele' <- forM (Vector.reverse $ Vector.fromList tele) $ \(h, p, t) -> do
+        tele' <- forM (toVector tele) $ \(h, p, t) -> do
           s <- abstractM abstr t
           return (h, p, s)
 
@@ -662,9 +668,9 @@ funSubtypes startType plics = go plics startType mempty mempty mempty
         go
           (Vector.tail ps)
           (Util.instantiate1 (pure v) resScope)
-          (v : vs)
-          ((h, p, argType) : tele)
-          (f : fs)
+          (Snoc vs v)
+          (Snoc tele (h, p, argType))
+          (Snoc fs f)
 
 -- | funSubtype typ p = (typ1, typ2, f) => f : (typ1 -> typ2) -> typ
 funSubtype

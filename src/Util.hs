@@ -50,9 +50,6 @@ toSet = foldMap Set.singleton
 toVector :: Foldable f => f a -> Vector a
 toVector = Vector.fromList . toList
 
-toMonoid ::  (Foldable f, Monoid (g a), Applicative g) => f a -> g a
-toMonoid = foldMap pure
-
 toHashSet ::  (Eq a, Foldable f, Hashable a) => f a -> HashSet a
 toHashSet = foldMap HashSet.singleton
 
