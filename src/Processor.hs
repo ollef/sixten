@@ -5,11 +5,9 @@ import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.State
 import Data.Bifunctor
-import Data.Foldable
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
-import Data.List
 import Data.Monoid
 import Data.Text(Text)
 import qualified Data.Text as Text
@@ -29,7 +27,6 @@ import qualified Backend.ClosureConvert as ClosureConvert
 import qualified Backend.ExtractExtern as ExtractExtern
 import qualified Backend.Generate as Generate
 import Backend.Lift
-import qualified Backend.LLVM as LLVM
 import qualified Backend.SLam as SLam
 import Backend.Target
 import qualified Builtin
@@ -53,14 +50,14 @@ import VIX
 processResolved
   :: HashMap Name (Definition Abstract.Expr Void, Abstract.Type Void)
   -> HashMap Name (SourceLoc, Unscoped.Definition Name, Unscoped.Type Name)
-  -> VIX [(Text, Text)]
+  -> VIX [Generate.Generated Text]
 processResolved context
   = pure . ScopeCheck.scopeCheckProgram context
   >>=> processGroup
 
 processGroup
   :: [(Name, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]
-  -> VIX [(Text, Text)]
+  -> VIX [Generate.Generated Text]
 processGroup
   = prettyConcreteGroup "Concrete syntax" absurd
   >=> typeCheckGroup
@@ -71,7 +68,7 @@ processGroup
 
 processAbstractGroup
   :: [(Name, Definition Abstract.Expr Void, Abstract.Expr Void)]
-  -> VIX [(Text, Text)]
+  -> VIX [Generate.Generated Text]
 processAbstractGroup
   = addGroupToContext
 
@@ -97,7 +94,7 @@ processAbstractGroup
 
 processConvertedGroup
   :: [(Name, Sized.Definition Closed.Expr Void)]
-  -> VIX [(Text, Text)]
+  -> VIX [Generate.Generated Text]
 processConvertedGroup
   = liftConvertedGroup
   >>=> prettyGroup "Lambda-lifted (2)" vac
@@ -274,19 +271,17 @@ extractExternGroup defs = return $
 
 generateGroup
   :: [(Name, Extracted.Module (Sized.Definition Extracted.Expr Void))]
-  -> VIX [(Text, Text)]
+  -> VIX [Generate.Generated Text]
 generateGroup defs = do
   -- TODO compile the rest of the module
   target <- gets vixTarget
   qcindex <- qconstructorIndex
   sigs <- gets vixSignatures
   let env = Generate.GenEnv qcindex (`HashMap.lookup` sigs)
-  return $ flip map defs $ \(x, m) ->
-    bimap (($ LLVM.targetConfig target) . LLVM.unC) (fold . intersperse "\n")
-      $ Generate.runGen
-        env
-        (Generate.generateDefinition x $ vacuous $ Extracted.moduleInnards m)
-        target
+  return $ flip map defs $ \(x, m) -> Generate.runGen
+    env
+    (Generate.generateDefinition x $ vacuous $ Extracted.moduleInnards m)
+    target
 
 data Error
   = SyntaxError Doc
@@ -336,13 +331,14 @@ processFile file output target logHandle verbosity = do
           withFile output WriteMode $ \handle -> do
             let outputStrLn = Text.hPutStrLn handle
             outputStrLn forwardDecls
-            forM_ res $ \(_, b) -> do
+            forM_ res $ \gen -> do
               outputStrLn ""
-              outputStrLn b
+              outputStrLn $ Generate.generatedCode gen
             outputStrLn ""
             outputStrLn "define i32 @main() {"
             outputStrLn "  call void @GC_init()"
-            forM_ res $ \(i, _) ->
+            forM_ res $ \gen -> do
+              let i = Generate.generated gen
               unless (Text.null i) $ outputStrLn i
             outputStrLn "  ret i32 0"
             outputStrLn "}"

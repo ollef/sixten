@@ -10,6 +10,7 @@ import Data.List
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Monoid
 import Data.Text(Text)
+import qualified Data.Text as Text
 import qualified Data.Traversable as Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
@@ -41,8 +42,13 @@ data GenEnv = GenEnv
 
 type Gen = ReaderT GenEnv (State LLVMState)
 
-runGen :: GenEnv -> Gen a -> Target -> (a, [Text])
-runGen f m = runLLVM $ runReaderT m f
+data Generated a = Generated
+  { generated :: a
+  , generatedCode :: Text
+  }
+
+runGen :: GenEnv -> Gen a -> Target -> Generated a
+runGen f m = uncurry Generated . fmap Text.unlines . runLLVM (runReaderT m f)
 
 constrIndex :: QConstr -> Gen (Maybe Int)
 constrIndex qc = asks $ ($ qc) . constructorIndex
@@ -581,9 +587,12 @@ generateFunction visibility name (Function args funScope) = do
     go (DirectVar sz n) = [direct sz n]
     go (IndirectVar n) = [pointer n]
 
-generateDefinition :: Name -> Definition Expr Var -> Gen C
+generateDefinition :: Name -> Definition Expr Var -> Gen Text
 generateDefinition name def = case def of
-  ConstantDef v c -> generateConstant v name c
+  ConstantDef v c -> do
+    constantInt <- generateConstant v name c
+    cfg <- gets config
+    return $ unC constantInt cfg
   FunctionDef v _ f -> do
     generateFunction v name f
     return mempty
