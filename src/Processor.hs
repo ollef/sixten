@@ -331,11 +331,9 @@ processFile file output target logHandle verbosity = do
           return Success
   where
     context = Builtin.context target
-    convertedSignatures = Builtin.convertedSignatures target
-    convertedContext = Builtin.convertedContext target
     process resolved = do
       addContext context
-      addConvertedSignatures convertedSignatures
-      builtins <- processConvertedGroup $ HashMap.toList convertedContext
+      addConvertedSignatures $ Builtin.convertedSignatures target
+      builtins <- processConvertedGroup $ HashMap.toList $ Builtin.convertedContext target
       results <- processResolved context resolved
       return $ builtins ++ results
