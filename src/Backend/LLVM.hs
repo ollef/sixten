@@ -9,6 +9,7 @@ import qualified Data.Foldable as Foldable
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.List
+import Data.Maybe
 import Data.Monoid
 import Data.String
 import qualified Data.Text as Text
@@ -420,8 +421,8 @@ bitcastFunToPtrExpr :: Operand Fun -> RetDir -> Vector Direction -> Operand Ptr
 bitcastFunToPtrExpr i retDir ds = Operand
   $ "bitcast" <+> "(" <> functionT retDir ds <> "*" <+> unOperand i <+> "to" <+> pointerT <> ")"
 
-functionT :: RetDir -> Vector Direction -> C
-functionT retDir ds = retType <+> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList ds <|> [retArg]) <> ")"
+function :: RetDir -> Maybe C -> Vector Direction -> C
+function retDir mname ds = retType <+> fromMaybe mempty mname <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList ds <|> [retArg]) <> ")"
   where
     (retType, retArg) = case retDir of
       ReturnDirect sz -> (directT sz, mempty)
@@ -432,6 +433,19 @@ functionT retDir ds = retType <+> "(" <> Foldable.fold (intersperse ", " $ conca
       Int -> [directT sz]
       Array -> [directT sz]
     go Indirect = [pointerT]
+
+declareFun
+  :: MonadState LLVMState m
+  => RetDir
+  -> Name
+  -> Vector Direction
+  -> m ()
+declareFun retDir name ds
+  = emitRaw $ Instr
+  $ "declare" <+> function retDir (Just $ unOperand $ global name) ds
+
+functionT :: RetDir -> Vector Direction -> C
+functionT retDir = function retDir Nothing
 
 exit :: Int -> Instr ()
 exit n = Instr $ "call" <+> voidT <+> "@exit(i32" <+> shower n <> ")"

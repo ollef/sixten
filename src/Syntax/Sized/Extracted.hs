@@ -29,10 +29,11 @@ type Type = Expr
 
 data Declaration = Declaration
   { declName :: Name
-  , declRetDir :: ReturnDirection ReturnIndirect
+  , declRetDir :: RetDir
   , declArgDirs :: Vector Direction
   } deriving (Eq, Ord, Show)
 
+-- TODO naming?
 data Module innards = Module
   { moduleDecls :: [Declaration]
   , moduleExterns :: [(Language, Text)]

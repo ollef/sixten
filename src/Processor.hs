@@ -277,7 +277,7 @@ generateGroup defs = do
   let env = Generate.GenEnv qcindex (`HashMap.lookup` sigs)
   return $ flip map defs $ \(x, m) -> Generate.runGen
     env
-    (Generate.generateDefinition x $ vacuous $ Extracted.moduleInnards m)
+    (Generate.generateModule x $ vacuous <$> m)
     target
 
 data Error

@@ -600,6 +600,15 @@ generateDefinition name def = case def of
     generateFunction v name f
     return mempty
 
+generateDeclaration :: Declaration -> Gen ()
+generateDeclaration decl
+  = declareFun (declRetDir decl) (declName decl) (declArgDirs decl)
+
+generateModule :: Name -> Module (Definition Expr Var) -> Gen Text
+generateModule name modul = do
+  mapM_ generateDeclaration $ moduleDecls modul
+  generateDefinition name $ moduleInnards modul
+
 writeLlvmModule :: [Generated Text] -> Handle -> IO ()
 writeLlvmModule gens handle = do
   forwardDecls <- Text.readFile =<< getDataFileName "rts/forwarddecls.ll"
