@@ -50,14 +50,14 @@ import VIX
 processResolved
   :: HashMap Name (Definition Abstract.Expr Void, Abstract.Type Void)
   -> HashMap Name (SourceLoc, Unscoped.Definition Name, Unscoped.Type Name)
-  -> VIX [Generate.Generated Text]
+  -> VIX [Extracted.Module (Generate.Generated Text)]
 processResolved context
   = pure . ScopeCheck.scopeCheckProgram context
   >>=> processGroup
 
 processGroup
   :: [(Name, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]
-  -> VIX [Generate.Generated Text]
+  -> VIX [Extracted.Module (Generate.Generated Text)]
 processGroup
   = prettyConcreteGroup "Concrete syntax" absurd
   >=> typeCheckGroup
@@ -91,7 +91,7 @@ processGroup
 
 processConvertedGroup
   :: [(Name, Sized.Definition Closed.Expr Void)]
-  -> VIX [Generate.Generated Text]
+  -> VIX [Extracted.Module (Generate.Generated Text)]
 processConvertedGroup
   = liftConvertedGroup
   >>=> prettyGroup "Lambda-lifted (2)" vac
@@ -268,17 +268,14 @@ extractExternGroup defs = return $
 
 generateGroup
   :: [(Name, Extracted.Module (Sized.Definition Extracted.Expr Void))]
-  -> VIX [Generate.Generated Text]
+  -> VIX [Extracted.Module (Generate.Generated Text)]
 generateGroup defs = do
-  -- TODO compile the rest of the module
   target <- gets vixTarget
   qcindex <- qconstructorIndex
   sigs <- gets vixSignatures
   let env = Generate.GenEnv qcindex (`HashMap.lookup` sigs)
-  return $ flip map defs $ \(x, m) -> Generate.runGen
-    env
-    (Generate.generateModule x $ vacuous <$> m)
-    target
+  return $ flip map defs $ \(x, m) ->
+    Generate.generateModule env target x $ vacuous <$> m
 
 data Error
   = SyntaxError Doc
@@ -311,22 +308,39 @@ data Result
   | Success
   deriving Show
 
-processFile :: FilePath -> FilePath -> Target -> Handle -> Int -> IO Result
-processFile file output target logHandle verbosity = do
+data ProcessFileArgs = ProcessFileArgs
+  { procFile :: FilePath
+  , procLlOutput, procCOutput :: FilePath
+  , procTarget :: Target
+  , procLogHandle :: Handle
+  , procVerbosity :: Int
+  } deriving (Eq, Show)
+
+processFile :: ProcessFileArgs -> IO Result
+processFile args = do
   builtinParseResult <- Parse.parseFromFileEx Parse.program =<< getDataFileName "rts/Builtin.vix"
-  parseResult <- Parse.parseFromFileEx Parse.program file
+  parseResult <- Parse.parseFromFileEx Parse.program $ procFile args
   let resolveResult = Resolve.program <$> ((<>) <$> builtinParseResult <*> parseResult)
   case resolveResult of
     Trifecta.Failure xs -> return $ Error $ SyntaxError xs
     Trifecta.Success (ExceptT (Identity (Left err))) -> return $ Error $ ResolveError err
     Trifecta.Success (ExceptT (Identity (Right resolved))) -> do
-      procRes <- runVIX (process resolved) target logHandle verbosity
+      procRes <- runVIX (process resolved) target (procLogHandle args) $ procVerbosity args
       case procRes of
         Left err -> return $ Error $ TypeError $ Text.pack err
-        Right res -> withFile output WriteMode $ \handle -> do
-          Generate.writeLlvmModule res handle
+        Right res -> do
+          withFile (procLlOutput args) WriteMode $
+            Generate.writeLlvmModule (Extracted.moduleInnards <$> res)
+          let externC = ExtractExtern.moduleExterns C res
+          unless (null externC) $
+            withFile (procCOutput args) WriteMode $ \cHandle -> do
+              Text.hPutStrLn cHandle "#include <stdint.h>"
+              forM_ externC $ \code -> do
+                Text.hPutStrLn cHandle ""
+                Text.hPutStrLn cHandle code
           return Success
   where
+    target = procTarget args
     context = Builtin.context target
     process resolved = do
       addContext context

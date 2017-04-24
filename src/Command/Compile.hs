@@ -12,6 +12,7 @@ import System.IO.Temp
 import System.Process
 
 import qualified Backend.Target as Target
+import Backend.Target(Target)
 import qualified Processor
 
 data Options = Options
@@ -80,7 +81,11 @@ optionsParser = Options
     <> action "file"
     )
 
-compile :: Options -> (Processor.Error -> IO a) -> (FilePath -> IO a) -> IO a
+compile
+  :: Options
+  -> (Processor.Error -> IO a)
+  -> (FilePath -> IO a)
+  -> IO a
 compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.findTarget $ target opts of
   Left err -> onError $ Processor.CommandLineError err
   Right tgt ->
@@ -88,31 +93,21 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
     withOutputFile (maybeOutputFile opts) $ \outputFile ->
     withLogHandle (logFile opts) $ \logHandle -> do
       let llFile = asmDir </> fileName <.> "ll"
-      procResult <- Processor.processFile (inputFile opts) llFile tgt logHandle $ verbosity opts
+          cFile = asmDir </> fileName <.> "c"
+      procResult <- Processor.processFile Processor.ProcessFileArgs
+        { Processor.procFile = inputFile opts
+        , Processor.procLlOutput = llFile
+        , Processor.procCOutput = cFile
+        , Processor.procTarget = tgt
+        , Processor.procLogHandle = logHandle
+        , Processor.procVerbosity = verbosity opts
+        }
       case procResult of
         Processor.Error err -> onError err
         Processor.Success -> do
-          (optLlFile, optFlag) <- case optimisation opts of
-            Nothing -> return (llFile, id)
-            Just optLevel -> do
-              let optFlag = ("-O" <> optLevel :)
-                  optLlFile = asmDir </> fileName <> "-opt" <.> "ll"
-              callProcess "opt" $ optFlag ["-S", llFile, "-o", optLlFile]
-              return (optLlFile, optFlag)
-          let llcFlags ft o
-                = optFlag
-                [ "-filetype=" <> ft
-                , "-march=" <> Target.architecture tgt
-                , optLlFile
-                , "-o", o
-                ]
-              asmFile = asmDir </> fileName <.> "s"
-              objFile = asmDir </> fileName <.> "o"
-          when (isJust $ assemblyDir opts) $
-            callProcess "llc" $ llcFlags "asm" asmFile
-          callProcess "llc" $ llcFlags "obj" objFile
-          ldFlags <- readProcess "pkg-config" ["--libs", "--static", "bdw-gc"] ""
-          callProcess "gcc" $ concatMap words (lines ldFlags) ++ optFlag [objFile, "-o", outputFile]
+          optLlFile <- llvmOptimise opts llFile
+          objFile <- llvmCompile opts tgt optLlFile
+          assemble opts objFile outputFile
           onSuccess outputFile
   where
     (inputDir, inputFileName) = splitFileName $ inputFile opts
@@ -129,6 +124,43 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
     withOutputFile (Just o) k = k o
     withLogHandle Nothing k = k stdout
     withLogHandle (Just file) k = withFile file WriteMode k
+
+optimisationFlags :: Options -> [String]
+optimisationFlags opts = case optimisation opts of
+  Nothing -> []
+  Just optLevel -> ["-O" <> optLevel]
+
+llvmOptimise :: Options -> FilePath -> IO FilePath
+llvmOptimise opts llFile
+  | isNothing $ optimisation opts = return llFile
+  | otherwise = do
+    let optLlFile = replaceExtension llFile "opt.ll"
+    callProcess "opt" $ optimisationFlags opts ++ ["-S", llFile, "-o", optLlFile]
+    return optLlFile
+
+llvmCompile :: Options -> Target -> FilePath -> IO FilePath
+llvmCompile opts tgt llFile = do
+  let llcFlags ft o
+        = optimisationFlags opts ++
+        [ "-filetype=" <> ft
+        , "-march=" <> Target.architecture tgt
+        , llFile
+        , "-o", o
+        ]
+      asmFile = replaceExtension llFile "s"
+      objFile = replaceExtension llFile "o"
+  when (isJust $ assemblyDir opts) $
+    callProcess "llc" $ llcFlags "asm" asmFile
+  callProcess "llc" $ llcFlags "obj" objFile
+  return objFile
+
+assemble :: Options -> FilePath -> FilePath -> IO ()
+assemble opts objFile outputFile = do
+  ldFlags <- readProcess "pkg-config" ["--libs", "--static", "bdw-gc"] ""
+  callProcess "clang"
+    $ concatMap words (lines ldFlags)
+    ++ optimisationFlags opts
+    ++ [objFile, "-o", outputFile]
 
 command :: ParserInfo (IO ())
 command = go <$> optionsParserInfo

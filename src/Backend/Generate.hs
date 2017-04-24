@@ -604,10 +604,20 @@ generateDeclaration :: Declaration -> Gen ()
 generateDeclaration decl
   = declareFun (declRetDir decl) (declName decl) (declArgDirs decl)
 
-generateModule :: Name -> Module (Definition Expr Var) -> Gen Text
-generateModule name modul = do
-  mapM_ generateDeclaration $ moduleDecls modul
-  generateDefinition name $ moduleInnards modul
+genModule :: Name -> Module (Definition Expr Var) -> Module (Gen Text)
+genModule name modul = flip fmap modul $ \innards -> do
+  unless (null $ moduleDecls modul) $ do
+    mapM_ generateDeclaration $ moduleDecls modul
+    emitRaw ""
+  generateDefinition name innards
+
+generateModule
+  :: GenEnv
+  -> Target
+  -> Name
+  -> Module (Definition Expr Var)
+  -> Module (Generated Text)
+generateModule env tgt x modul = fmap (\g -> runGen env g tgt) (genModule x modul)
 
 writeLlvmModule :: [Generated Text] -> Handle -> IO ()
 writeLlvmModule gens handle = do
@@ -615,7 +625,6 @@ writeLlvmModule gens handle = do
   let outputStrLn = Text.hPutStrLn handle
   outputStrLn forwardDecls
   forM_ gens $ \gen -> do
-    outputStrLn ""
     outputStrLn $ generatedCode gen
   outputStrLn ""
   outputStrLn "define i32 @main() {"

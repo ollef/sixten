@@ -5,9 +5,9 @@ import Control.Monad
 import Data.Bifunctor
 import Data.Monoid
 import Data.String
+import Data.Text(Text)
 import Data.Vector(Vector)
 import Prelude.Extras
-import Data.Text(Text)
 
 import Syntax hiding (Definition)
 import Util

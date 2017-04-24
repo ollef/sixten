@@ -159,3 +159,10 @@ extractDef name def = case def of
           else "sixten_extern_" <> shower n <> "__" <> name
       | n <- [(0 :: Int)..]
       ]
+
+moduleExterns :: Language -> [Extracted.Module innards] -> [Text]
+moduleExterns lang modules = do
+  modul <- modules
+  (lang', code) <- Extracted.moduleExterns modul
+  guard $ lang == lang'
+  return code

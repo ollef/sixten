@@ -42,6 +42,7 @@ Language
   * FFI & More general way to define builtins (extern LLVM, C?)
     Add tests for FFI escaping
     Remove primitive?
+    Out params?
   IO
 Optimisations
   Inlining
