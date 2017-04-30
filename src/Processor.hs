@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, FlexibleContexts, OverloadedStrings #-}
 module Processor where
 
 import Control.Monad.Except
@@ -303,10 +303,10 @@ printError err = case err of
       $ Leijen.renderPretty 0.8 80
       $ doc <> Leijen.linebreak
 
-data Result
+data Result a
   = Error Error
-  | Success
-  deriving Show
+  | Success a
+  deriving (Show, Functor, Foldable, Traversable)
 
 data ProcessFileArgs = ProcessFileArgs
   { procFile :: FilePath
@@ -316,7 +316,7 @@ data ProcessFileArgs = ProcessFileArgs
   , procVerbosity :: Int
   } deriving (Eq, Show)
 
-processFile :: ProcessFileArgs -> IO Result
+processFile :: ProcessFileArgs -> IO (Result [FilePath])
 processFile args = do
   builtinParseResult <- Parse.parseFromFileEx Parse.program =<< getDataFileName "rts/Builtin.vix"
   parseResult <- Parse.parseFromFileEx Parse.program $ procFile args
@@ -331,14 +331,14 @@ processFile args = do
         Right res -> do
           withFile (procLlOutput args) WriteMode $
             Generate.writeLlvmModule (Extracted.moduleInnards <$> res)
-          let externC = ExtractExtern.moduleExterns C res
-          unless (null externC) $
-            withFile (procCOutput args) WriteMode $ \cHandle -> do
+          fmap Success $ case ExtractExtern.moduleExterns C res of
+            [] -> return []
+            externC -> withFile (procCOutput args) WriteMode $ \cHandle -> do
               Text.hPutStrLn cHandle "#include <stdint.h>"
               forM_ externC $ \code -> do
                 Text.hPutStrLn cHandle ""
                 Text.hPutStrLn cHandle code
-          return Success
+              return [procCOutput args]
   where
     target = procTarget args
     context = Builtin.context target

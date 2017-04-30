@@ -93,6 +93,7 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
     withOutputFile (maybeOutputFile opts) $ \outputFile ->
     withLogHandle (logFile opts) $ \logHandle -> do
       let llFile = asmDir </> fileName <.> "ll"
+          linkedLlFileName = asmDir </> fileName <.> "linked" <.> "ll"
           cFile = asmDir </> fileName <.> "c"
       procResult <- Processor.processFile Processor.ProcessFileArgs
         { Processor.procFile = inputFile opts
@@ -104,8 +105,10 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
         }
       case procResult of
         Processor.Error err -> onError err
-        Processor.Success -> do
-          optLlFile <- llvmOptimise opts llFile
+        Processor.Success cFiles -> do
+          cLlFiles <- forM cFiles $ clangCompile opts tgt
+          linkedLlFile <- llvmLink (llFile : cLlFiles) linkedLlFileName
+          optLlFile <- llvmOptimise opts linkedLlFile
           objFile <- llvmCompile opts tgt optLlFile
           assemble opts objFile outputFile
           onSuccess outputFile
@@ -138,9 +141,28 @@ llvmOptimise opts llFile
     callProcess "opt" $ optimisationFlags opts ++ ["-S", llFile, "-o", optLlFile]
     return optLlFile
 
+clangCompile :: Options -> Target -> FilePath -> IO FilePath
+clangCompile opts tgt cFile = do
+  let outputFile = cFile <> ".ll"
+  callProcess "clang" $ optimisationFlags opts ++
+    [ "-march=" <> Target.architecture tgt
+    , "-fvisibility=hidden"
+    , "-S"
+    , "-emit-llvm"
+    , cFile
+    , "-o", outputFile
+    ]
+  return outputFile
+
+llvmLink :: [FilePath] -> FilePath -> IO FilePath
+llvmLink [file] _outputFile = return file
+llvmLink files outputFile = do
+  callProcess "llvm-link" $ ["-o=" <> outputFile, "-S"] ++ files
+  return outputFile
+
 llvmCompile :: Options -> Target -> FilePath -> IO FilePath
 llvmCompile opts tgt llFile = do
-  let llcFlags ft o
+  let flags ft o
         = optimisationFlags opts ++
         [ "-filetype=" <> ft
         , "-march=" <> Target.architecture tgt
@@ -150,8 +172,8 @@ llvmCompile opts tgt llFile = do
       asmFile = replaceExtension llFile "s"
       objFile = replaceExtension llFile "o"
   when (isJust $ assemblyDir opts) $
-    callProcess "llc" $ llcFlags "asm" asmFile
-  callProcess "llc" $ llcFlags "obj" objFile
+    callProcess "llc" $ flags "asm" asmFile
+  callProcess "llc" $ flags "obj" objFile
   return objFile
 
 assemble :: Options -> FilePath -> FilePath -> IO ()

@@ -1,5 +1,7 @@
-add : Int -> Int -> Int -> Int
-add x y z = (C|
+add3 : Int -> Int -> Int -> Int
+add3 x y z = (C|
   $type:Int result = $x + $y + $z;
-  return $x + $y;
+  return result;
 |)
+
+test = printInt (add3 1 2 3)

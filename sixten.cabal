@@ -62,6 +62,7 @@ executable sixten
                        Syntax.Data
                        Syntax.Definition
                        Syntax.Direction
+                       Syntax.Extern
                        Syntax.GlobalBind
                        Syntax.Hint
                        Syntax.Literal
