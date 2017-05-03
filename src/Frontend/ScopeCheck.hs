@@ -16,7 +16,7 @@ import qualified Syntax.Abstract as Abstract
 import Syntax.Concrete.Pattern
 import qualified Syntax.Concrete.Scoped as Scoped
 import qualified Syntax.Concrete.Unscoped as Unscoped
-import TopoSort
+import Util.TopoSort
 import Util
 
 type ScopeCheck = RWS (Constr -> HashSet Name) () (HashSet Name)

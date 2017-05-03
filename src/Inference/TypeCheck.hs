@@ -38,7 +38,7 @@ import Syntax
 import qualified Syntax.Abstract as Abstract
 import Syntax.Abstract.Pattern as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
-import TopoSort
+import Util.TopoSort
 import Util
 import Util.Tsil
 import VIX

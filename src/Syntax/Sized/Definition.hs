@@ -14,7 +14,7 @@ import Syntax.Annotation
 import Syntax.GlobalBind
 import Syntax.Name
 import Syntax.Telescope
-import TopoSort
+import Util.TopoSort
 
 data Function expr v
   = Function (Telescope () expr v) (Scope Tele expr v)

@@ -1,4 +1,4 @@
-module TopoSort where
+module Util.TopoSort where
 
 import Data.Foldable
 import Data.Graph

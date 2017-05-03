@@ -11,7 +11,7 @@ import Syntax
 import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.SLambda as SLambda
 import VIX
-import TopoSort
+import Util.TopoSort
 import Util
 
 type Meta = MetaVar Closed.Expr

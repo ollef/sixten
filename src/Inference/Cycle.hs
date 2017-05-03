@@ -15,7 +15,7 @@ import Meta
 import Syntax
 import Syntax.Abstract
 import VIX
-import TopoSort
+import Util.TopoSort
 
 detectTypeRepCycles
   :: Vector (SourceLoc, (MetaA, Definition Expr MetaA, AbstractM))

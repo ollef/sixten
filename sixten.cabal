@@ -77,8 +77,8 @@ executable sixten
                        Syntax.SourceLoc
                        Syntax.Telescope
                        VIX
-                       TopoSort
                        Util
+                       Util.TopoSort
                        Util.Tsil
   build-depends:
                        ansi-wl-pprint,
