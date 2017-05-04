@@ -11,7 +11,6 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 
-import qualified Backend.LLVM as LLVM
 import Backend.Target(Target)
 import qualified Backend.Target as Target
 import Syntax
@@ -119,20 +118,13 @@ context target = HashMap.fromList
       [ ConstrDef ZeroName $ Scope Nat
       , ConstrDef SuccName $ Scope $ arrow Explicit Nat Nat
       ])
-  , (AddIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
-  , (SubIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
-  , (MaxIntName, opaque $ arrow Explicit IntType $ arrow Explicit IntType IntType)
-  , (PrintIntName, opaque $ arrow Explicit IntType IntType)
   , (PiTypeName, opaqueData ptrSize Type)
-  , (FailName, opaque $ namedPi "T" Explicit Type $ pure "T")
   ]
   where
     cl = fromMaybe (error "Builtin not closed") . closed
     opaqueData sz t = dataType sz t mempty
     opaque t = (Opaque, cl t)
     dataType sz t xs = (DataDefinition (DataDef xs) sz, cl t)
-    namedPi :: Name -> Plicitness -> Type Name -> Expr Name -> Expr Name
-    namedPi n p t e = Pi (fromName n) p t $ abstract1 n e
     byteRep = Lit $ Integer 1
     intRep = Lit $ Integer $ Target.intBytes target
     ptrSize = Lit $ Integer $ Target.ptrBytes target
@@ -160,94 +152,11 @@ convertedContext target = HashMap.fromList $ concat
   , ( ByteName
     , constDef $ Closed.Sized intSize byteSize
     )
-  , ( AddIntName
-    , funDef
-        (Telescope
-        $ Vector.fromList [ (mempty, (), Scope intSize)
-                          , (mempty, (), Scope intSize)
-                          ])
-      $ Scope
-      $ Closed.Sized intSize
-      $ Closed.Prim
-      $ Primitive (Direct $ Target.intBytes target)
-      [TextPart $ "add " <> intT <> " "
-      , pure $ Closed.Var $ B 0
-      , ", "
-      , pure $ Closed.Var $ B 1
-      ]
-    )
-  , ( SubIntName
-    , funDef
-        (Telescope
-        $ Vector.fromList [ (mempty, (), Scope intSize)
-                          , (mempty, (), Scope intSize)
-                          ])
-      $ Scope
-      $ Closed.Sized intSize
-      $ Closed.Prim
-      $ Primitive (Direct $ Target.intBytes target)
-      [TextPart $ "sub " <> intT <> " "
-      , pure $ Closed.Var $ B 0
-      , ", "
-      , pure $ Closed.Var $ B 1
-      ]
-    )
-  , ( MaxIntName
-    , funDef
-        (Telescope
-        $ Vector.fromList [ (mempty, (), Scope intSize)
-                          , (mempty, (), Scope intSize)
-                          ])
-      $ Scope
-      $ Closed.Sized intSize
-      $ Closed.Let "gt"
-      (Closed.Sized intSize
-      $ Closed.Prim
-      $ Primitive (Direct $ Target.intBytes target)
-      [TextPart $ "icmp ugt " <> intT <> " ", pure $ Closed.Var $ B 0, ", ", pure $ Closed.Var $ B 1])
-      $ toScope
-      $ Closed.Prim
-      $ Primitive (Direct $ Target.intBytes target)
-      ["select i1 ", pure $ Closed.Var $ B ()
-      , TextPart $ ", " <> intT <> " "
-      , pure $ Closed.Var $ F $ B 0
-      , TextPart $ ", " <> intT <> " "
-      , pure $ Closed.Var $ F $ B 1
-      ]
-    )
-  , ( PrintIntName
-    , funDef
-        (Telescope
-        $ Vector.fromList [(mempty, (), Scope intSize)])
-      $ Scope
-      $ Closed.Sized intSize
-      $ Closed.Let "res"
-      (Closed.Sized intSize
-      $ Closed.Prim
-      $ Primitive (Direct $ Target.intBytes target)
-      [TextPart $ "call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([5 x i8], [5 x i8]* @size_t-format, i32 0, i32 0), " <> intT <> " "
-      , pure $ Closed.Var $ B 0, ")"
-      ])
-      $ Scope
-      $ Closed.Lit $ Integer 0
-    )
-  , ( FailName
-    , funDef
-        (Telescope
-        $ Vector.fromList [(mempty, (), Scope intSize)])
-      $ Scope
-      $ Closed.Sized (Closed.Var $ B 0)
-      $ Closed.Prim
-      $ Primitive (Direct 0)
-      [TextPart $ "call " <> voidT <> " @exit(i32 1)"]
-    )
   ]
   , [(papName left given, pap target left given) | given <- [1..maxArity - 1], left <- [1..maxArity - given]]
   , [(applyName arity, apply target arity) | arity <- [1..maxArity]]
   ]
   where
-    intT = LLVM.integerT
-    voidT = LLVM.voidT
     constDef = Sized.ConstantDef Public . Sized.Constant
     funDef tele = Sized.FunctionDef Public Sized.NonClosure . Sized.Function tele
     intSize = Closed.Lit $ Integer $ Target.intBytes target

@@ -51,7 +51,7 @@ extractExpr mtype expr = case expr of
   Lifted.Lit l -> return $ Extracted.Lit l
   Lifted.Con c es -> Extracted.Con c <$> mapM (extractExpr Nothing) es
   Lifted.Call e es -> Extracted.Call <$> extractExpr Nothing e <*> mapM (extractExpr Nothing) es
-  Lifted.PrimCall retDir e es -> Extracted.PrimCall retDir
+  Lifted.PrimCall retDir e es -> Extracted.PrimCall Nothing retDir
     <$> extractExpr Nothing e
     <*> traverse (bitraverse (extractExpr Nothing) pure) es
   Lifted.Let h e s -> Extracted.Let h
@@ -88,6 +88,7 @@ extractExtern retType (Extern C parts) = do
       funDecl = Extracted.Declaration name retDir' argDirs
   addExtractedCode funDecl funDef
   return $ Extracted.PrimCall
+    (Just C)
     retDir'
     (Extracted.Global name)
     args

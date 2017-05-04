@@ -146,7 +146,7 @@ clangCompile opts tgt cFile = do
   let outputFile = cFile <> ".ll"
   callProcess "clang" $ optimisationFlags opts ++
     [ "-march=" <> Target.architecture tgt
-    , "-fvisibility=hidden"
+    , "-fvisibility=internal"
     , "-S"
     , "-emit-llvm"
     , cFile

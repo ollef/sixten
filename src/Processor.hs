@@ -48,11 +48,11 @@ import Util
 import VIX
 
 processResolved
-  :: HashMap Name (Definition Abstract.Expr Void, Abstract.Type Void)
-  -> HashMap Name (SourceLoc, Unscoped.Definition Name, Unscoped.Type Name)
+  :: HashMap Name (SourceLoc, Unscoped.Definition Name, Unscoped.Type Name)
   -> VIX [Extracted.Module (Generate.Generated Text)]
-processResolved context
-  = pure . ScopeCheck.scopeCheckProgram context
+processResolved
+  = scopeCheckProgram
+  >=> mapM (prettyConcreteGroup "Concrete syntax" absurd)
   >>=> processGroup
 
 processGroup
@@ -182,6 +182,13 @@ prettyGroup str f defs = do
         $ prettyM n <+> "=" <+> prettyM (f d)
       VIX.log ""
   return defs
+
+scopeCheckProgram
+  :: HashMap Name (SourceLoc, Unscoped.Definition Name, Unscoped.Type Name)
+  -> VIX [[(Name, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]]
+scopeCheckProgram prog = do
+  context <- gets vixContext
+  return $ ScopeCheck.scopeCheckProgram context prog
 
 typeCheckGroup
   :: [(Name, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]
@@ -318,14 +325,12 @@ data ProcessFileArgs = ProcessFileArgs
 
 processFile :: ProcessFileArgs -> IO (Result [FilePath])
 processFile args = do
-  builtinParseResult <- Parse.parseFromFileEx Parse.program =<< getDataFileName "rts/Builtin.vix"
-  parseResult <- Parse.parseFromFileEx Parse.program $ procFile args
-  let resolveResult = Resolve.program <$> ((<>) <$> builtinParseResult <*> parseResult)
-  case resolveResult of
-    Trifecta.Failure xs -> return $ Error $ SyntaxError xs
-    Trifecta.Success (ExceptT (Identity (Left err))) -> return $ Error $ ResolveError err
-    Trifecta.Success (ExceptT (Identity (Right resolved))) -> do
-      procRes <- runVIX (process resolved) target (procLogHandle args) $ procVerbosity args
+  builtin1File <- getDataFileName "rts/Builtin1.vix"
+  builtin2File <- getDataFileName "rts/Builtin2.vix"
+  parse builtin1File $ \builtins1 ->
+    parse builtin2File $ \builtins2 ->
+    parse (procFile args) $ \prog -> do
+      procRes <- runVIX (process builtins1 builtins2 prog) target (procLogHandle args) $ procVerbosity args
       case procRes of
         Left err -> return $ Error $ TypeError $ Text.pack err
         Right res -> do
@@ -335,6 +340,8 @@ processFile args = do
             [] -> return []
             externC -> withFile (procCOutput args) WriteMode $ \cHandle -> do
               Text.hPutStrLn cHandle "#include <stdint.h>"
+              Text.hPutStrLn cHandle "#include <stdlib.h>"
+              Text.hPutStrLn cHandle "#include <stdio.h>"
               forM_ externC $ \code -> do
                 Text.hPutStrLn cHandle ""
                 Text.hPutStrLn cHandle code
@@ -342,9 +349,18 @@ processFile args = do
   where
     target = procTarget args
     context = Builtin.context target
-    process resolved = do
+    process builtins1 builtins2 prog = do
       addContext context
       addConvertedSignatures $ Builtin.convertedSignatures target
+      builtinResults1 <- processResolved builtins1
+      builtinResults2 <- processResolved builtins2
       builtins <- processConvertedGroup $ HashMap.toList $ Builtin.convertedContext target
-      results <- processResolved context resolved
-      return $ builtins ++ results
+      results <- processResolved prog
+      return $ builtinResults1 ++ builtinResults2 ++ builtins ++ results
+
+    parse file k = do
+      parseResult <- Parse.parseFromFileEx Parse.program file
+      case Resolve.program <$> parseResult of
+        Trifecta.Failure xs -> return $ Error $ SyntaxError xs
+        Trifecta.Success (ExceptT (Identity (Left err))) -> return $ Error $ ResolveError err
+        Trifecta.Success (ExceptT (Identity (Right resolved))) -> k resolved

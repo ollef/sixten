@@ -26,6 +26,8 @@ import Paths_sixten
 import Syntax.Annotation
 import Syntax.Branches
 import Syntax.Direction
+import Syntax.Extern(Language)
+import qualified Syntax.Extern as Extern
 import Syntax.Hint
 import Syntax.Literal
 import Syntax.Name
@@ -103,14 +105,18 @@ varcpy dst (IndirectVar src) sz = memcpy dst src sz
 
 varCall
   :: (Foldable f, Functor f)
-  => C
+  => Maybe Language
+  -> C
   -> Operand Fun
   -> f Var
   -> Instr a
-varCall retType name xs = Instr
-  $ "call fastcc" <+> retType <+> unOperand name
+varCall lang retType name xs = Instr
+  $ "call" <+> cc <+> retType <+> unOperand name
   <> "(" <> Foldable.fold (intersperse ", " $ Foldable.toList $ concat $ go <$> xs) <> ")"
   where
+    cc = case lang of
+      Nothing -> "fastcc"
+      Just Extern.C -> "ccc"
     go VoidVar = []
     go (DirectVar sz x) = [direct sz x]
     go (IndirectVar x) = [pointer x]
@@ -139,8 +145,8 @@ generateExpr expr typ = case expr of
   Con qc es -> generateCon qc es typ
   Call funExpr es -> do
     (retDir, argDirs) <- funSignature funExpr $ Vector.length es
-    generateCall retDir funExpr (Vector.zip es argDirs) typ
-  PrimCall retDir funExpr es -> generateCall retDir funExpr es typ
+    generateCall Nothing retDir funExpr (Vector.zip es argDirs) typ
+  PrimCall lang retDir funExpr es -> generateCall lang retDir funExpr es typ
   Let _h e s -> do
     v <- generateExpr e $ unknownSize "let"
     generateExpr (Bound.instantiate1 (pure v) s) typ
@@ -177,29 +183,30 @@ unknownSize :: Name -> Expr v
 unknownSize n = Global $ "unknownSize." <> n
 
 generateCall
-  :: RetDir
+  :: Maybe Language
+  -> RetDir
   -> Expr Var
   -> Vector (Expr Var, Direction)
   -> Expr Var
   -> Gen Var
-generateCall retDir funExpr es typ = do
+generateCall lang retDir funExpr es typ = do
   let argDirs = snd <$> es
   fun <- generateFunOp funExpr retDir argDirs
   args <- join <$> mapM (uncurry generateDirectedExpr) es
   case retDir of
     ReturnDirect 0 -> do
-      emit $ varCall voidT fun args
+      emit $ varCall lang voidT fun args
       return VoidVar
     ReturnDirect sz -> do
-      ret <- "call-return" =: varCall (directT sz) fun args
+      ret <- "call-return" =: varCall lang (directT sz) fun args
       return $ DirectVar sz ret
     ReturnIndirect OutParam -> do
       sz <- generateIntExpr typ
       ret <- "call-return" =: alloca sz
-      emit $ varCall voidT fun $ Vector.snoc args $ IndirectVar ret
+      emit $ varCall lang voidT fun $ Vector.snoc args $ IndirectVar ret
       return $ IndirectVar ret
     ReturnIndirect Projection -> do
-      ret <- "call-return" =: varCall pointerT fun args
+      ret <- "call-return" =: varCall lang pointerT fun args
       return $ IndirectVar ret
 
 storeExpr :: Expr Var -> Expr Var -> Operand Ptr -> Gen ()
@@ -216,8 +223,8 @@ storeExpr expr typ ret = case expr of
   Con qc es -> storeCon qc es ret
   Call funExpr es -> do
     (retDir, argDirs) <- funSignature funExpr $ Vector.length es
-    storeCall retDir funExpr (Vector.zip es argDirs) typ ret
-  PrimCall retDir funExpr es -> storeCall retDir funExpr es typ ret
+    storeCall Nothing retDir funExpr (Vector.zip es argDirs) typ ret
+  PrimCall lang retDir funExpr es -> storeCall lang retDir funExpr es typ ret
   Let _h e s -> do
     v <- generateExpr e $ unknownSize "storeLet"
     storeExpr (Bound.instantiate1 (pure v) s) typ ret
@@ -229,24 +236,25 @@ storeExpr expr typ ret = case expr of
   Anno e typ' -> storeExpr e typ' ret
 
 storeCall
-  :: RetDir
+  :: Maybe Language
+  -> RetDir
   -> Expr Var
   -> Vector (Expr Var, Direction)
   -> Expr Var
   -> Operand Ptr
   -> Gen ()
-storeCall retDir funExpr es typ ret = do
+storeCall lang retDir funExpr es typ ret = do
   let argDirs = snd <$> es
   fun <- generateFunOp funExpr retDir argDirs
   args <- join <$> mapM (uncurry generateDirectedExpr) es
   case retDir of
-    ReturnDirect 0 -> emit $ varCall voidT fun args
+    ReturnDirect 0 -> emit $ varCall lang voidT fun args
     ReturnDirect sz -> do
-      res <- "call-return" =: varCall (directT sz) fun args
+      res <- "call-return" =: varCall lang (directT sz) fun args
       storeDirect sz res ret
-    ReturnIndirect OutParam -> emit $ varCall voidT fun $ Vector.snoc args $ IndirectVar ret
+    ReturnIndirect OutParam -> emit $ varCall lang voidT fun $ Vector.snoc args $ IndirectVar ret
     ReturnIndirect Projection -> do
-      res <- "call-return" =: varCall pointerT fun args
+      res <- "call-return" =: varCall lang pointerT fun args
       sz <- generateIntExpr typ
       memcpy ret res sz
 

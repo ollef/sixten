@@ -18,7 +18,7 @@ data Expr v
   | Lit Literal
   | Con QConstr (Vector (Expr v)) -- ^ Fully applied
   | Call (Expr v) (Vector (Expr v)) -- ^ Fully applied, only global
-  | PrimCall RetDir (Expr v) (Vector (Expr v, Direction))
+  | PrimCall (Maybe Language) RetDir (Expr v) (Vector (Expr v, Direction))
   | Let NameHint (Expr v) (Scope1 Expr v)
   | Case (Expr v) (Branches QConstr () Expr v)
   | Prim (Primitive (Expr v))
@@ -66,7 +66,7 @@ instance GlobalBind Expr where
     Lit l -> Lit l
     Con c es -> Con c (bind f g <$> es)
     Call e es -> Call (bind f g e) (bind f g <$> es)
-    PrimCall retDir e es -> PrimCall retDir (bind f g e) (first (bind f g) <$> es)
+    PrimCall lang retDir e es -> PrimCall lang retDir (bind f g e) (first (bind f g) <$> es)
     Let h e s -> Let h (bind f g e) (bound f g s)
     Case e brs -> Case (bind f g e) (bound f g brs)
     Prim p -> Prim $ bind f g <$> p
@@ -87,7 +87,7 @@ instance (Eq v, IsString v, Pretty v)
     Lit l -> prettyM l
     Con c es -> prettyApps (prettyM c) $ prettyM <$> es
     Call e es -> prettyApps (prettyM e) $ prettyM <$> es
-    PrimCall retDir f es -> "primcall" <+> prettyAnnotation retDir (prettyApps (prettyM f) $ (\(e, d) -> prettyAnnotation d $ prettyM e) <$> es)
+    PrimCall lang retDir f es -> "primcall" <+> maybe mempty prettyM lang <+> prettyAnnotation retDir (prettyApps (prettyM f) $ (\(e, d) -> prettyAnnotation d $ prettyM e) <$> es)
     Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
       "let" <+> prettyM n <+> "=" <+> prettyM e <+> "in" <+>
         prettyM (Util.instantiate1 (pure $ fromName n) s)

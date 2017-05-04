@@ -13,7 +13,8 @@ build-type:          Simple
 cabal-version:       >=1.10
 data-files:
                      rts/forwarddecls.ll
-                     rts/Builtin.vix
+                     rts/Builtin1.vix
+                     rts/Builtin2.vix
 
 executable sixten
   ghc-options:         -Wall -funbox-strict-fields

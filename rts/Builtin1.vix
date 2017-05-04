@@ -1,12 +1,17 @@
-{-
 addInt : Int -> Int -> Int
-addInt x y = (C|return $x + $y;|)
+addInt x y = (C|
+  return $x + $y;
+|)
 
 subInt : Int -> Int -> Int
-subInt x y = (C|return $x - $y;|)
+subInt x y = (C|
+  return $x - $y;
+|)
 
 maxInt : Int -> Int -> Int
-maxInt x y = (C|return $x > $y ? $x : $y;|)
+maxInt x y = (C|
+  return $x > $y ? $x : $y;
+|)
 
 printInt : Int -> Int
 printInt x = (C|
@@ -14,22 +19,8 @@ printInt x = (C|
   return 0;
 |)
 
-fail : {T : Type} -> T
-fail {T} = (C|exit(1); return ($type:T)0; |)
--}
-
-type Unit = MkUnit
-type Pair A B = MkPair A B
-
-Vector : Nat -> Type -> Type
-Vector Zero _ = Unit
-Vector (Succ n) A = Pair A (Vector n A)
-
-type Array A where
-  MkArray : (n : Nat) -> Ptr (Vector n A) -> Array A
-
-type String = MkString (Array Byte)
-
-intToNat : Int -> Nat
-intToNat 0 = Zero
-intToNat n = Succ (intToNat (subInt n 1))
+fail : (T : Type) -> T
+fail T = (C|
+  exit(1);
+  return ($type:T)0;
+|)
