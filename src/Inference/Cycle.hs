@@ -35,8 +35,8 @@ detectTypeRepCycles defs = do
       throwError
         $ show (explain loc
           $ Err
-            (Just "Type has non-finite memory representation")
-            ([ "The size in memory of the type " <> Leijen.red printedHeadVar <> " is infinite."
+            (Just "Type has potentially infinite memory representation")
+            ([ "The size in memory of the type " <> Leijen.red printedHeadVar <> " might be infinite."
             , "Its size depends on the size of " <> Leijen.dullblue (head printedCycle)
             ] ++
             ["which depends on the size of " <> Leijen.dullblue v' | v' <- drop 1 printedCycle]
