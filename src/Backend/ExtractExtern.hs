@@ -58,7 +58,6 @@ extractExpr mtype expr = case expr of
     <$> extractExpr Nothing e
     <*> extractScope s
   Lifted.Case e brs -> Extracted.Case <$> extractExpr Nothing e <*> extractBranches brs
-  Lifted.Prim p -> Extracted.Prim <$> mapM (extractExpr Nothing) p
   Lifted.ExternCode f -> case mtype of
     Nothing -> error "extractExpr Nothing"
     Just typ -> extractExtern typ =<< mapM (extractExpr Nothing) f

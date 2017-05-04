@@ -128,7 +128,6 @@ convertExpr expr = case expr of
     let bodyScope' = abstract1 v bodyExpr'
     return $ Closed.Let h e' bodyScope'
   Lifted.Case e brs -> Closed.Case <$> convertExpr e <*> convertBranches brs
-  Lifted.Prim p -> Closed.Prim <$> mapM convertExpr p
   Lifted.ExternCode c -> Closed.ExternCode <$> mapM convertExpr c
   Lifted.Anno e t -> Closed.Anno <$> convertExpr e <*> convertExpr t
 

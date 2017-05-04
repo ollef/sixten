@@ -138,9 +138,6 @@ infer expr = case expr of
     (e', eloc) <- infer e
     (brs', loc) <- inferBranches eloc brs
     return (Case e' brs', loc)
-  Prim p -> do
-    p' <- mapM (fmap fst . infer) p
-    return (Prim p', MOutParam)
   Anno e t -> do
     (e', eLoc) <- infer e
     (t', _tLoc) <- infer t

@@ -31,7 +31,6 @@ import qualified Syntax.Extern as Extern
 import Syntax.Hint
 import Syntax.Literal
 import Syntax.Name
-import Syntax.Primitive
 import Syntax.Sized.Definition
 import Syntax.Sized.Extracted
 import Syntax.Telescope
@@ -165,7 +164,6 @@ generateExpr expr typ = case expr of
       case rets of
         [] -> return $ IndirectVar undef
         _ -> fmap IndirectVar $ "case-result" =: phiPtr rets
-  Prim p -> generatePrim p
   Anno e typ' -> generateExpr e typ'
 
 generateIntExpr :: Expr Var -> Gen (Operand Int)
@@ -229,10 +227,6 @@ storeExpr expr typ ret = case expr of
     v <- generateExpr e $ unknownSize "storeLet"
     storeExpr (Bound.instantiate1 (pure v) s) typ ret
   Case e brs -> void $ generateBranches e brs $ \br -> storeExpr br typ ret
-  Prim p -> do
-    res <- generatePrim p
-    sz <- generateIntExpr typ
-    varcpy ret res sz
   Anno e typ' -> storeExpr e typ' ret
 
 storeCall
@@ -501,25 +495,6 @@ generateBranches caseExpr branches brCont = do
       emit $ branch postLabel
       emitLabel postLabel
       return $ (defaultContResult, afterDefaultLabel) : contResults
-
-generatePrim
-  :: Primitive (Expr Var)
-  -> Gen Var
-generatePrim (Primitive dir xs) = do
-  strs <- forM xs $ \x -> case x of
-    TextPart t -> return t
-    VarPart o -> unOperand <$> generateIntExpr o
-  let instr = Instr $ Foldable.fold strs
-  case dir of
-    Direct 0 -> do
-      emit instr
-      return VoidVar
-    Direct sz -> do
-      ret <- "prim" =: instr
-      return $ DirectVar sz ret
-    Indirect -> do
-      ret <- "prim" =: instr
-      return $ IndirectVar ret
 
 generateConstant :: Visibility -> Name -> Constant Expr Var -> Gen C
 generateConstant visibility name (Constant e) = do

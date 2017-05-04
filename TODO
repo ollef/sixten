@@ -43,7 +43,7 @@ Language
     Rewrite builtins using extern C
     Make sure extern functions are inlined
     Add tests for FFI escaping
-    Remove primitive?
+    Tests for regular and out params
     Top-level extern declarations
     Extern LLVM
   IO
@@ -58,3 +58,5 @@ Runtime
   Closures
     Store the arity as a bitfield where the highest set bit determines the
     arity, and the other bits determine the arguments of size 8
+Organisation
+  Put tests in directories by category

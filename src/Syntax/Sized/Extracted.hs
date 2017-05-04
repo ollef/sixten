@@ -21,7 +21,6 @@ data Expr v
   | PrimCall (Maybe Language) RetDir (Expr v) (Vector (Expr v, Direction))
   | Let NameHint (Expr v) (Scope1 Expr v)
   | Case (Expr v) (Branches QConstr () Expr v)
-  | Prim (Primitive (Expr v))
   | Anno (Expr v) (Type v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
@@ -69,7 +68,6 @@ instance GlobalBind Expr where
     PrimCall lang retDir e es -> PrimCall lang retDir (bind f g e) (first (bind f g) <$> es)
     Let h e s -> Let h (bind f g e) (bound f g s)
     Case e brs -> Case (bind f g e) (bound f g brs)
-    Prim p -> Prim $ bind f g <$> p
     Anno e t -> Anno (bind f g e) (bind f g t)
 
 instance Applicative Expr where
@@ -94,7 +92,6 @@ instance (Eq v, IsString v, Pretty v)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> indent 2 (prettyM brs)
-    Prim p -> prettyM $ pretty <$> p
     Anno e t -> parens `above` annoPrec $
       prettyM e <+> ":" <+> prettyM t
 

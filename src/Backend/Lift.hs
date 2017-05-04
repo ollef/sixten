@@ -51,7 +51,6 @@ liftExpr expr = case expr of
     <$> liftExpr e
     <*> transverseScope liftExpr s
   Closed.Case e brs -> Lifted.Case <$> liftExpr e <*> liftBranches brs
-  Closed.Prim p -> Lifted.Prim <$> mapM liftExpr p
   Closed.ExternCode c -> Lifted.ExternCode <$> mapM liftExpr c
   Closed.Anno e t -> Lifted.Anno <$> liftExpr e <*> liftExpr t
 
