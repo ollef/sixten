@@ -75,12 +75,15 @@ extractExtern retType (Extern C parts) = do
   name <- freshName
   let (retTypeStr, retDir) = extractType retType
       retDir' = toReturnDirection OutParam retDir
+      (actualRetTypeStr, retParam) = case retDir of
+        Direct _ -> (retTypeStr, mempty)
+        Indirect -> ("void", [retTypeStr <> " return_"])
       (strs, exprs, _) = foldl' go (mempty, mempty, 0 :: Int) parts
       exprsList = toList exprs
       funDef
-        = retTypeStr <> " " <> fromName name
+        = actualRetTypeStr <> " " <> fromName name
         <> "("
-        <> Text.intercalate ", " [typeStr <> " " <> exprName | (_, (exprName, typeStr, _)) <- exprsList] <> ") {"
+        <> Text.intercalate ", " ([typeStr <> " " <> exprName | (_, (exprName, typeStr, _)) <- exprsList] <> retParam) <> ") {"
         <> Text.concat (toList strs)
         <> "}"
       args = toVector [(expr, dir) | (expr, (_, _, dir)) <- exprsList]

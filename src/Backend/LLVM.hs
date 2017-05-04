@@ -422,9 +422,9 @@ bitcastFunToPtrExpr i retDir ds = Operand
   $ "bitcast" <+> "(" <> functionT retDir ds <> "*" <+> unOperand i <+> "to" <+> pointerT <> ")"
 
 function :: RetDir -> Maybe C -> Vector Direction -> C
-function retDir mname ds = retType <+> fromMaybe mempty mname <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList ds <|> [retArg]) <> ")"
+function retDir mname ds = retType <+> fromMaybe mempty mname <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList ds <|> [retParam]) <> ")"
   where
-    (retType, retArg) = case retDir of
+    (retType, retParam) = case retDir of
       ReturnDirect sz -> (directT sz, mempty)
       ReturnIndirect OutParam -> (voidT, pure pointerT)
       ReturnIndirect Projection -> (pointerT, mempty)

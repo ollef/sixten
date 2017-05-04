@@ -44,7 +44,6 @@ Language
     Make sure extern functions are inlined
     Add tests for FFI escaping
     Remove primitive?
-    Out params?
     Top-level extern declarations
     Extern LLVM
   IO

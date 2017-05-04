@@ -22,5 +22,4 @@ printInt x = (C|
 fail : (T : Type) -> T
 fail T = (C|
   exit(1);
-  return ($type:T)0;
 |)
