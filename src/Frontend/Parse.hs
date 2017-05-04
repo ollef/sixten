@@ -287,7 +287,7 @@ externCExpr
   = Extern C . fmap (either id $ ExternPart . Text.pack) <$ Trifecta.string "(C|" <*> go
   <?> "Extern C expression"
   where
-    go = consChar <$ Trifecta.char '\\' <*> Trifecta.anyChar <*> go
+    go = Trifecta.char '\\' *> escaped <*> go
       <|> (:) <$ Trifecta.char '$' <*> (Left <$> macroPart) <*> go
       <|> [] <$ symbol "|)"
       <|> consChar <$> Trifecta.anyChar <*> go
@@ -296,6 +296,11 @@ externCExpr
       <|> ExprMacroPart <$> atomicExpr
     consChar c (Right t : rest) = Right (c:t) : rest
     consChar c rest = Right [c] : rest
+    consChars = foldr (\c -> (consChar c .)) id
+    escaped
+      = consChar <$> Trifecta.char '$'
+      <|> consChars <$> Trifecta.string "|)"
+      <|> (\c -> consChars ('\\' : [c])) <$> Trifecta.anyChar
 
 -------------------------------------------------------------------------------
 -- * Literals
