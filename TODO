@@ -40,10 +40,10 @@ Language
         Nil : Vector 0 A
         Cons : forall {n}. A -> Vector n A -> Vector (S n) a
   FFI
-    Rewrite builtins using extern C
     Add tests for FFI escaping
     Tests for regular and out params
     Top-level extern declarations
+    Use `opt -internalize-public-api-list` to internalize extern C decls
     Extern LLVM
   IO
 Optimisations
