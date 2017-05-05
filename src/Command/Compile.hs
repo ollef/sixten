@@ -138,7 +138,10 @@ llvmOptimise opts llFile
   | isNothing $ optimisation opts = return llFile
   | otherwise = do
     let optLlFile = replaceExtension llFile "opt.ll"
-    callProcess "opt" $ optimisationFlags opts ++ ["-S", llFile, "-o", optLlFile]
+    callProcess "opt" $ optimisationFlags opts ++
+      [ "-S", llFile
+      , "-o", optLlFile
+      ]
     return optLlFile
 
 clangCompile :: Options -> Target -> FilePath -> IO FilePath
