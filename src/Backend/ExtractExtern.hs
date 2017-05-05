@@ -80,7 +80,8 @@ extractExtern retType (Extern C parts) = do
       (strs, exprs, _) = foldl' go (mempty, mempty, 0 :: Int) parts
       exprsList = toList exprs
       funDef
-        = actualRetTypeStr <> " " <> fromName name
+        = "__attribute__((always_inline))\n"
+        <> actualRetTypeStr <> " " <> fromName name
         <> "("
         <> Text.intercalate ", " ([typeStr <> " " <> exprName | (_, (exprName, typeStr, _)) <- exprsList] <> retParam) <> ") {"
         <> Text.concat (toList strs)

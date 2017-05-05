@@ -41,7 +41,6 @@ Language
         Cons : forall {n}. A -> Vector n A -> Vector (S n) a
   FFI
     Rewrite builtins using extern C
-    Make sure extern functions are inlined
     Add tests for FFI escaping
     Tests for regular and out params
     Top-level extern declarations
