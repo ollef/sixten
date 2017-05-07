@@ -57,5 +57,3 @@ Runtime
   Closures
     Store the arity as a bitfield where the highest set bit determines the
     arity, and the other bits determine the arguments of size 8
-Organisation
-  Put tests in directories by category
