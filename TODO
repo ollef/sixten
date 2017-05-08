@@ -39,7 +39,6 @@ Language
         Nil : Vector 0 A
         Cons : forall {n}. A -> Vector n A -> Vector (S n) a
   FFI
-    Tests for regular and out params
     Top-level extern declarations
     Use `opt -internalize-public-api-list` to internalize extern C decls
     Extern LLVM

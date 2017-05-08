@@ -1,0 +1,12 @@
+test : Vector (intToNat 10) Byte
+test = (C|
+  return_[0] = 'a';
+  return_[1] = 'b';
+  return_[2] = 'c';
+  return_[3] = '\0';
+|)
+
+test2 : Unit
+test2 = (C|
+  puts((const char*)$test);
+|)
