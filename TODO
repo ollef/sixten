@@ -1,6 +1,7 @@
 Type checking
   Better checking for escaped vars
   Sanity type-check the Abstract syntax
+  Check if cycle checking is correct
 Matching
   Coverage and overlap checking
   Parse and typecheck view patterns
