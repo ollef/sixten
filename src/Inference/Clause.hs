@@ -47,7 +47,7 @@ exactlyEqualisePats (Explicit:_) [] = do
     $ explain loc
     $ Err (Just "Not enough patterns for type")
     [ "Found the pattern: no patterns."
-    , "Expected: an explicit patter."
+    , "Expected: an explicit pattern."
     ]
     mempty
 
