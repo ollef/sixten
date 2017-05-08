@@ -1,0 +1,4 @@
+type List a = Nil | Cons a (Ref (List a))
+
+f (Cons x y z) = 0
+f (Nil x) = 1

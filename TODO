@@ -4,7 +4,6 @@ Type checking
 Matching
   Coverage and overlap checking
   Parse and typecheck view patterns
-  Add tests for exactlyEqualisePats
 Codegen
   Arity inference
   Use llvm-hs for llvm
