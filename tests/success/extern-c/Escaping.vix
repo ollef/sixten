@@ -1,0 +1,5 @@
+test : Int
+test = printInt (C|
+  char c = '\t';
+  return c == 9 ? 123 : 321;
+|)

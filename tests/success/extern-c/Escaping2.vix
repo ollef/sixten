@@ -1,0 +1,5 @@
+test : Int
+test = printInt (C|
+  const char* s = "\|)\$";
+  return (s[0] == '|') + (s[1] == ')') + (s[2] == '\$');
+|)
