@@ -53,7 +53,7 @@ detectDefCycles defs = do
     [(v, e) | (_, (v, Definition e, _)) <- defs]
   let locMap = HashMap.fromList $ Vector.toList [(v, loc) | (loc, (v, _, _)) <- defs]
       recs =
-        [ (v, fmap fst $ filter ((== 0) . snd) $ occurrenceDepths e)
+        [ (v, unguardedOccurrences e)
         | (v, e) <- defExprs
         ]
   case cycles recs of
@@ -75,30 +75,8 @@ detectDefCycles defs = do
             mempty)
     [] -> return ()
 
-occurrenceDepths
+unguardedOccurrences
   :: Expr v
-  -> [(v, Int)]
-occurrenceDepths = go 0 . fmap Just
-  where
-    inst = instantiate (const $ pure Nothing)
-    go !d expr = case expr of
-      Var Nothing -> []
-      Var (Just v) -> [(v, d)]
-      Global _ -> []
-      Con _ -> []
-      Lit _ -> []
-      Pi _ _ t s -> go d t <> go d (inst s)
-      Lam _ _ t s -> go d t <> go (d + 1) (inst s)
-      App e1 _ e2 -> go d e1 <> go d e2
-      Let _ e s -> go d e <> go d (inst s)
-      Case e brs retType -> go d e <> go d retType <> case brs of
-        ConBranches cbrs -> concat
-          [ go d (inst scope) <> concat [ go d $ inst s | (_, _, s) <- tele ]
-          | (_, Telescope tele, scope) <- cbrs
-          ]
-        LitBranches lbrs def -> concat
-          [ go d e'
-          | (_, e') <- lbrs
-          ]
-          <> go d def
-      ExternCode c t -> (Foldable.toList c >>= go d) <> go d t
+  -> [v]
+unguardedOccurrences (Lam _ _ t _) = toList t
+unguardedOccurrences e = toList e
