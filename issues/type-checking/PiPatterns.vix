@@ -1,4 +1,4 @@
-data Tuple a b = tuple a b
+type Tuple a b = tuple a b
 
 fun2 : ((tuple sz1 sz2) (tuple sz3 sz4) : Tuple Int Int) -> Int
 fun2 (tuple sz1 sz2) (tuple sz3 sz4) = addInt sz1 (addInt sz2 (addInt sz3 sz4))
