@@ -62,9 +62,9 @@ multilineComment =
 -------------------------------------------------------------------------------
 -- * Indentation parsing
 deltaLine :: Delta -> Int
-deltaLine Columns {}           = 0
-deltaLine Tab {}               = 0
-deltaLine (Lines l _ _ _)      = fromIntegral l + 1
+deltaLine Columns {} = 0
+deltaLine Tab {} = 0
+deltaLine (Lines l _ _ _) = fromIntegral l + 1
 deltaLine (Directed _ l _ _ _) = fromIntegral l + 1
 
 deltaColumn :: Delta -> Int
@@ -75,16 +75,16 @@ deltaColumn pos = fromIntegral (column pos) + 1
 dropAnchor :: Parser a -> Parser a
 dropAnchor p = do
   oldAnchor <- get
-  pos       <- Trifecta.position
+  pos <- Trifecta.position
   put pos
-  result    <- p
+  result <- p
   put oldAnchor
   return result
 
 -- | Check that the current indentation level is the same as the anchor
 sameCol :: Parser ()
 sameCol = do
-  pos    <- Trifecta.position
+  pos <- Trifecta.position
   anchor <- get
   case comparing deltaColumn pos anchor of
     LT -> Trifecta.unexpected "unindent"
@@ -95,7 +95,7 @@ sameCol = do
 --   or on a successive line but more indented.
 sameLineOrIndented :: Parser ()
 sameLineOrIndented = do
-  pos    <- Trifecta.position
+  pos <- Trifecta.position
   anchor <- get
   case (comparing deltaLine pos anchor, comparing deltaColumn pos anchor) of
     (EQ, _)  -> return () -- Same line
@@ -132,13 +132,13 @@ infixl 4 <$>%, <$%, <*>%, <*%, *>%, <**>%
 (<$>%) :: (a -> b) -> Parser a -> Parser b
 f <$>% p = f <$> (sameLineOrIndented >> p)
 (<$%) :: a -> Parser b -> Parser a
-f <$% p = f <$  (sameLineOrIndented >> p)
+f <$% p = f <$ (sameLineOrIndented >> p)
 (<*>%) :: Parser (a -> b) -> Parser a -> Parser b
 p <*>%q = p <*> (sameLineOrIndented >> q)
 (<*%) :: Parser a -> Parser b -> Parser a
-p <*% q = p <*  (sameLineOrIndented >> q)
+p <*% q = p <* (sameLineOrIndented >> q)
 (*>%) :: Parser a -> Parser b -> Parser b
-p *>% q = p *>  (sameLineOrIndented >> q)
+p *>% q = p *> (sameLineOrIndented >> q)
 (<**>%) :: Parser a -> Parser (a -> b) -> Parser b
 p <**>% q = p <**> (sameLineOrIndented >> q)
 
