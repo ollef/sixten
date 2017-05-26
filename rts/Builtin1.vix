@@ -1,3 +1,5 @@
+module Builtin(..)
+
 addInt : Int -> Int -> Int
 addInt x y = (C|
   return $x + $y;

@@ -1,7 +1,6 @@
-{-# LANGUAGE DeriveGeneric, GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Syntax.Name where
 
-import GHC.Generics(Generic)
 import Data.String
 import Data.Text(Text)
 import Data.Hashable
@@ -22,8 +21,3 @@ constrToName (Constr c) = Name c
 
 nameToConstr :: Name -> Constr
 nameToConstr (Name n) = Constr n
-
-data QConstr = QConstr !Name !Constr
-  deriving (Eq, Generic, Ord, Show)
-
-instance Hashable QConstr

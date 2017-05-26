@@ -8,6 +8,7 @@ import Control.Monad.State
 import Data.Bifunctor
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
+import Data.HashSet(HashSet)
 import Data.List as List
 import Data.Monoid
 import Data.Set(Set)
@@ -22,6 +23,7 @@ import Backend.Target
 import Syntax
 import Syntax.Abstract
 import qualified Syntax.Sized.Closed as Closed
+import Util
 
 newtype Level = Level Int
   deriving (Eq, Num, Ord, Show)
@@ -31,10 +33,11 @@ instance Pretty Level where
 
 data VIXState = VIXState
   { vixLocation :: SourceLoc
-  , vixContext :: HashMap Name (Definition Expr Void, Type Void)
-  , vixConstrs :: HashMap Constr (Set (Name, Type Void))
-  , vixConvertedSignatures :: HashMap Name Closed.FunSignature
-  , vixSignatures :: HashMap Name (Signature ReturnIndirect)
+  , vixContext :: HashMap QName (Definition Expr Void, Type Void)
+  , vixModuleNames :: MultiHashMap ModuleName Name
+  , vixConstrs :: HashMap Constr (Set (QName, Type Void))
+  , vixConvertedSignatures :: HashMap QName Closed.FunSignature
+  , vixSignatures :: HashMap QName (Signature ReturnIndirect)
   , vixIndent :: !Int
   , vixFresh :: !Int
   , vixLevel :: !Level
@@ -47,6 +50,7 @@ emptyVIXState :: Target -> Handle -> Int -> VIXState
 emptyVIXState target handle verbosity = VIXState
   { vixLocation = mempty
   , vixContext = mempty
+  , vixModuleNames = mempty
   , vixConstrs = mempty
   , vixConvertedSignatures = mempty
   , vixSignatures = mempty
@@ -138,7 +142,7 @@ whenVerbose i m = do
 
 -------------------------------------------------------------------------------
 -- Working with abstract syntax
-addContext :: HashMap Name (Definition Expr Void, Type Void) -> VIX ()
+addContext :: HashMap QName (Definition Expr Void, Type Void) -> VIX ()
 addContext prog = modify $ \s -> s
   { vixContext = prog <> vixContext s
   , vixConstrs = HashMap.unionWith (<>) cs $ vixConstrs s
@@ -148,12 +152,20 @@ addContext prog = modify $ \s -> s
       ConstrDef c t <- quantifiedConstrTypes d defType $ const Implicit
       return (c, Set.fromList [(n, t)])
 
-definition :: Name -> VIX (Definition Expr v, Expr v)
+definition :: QName -> VIX (Definition Expr v, Expr v)
 definition name = do
   mres <- gets $ HashMap.lookup name . vixContext
   maybe (throwError $ "Not in scope: " ++ show name)
         (return . bimap vacuous vacuous)
         mres
+
+addModule
+  :: ModuleName
+  -> HashSet Name
+  -> VIX ()
+addModule m names = modify $ \s -> s
+  { vixModuleNames = multiUnion (HashMap.singleton m names) $ vixModuleNames s
+  }
 
 qconstructor :: QConstr -> VIX (Expr v)
 qconstructor qc@(QConstr n c) = do
@@ -173,7 +185,7 @@ qconstructor qc@(QConstr n c) = do
 constructor
   :: Ord v
   => Either Constr QConstr
-  -> VIX (Set (Name, Type v))
+  -> VIX (Set (QName, Type v))
 constructor (Right qc@(QConstr n _)) = Set.singleton . (,) n <$> qconstructor qc
 constructor (Left c)
   = gets
@@ -184,23 +196,23 @@ constructor (Left c)
 -------------------------------------------------------------------------------
 -- Signatures
 addConvertedSignatures
-  :: HashMap Name Closed.FunSignature
+  :: HashMap QName Closed.FunSignature
   -> VIX ()
 addConvertedSignatures p
   = modify $ \s -> s { vixConvertedSignatures = p <> vixConvertedSignatures s }
 
 convertedSignature
-  :: Name
+  :: QName
   -> VIX (Maybe Closed.FunSignature)
 convertedSignature name = gets $ HashMap.lookup name . vixConvertedSignatures
 
 addSignatures
-  :: HashMap Name (Signature ReturnIndirect)
+  :: HashMap QName (Signature ReturnIndirect)
   -> VIX ()
 addSignatures p = modify $ \s -> s { vixSignatures = p <> vixSignatures s }
 
 signature
-  :: Name
+  :: QName
   -> VIX (Signature ReturnIndirect)
 signature name = do
   mres <- gets $ HashMap.lookup name . vixSignatures

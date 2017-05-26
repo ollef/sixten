@@ -23,6 +23,7 @@ import qualified Backend.Target as Target
 import qualified Pretty
 import Syntax.Direction
 import Syntax.Hint
+import Syntax.Module
 import Syntax.Name
 import Util
 import Util.Tsil
@@ -214,8 +215,8 @@ data PtrPtr
 data Fun
 data Label
 
-global :: Name -> Operand a
-global (Name b) = Operand $ "@" <> text (escape b)
+global :: QName -> Operand a
+global qn = Operand $ "@" <> text (escape $ fromQName qn)
 
 integer :: Operand Int -> C
 integer o = integerT <+> unOperand o
@@ -437,7 +438,7 @@ function retDir mname ds = retType <+> fromMaybe mempty mname <> "(" <> Foldable
 declareFun
   :: MonadState LLVMState m
   => RetDir
-  -> Name
+  -> QName
   -> Vector Direction
   -> m ()
 declareFun retDir name ds

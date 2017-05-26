@@ -11,6 +11,8 @@ import Data.Bifoldable
 import Data.Bifunctor
 import Data.Foldable
 import Data.Hashable
+import Data.HashMap.Lazy(HashMap)
+import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Set(Set)
@@ -133,3 +135,18 @@ forWithPrefixM = flip mapWithPrefixM
 
 instance MFunctor (Scope b) where
   hoist = hoistScope
+
+type MultiHashMap k v = HashMap k (HashSet v)
+
+multiUnion
+  :: (Eq k, Hashable k, Eq v, Hashable v)
+  => MultiHashMap k v
+  -> MultiHashMap k v
+  -> MultiHashMap k v
+multiUnion = HashMap.unionWith HashSet.union
+
+multiUnions
+  :: (Eq k, Hashable k, Eq v, Hashable v)
+  => [MultiHashMap k v]
+  -> MultiHashMap k v
+multiUnions = foldl' multiUnion mempty

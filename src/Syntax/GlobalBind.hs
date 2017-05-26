@@ -2,14 +2,14 @@ module Syntax.GlobalBind where
 
 import Bound
 import Bound.Var
-import Syntax.Name
+import Syntax.Module
 
 class GlobalBound t where
   -- | Perform substitution on both variables and globals inside a structure.
   bound
     :: GlobalBind e
     => (v -> e v')
-    -> (Name -> e v')
+    -> (QName -> e v')
     -> t e v
     -> t e v'
 
@@ -22,11 +22,11 @@ instance GlobalBound (Scope b) where
       s
 
 class Monad e => GlobalBind e where
-  global :: Name -> e v
+  global :: QName -> e v
   -- | Perform substitution on both variables and globals.
   bind
     :: (v -> e v')
-    -> (Name -> e v')
+    -> (QName -> e v')
     -> e v
     -> e v'
 

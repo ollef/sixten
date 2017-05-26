@@ -9,12 +9,12 @@ import Data.Text(Text)
 import Data.Vector(Vector)
 import Prelude.Extras
 
-import Syntax hiding (Definition)
+import Syntax hiding (Definition, Module)
 import Util
 
 data Expr v
   = Var v
-  | Global Name
+  | Global QName
   | Lit Literal
   | Con QConstr (Vector (Expr v)) -- ^ Fully applied
   | Call (Expr v) (Vector (Expr v)) -- ^ Fully applied, only global

@@ -205,9 +205,6 @@ instance Pretty Name    where pretty (Name n) = pretty n
 instance Pretty Constr  where pretty (Constr c) = pretty c
 instance Pretty Void    where pretty = absurd
 
-instance Pretty QConstr where
-  prettyM (QConstr q n) = prettyM q <> "." <> prettyM n
-
 instance Pretty a => Pretty [a] where prettyM = prettyList
 instance Pretty a => Pretty (Vector a) where prettyM = prettyM . Vector.toList
 

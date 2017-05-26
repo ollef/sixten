@@ -17,6 +17,7 @@ import Syntax.Extern as X
 import Syntax.GlobalBind as X
 import Syntax.Hint as X
 import Syntax.Literal as X
+import Syntax.Module as X
 import Syntax.Name as X
 import Syntax.Pattern as X
 import Syntax.SourceLoc as X

@@ -12,6 +12,7 @@ import Data.Void
 import Pretty
 import Syntax.Annotation
 import Syntax.GlobalBind
+import Syntax.Module
 import Syntax.Name
 import Syntax.Telescope
 import Util.TopoSort
@@ -38,8 +39,8 @@ data Definition expr v
 -- Helpers
 dependencyOrder
   :: (GlobalBind expr, Foldable expr)
-  => [(Name, Definition expr Void)]
-  -> [[(Name, Definition expr Void)]]
+  => [(QName, Definition expr Void)]
+  -> [[(QName, Definition expr Void)]]
 dependencyOrder defs = fmap (\n -> (n, m HashMap.! n)) <$> topoSort (second (bound absurd pure) <$> defs)
   where
     m = HashMap.fromList defs

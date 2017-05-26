@@ -14,7 +14,7 @@ import Syntax.Abstract
 import Util
 
 simplifyExpr
-  :: (Name -> Bool)
+  :: (QName -> Bool)
   -> Int
   -> Expr v
   -> Expr v
@@ -50,14 +50,14 @@ simplifyExpr glob !applied expr = case expr of
       (simplifyExpr glob 0 retType)
 
 simplifyScope
-  :: (Name -> Bool)
+  :: (QName -> Bool)
   -> Int
   -> Scope b Expr v
   -> Scope b Expr v
 simplifyScope glob applied = toScope . simplifyExpr glob applied . fromScope
 
 simplifyBranches
-  :: (Name -> Bool)
+  :: (QName -> Bool)
   -> Int
   -> Branches c a Expr v
   -> Branches c a Expr v
@@ -68,14 +68,14 @@ simplifyBranches glob applied (LitBranches lbrs def) = LitBranches
   $ simplifyExpr glob applied def
 
 simplifyTele
-  :: (Name -> Bool)
+  :: (QName -> Bool)
   -> Telescope a Expr v
   -> Telescope a Expr v
 simplifyTele glob tele
   = Telescope $ forTele tele $ \h a fieldScope -> (h, a, simplifyScope glob 0 fieldScope)
 
 let_
-  :: (Name -> Bool)
+  :: (QName -> Bool)
   -> NameHint
   -> Expr v
   -> Scope1 Expr v
@@ -90,7 +90,7 @@ let_ glob h e s = case bindings s of
     dupl = duplicable e
 
 simplifyDef
-  :: (Name -> Bool)
+  :: (QName -> Bool)
   -> Definition Expr v
   -> Definition Expr v
 simplifyDef glob (Definition e)
@@ -100,7 +100,7 @@ simplifyDef glob (DataDefinition d rep)
 simplifyDef _ Opaque = Opaque
 
 etaLams
-  :: (Name -> Bool)
+  :: (QName -> Bool)
   -> Int
   -> Telescope Plicitness Expr v
   -> Scope Tele Expr v
@@ -150,7 +150,7 @@ duplicable expr = case expr of
   Let {} -> False
   ExternCode {} -> False
 
-terminates :: (Name -> Bool) -> Expr v -> Bool
+terminates :: (QName -> Bool) -> Expr v -> Bool
 terminates glob expr = case expr of
   Var _ -> True
   Global n -> glob n
@@ -163,7 +163,7 @@ terminates glob expr = case expr of
   Let _ e s -> terminates glob e && terminates glob (fromScope s)
   ExternCode {} -> False
 
-terminatesWhenCalled :: (Name -> Bool) -> Expr v -> Bool
+terminatesWhenCalled :: (QName -> Bool) -> Expr v -> Bool
 terminatesWhenCalled glob expr = case expr of
   Var _ -> False
   Global _ -> False

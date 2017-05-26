@@ -17,12 +17,11 @@ type Con = Either Constr QConstr
 
 data Expr v
   = Var v
-  | Global Name
   | Lit Literal
-  | Pi !Plicitness (Pat (Type v) Name) (Expr v)
-  | Lam !Plicitness (Pat (Type v) Name) (Expr v)
+  | Pi !Plicitness (Pat (Type v) QName) (Expr v)
+  | Lam !Plicitness (Pat (Type v) QName) (Expr v)
   | App (Expr v) !Plicitness (Expr v)
-  | Case (Expr v) [(Pat (Expr v) Name, Expr v)]
+  | Case (Expr v) [(Pat (Expr v) QName, Expr v)]
   | ExternCode (Extern (Expr v))
   | Wildcard
   | SourceLoc !SourceLoc (Type v)
@@ -31,23 +30,23 @@ data Expr v
 type Type = Expr
 
 data Definition v
-  = Definition (NonEmpty (Syntax.Concrete.Unscoped.Clause v))
+  = Definition (NonEmpty (Clause v))
   | DataDefinition [(Plicitness, Name, Type v)] [ConstrDef (Expr v)]
   deriving (Show)
 
-data Clause v = Clause (Vector (Plicitness, Pat (Type v) Name)) (Expr v)
+data Clause v = Clause (Vector (Plicitness, Pat (Type v) QName)) (Expr v)
   deriving (Show)
 
 -------------------------------------------------------------------------------
 -- Smart constructors
 pis
-  :: [(Plicitness, Pat (Type v) Name)]
+  :: [(Plicitness, Pat (Type v) QName)]
   -> Expr v
   -> Expr v
 pis ps e = foldr (uncurry Pi) e ps
 
 lams
-  :: [(Plicitness, Pat (Type v) Name)]
+  :: [(Plicitness, Pat (Type v) QName)]
   -> Expr v
   -> Expr v
 lams ps e = foldr (uncurry Lam)  e ps
@@ -68,7 +67,6 @@ instance Monad Expr where
   return = Var
   expr >>= f = case expr of
     Var v -> f v
-    Global v -> Global v
     Lit l -> Lit l
     Pi p pat e -> Pi p (first (>>= f) pat) (e >>= f)
     Lam p pat e -> Lam p (first (>>= f) pat) (e >>= f)
@@ -83,7 +81,6 @@ instance Foldable Expr where foldMap = foldMapDefault
 instance Traversable Expr where
   traverse f expr = case expr of
     Var v -> Var <$> f v
-    Global v -> pure $ Global v
     Lit l -> pure $ Lit l
     Pi p pat e -> Pi p <$> bitraverse (traverse f) pure pat <*> traverse f e
     Lam p pat e -> Lam p <$> bitraverse (traverse f) pure pat <*> traverse f e
@@ -96,7 +93,6 @@ instance Traversable Expr where
 instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
   prettyM expr = case expr of
     Var v -> prettyM v
-    Global v -> prettyM v
     Lit l -> prettyM l
     Pi p pat e -> parens `above` absPrec $
         prettyAnnotation p (prettyM pat) <+> "->" <+>

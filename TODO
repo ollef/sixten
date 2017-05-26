@@ -4,6 +4,7 @@ Type checking
 Matching
   Coverage and overlap checking
   Parse and typecheck view patterns
+  Pattern synonyms (just normalise function applications in patterns and see if it ends up with a pattern)
 Codegen
   Arity inference
   Use llvm-hs for llvm
@@ -16,6 +17,7 @@ Compiler
 Error messages
   Write own error printer
   Make error message footnotes contain metavars
+  Use prettyprinter library
 Language
   * Add alignment to type representation
     alignment (Tuple A B) = max (alignment A) (alignment B)
@@ -30,7 +32,8 @@ Language
     r : Row : Type
     {l = A} : {l : A} : Type
   Specialisation pragma
-  Modules
+  * Modules
+    Split Processor into File, Def, and Modules processors
   Mixfix definitions and noncompounds?
   * Inductive families
     Forcing

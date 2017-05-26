@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings, TypeFamilies #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Syntax.Concrete.Scoped
   ( module Definition
   , module Pattern
@@ -23,7 +23,7 @@ type Con = Either Constr QConstr
 
 data Expr v
   = Var v
-  | Global Name  -- ^ Really just a variable, but it's often annoying to not have it
+  | Global QName
   | Lit Literal
   | Con Con
   | Pi !Plicitness (Pat (PatternScope Type v) ()) (PatternScope Expr v)
@@ -32,7 +32,7 @@ data Expr v
   | Let !NameHint (Expr v) (Scope1 Expr v)
   | Case (Expr v) [(Pat (PatternScope Type v) (), PatternScope Expr v)]
   | ExternCode (Extern (Expr v))
-  | Wildcard  -- ^ Attempt to infer it
+  | Wildcard
   | SourceLoc !SourceLoc (Expr v)
   deriving (Show)
 

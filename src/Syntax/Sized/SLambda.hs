@@ -13,12 +13,12 @@ import Util
 
 data Expr v
   = Var v
-  | Global Name
+  | Global QName
   | Lit Literal
   | Con QConstr (Vector (Expr v)) -- ^ Fully applied
   | Lam !NameHint (Expr v) (Scope1 Expr v)
   | App (Expr v) (Expr v)
-  | Let NameHint (Expr v) (Type v) (Scope1 Expr v)
+  | Let !NameHint (Expr v) (Type v) (Scope1 Expr v)
   | Case (Expr v) (Branches QConstr () Expr v)
   | Anno (Expr v) (Type v)
   | ExternCode (Extern (Expr v))

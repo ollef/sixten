@@ -5,6 +5,9 @@ import Control.Monad.State
 import Data.Bitraversable
 import Data.Foldable
 import Data.Monoid
+import qualified Data.Text as Text
+import Data.Text(Text)
+import qualified Data.Vector as Vector
 
 import Syntax
 import qualified Syntax.Sized.Definition as Sized
@@ -13,18 +16,15 @@ import qualified Syntax.Sized.Lifted as Lifted
 import Util
 import Util.Tsil as Tsil
 
-import qualified Data.Text as Text
-import Data.Text(Text)
-
 data ExtractState = ExtractState
-  { freshNames :: [Name]
+  { freshNames :: [QName]
   , extractedCode :: Tsil (Extracted.Declaration, Text)
   }
 
 newtype Extract a = Extract { unExtract :: State ExtractState a }
   deriving (Functor, Applicative, Monad, MonadState ExtractState)
 
-runExtract :: [Name] -> Extract a -> Extracted.Module a
+runExtract :: [QName] -> Extract a -> Extracted.Module a
 runExtract names
   = (\(a, s) -> let (decls, defs) = unzip $ toList $ extractedCode s in
       Extracted.Module decls ((,) C <$> defs) a)
@@ -35,7 +35,7 @@ freshName :: Extract Name
 freshName = do
   name:names <- gets freshNames
   modify $ \s -> s { freshNames = names }
-  return name
+  return $ mangle name
 
 addExtractedCode :: Extracted.Declaration -> Text -> Extract ()
 addExtractedCode d t = modify $ \s -> s { extractedCode = Snoc (extractedCode s) (d, t) }
@@ -93,7 +93,7 @@ extractExtern retType (Extern C parts) = do
   return $ Extracted.PrimCall
     (Just C)
     retDir'
-    (Extracted.Global name)
+    (Extracted.Global $ unqualified name)
     args
   where
     go (strs, exprs, !len) part = case part of
@@ -107,6 +107,12 @@ extractExtern retType (Extern C parts) = do
               exprName = "extern_arg_" <> shower len
           Just (exprName, _, _) -> (Snoc strs $ exprName <> " ", exprs, len)
       ExprMacroPart _ -> error "extractExtern"
+
+mangle :: QName -> Name
+mangle (QName (ModuleName parts) name)
+  = Name
+  $ Text.intercalate "__" (Vector.toList $ fromName <$> parts)
+  <> "__" <> fromName name
 
 extractType
   :: Extracted.Expr v
@@ -146,10 +152,10 @@ extractScope = fmap toScope . extractExpr Nothing . fromScope
 
 extractDef
   :: Ord v
-  => Name
+  => QName
   -> Sized.Definition Lifted.Expr v
   -> Extracted.Module (Sized.Definition Extracted.Expr v)
-extractDef name def = case def of
+extractDef (QName mname name) def = case def of
   Sized.FunctionDef vis cl (Sized.Function tele s) -> runExtract names
     $ Sized.FunctionDef vis cl
     <$> (Sized.Function <$> extractTelescope tele <*> extractScope s)
@@ -158,7 +164,7 @@ extractDef name def = case def of
     <$> (Sized.Constant <$> extractExpr Nothing e)
   where
     names =
-      [ if n == 0
+      [ QName mname $ if n == 0
           then "sixten_extern__" <> name
           else "sixten_extern_" <> shower n <> "__" <> name
       | n <- [(0 :: Int)..]

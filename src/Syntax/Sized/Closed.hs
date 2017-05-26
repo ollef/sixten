@@ -14,7 +14,7 @@ import Util
 
 data Expr v
   = Var v
-  | Global Name
+  | Global QName
   | Lit Literal
   | Con QConstr (Vector (Expr v)) -- ^ Fully applied
   | Lams (Telescope () Type Void) (Scope Tele Expr Void)

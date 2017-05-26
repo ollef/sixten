@@ -14,14 +14,14 @@ import qualified Syntax.Sized.Lifted as Lifted
 import Util
 
 data LiftState = LiftState
-  { freshNames :: [Name]
-  , liftedFunctions :: [(Name, Sized.Function Lifted.Expr Void)]
+  { freshNames :: [QName]
+  , liftedFunctions :: [(QName, Sized.Function Lifted.Expr Void)]
   }
 
 newtype Lift a = Lift { runLift :: State LiftState a }
   deriving (Functor, Applicative, Monad, MonadState LiftState)
 
-liftFunction :: Sized.Function Lifted.Expr Void -> Lift Name
+liftFunction :: Sized.Function Lifted.Expr Void -> Lift QName
 liftFunction f = do
   name:names <- gets freshNames
   modify $ \s -> s
@@ -83,13 +83,13 @@ liftToDefinitionM sexpr
   = Sized.ConstantDef Public . Sized.Constant <$> liftExpr sexpr
 
 liftToDefinition
-  :: Name
+  :: QName
   -> Closed.Expr Void
-  -> (Sized.Definition Lifted.Expr Void, [(Name, Sized.Function Lifted.Expr Void)])
-liftToDefinition name expr
+  -> (Sized.Definition Lifted.Expr Void, [(QName, Sized.Function Lifted.Expr Void)])
+liftToDefinition (QName mname name) expr
   = second liftedFunctions
   $ runState (runLift $ liftToDefinitionM expr) LiftState
-  { freshNames = [name <> "-lifted" <> if n == 0 then "" else shower n | n <- [(0 :: Int)..]]
+  { freshNames = [QName mname $ name <> "-lifted" <> if n == 0 then "" else shower n | n <- [(0 :: Int)..]]
   , liftedFunctions = mempty
   }
 
@@ -105,12 +105,12 @@ liftDefinitionM (Sized.ConstantDef vis (Sized.Constant e)) = do
   return $ Sized.ConstantDef vis $ Sized.Constant e'
 
 liftClosures
-  :: Name
+  :: QName
   -> Sized.Definition Closed.Expr Void
-  -> (Sized.Definition Lifted.Expr Void, [(Name, Sized.Function Lifted.Expr Void)])
-liftClosures name expr
+  -> (Sized.Definition Lifted.Expr Void, [(QName, Sized.Function Lifted.Expr Void)])
+liftClosures (QName mname name) expr
   = second liftedFunctions
   $ runState (runLift $ liftDefinitionM expr) LiftState
-  { freshNames = [name <> "-lifted-closure" <> if n == 0 then "" else shower n | n <- [(0 :: Int)..]]
+  { freshNames = [QName mname $ name <> "-lifted-closure" <> if n == 0 then "" else shower n | n <- [(0 :: Int)..]]
   , liftedFunctions = mempty
   }

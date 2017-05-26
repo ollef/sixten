@@ -25,8 +25,8 @@ import VIX
 type Meta = MetaVar Unit
 
 convertDefinitions
-  :: [(Name, Sized.Definition Lifted.Expr Void)]
-  -> VIX [(Name, Sized.Definition Closed.Expr Void)]
+  :: [(QName, Sized.Definition Lifted.Expr Void)]
+  -> VIX [(QName, Sized.Definition Closed.Expr Void)]
 convertDefinitions defs = do
   funSigs <- forM defs $ \(name, def) -> case def of
     Sized.FunctionDef _ _ (Sized.Function tele scope) -> do
@@ -144,7 +144,7 @@ unknownCall e es = do
     $ (Closed.Sized intSize . Closed.sizeOf <$> es) <|> es
 
 knownCall
-  :: Name
+  :: QName
   -> Closed.FunSignature
   -> Vector (Closed.Expr Meta)
   -> VIX (Closed.Expr Meta)

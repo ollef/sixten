@@ -12,7 +12,7 @@ import Util
 -- | Expressions with variables of type @v@.
 data Expr v
   = Var v
-  | Global Name
+  | Global QName
   | Con QConstr
   | Lit Literal
   | Pi !NameHint !Plicitness (Type v) (Scope1 Expr v)

@@ -475,12 +475,12 @@ resolveConstr (Right qc) _ = return qc
 resolveConstrsType
   :: [Either Constr QConstr]
   -> Maybe Rhotype
-  -> VIX Name
+  -> VIX QName
 resolveConstrsType cs expected = do
   mExpectedType <- expectedDataType
   possibleTypeSets <- forM cs $ \c -> do
     possibleTypes <- constructor c
-    return $ Set.map fst (possibleTypes :: Set (Name, Abstract.Expr ()))
+    return $ Set.map fst (possibleTypes :: Set (QName, Abstract.Expr ()))
   let possibleTypes = List.foldl1' Set.intersection possibleTypeSets
 
   when (Set.null possibleTypes) $
@@ -510,7 +510,7 @@ resolveConstrsType cs expected = do
       ]
   where
     expectedDataType = join <$> traverse findExpectedDataType expected
-    findExpectedDataType :: AbstractM -> VIX (Maybe Name)
+    findExpectedDataType :: AbstractM -> VIX (Maybe QName)
     findExpectedDataType typ = do
       typ' <- whnf typ
       case typ' of
@@ -1009,12 +1009,12 @@ generaliseDefs xs = do
     impure _ = error "generaliseDefs"
 
 checkRecursiveDefs
-  :: Vector ( Name
+  :: Vector ( QName
             , SourceLoc
             , Concrete.PatDefinition Concrete.Expr Void
             , Concrete.Expr Void
             )
-  -> VIX (Vector ( Name
+  -> VIX (Vector ( QName
                  , Definition Abstract.Expr Void
                  , Abstract.Expr Void
                  )
@@ -1024,7 +1024,7 @@ checkRecursiveDefs defs = do
 
   (checkedDefs, evars) <- enterLevel $ do
     evars <- Vector.forM names $ \name -> do
-      let hint = fromName name
+      let hint = fromQName name
       typ <- existsType hint
       forall hint typ
 

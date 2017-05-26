@@ -7,6 +7,7 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.List.NonEmpty
 import Data.Maybe
 import Data.Monoid
+import Data.String
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
@@ -19,77 +20,84 @@ import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.Definition as Sized
 import Util
 
-pattern IntName <- ((==) "Int" -> True) where IntName = "Int"
+pattern IntName <- ((==) "Builtin.Int" -> True) where IntName = "Builtin.Int"
 pattern IntType = Global IntName
 
-pattern ByteName <- ((==) "Byte" -> True) where ByteName = "Byte"
+pattern ByteName <- ((==) "Builtin.Byte" -> True) where ByteName = "Builtin.Byte"
 pattern ByteType = Global ByteName
 
-pattern AddIntName <- ((==) "addInt" -> True) where AddIntName = "addInt"
+pattern AddIntName <- ((==) "Builtin.addInt" -> True) where AddIntName = "Builtin.addInt"
 pattern AddInt e1 e2 = App (App (Global AddIntName) Explicit e1) Explicit e2
 
-pattern SubIntName <- ((==) "subInt" -> True) where SubIntName = "subInt"
+pattern SubIntName <- ((==) "Builtin.subInt" -> True) where SubIntName = "Builtin.subInt"
 pattern SubInt e1 e2 = App (App (Global SubIntName) Explicit e1) Explicit e2
 
-pattern MaxIntName <- ((==) "maxInt" -> True) where MaxIntName = "maxInt"
+pattern MaxIntName <- ((==) "Builtin.maxInt" -> True) where MaxIntName = "Builtin.maxInt"
 pattern MaxInt e1 e2 = App (App (Global MaxIntName) Explicit e1) Explicit e2
 
-pattern PrintIntName <- ((==) "printInt" -> True) where PrintIntName = "printInt"
+pattern PrintIntName <- ((==) "Builtin.printInt" -> True) where PrintIntName = "Builtin.printInt"
 pattern PrintInt e1 = App (Global PrintIntName) Explicit e1
 
-pattern TypeName <- ((==) "Type" -> True) where TypeName = "Type"
+pattern TypeName <- ((==) "Builtin.Type" -> True) where TypeName = "Builtin.Type"
 pattern Type = Global TypeName
 
-pattern SizeOfName <- ((==) "sizeOf" -> True) where SizeOfName = "sizeOf"
+pattern SizeOfName <- ((==) "Builtin.sizeOf" -> True) where SizeOfName = "Builtin.sizeOf"
 
+pattern RefName :: Constr
 pattern RefName <- ((==) "Ref" -> True) where RefName = "Ref"
-pattern PtrName <- ((==) "Ptr" -> True) where PtrName = "Ptr"
+pattern PtrName <- ((==) "Builtin.Ptr" -> True) where PtrName = "Builtin.Ptr"
+pattern Ref = QConstr PtrName RefName
 
-pattern UnitName <- ((==) "Unit" -> True) where UnitName = "Unit"
+pattern UnitName <- ((==) "Builtin.Unit" -> True) where UnitName = "Builtin.Unit"
 pattern UnitType = Global UnitName
+pattern MkUnitConstrName :: Constr
 pattern MkUnitConstrName <- ((==) "MkUnit" -> True) where MkUnitConstrName = "MkUnit"
 pattern MkUnitConstr = QConstr UnitName MkUnitConstrName
 pattern MkUnit = Con MkUnitConstr
 
-pattern Closure <- ((== QConstr "Builtin" "CL") -> True) where Closure = QConstr "Builtin" "CL"
+pattern Closure :: QConstr
+pattern Closure <- ((== "Builtin.Closure.MkClosure") -> True) where Closure = "Builtin.Closure.MkClosure"
 
-pattern Ref = QConstr PtrName RefName
-
-pattern FailName <- ((==) "fail" -> True) where FailName = "fail"
+pattern FailName <- ((==) "Builtin.fail" -> True) where FailName = "Builtin.fail"
 pattern Fail t = App (Global FailName) Explicit t
 
-pattern PiTypeName <- ((==) "Pi_" -> True) where PiTypeName = "Pi_"
+pattern PiTypeName <- ((==) "Builtin.Pi_" -> True) where PiTypeName = "Builtin.Pi_"
 
-pattern NatName <- ((==) "Nat" -> True) where NatName = "Nat"
+pattern NatName <- ((==) "Builtin.Nat" -> True) where NatName = "Builtin.Nat"
 pattern Nat = Global NatName
 
+pattern ZeroName :: Constr
 pattern ZeroName <- ((==) "Zero" -> True) where ZeroName = "Zero"
 pattern ZeroConstr = QConstr NatName ZeroName
 pattern Zero = Con ZeroConstr
 
+pattern SuccName :: Constr
 pattern SuccName <- ((==) "Succ" -> True) where SuccName = "Succ"
 pattern SuccConstr = QConstr NatName SuccName
 pattern Succ x = App (Con SuccConstr) Explicit x
 
-pattern StringName <- ((==) "String" -> True) where StringName = "String"
+pattern StringName <- ((==) "Builtin.String" -> True) where StringName = "Builtin.String"
+pattern MkStringName :: Constr
 pattern MkStringName <- ((==) "MkString" -> True) where MkStringName = "MkString"
 pattern MkStringConstr = QConstr StringName MkStringName
 
-pattern ArrayName <- ((==) "Array" -> True) where ArrayName = "Array"
+pattern ArrayName <- ((==) "Builtin.Array" -> True) where ArrayName = "Builtin.Array"
+pattern MkArrayName :: Constr
 pattern MkArrayName <- ((==) "MkArray" -> True) where MkArrayName = "MkArray"
 pattern MkArrayConstr = QConstr ArrayName MkArrayName
 
-pattern PairName <- ((==) "Pair" -> True) where PairName = "Pair"
+pattern PairName <- ((==) "Builtin.Pair" -> True) where PairName = "Builtin.Pair"
 pattern Pair = Global PairName
+pattern MkPairName :: Constr
 pattern MkPairName <- ((==) "MkPair" -> True) where MkPairName = "MkPair"
 pattern MkPairConstr = QConstr PairName MkPairName
 pattern MkPair a b = App (App (Con MkPairConstr) Explicit a) Explicit b
 
-applyName :: Int -> Name
-applyName n = "apply_" <> shower n
+applyName :: Int -> QName
+applyName n = fromString $ "Builtin.apply_" <> shower n
 
-papName :: Int -> Int -> Name
-papName k m = "pap_" <> shower k <> "_" <> shower m
+papName :: Int -> Int -> QName
+papName k m = fromString $ "Builtin.pap_" <> shower k <> "_" <> shower m
 
 addInt :: Expr v -> Expr v -> Expr v
 addInt (Lit (Integer 0)) e = e
@@ -103,7 +111,7 @@ maxInt e (Lit (Integer 0)) = e
 maxInt (Lit (Integer m)) (Lit (Integer n)) = Lit $ Integer $ max m n
 maxInt e e' = MaxInt e e'
 
-context :: Target -> HashMap Name (Definition Expr Void, Type Void)
+context :: Target -> HashMap QName (Definition Expr Void, Type Void)
 context target = HashMap.fromList
   [ (TypeName, opaqueData typeRep Type)
   , (SizeOfName, opaque $ arrow Explicit Type IntType)
@@ -130,7 +138,7 @@ context target = HashMap.fromList
     ptrSize = Lit $ Integer $ Target.ptrBytes target
     typeRep = intRep
 
-convertedContext :: Target -> HashMap Name (Sized.Definition Closed.Expr Void)
+convertedContext :: Target -> HashMap QName (Sized.Definition Closed.Expr Void)
 convertedContext target = HashMap.fromList $ concat
   [[( TypeName
     , constDef $ Closed.Sized typeSize typeSize
@@ -164,7 +172,7 @@ convertedContext target = HashMap.fromList $ concat
     byteSize = Closed.Lit $ Integer 1
     ptrSize = Closed.Lit $ Integer $ Target.ptrBytes target
 
-convertedSignatures :: Target -> HashMap Name Closed.FunSignature
+convertedSignatures :: Target -> HashMap QName Closed.FunSignature
 convertedSignatures target
   = flip HashMap.mapMaybeWithKey (convertedContext target) $ \name def ->
     case def of

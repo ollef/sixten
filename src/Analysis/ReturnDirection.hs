@@ -247,14 +247,14 @@ generaliseDefs
   $ bitraverse pure (traverse $ toReturnIndirect Projection)
 
 inferRecursiveDefs
-  :: Vector (Name, Definition Expr Void)
-  -> VIX (Vector (Name, Definition Expr Void, Signature ReturnIndirect))
+  :: Vector (QName, Definition Expr Void)
+  -> VIX (Vector (QName, Definition Expr Void, Signature ReturnIndirect))
 inferRecursiveDefs defs = do
   let names = fst <$> defs
 
   evars <- Vector.forM defs $ \(v, d) -> do
     logPretty 30 "InferDirection.inferRecursiveDefs 1" (v, show <$> d)
-    let h = fromName v
+    let h = fromQName v
         funSig = case d of
           FunctionDef _ cl (Function args s) ->
             Just

@@ -178,7 +178,7 @@ chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs) _ k =
 chooseBranch e brs retType _ = return $ Case e brs retType
 
 -- TODO: Find a less hacky way to do this
-isAbstract :: Name -> Bool
+isAbstract :: QName -> Bool
 isAbstract Builtin.AddIntName = True
 isAbstract Builtin.SubIntName = True
 isAbstract Builtin.MaxIntName = True

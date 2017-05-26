@@ -67,6 +67,7 @@ executable sixten
                        Syntax.GlobalBind
                        Syntax.Hint
                        Syntax.Literal
+                       Syntax.Module
                        Syntax.Name
                        Syntax.Pattern
                        Syntax.Sized.Closed
@@ -98,6 +99,7 @@ executable sixten
                        prelude-extras,
                        process,
                        semigroups,
+                       split,
                        temporary,
                        text,
                        transformers,

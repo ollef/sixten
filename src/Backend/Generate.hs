@@ -30,9 +30,10 @@ import Syntax.Extern(Language)
 import qualified Syntax.Extern as Extern
 import Syntax.Hint
 import Syntax.Literal
+import Syntax.Module
 import Syntax.Name
 import Syntax.Sized.Definition
-import Syntax.Sized.Extracted
+import Syntax.Sized.Extracted as Extracted
 import Syntax.Telescope
 import Util
 import Util.Tsil
@@ -41,7 +42,7 @@ import Util.Tsil
 -- Generation environment
 data GenEnv = GenEnv
   { constructorIndex :: QConstr -> Maybe Int
-  , signatures :: Name -> Maybe (Signature ReturnIndirect)
+  , signatures :: QName -> Maybe (Signature ReturnIndirect)
   }
 
 type Gen = ReaderT GenEnv (State LLVMState)
@@ -178,7 +179,7 @@ generateByteExpr expr = do
   loadByteVar "size" sizeVar
 
 unknownSize :: Name -> Expr v
-unknownSize n = Global $ "unknownSize." <> n
+unknownSize n = Global $ unqualified $ "unknownSize." <> n
 
 generateCall
   :: Maybe Language
@@ -328,7 +329,7 @@ generateFunOp e retDir argDirs = do
   funPtr <- "func-ptr" =: intToPtr (directInt funInt)
   "func" =: bitcastToFun funPtr retDir argDirs
 
-generateGlobal :: Name -> Gen Var
+generateGlobal :: QName -> Gen Var
 generateGlobal g = do
   msig <- asks (($ g) . signatures)
   ptrSize <- gets $ Target.ptrBytes . target
@@ -362,7 +363,7 @@ generateBranches caseExpr branches brCont = do
     ConBranches [(Builtin.Ref, tele, brScope)] -> mdo
       exprInt <- loadVar intSize "case-expr-int" =<< generateExpr caseExpr (unknownSize "caseRef")
       expr <- "case-expr" =: intToPtr (directInt exprInt)
-      branchLabel <- freshLabel Builtin.RefName
+      branchLabel <- freshLabel $ shower Builtin.RefName
 
       emit $ branch branchLabel
       emitLabel branchLabel
@@ -496,7 +497,7 @@ generateBranches caseExpr branches brCont = do
       emitLabel postLabel
       return $ (defaultContResult, afterDefaultLabel) : contResults
 
-generateConstant :: Visibility -> Name -> Constant Expr Var -> Gen C
+generateConstant :: Visibility -> QName -> Constant Expr Var -> Gen C
 generateConstant visibility name (Constant e) = do
   msig <- asks (($ name) . signatures)
   let gname = unOperand $ global name
@@ -509,7 +510,7 @@ generateConstant visibility name (Constant e) = do
           emitRaw $ Instr $ gname <+> "=" <+> vis <+> "unnamed_addr constant" <+> direct sz (shower l) <> ", align" <+> align
           return mempty
         _ -> do
-          let initName = unOperand $ global $ name <> "-init"
+          let initName = "@" <> text (escape $ fromQName name <> "-init")
               typ = case dir of
                 Indirect -> pointerT
                 Direct 0 -> pointerT
@@ -534,7 +535,7 @@ generateConstant visibility name (Constant e) = do
       _ -> error "generateConstant"
     _ -> error "generateConstant"
 
-generateFunction :: Visibility -> Name -> Function Expr Var -> Gen ()
+generateFunction :: Visibility -> QName -> Function Expr Var -> Gen ()
 generateFunction visibility name (Function args funScope) = do
   msig <- asks (($ name) . signatures)
   let (retDir, argDirs) = case msig of
@@ -573,7 +574,7 @@ generateFunction visibility name (Function args funScope) = do
     go (DirectVar sz n) = [direct sz n]
     go (IndirectVar n) = [pointer n]
 
-generateDefinition :: Name -> Definition Expr Var -> Gen Text
+generateDefinition :: QName -> Definition Expr Var -> Gen Text
 generateDefinition name def = case def of
   ConstantDef v c -> do
     constantInt <- generateConstant v name c
@@ -585,9 +586,9 @@ generateDefinition name def = case def of
 
 generateDeclaration :: Declaration -> Gen ()
 generateDeclaration decl
-  = declareFun (declRetDir decl) (declName decl) (declArgDirs decl)
+  = declareFun (declRetDir decl) (unqualified $ declName decl) (declArgDirs decl)
 
-genModule :: Name -> Module (Definition Expr Var) -> Module (Gen Text)
+genModule :: QName -> Extracted.Module (Definition Expr Var) -> Extracted.Module (Gen Text)
 genModule name modul = flip fmap modul $ \innards -> do
   unless (null $ moduleDecls modul) $ do
     mapM_ generateDeclaration $ moduleDecls modul
@@ -597,9 +598,9 @@ genModule name modul = flip fmap modul $ \innards -> do
 generateModule
   :: GenEnv
   -> Target
-  -> Name
-  -> Module (Definition Expr Var)
-  -> Module (Generated Text)
+  -> QName
+  -> Extracted.Module (Definition Expr Var)
+  -> Extracted.Module (Generated Text)
 generateModule env tgt x modul = fmap (\g -> runGen env g tgt) (genModule x modul)
 
 writeLlvmModule :: [Generated Text] -> Handle -> IO ()
@@ -607,7 +608,7 @@ writeLlvmModule gens handle = do
   forwardDecls <- Text.readFile =<< getDataFileName "rts/forwarddecls.ll"
   let outputStrLn = Text.hPutStrLn handle
   outputStrLn forwardDecls
-  forM_ gens $ \gen -> do
+  forM_ gens $ \gen ->
     outputStrLn $ generatedCode gen
   outputStrLn ""
   outputStrLn "define i32 @main() {"

@@ -1,15 +1,19 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module Frontend.Parse where
 
 import Control.Applicative((<**>), (<|>), Alternative)
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Char
+import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
+import Data.Maybe
 import Data.Ord
+import Data.String
 import Data.Text(Text)
 import qualified Data.Text as Text
 import qualified Data.Vector as Vector
+import qualified Text.Parser.LookAhead as LookAhead
 import qualified Text.Parser.Token.Highlight as Highlight
 import qualified Text.Trifecta as Trifecta
 import Text.Trifecta((<?>))
@@ -23,8 +27,9 @@ import Syntax.Concrete.Unscoped as Unscoped
 type Input = Text
 newtype Parser a = Parser {runParser :: StateT Delta Trifecta.Parser a}
   deriving
-    ( Monad, MonadPlus, MonadState Delta , Functor, Applicative, Alternative
-    , Trifecta.Parsing, Trifecta.CharParsing , Trifecta.DeltaParsing
+    ( Monad, MonadPlus, MonadState Delta, Functor, Applicative, Alternative
+    , Trifecta.Parsing, Trifecta.CharParsing, Trifecta.DeltaParsing
+    , LookAhead.LookAheadParsing
     )
 
 parseString :: Parser a -> String -> Trifecta.Result a
@@ -115,6 +120,9 @@ manyIndentedSameCol p
   = Trifecta.option []
   $ sameLineOrIndented >> dropAnchor (someSameCol p)
 
+optionalSI :: Parser a -> Parser (Maybe a)
+optionalSI p = Trifecta.optional (sameLineOrIndented >> p)
+
 -- | One or more on the same line or a successive but indented line.
 someSI :: Parser a -> Parser [a]
 someSI p = Trifecta.some (sameLineOrIndented >> p)
@@ -144,15 +152,32 @@ p <**>% q = p <**> (sameLineOrIndented >> q)
 
 -------------------------------------------------------------------------------
 -- * Tokens
-idStyle :: Trifecta.CharParsing m => Trifecta.IdentifierStyle m
-idStyle = Trifecta.IdentifierStyle "Dependent" start letter res Highlight.Identifier Highlight.ReservedIdentifier
-  where
-    start = Trifecta.satisfy isAlpha <|> Trifecta.oneOf "_"
-    letter = Trifecta.satisfy isAlphaNum <|> Trifecta.oneOf "_'"
-    res = HashSet.fromList ["forall", "_", "case", "of", "where"]
+idStart, idLetter, qidLetter :: Parser Char
+idStart = Trifecta.satisfy isAlpha <|> Trifecta.oneOf "_"
+idLetter = Trifecta.satisfy isAlphaNum <|> Trifecta.oneOf "_'"
+qidLetter = idLetter
+  <|> Trifecta.try (Trifecta.char '.' <* LookAhead.lookAhead idLetter)
 
-ident :: Parser Name
-ident = Trifecta.ident idStyle
+reservedIds :: HashSet String
+reservedIds = HashSet.fromList ["forall", "_", "case", "of", "where"]
+
+idStyle :: Trifecta.IdentifierStyle Parser
+idStyle = Trifecta.IdentifierStyle "identifier" idStart idLetter reservedIds Highlight.Identifier Highlight.ReservedIdentifier
+
+qidStyle :: Trifecta.IdentifierStyle Parser
+qidStyle = Trifecta.IdentifierStyle "identifier" idStart qidLetter reservedIds Highlight.Identifier Highlight.ReservedIdentifier
+
+name :: Parser Name
+name = Trifecta.ident idStyle
+
+qname :: Parser QName
+qname = Trifecta.ident qidStyle
+
+constructor :: Parser Constr
+constructor = Trifecta.ident qidStyle
+
+modulName :: Parser ModuleName
+modulName = Trifecta.ident qidStyle
 
 reserved :: String -> Parser ()
 reserved = Trifecta.reserve idStyle
@@ -160,26 +185,23 @@ reserved = Trifecta.reserve idStyle
 wildcard :: Parser ()
 wildcard = reserved "_"
 
-identOrWildcard :: Parser (Maybe Name)
-identOrWildcard
-  = Just <$> ident
+nameOrWildcard :: Parser (Maybe Name)
+nameOrWildcard
+  = Just <$> name
   <|> Nothing <$ wildcard
 
 symbol :: String -> Parser Name
-symbol = fmap (Name . Text.pack) . Trifecta.symbol
+symbol = fmap fromString . Trifecta.symbol
 
 integer :: Parser Integer
 integer = Trifecta.try Trifecta.integer
-
-constructor :: Parser Constr
-constructor = nameToConstr <$> ident
 
 -------------------------------------------------------------------------------
 -- * Patterns
 locatedPat :: Parser (Pat typ v) -> Parser (Pat typ v)
 locatedPat p = (\(pat Trifecta.:~ s) -> PatLoc (Trifecta.render s) pat) <$> Trifecta.spanned p
 
-pattern :: Parser (Pat (Type Name) Name)
+pattern :: Parser (Pat (Type QName) QName)
 pattern = locatedPat $
   ( Trifecta.try (ConPat <$> (Left <$> constructor) <*> (Vector.fromList <$> someSI plicitPattern))
     <|> atomicPattern
@@ -188,20 +210,20 @@ pattern = locatedPat $
     <|> pure id
   ) <?> "pattern"
 
-plicitPattern :: Parser (Plicitness, Pat (Type Name) Name)
+plicitPattern :: Parser (Plicitness, Pat (Type QName) QName)
 plicitPattern = (,) Implicit <$ symbol "{" <*>% pattern <*% symbol "}"
   <|> (,) Explicit <$> atomicPattern
   <?> "explicit or implicit pattern"
 
-atomicPattern :: Parser (Pat (Type Name) Name)
+atomicPattern :: Parser (Pat (Type QName) QName)
 atomicPattern = locatedPat
   $ symbol "(" *>% pattern <*% symbol ")"
-  <|> (\v -> VarPat (NameHint $ Hint $ Just v) v) <$> ident
+  <|> (\v -> VarPat (fromQName v) v) <$> qname
   <|> WildcardPat <$ wildcard
   <|> literalPat
   <?> "atomic pattern"
 
-patternBinding :: Parser [(Plicitness, Pat (Type Name) Name)]
+patternBinding :: Parser [(Plicitness, Pat (Type QName) QName)]
 patternBinding
   = go Implicit <$ symbol "{" <*> someSI atomicPattern <*% symbol ":" <*>% expr <*% symbol "}"
   <|> go Explicit <$ symbol "(" <*> someSI atomicPattern <*% symbol ":" <*>% expr <*% symbol ")"
@@ -209,34 +231,34 @@ patternBinding
   where
     go p pats t = [(p, AnnoPat t pat) | pat <- pats]
 
-somePatternBindings :: Parser [(Plicitness, Pat (Type Name) Name)]
+somePatternBindings :: Parser [(Plicitness, Pat (Type QName) QName)]
 somePatternBindings = concat <$> someSI patternBinding
 
-somePatterns :: Parser [(Plicitness, Pat (Type Name) Name)]
+somePatterns :: Parser [(Plicitness, Pat (Type QName) QName)]
 somePatterns = concat <$> someSI (Trifecta.try patternBinding <|> pure <$> plicitPattern)
 
-manyPatterns :: Parser [(Plicitness, Pat (Type Name) Name)]
+manyPatterns :: Parser [(Plicitness, Pat (Type QName) QName)]
 manyPatterns = concat <$> manySI (Trifecta.try patternBinding <|> pure <$> plicitPattern)
 
 plicitBinding :: Parser (Plicitness, Name)
 plicitBinding
-  = (,) Implicit <$ symbol "{" <*>% ident <*% symbol "}"
-  <|> (,) Explicit <$> ident
+  = (,) Implicit <$ symbol "{" <*>% name <*% symbol "}"
+  <|> (,) Explicit <$> name
   <?> "variable binding"
 
-plicitBinding' :: Parser [(Plicitness, Name, Type Name)]
+plicitBinding' :: Parser [(Plicitness, Name, Type v)]
 plicitBinding'
-  = (\(p, n) -> [(p, n, Wildcard)])<$> plicitBinding
+  = (\(p, n) -> [(p, n, Wildcard)]) <$> plicitBinding
 
-typedBinding :: Parser [(Plicitness, Name, Type Name)]
+typedBinding :: Parser [(Plicitness, Name, Type QName)]
 typedBinding = fmap flatten
-  $ (,,) Implicit <$ symbol "{" <*> someSI ident <*% symbol ":" <*>% expr <*% symbol "}"
-  <|> (,,) Explicit <$ symbol "(" <*> someSI ident <*% symbol ":" <*>% expr <*% symbol ")"
+  $ (,,) Implicit <$ symbol "{" <*> someSI name <*% symbol ":" <*>% expr <*% symbol "}"
+  <|> (,,) Explicit <$ symbol "(" <*> someSI name <*% symbol ":" <*>% expr <*% symbol ")"
   <?> "typed variable binding"
   where
-    flatten (p, names, t) = [(p, name, t) | name <- names]
+    flatten (p, names, t) = [(p, n, t) | n <- names]
 
-manyTypedBindings :: Parser [(Plicitness, Name, Type Name)]
+manyTypedBindings :: Parser [(Plicitness, Name, Type QName)]
 manyTypedBindings = concat <$> manySI (Trifecta.try typedBinding <|> plicitBinding')
 
 -------------------------------------------------------------------------------
@@ -244,11 +266,11 @@ manyTypedBindings = concat <$> manySI (Trifecta.try typedBinding <|> plicitBindi
 located :: Parser (Expr v) -> Parser (Expr v)
 located p = (\(e Trifecta.:~ s) -> SourceLoc (Trifecta.render s) e) <$> Trifecta.spanned p
 
-atomicExpr :: Parser (Expr Name)
+atomicExpr :: Parser (Expr QName)
 atomicExpr = located
   $ literal
   <|> Wildcard <$ wildcard
-  <|> Var <$> ident
+  <|> Var <$> qname
   <|> abstr (reserved "forall") Unscoped.pis
   <|> abstr (symbol   "\\") Unscoped.lams
   <|> Case <$ reserved "case" <*>% expr <*% reserved "of" <*> branches
@@ -259,12 +281,12 @@ atomicExpr = located
   where
     abstr t c = c <$ t <*>% somePatterns <*% symbol "." <*>% expr
 
-branches :: Parser [(Pat (Type Name) Name, Expr Name)]
+branches :: Parser [(Pat (Type QName) QName, Expr QName)]
 branches = manyIndentedSameCol branch
   where
     branch = (,) <$> pattern <*% symbol "->" <*>% expr
 
-expr :: Parser (Expr Name)
+expr :: Parser (Expr QName)
 expr = located
   $ Unscoped.pis <$> Trifecta.try (somePatternBindings <*% symbol "->") <*>% expr
   <|> plicitPi Implicit <$ symbol "{" <*>% expr <*% symbol "}" <*% symbol "->" <*>% expr
@@ -275,14 +297,14 @@ expr = located
 
     arr = flip (plicitPi Explicit) <$% symbol "->" <*>% expr
 
-    argument :: Parser (Plicitness, Expr Name)
+    argument :: Parser (Plicitness, Expr QName)
     argument
       = (,) Implicit <$ symbol "{" <*>% expr <*% symbol "}"
       <|> (,) Explicit <$> atomicExpr
 
 -------------------------------------------------------------------------------
 -- * Extern C
-externCExpr :: Parser (Extern (Expr Name))
+externCExpr :: Parser (Extern (Expr QName))
 externCExpr
   = Extern C . fmap (either id $ ExternPart . Text.pack) <$ Trifecta.string "(C|" <*> go
   <?> "Extern C expression"
@@ -304,12 +326,12 @@ externCExpr
 
 -------------------------------------------------------------------------------
 -- * Literals
-literal :: Parser (Expr Name)
+literal :: Parser (Expr QName)
 literal
   = Lit . Integer <$> integer
   <|> string <$> Trifecta.stringLiteral
 
-literalPat :: Parser (Pat (Type Name) Name)
+literalPat :: Parser (Pat t n)
 literalPat
   = LitPat . Integer <$> integer
   <|> stringPat <$> Trifecta.stringLiteral
@@ -318,24 +340,24 @@ literalPat
 -- * Definitions
 -- | A definition or type declaration on the top-level
 data TopLevelParsed v
-  = ParsedClause (Maybe v) (Unscoped.Clause v)
-  | ParsedTypeDecl v (Type v)
-  | ParsedData v [(Plicitness, v, Type v)] [ConstrDef (Type v)]
+  = ParsedClause (Maybe Name) (Unscoped.Clause v)
+  | ParsedTypeDecl Name (Type v)
+  | ParsedData Name [(Plicitness, Name, Type v)] [ConstrDef (Type v)]
   deriving (Show)
 
-topLevel :: Parser (TopLevelParsed Name, Span)
+topLevel :: Parser (TopLevelParsed QName, Span)
 topLevel = (\(d Trifecta.:~ s) -> (d, s)) <$> Trifecta.spanned (dataDef <|> def)
 
-def :: Parser (TopLevelParsed Name)
+def :: Parser (TopLevelParsed QName)
 def
-  = ident <**>% (typeDecl <|> mkDef Just)
+  = name <**>% (typeDecl <|> mkDef Just)
   <|> wildcard <**>% mkDef (const Nothing)
   where
     typeDecl = flip ParsedTypeDecl <$ symbol ":" <*>% expr
     mkDef f = (\ps e n -> ParsedClause (f n) (Unscoped.Clause ps e)) <$> (Vector.fromList <$> manyPatterns) <*% symbol "=" <*>% expr
 
-dataDef :: Parser (TopLevelParsed Name)
-dataDef = ParsedData <$ reserved "type" <*>% ident <*> manyTypedBindings <*>%
+dataDef :: Parser (TopLevelParsed QName)
+dataDef = ParsedData <$ reserved "type" <*>% name <*> manyTypedBindings <*>%
   (concat <$% reserved "where" <*> manyIndentedSameCol conDef
   <|> id <$% symbol "=" <*>% sepBySI adtConDef (symbol "|"))
   where
@@ -345,5 +367,29 @@ dataDef = ParsedData <$ reserved "type" <*>% ident <*> manyTypedBindings <*>%
     adtConDef = ConstrDef <$> constructor <*> (adtConType <$> manySI atomicExpr)
     adtConType es = Unscoped.pis ((\e -> (Explicit, AnnoPat e WildcardPat)) <$> es) Wildcard
 
-program :: Parser [(TopLevelParsed Name, Span)]
-program = Trifecta.whiteSpace >> dropAnchor (manySameCol $ dropAnchor topLevel)
+-------------------------------------------------------------------------------
+-- * Module
+-- | A definition or type declaration on the top-level
+modul :: Parser (Module [(TopLevelParsed QName, Span)])
+modul = Trifecta.whiteSpace >> dropAnchor
+  ((Module <$ reserved "module" <*>% modulName <*>% exposedNames
+     <|> pure (Module "Main" AllExposed))
+  <*> manySameCol (dropAnchor impor)
+  <*> manySameCol (dropAnchor topLevel))
+
+impor :: Parser Import
+impor
+  = go <$ reserved "import" <*>% modulName
+  <*> optionalSI
+    (reserved "as" *>% modulName)
+  <*> optionalSI
+    (reserved "exposing" *>% exposedNames)
+  where
+    go n malias mexposed = Import n (fromMaybe n malias) (fromMaybe mempty mexposed)
+
+exposedNames :: Parser ExposedNames
+exposedNames = symbol "(" *>% go <*% symbol ")"
+  where
+    go
+      = AllExposed <$% symbol ".."
+      <|> Exposed . HashSet.fromList <$>% sepBySI (symbol ",") name

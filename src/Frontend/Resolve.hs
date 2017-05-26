@@ -19,33 +19,34 @@ import Syntax.Concrete.Unscoped as Unscoped
 import Frontend.Parse(TopLevelParsed(..))
 import Util
 
-type MaybeTypedDef = (Maybe (Definition Name, Span), Maybe (Expr Name, Span))
-type Resolve = (HashMap Name MaybeTypedDef, Maybe Name)
+type MaybeTypedDef = (Maybe (Definition QName, Span), Maybe (Type QName, Span))
+type Resolve = (HashMap QName MaybeTypedDef, Maybe Name)
 
 resolveName
-  :: Resolve
-  -> (TopLevelParsed Name, Span)
+  :: ModuleName
+  -> Resolve
+  -> (TopLevelParsed QName, Span)
   -> Except Text Resolve
-resolveName (prog, prevName) (parsedDef, loc) = case parsedDef of
+resolveName modName (prog, prevName) (parsedDef, loc) = case parsedDef of
   ParsedClause mName (Unscoped.Clause pats expr) -> case mName <|> prevName of
     Nothing -> err loc
       "Unresolved wildcard"
       ["Wildcard definitions refer to the first named definition or type declaration above the current line."]
     Just name -> do
-      prog' <- insertWithM mergeTypedDef name
+      prog' <- insertWithM mergeTypedDef (QName modName name)
         (Just (Definition $ pure $ Unscoped.Clause pats expr, loc), Nothing)
         prog
       return (prog', Just name)
   ParsedTypeDecl name typ -> do
-    prog' <- insertWithM mergeTypedDef name
+    prog' <- insertWithM mergeTypedDef (QName modName name)
       (Nothing, Just (typ, loc))
       prog
     return (prog', Just name)
   ParsedData name params dataDef -> do
-    let pats = (\(p, n, t) -> (p, AnnoPat t $ VarPat (nameHint n) n)) <$> params
-        typ = Unscoped.pis pats (Global Builtin.TypeName)
+    let pats = (\(p, n, t) -> (p, AnnoPat t $ VarPat (nameHint n) $ unqualified n)) <$> params
+        typ = Unscoped.pis pats (Var Builtin.TypeName)
         tele = (\(p, n, t) -> (p, n, t)) <$> params
-    prog' <- insertWithM mergeTypedDef name
+    prog' <- insertWithM mergeTypedDef (QName modName name)
       (Just (DataDefinition tele dataDef, loc), Just (typ, loc))
       prog
     return (prog', Nothing)
@@ -114,10 +115,11 @@ err loc heading docs
   $ Err (Just heading) docs mempty
 
 program
-  :: [(TopLevelParsed Name, Span)]
-  -> Except Text (HashMap Name (SourceLoc, Definition Name, Type Name))
-program xs = do
-  (prog, _) <- foldM resolveName (mempty, Nothing) xs
+  :: ModuleName
+  -> [(TopLevelParsed QName, Span)]
+  -> Except Text (HashMap QName (SourceLoc, Definition QName, Type QName))
+program modName xs = do
+  (prog, _) <- foldM (resolveName modName) (mempty, Nothing) xs
   forM prog $ \(mdef, mtyp) -> case (mdef, mtyp) of
     (Nothing, Nothing) -> error "Resolve: The impossible happened"
     (Nothing, Just (_, loc)) -> err loc
@@ -125,3 +127,10 @@ program xs = do
       []
     (Just (def, defLoc), Just (typ, typLoc)) -> return (render $ addSpan defLoc typLoc, def, typ)
     (Just (def, defLoc), Nothing) -> return (render defLoc, def, Wildcard)
+
+modul
+  :: Module [(TopLevelParsed QName, Span)]
+  -> Except Text (Module (HashMap QName (SourceLoc, Definition QName, Type QName)))
+modul m = do
+  newContents <- program (moduleName m) $ moduleContents m
+  return m { moduleContents = newContents }
