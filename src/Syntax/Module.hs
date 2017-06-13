@@ -108,7 +108,7 @@ instance Pretty QName where
 instance Pretty QConstr where
   prettyM (QConstr q n) = prettyM q <> "." <> prettyM n
 instance Pretty ModuleName where
-  prettyM (ModuleName parts) = hcat $ intersperse "," (prettyM <$> toList parts)
+  prettyM (ModuleName parts) = hcat $ intersperse "." (prettyM <$> toList parts)
 
 instance Monoid ExposedNames where
   mempty = Exposed mempty
