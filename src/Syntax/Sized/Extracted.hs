@@ -32,11 +32,10 @@ data Declaration = Declaration
   , declArgDirs :: Vector Direction
   } deriving (Eq, Ord, Show)
 
--- TODO naming?
-data Module innards = Module
+data Module contents = Module
   { moduleDecls :: [Declaration]
   , moduleExterns :: [(Language, Text)]
-  , moduleInnards :: innards
+  , moduleContents :: contents
   } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 -------------------------------------------------------------------------------

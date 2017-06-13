@@ -101,7 +101,7 @@ processConvertedGroup
   >=> prettyGroup "Directed (lifted)" vac
 
   >=> extractExternGroup
-  >=> prettyGroup "Extern extracted" (vac . Extracted.moduleInnards)
+  >=> prettyGroup "Extern extracted" (vac . Extracted.moduleContents)
 
   >=> generateGroup
   where
@@ -337,7 +337,7 @@ processFile args = do
         Left err -> return $ Error $ TypeError $ Text.pack err
         Right res -> do
           withFile (procLlOutput args) WriteMode $
-            Generate.writeLlvmModule (Extracted.moduleInnards <$> res)
+            Generate.writeLlvmModule (Extracted.moduleContents <$> res)
           fmap Success $ case ExtractExtern.moduleExterns C res of
             [] -> return []
             externC -> withFile (procCOutput args) WriteMode $ \cHandle -> do
