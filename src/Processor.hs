@@ -353,7 +353,7 @@ processFile args = do
     context = Builtin.context target
     process builtins1 builtins2 prog = do
       addContext context
-      addModule "Builtin" $ HashSet.fromList $ qnameName <$> HashMap.keys (Builtin.context target)
+      addModule "Sixten.Builtin" $ HashSet.fromList $ qnameName <$> HashMap.keys (Builtin.context target)
       addConvertedSignatures $ Builtin.convertedSignatures target
       builtinResults1 <- processResolved builtins1
       builtinResults2 <- processResolved builtins2

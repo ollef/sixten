@@ -20,35 +20,35 @@ import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.Definition as Sized
 import Util
 
-pattern IntName <- ((==) "Builtin.Int" -> True) where IntName = "Builtin.Int"
+pattern IntName <- ((==) "Sixten.Builtin.Int" -> True) where IntName = "Sixten.Builtin.Int"
 pattern IntType = Global IntName
 
-pattern ByteName <- ((==) "Builtin.Byte" -> True) where ByteName = "Builtin.Byte"
+pattern ByteName <- ((==) "Sixten.Builtin.Byte" -> True) where ByteName = "Sixten.Builtin.Byte"
 pattern ByteType = Global ByteName
 
-pattern AddIntName <- ((==) "Builtin.addInt" -> True) where AddIntName = "Builtin.addInt"
+pattern AddIntName <- ((==) "Sixten.Builtin.addInt" -> True) where AddIntName = "Sixten.Builtin.addInt"
 pattern AddInt e1 e2 = App (App (Global AddIntName) Explicit e1) Explicit e2
 
-pattern SubIntName <- ((==) "Builtin.subInt" -> True) where SubIntName = "Builtin.subInt"
+pattern SubIntName <- ((==) "Sixten.Builtin.subInt" -> True) where SubIntName = "Sixten.Builtin.subInt"
 pattern SubInt e1 e2 = App (App (Global SubIntName) Explicit e1) Explicit e2
 
-pattern MaxIntName <- ((==) "Builtin.maxInt" -> True) where MaxIntName = "Builtin.maxInt"
+pattern MaxIntName <- ((==) "Sixten.Builtin.maxInt" -> True) where MaxIntName = "Sixten.Builtin.maxInt"
 pattern MaxInt e1 e2 = App (App (Global MaxIntName) Explicit e1) Explicit e2
 
-pattern PrintIntName <- ((==) "Builtin.printInt" -> True) where PrintIntName = "Builtin.printInt"
+pattern PrintIntName <- ((==) "Sixten.Builtin.printInt" -> True) where PrintIntName = "Sixten.Builtin.printInt"
 pattern PrintInt e1 = App (Global PrintIntName) Explicit e1
 
-pattern TypeName <- ((==) "Builtin.Type" -> True) where TypeName = "Builtin.Type"
+pattern TypeName <- ((==) "Sixten.Builtin.Type" -> True) where TypeName = "Sixten.Builtin.Type"
 pattern Type = Global TypeName
 
-pattern SizeOfName <- ((==) "Builtin.sizeOf" -> True) where SizeOfName = "Builtin.sizeOf"
+pattern SizeOfName <- ((==) "Sixten.Builtin.sizeOf" -> True) where SizeOfName = "Sixten.Builtin.sizeOf"
 
 pattern RefName :: Constr
 pattern RefName <- ((==) "Ref" -> True) where RefName = "Ref"
-pattern PtrName <- ((==) "Builtin.Ptr" -> True) where PtrName = "Builtin.Ptr"
+pattern PtrName <- ((==) "Sixten.Builtin.Ptr" -> True) where PtrName = "Sixten.Builtin.Ptr"
 pattern Ref = QConstr PtrName RefName
 
-pattern UnitName <- ((==) "Builtin.Unit" -> True) where UnitName = "Builtin.Unit"
+pattern UnitName <- ((==) "Sixten.Builtin.Unit" -> True) where UnitName = "Sixten.Builtin.Unit"
 pattern UnitType = Global UnitName
 pattern MkUnitConstrName :: Constr
 pattern MkUnitConstrName <- ((==) "MkUnit" -> True) where MkUnitConstrName = "MkUnit"
@@ -56,14 +56,14 @@ pattern MkUnitConstr = QConstr UnitName MkUnitConstrName
 pattern MkUnit = Con MkUnitConstr
 
 pattern Closure :: QConstr
-pattern Closure <- ((== "Builtin.Closure.MkClosure") -> True) where Closure = "Builtin.Closure.MkClosure"
+pattern Closure <- ((== "Sixten.Builtin.Closure.MkClosure") -> True) where Closure = "Sixten.Builtin.Closure.MkClosure"
 
-pattern FailName <- ((==) "Builtin.fail" -> True) where FailName = "Builtin.fail"
+pattern FailName <- ((==) "Sixten.Builtin.fail" -> True) where FailName = "Sixten.Builtin.fail"
 pattern Fail t = App (Global FailName) Explicit t
 
-pattern PiTypeName <- ((==) "Builtin.Pi_" -> True) where PiTypeName = "Builtin.Pi_"
+pattern PiTypeName <- ((==) "Sixten.Builtin.Pi_" -> True) where PiTypeName = "Sixten.Builtin.Pi_"
 
-pattern NatName <- ((==) "Builtin.Nat" -> True) where NatName = "Builtin.Nat"
+pattern NatName <- ((==) "Sixten.Builtin.Nat" -> True) where NatName = "Sixten.Builtin.Nat"
 pattern Nat = Global NatName
 
 pattern ZeroName :: Constr
@@ -76,17 +76,17 @@ pattern SuccName <- ((==) "Succ" -> True) where SuccName = "Succ"
 pattern SuccConstr = QConstr NatName SuccName
 pattern Succ x = App (Con SuccConstr) Explicit x
 
-pattern StringName <- ((==) "Builtin.String" -> True) where StringName = "Builtin.String"
+pattern StringName <- ((==) "Sixten.Builtin.String" -> True) where StringName = "Sixten.Builtin.String"
 pattern MkStringName :: Constr
 pattern MkStringName <- ((==) "MkString" -> True) where MkStringName = "MkString"
 pattern MkStringConstr = QConstr StringName MkStringName
 
-pattern ArrayName <- ((==) "Builtin.Array" -> True) where ArrayName = "Builtin.Array"
+pattern ArrayName <- ((==) "Sixten.Builtin.Array" -> True) where ArrayName = "Sixten.Builtin.Array"
 pattern MkArrayName :: Constr
 pattern MkArrayName <- ((==) "MkArray" -> True) where MkArrayName = "MkArray"
 pattern MkArrayConstr = QConstr ArrayName MkArrayName
 
-pattern PairName <- ((==) "Builtin.Pair" -> True) where PairName = "Builtin.Pair"
+pattern PairName <- ((==) "Sixten.Builtin.Pair" -> True) where PairName = "Sixten.Builtin.Pair"
 pattern Pair = Global PairName
 pattern MkPairName :: Constr
 pattern MkPairName <- ((==) "MkPair" -> True) where MkPairName = "MkPair"
@@ -94,10 +94,10 @@ pattern MkPairConstr = QConstr PairName MkPairName
 pattern MkPair a b = App (App (Con MkPairConstr) Explicit a) Explicit b
 
 applyName :: Int -> QName
-applyName n = fromString $ "Builtin.apply_" <> shower n
+applyName n = fromString $ "Sixten.Builtin.apply_" <> shower n
 
 papName :: Int -> Int -> QName
-papName k m = fromString $ "Builtin.pap_" <> shower k <> "_" <> shower m
+papName k m = fromString $ "Sixten.Builtin.pap_" <> shower k <> "_" <> shower m
 
 addInt :: Expr v -> Expr v -> Expr v
 addInt (Lit (Integer 0)) e = e
@@ -178,7 +178,7 @@ convertedSignatures target
     case def of
       Sized.FunctionDef _ _ (Sized.Function tele s) -> case fromScope s of
         Closed.Anno _ t -> Just (tele, toScope t)
-        _ -> error $ "Builtin.convertedSignatures " <> show name
+        _ -> error $ "Sixten.Builtin.convertedSignatures " <> show name
       Sized.ConstantDef _ _ -> Nothing
 
 deref :: Target -> Closed.Expr v -> Closed.Expr v
@@ -193,7 +193,7 @@ deref target e
     $ Closed.Var $ B 0
     )
   where
-    unknownSize = global "Builtin.deref.UnknownSize"
+    unknownSize = global "Sixten.Builtin.deref.UnknownSize"
     intSize = Closed.Lit $ Integer $ Target.ptrBytes target
 
 maxArity :: Num n => n
@@ -208,7 +208,7 @@ apply target numArgs
     $ (\n -> (fromText $ "size" <> shower (unTele n), (), Scope intSize)) <$> Vector.enumFromN 0 numArgs
     <|> (\n -> (fromText $ "x" <> shower (unTele n), (), Scope $ pure $ B $ 1 + n)) <$> Vector.enumFromN 0 numArgs)
   $ toScope
-  $ Closed.Sized (Closed.Global "Builtin.apply.unknownSize")
+  $ Closed.Sized (Closed.Global "Sixten.Builtin.apply.unknownSize")
   $ Closed.Case (deref target $ Closed.Var $ B 0)
   $ ConBranches
   $ pure
@@ -264,7 +264,7 @@ pap target k m
     $ (\n -> (fromText $ "size" <> shower (unTele n), (), Scope intSize)) <$> Vector.enumFromN 0 k
     <|> (\n -> (fromText $ "x" <> shower (unTele n), (), Scope $ pure $ B $ 1 + n)) <$> Vector.enumFromN 0 k)
   $ toScope
-  $ Closed.Sized (Closed.Global "Builtin.pap.unknownSize")
+  $ Closed.Sized (Closed.Global "Sixten.Builtin.pap.unknownSize")
   $ Closed.Case (deref target $ Closed.Var $ B 0)
   $ ConBranches
   $ pure

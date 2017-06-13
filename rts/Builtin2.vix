@@ -1,4 +1,4 @@
-module Builtin(..)
+module Sixten.Builtin(..)
 
 type Unit = MkUnit
 type Pair A B = MkPair A B

@@ -63,7 +63,7 @@ scopeCheckModule modul = do
         [ (unqualified $ qnameName qn, HashSet.singleton qn)
         | qn <- localNames
         ]
-      imports = Import "Builtin" "Builtin" AllExposed : moduleImports modul
+      imports = Import "Sixten.Builtin" "Sixten.Builtin" AllExposed : moduleImports modul
       aliases = multiUnions $ localAliases : (importedAliases otherNames <$> imports)
       lookupAlias qname
         | HashSet.size candidates == 1 = return $ head $ HashSet.toList candidates
