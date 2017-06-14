@@ -1,0 +1,4 @@
+import Sixten.Builtin as Import1
+import Sixten.Builtin as Import2
+
+test = Import2.printInt ((\x y. x) 223 (Import1.printInt 123))
