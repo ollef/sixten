@@ -33,7 +33,6 @@ Language
     {l = A} : {l : A} : Type
   Specialisation pragma
   * Modules
-    Add tests for using builtins qualified
     Split Processor into File, Def, and Modules processors
     Add multi-file tests and test simple imports and exports
     Revamp handling of constructors (currently doesn't really work)
