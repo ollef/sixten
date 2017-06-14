@@ -48,7 +48,7 @@ executable sixten
                        Meta
                        Paths_sixten
                        Pretty
-                       Processor
+                       Processor.File
                        Syntax
                        Syntax.Abstract
                        Syntax.Abstract.Pattern

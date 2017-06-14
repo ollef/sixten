@@ -5,7 +5,7 @@ import System.Exit
 import System.Process
 
 import qualified Command.Compile as Compile
-import qualified Processor
+import qualified Processor.File as Processor
 
 data Options = Options
   { expectedOutputFile :: Maybe FilePath

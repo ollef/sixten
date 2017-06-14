@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, FlexibleContexts, OverloadedStrings #-}
-module Processor where
+module Processor.File where
 
 import Control.Monad.Except
 import Control.Monad.Identity

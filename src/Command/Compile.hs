@@ -13,7 +13,7 @@ import System.Process
 
 import qualified Backend.Target as Target
 import Backend.Target(Target)
-import qualified Processor
+import qualified Processor.File as Processor
 
 data Options = Options
   { inputFile :: FilePath

@@ -4,7 +4,7 @@ import Options.Applicative
 import System.Process
 
 import qualified Command.Compile as Compile
-import qualified Processor
+import qualified Processor.File as Processor
 
 data Options = Options
   { compileOptions :: Compile.Options
