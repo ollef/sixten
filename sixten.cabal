@@ -25,6 +25,7 @@ executable sixten
                        Analysis.Simplify
                        Backend.Close
                        Backend.ClosureConvert
+                       Backend.Compile
                        Backend.ExtractExtern
                        Backend.Generate
                        Backend.LLVM
@@ -33,6 +34,7 @@ executable sixten
                        Backend.Target
                        Builtin
                        Command.Compile
+                       Command.CompileOptions
                        Command.Run
                        Command.Test
                        Frontend.Parse
@@ -48,7 +50,9 @@ executable sixten
                        Meta
                        Paths_sixten
                        Pretty
+                       Processor.Error
                        Processor.File
+                       Processor.Files
                        Syntax
                        Syntax.Abstract
                        Syntax.Abstract.Pattern
@@ -92,7 +96,6 @@ executable sixten
                        filepath,
                        hashable,
                        mmorph,
-                       monad-st,
                        mtl,
                        optparse-applicative,
                        parsers,

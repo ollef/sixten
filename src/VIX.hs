@@ -65,9 +65,8 @@ emptyVIXState target handle verbosity = VIXState
 newtype VIX a = VIX (ExceptT String (StateT VIXState IO) a)
   deriving (Functor, Applicative, Monad, MonadFix, MonadError String, MonadState VIXState, MonadIO)
 
-instance MonadST VIX where
-  type World VIX = RealWorld
-  liftST = VIX . liftST
+liftST :: ST RealWorld a -> VIX a
+liftST = VIX . liftIO . stToIO
 
 unVIX
   :: VIX a

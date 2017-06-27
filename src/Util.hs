@@ -3,7 +3,6 @@
 module Util where
 
 import Bound
-import Bound.Scope
 import Bound.Var
 import Control.Monad.Morph
 import Control.Monad.State
@@ -132,9 +131,6 @@ forWithPrefixM
   -> (v -> Vector v' -> m v')
   -> m (Vector v')
 forWithPrefixM = flip mapWithPrefixM
-
-instance MFunctor (Scope b) where
-  hoist = hoistScope
 
 type MultiHashMap k v = HashMap k (HashSet v)
 
