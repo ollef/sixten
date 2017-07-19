@@ -150,6 +150,7 @@ clangCompile opts tgt cFile = do
   callProcess "clang" $ optimisationFlags opts ++
     [ "-march=" <> Target.architecture tgt
     , "-fvisibility=internal"
+    , "-fPIC"
     , "-S"
     , "-emit-llvm"
     , cFile
@@ -169,6 +170,7 @@ llvmCompile opts tgt llFile = do
         = optimisationFlags opts ++
         [ "-filetype=" <> ft
         , "-march=" <> Target.architecture tgt
+        , "-relocation-model=pic"
         , llFile
         , "-o", o
         ]
