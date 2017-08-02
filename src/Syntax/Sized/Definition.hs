@@ -3,8 +3,7 @@ module Syntax.Sized.Definition where
 
 import Bound
 import Control.Monad.Morph
-import Data.Bifunctor
-import qualified Data.HashMap.Lazy as HashMap
+import Data.Foldable
 import Data.Monoid
 import Data.String
 import Data.Void
@@ -41,9 +40,7 @@ dependencyOrder
   :: (GlobalBind expr, Foldable expr)
   => [(QName, Definition expr Void)]
   -> [[(QName, Definition expr Void)]]
-dependencyOrder defs = fmap (\n -> (n, m HashMap.! n)) <$> topoSort (second (bound absurd pure) <$> defs)
-  where
-    m = HashMap.fromList defs
+dependencyOrder = topoSortWith fst (toList . bound absurd pure . snd)
 
 -------------------------------------------------------------------------------
 -- Instances
