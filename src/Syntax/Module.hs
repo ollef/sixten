@@ -17,6 +17,7 @@ import GHC.Generics(Generic)
 import Pretty
 import Syntax.Name
 import Util
+import Util.TopoSort
 
 data QName = QName !ModuleName !Name
   deriving (Eq, Generic, Ord, Show)
@@ -135,3 +136,9 @@ importedAliases modules (Import modName asName exposed) =
       [ (f name, HashSet.singleton $ QName modName name)
       | name <- HashSet.toList names
       ]
+
+dependencyOrder
+  :: (Foldable t, Functor t)
+  => t (Module contents)
+  -> [[Module contents]]
+dependencyOrder = topoSortWith moduleName $ fmap importModule . moduleImports
