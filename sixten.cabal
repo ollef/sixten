@@ -34,7 +34,7 @@ executable sixten
                        Backend.Target
                        Builtin
                        Command.Compile
-                       Command.CompileOptions
+                       Command.Compile.Options
                        Command.Run
                        Command.Test
                        Frontend.Parse

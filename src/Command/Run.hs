@@ -1,10 +1,12 @@
 module Command.Run where
 
+import Data.Monoid
 import Options.Applicative
 import System.Process
 
 import qualified Command.Compile as Compile
-import qualified Processor.File as Processor
+import qualified Command.Compile.Options as Compile
+import qualified Processor.Error as Processor
 
 data Options = Options
   { compileOptions :: Compile.Options

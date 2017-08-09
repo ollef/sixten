@@ -1,29 +1,19 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Command.Compile where
 
-import Control.Monad
-import Data.Maybe
+import Data.Monoid
 import GHC.IO.Handle
 import Options.Applicative
 import System.Directory
 import System.FilePath
 import System.IO
 import System.IO.Temp
-import System.Process
 
+import qualified Backend.Compile as Compile
 import qualified Backend.Target as Target
-import Backend.Target(Target)
-import qualified Processor.File as Processor
-
-data Options = Options
-  { inputFile :: FilePath
-  , maybeOutputFile :: Maybe FilePath
-  , target :: Maybe String
-  , optimisation :: Maybe String
-  , assemblyDir :: Maybe FilePath
-  , verbosity :: Int
-  , logFile :: Maybe FilePath
-  } deriving (Show)
+import Command.Compile.Options
+import qualified Processor.Error as Processor
+import qualified Processor.Files as Processor
 
 optionsParserInfo :: ParserInfo Options
 optionsParserInfo = info (helper <*> optionsParser)
@@ -33,9 +23,9 @@ optionsParserInfo = info (helper <*> optionsParser)
 
 optionsParser :: Parser Options
 optionsParser = Options
-  <$> strArgument
-    (metavar "FILE"
-    <> help "Input source FILE"
+  <$> some (strArgument
+    $ metavar "FILES..."
+    <> help "Input source FILES"
     <> action "file"
     )
   <*> optional (strOption
@@ -90,104 +80,48 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
   Left err -> onError $ Processor.CommandLineError err
   Right tgt ->
     withAssemblyDir (assemblyDir opts) $ \asmDir ->
-    withOutputFile (maybeOutputFile opts) $ \outputFile ->
+    withOutputFile firstInputFile (maybeOutputFile opts) $ \outputFile ->
     withLogHandle (logFile opts) $ \logHandle -> do
-      let llFile = asmDir </> fileName <.> "ll"
-          linkedLlFileName = asmDir </> fileName <.> "linked" <.> "ll"
-          cFile = asmDir </> fileName <.> "c"
-      procResult <- Processor.processFile Processor.ProcessFileArgs
-        { Processor.procFile = inputFile opts
-        , Processor.procLlOutput = llFile
-        , Processor.procCOutput = cFile
-        , Processor.procTarget = tgt
-        , Processor.procLogHandle = logHandle
-        , Processor.procVerbosity = verbosity opts
+      let linkedLlFileName = asmDir </> firstInputFile <.> "linked" <.> "ll" -- TODO
+      procResult <- Processor.processFiles Processor.Arguments
+        { Processor.sourceFiles = inputFiles opts
+        , Processor.assemblyDir = asmDir
+        , Processor.target = tgt
+        , Processor.logHandle = logHandle
+        , Processor.verbosity = verbosity opts
         }
       case procResult of
         Processor.Error err -> onError err
-        Processor.Success cFiles -> do
-          cLlFiles <- forM cFiles $ clangCompile opts tgt
-          linkedLlFile <- llvmLink (llFile : cLlFiles) linkedLlFileName
-          optLlFile <- llvmOptimise opts linkedLlFile
-          objFile <- llvmCompile opts tgt optLlFile
-          assemble opts objFile outputFile
+        Processor.Success result -> do
+          Compile.compile opts Compile.Arguments
+            { Compile.cFiles = Processor.cFiles result
+            , Compile.llFiles = Processor.llFiles result
+            , Compile.linkedLlFileName = linkedLlFileName
+            , Compile.target = tgt
+            , Compile.outputFile = outputFile
+            }
           onSuccess outputFile
   where
-    (inputDir, inputFileName) = splitFileName $ inputFile opts
-    fileName = dropExtension inputFileName
+    -- TODO should use the main file instead
+    firstInputFile = case inputFiles opts of
+      x:_ -> x
+      _ -> "unknown"
 
     withAssemblyDir Nothing k = withSystemTempDirectory "sixten" k
     withAssemblyDir (Just dir) k = do
       createDirectoryIfMissing True dir
       k dir
-    withOutputFile Nothing k
+    withOutputFile inputFile Nothing k
       = withTempFile inputDir fileName $ \outputFile outputFileHandle -> do
         hClose outputFileHandle
         k outputFile
-    withOutputFile (Just o) k = k o
+      where
+        (inputDir, inputFileName) = splitFileName inputFile
+        fileName = dropExtension inputFileName
+
+    withOutputFile _ (Just o) k = k o
     withLogHandle Nothing k = k stdout
     withLogHandle (Just file) k = withFile file WriteMode k
-
-optimisationFlags :: Options -> [String]
-optimisationFlags opts = case optimisation opts of
-  Nothing -> []
-  Just optLevel -> ["-O" <> optLevel]
-
-llvmOptimise :: Options -> FilePath -> IO FilePath
-llvmOptimise opts llFile
-  | isNothing $ optimisation opts = return llFile
-  | otherwise = do
-    let optLlFile = replaceExtension llFile "opt.ll"
-    callProcess "opt" $ optimisationFlags opts ++
-      [ "-S", llFile
-      , "-o", optLlFile
-      ]
-    return optLlFile
-
-clangCompile :: Options -> Target -> FilePath -> IO FilePath
-clangCompile opts tgt cFile = do
-  let outputFile = cFile <> ".ll"
-  callProcess "clang" $ optimisationFlags opts ++
-    [ "-march=" <> Target.architecture tgt
-    , "-fvisibility=internal"
-    , "-fPIC"
-    , "-S"
-    , "-emit-llvm"
-    , cFile
-    , "-o", outputFile
-    ]
-  return outputFile
-
-llvmLink :: [FilePath] -> FilePath -> IO FilePath
-llvmLink [file] _outputFile = return file
-llvmLink files outputFile = do
-  callProcess "llvm-link" $ ["-o=" <> outputFile, "-S"] ++ files
-  return outputFile
-
-llvmCompile :: Options -> Target -> FilePath -> IO FilePath
-llvmCompile opts tgt llFile = do
-  let flags ft o
-        = optimisationFlags opts ++
-        [ "-filetype=" <> ft
-        , "-march=" <> Target.architecture tgt
-        , "-relocation-model=pic"
-        , llFile
-        , "-o", o
-        ]
-      asmFile = replaceExtension llFile "s"
-      objFile = replaceExtension llFile "o"
-  when (isJust $ assemblyDir opts) $
-    callProcess "llc" $ flags "asm" asmFile
-  callProcess "llc" $ flags "obj" objFile
-  return objFile
-
-assemble :: Options -> FilePath -> FilePath -> IO ()
-assemble opts objFile outputFile = do
-  ldFlags <- readProcess "pkg-config" ["--libs", "--static", "bdw-gc"] ""
-  callProcess "clang"
-    $ concatMap words (lines ldFlags)
-    ++ optimisationFlags opts
-    ++ [objFile, "-o", outputFile]
 
 command :: ParserInfo (IO ())
 command = go <$> optionsParserInfo

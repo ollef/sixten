@@ -1,11 +1,15 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Command.Test where
 
+import Data.List
+import Data.Monoid
 import Options.Applicative
 import System.Exit
 import System.Process
 
 import qualified Command.Compile as Compile
-import qualified Processor.File as Processor
+import qualified Command.Compile.Options as Compile
+import qualified Processor.Error as Processor
 
 data Options = Options
   { expectedOutputFile :: Maybe FilePath
@@ -65,10 +69,10 @@ test opts = Compile.compile (compileOptions opts) onCompileError onCompileSucces
           | output == expectedOutput -> success
           | otherwise -> failed expectedOutput $ putStrLn output
     success = do
-      putStrLn $ "OK: " ++ Compile.inputFile (compileOptions opts)
+      putStrLn $ "OK: " ++ intercalate ", " (Compile.inputFiles $ compileOptions opts)
       exitSuccess
     failed expected actual = do
-      putStrLn $ "FAILED: " ++ Compile.inputFile (compileOptions opts)
+      putStrLn $ "FAILED: " ++ intercalate ", " (Compile.inputFiles $ compileOptions opts)
       putStrLn "Expected:"
       putStrLn expected
       putStrLn "But got:"
