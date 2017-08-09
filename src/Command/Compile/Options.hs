@@ -1,7 +1,9 @@
 module Command.Compile.Options where
 
+import Data.List.NonEmpty(NonEmpty)
+
 data Options = Options
-  { inputFiles :: [FilePath]
+  { inputFiles :: NonEmpty FilePath
   , maybeOutputFile :: Maybe FilePath
   , target :: Maybe String
   , optimisation :: Maybe String

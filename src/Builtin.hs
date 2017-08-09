@@ -168,6 +168,7 @@ context target = HashMap.fromList
   ]
   where
     cl = fromMaybe (error "Builtin not closed") . closed
+    -- TODO: Should be made nonmatchable
     opaqueData sz t = dataType sz t mempty
     opaque t = (Opaque, cl t)
     dataType sz t xs = (DataDefinition (DataDef xs) sz, cl t)
@@ -218,6 +219,7 @@ convertedSignatures target
         Closed.Anno _ t -> Just (tele, toScope t)
         _ -> error $ "Sixten.Builtin.convertedSignatures " <> show name
       Sized.ConstantDef _ _ -> Nothing
+      Sized.AliasDef -> Nothing
 
 deref :: Target -> Closed.Expr v -> Closed.Expr v
 deref target e

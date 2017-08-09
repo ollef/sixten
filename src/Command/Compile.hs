@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Command.Compile where
 
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.Monoid
 import GHC.IO.Handle
 import Options.Applicative
@@ -12,8 +13,10 @@ import System.IO.Temp
 import qualified Backend.Compile as Compile
 import qualified Backend.Target as Target
 import Command.Compile.Options
-import qualified Processor.Error as Processor
 import qualified Processor.Files as Processor
+import qualified Processor.Result as Processor
+import Util
+import Syntax.Extern
 
 optionsParserInfo :: ParserInfo Options
 optionsParserInfo = info (helper <*> optionsParser)
@@ -23,7 +26,7 @@ optionsParserInfo = info (helper <*> optionsParser)
 
 optionsParser :: Parser Options
 optionsParser = Options
-  <$> some (strArgument
+  <$> nonEmptySome (strArgument
     $ metavar "FILES..."
     <> help "Input source FILES"
     <> action "file"
@@ -73,16 +76,16 @@ optionsParser = Options
 
 compile
   :: Options
-  -> (Processor.Error -> IO a)
+  -> ([Processor.Error] -> IO a)
   -> (FilePath -> IO a)
   -> IO a
 compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.findTarget $ target opts of
-  Left err -> onError $ Processor.CommandLineError err
+  Left err -> onError $ pure $ Processor.CommandLineError err
   Right tgt ->
     withAssemblyDir (assemblyDir opts) $ \asmDir ->
-    withOutputFile firstInputFile (maybeOutputFile opts) $ \outputFile ->
+    withOutputFile (maybeOutputFile opts) $ \outputFile ->
     withLogHandle (logFile opts) $ \logHandle -> do
-      let linkedLlFileName = asmDir </> firstInputFile <.> "linked" <.> "ll" -- TODO
+      let linkedLlFileName = asmDir </> firstFileName <.> "linked" <.> "ll"
       procResult <- Processor.processFiles Processor.Arguments
         { Processor.sourceFiles = inputFiles opts
         , Processor.assemblyDir = asmDir
@@ -91,10 +94,10 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
         , Processor.verbosity = verbosity opts
         }
       case procResult of
-        Processor.Error err -> onError err
+        Processor.Failure errs -> onError errs
         Processor.Success result -> do
           Compile.compile opts Compile.Arguments
-            { Compile.cFiles = Processor.cFiles result
+            { Compile.cFiles = [cFile | (C, cFile) <- Processor.externFiles result]
             , Compile.llFiles = Processor.llFiles result
             , Compile.linkedLlFileName = linkedLlFileName
             , Compile.target = tgt
@@ -104,26 +107,24 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
   where
     -- TODO should use the main file instead
     firstInputFile = case inputFiles opts of
-      x:_ -> x
-      _ -> "unknown"
+      x NonEmpty.:| _ -> x
+    (firstInputDir, firstInputFileName) = splitFileName firstInputFile
+    firstFileName = dropExtension firstInputFileName
 
     withAssemblyDir Nothing k = withSystemTempDirectory "sixten" k
     withAssemblyDir (Just dir) k = do
       createDirectoryIfMissing True dir
       k dir
-    withOutputFile inputFile Nothing k
-      = withTempFile inputDir fileName $ \outputFile outputFileHandle -> do
+    withOutputFile Nothing k
+      = withTempFile firstInputDir firstFileName $ \outputFile outputFileHandle -> do
         hClose outputFileHandle
         k outputFile
-      where
-        (inputDir, inputFileName) = splitFileName inputFile
-        fileName = dropExtension inputFileName
 
-    withOutputFile _ (Just o) k = k o
+    withOutputFile (Just o) k = k o
     withLogHandle Nothing k = k stdout
     withLogHandle (Just file) k = withFile file WriteMode k
 
 command :: ParserInfo (IO ())
 command = go <$> optionsParserInfo
   where
-    go opts = compile opts Processor.printError (const $ return ())
+    go opts = compile opts (mapM_ Processor.printError) (const $ return ())

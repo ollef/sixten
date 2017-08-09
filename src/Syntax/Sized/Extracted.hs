@@ -31,10 +31,10 @@ data Declaration = Declaration
   , declArgDirs :: Vector Direction
   } deriving (Eq, Ord, Show)
 
-data Module contents = Module
-  { moduleDecls :: [Declaration]
-  , moduleExterns :: [(Language, Text)]
-  , moduleContents :: contents
+data Submodule contents = Submodule
+  { submoduleDecls :: [Declaration]
+  , submoduleExterns :: [(Language, Text)]
+  , submoduleContents :: contents
   } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 -------------------------------------------------------------------------------
@@ -97,7 +97,7 @@ instance (Eq v, IsString v, Pretty v)
     Anno e t -> parens `above` annoPrec $
       prettyM e <+> ":" <+> prettyM t
 
-instance Monoid innards => Monoid (Module innards) where
-  mempty = Module mempty mempty mempty
-  Module a1 b1 c1 `mappend` Module a2 b2 c2
-    = Module (a1 <> a2) (b1 <> b2) (c1 <> c2)
+instance Monoid innards => Monoid (Submodule innards) where
+  mempty = Submodule mempty mempty mempty
+  Submodule a1 b1 c1 `mappend` Submodule a2 b2 c2
+    = Submodule (a1 <> a2) (b1 <> b2) (c1 <> c2)

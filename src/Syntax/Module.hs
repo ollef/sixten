@@ -52,6 +52,9 @@ qconstrConstr (QConstr _ c) = c
 qconstrTypeName :: QConstr -> QName
 qconstrTypeName (QConstr n _) = n
 
+fromQConstr :: (IsString a, Monoid a) => QConstr -> a
+fromQConstr (QConstr name constr) = fromQName name <> "." <> fromConstr constr
+
 newtype ModuleName
   = ModuleName (Vector Name)
   deriving (Eq, Ord, Show)
@@ -62,6 +65,13 @@ data Module contents = Module
   , moduleImports :: [Import]
   , moduleContents :: contents
   } deriving (Eq, Show, Functor, Foldable, Traversable)
+
+fromModuleName :: IsString a => ModuleName -> a
+fromModuleName (ModuleName parts)
+  = fromString
+  $ intercalate "."
+  $ toList
+  $ fromName <$> parts
 
 data ExposedNames
   = Exposed (HashSet Name)

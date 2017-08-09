@@ -2,6 +2,10 @@ module Syntax.GlobalBind where
 
 import Bound
 import Bound.Var
+import Data.Foldable
+import Data.HashSet(HashSet)
+import qualified Data.HashSet as HashSet
+
 import Syntax.Module
 
 class GlobalBound t where
@@ -32,3 +36,9 @@ class Monad e => GlobalBind e where
 
 boundJoin :: (GlobalBind f, GlobalBound t) => t f (f a) -> t f a
 boundJoin = bound id global
+
+globals :: (Foldable e, GlobalBind e) => e v -> HashSet QName
+globals = fold . bind (pure . const mempty) (pure . HashSet.singleton)
+
+boundGlobals :: (Foldable (t e), GlobalBind e, GlobalBound t) => t e v -> HashSet QName
+boundGlobals = fold . bound (pure . const mempty) (pure . HashSet.singleton)

@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, RecursiveDo #-}
+{-# LANGUAGE DeriveFunctor, OverloadedStrings, RecursiveDo #-}
 module Backend.Generate where
 
 import qualified Bound
@@ -6,6 +6,9 @@ import Control.Applicative
 import Control.Monad.Reader
 import Control.Monad.State
 import qualified Data.Foldable as Foldable
+import qualified Data.HashSet as HashSet
+import Data.HashMap.Lazy(HashMap)
+import qualified Data.HashMap.Lazy as HashMap
 import Data.List
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Monoid
@@ -28,6 +31,7 @@ import Syntax.Branches
 import Syntax.Direction
 import Syntax.Extern(Language)
 import qualified Syntax.Extern as Extern
+import Syntax.GlobalBind hiding (global)
 import Syntax.Hint
 import Syntax.Literal
 import Syntax.Module
@@ -50,10 +54,12 @@ type Gen = ReaderT GenEnv (State LLVMState)
 data Generated a = Generated
   { generated :: a
   , generatedCode :: Text
-  }
+  } deriving (Functor)
 
-runGen :: GenEnv -> Gen a -> Target -> Generated a
-runGen f m = uncurry Generated . fmap Text.unlines . runLLVM (runReaderT m f)
+runGen :: GenEnv -> Target -> Gen a -> Generated a
+runGen env tgt m
+  = uncurry Generated
+  $ Text.unlines <$> runLLVM tgt (runReaderT m env)
 
 constrIndex :: QConstr -> Gen (Maybe Int)
 constrIndex qc = asks $ ($ qc) . constructorIndex
@@ -363,7 +369,7 @@ generateBranches caseExpr branches brCont = do
     ConBranches [ConBranch Builtin.Ref tele brScope] -> mdo
       exprInt <- loadVar intSize "case-expr-int" =<< generateExpr caseExpr (unknownSize "caseRef")
       expr <- "case-expr" =: intToPtr (directInt exprInt)
-      branchLabel <- freshLabel $ shower Builtin.RefName
+      branchLabel <- freshLabel $ fromQConstr Builtin.Ref
 
       emit $ branch branchLabel
       emitLabel branchLabel
@@ -385,9 +391,9 @@ generateBranches caseExpr branches brCont = do
       emitLabel postLabel
       return [(contResult, afterBranchLabel)]
 
-    ConBranches [ConBranch (QConstr _ (Constr constrName)) tele brScope] -> mdo
+    ConBranches [ConBranch qc tele brScope] -> mdo
       expr <- indirect "case-expr" =<< generateExpr caseExpr (unknownSize "case-single")
-      branchLabel <- freshLabel constrName
+      branchLabel <- freshLabel $ fromQConstr qc
 
       emit $ branch branchLabel
       emitLabel branchLabel
@@ -414,9 +420,9 @@ generateBranches caseExpr branches brCont = do
       e0Ptr <- "tag-pointer" =: getElementPtr expr "0"
       e0 <- loadInt "tag" e0Ptr
 
-      branchLabels <- Traversable.forM cbrs $ \(ConBranch qc@(QConstr _ (Constr constrName)) _ _) -> do
+      branchLabels <- Traversable.forM cbrs $ \(ConBranch qc _ _) -> do
         Just qcIndex <- constrIndex qc
-        branchLabel <- freshLabel constrName
+        branchLabel <- freshLabel $ fromQConstr qc
         return (qcIndex, branchLabel)
 
       failLabel <- freshLabel "pattern-match-failed"
@@ -527,12 +533,6 @@ generateConstant visibility name (Constant e) = do
           emit returnVoid
           emitRaw "}"
           return $ "  call fastcc" <+> voidT <+> initName <> "()"
-    Just (FunctionSig retDir argDirs) -> case e of
-      Anno (Global glob) _ -> do
-        let funType = functionT retDir argDirs
-        emitRaw $ Instr $ gname <+> "=" <+> vis <+> "unnamed_addr alias" <+> funType <> "," <+> funType <> "*" <+> unOperand (global glob)
-        return mempty
-      _ -> error "generateConstant"
     _ -> error "generateConstant"
 
 generateFunction :: Visibility -> QName -> Function Expr Var -> Gen ()
@@ -583,38 +583,92 @@ generateDefinition name def = case def of
   FunctionDef v _ f -> do
     generateFunction v name f
     return mempty
+  AliasDef -> return mempty
 
 generateDeclaration :: Declaration -> Gen ()
 generateDeclaration decl
   = declareFun (declRetDir decl) (unqualified $ declName decl) (declArgDirs decl)
 
-genModule :: QName -> Extracted.Module (Definition Expr Var) -> Extracted.Module (Gen Text)
-genModule name modul = flip fmap modul $ \innards -> do
-  unless (null $ moduleDecls modul) $ do
-    mapM_ generateDeclaration $ moduleDecls modul
+genSubmodule
+  :: QName
+  -> Extracted.Submodule (Definition Expr Var)
+  -> Extracted.Submodule (Gen (Text, HashMap QName Text))
+genSubmodule name modul = flip fmap modul $ \innards -> do
+  unless (null $ submoduleDecls modul) $ do
+    mapM_ generateDeclaration $ submoduleDecls modul
     emitRaw ""
-  generateDefinition name innards
+
+  let globalDeps
+        = HashSet.filter ((/= qnameModule name) . qnameModule)
+        $ boundGlobals innards
+
+  env <- ask
+  tgt <- gets target
+
+  let globs = flip map (HashSet.toList globalDeps) $ \g -> runGen env tgt $ do
+        msig <- asks (($ g) . signatures)
+        case msig of
+          Just (FunctionSig retDir argDirs) -> declareFun retDir g argDirs
+          Just (ConstantSig dir) -> declareConstant dir g
+          Just (AliasSig _) -> return ()
+          Nothing -> return ()
+        return g
+
+  def <- generateDefinition name innards
+  return (def, HashMap.fromList $ (\g -> (generated g, generatedCode g)) <$> globs)
 
 generateModule
   :: GenEnv
   -> Target
   -> QName
-  -> Extracted.Module (Definition Expr Var)
-  -> Extracted.Module (Generated Text)
-generateModule env tgt x modul = fmap (\g -> runGen env g tgt) (genModule x modul)
+  -> Extracted.Submodule (Definition Expr Var)
+  -> Extracted.Submodule (Generated (Text, HashMap QName Text))
+generateModule env tgt x modul = runGen env tgt <$> genSubmodule x modul
 
-writeLlvmModule :: [Generated Text] -> Handle -> IO ()
-writeLlvmModule gens handle = do
+writeLlvmModule
+  :: ModuleName
+  -> [Import]
+  -> [Generated Text]
+  -> HashMap QName Text
+  -> Handle
+  -> IO ()
+writeLlvmModule mname imports gens decls handle = do
+  let importedModules = HashSet.toList $ HashSet.fromList $ importModule <$> imports
   forwardDecls <- Text.readFile =<< getDataFileName "rts/forwarddecls.ll"
   let outputStrLn = Text.hPutStrLn handle
+      outputNonEmpty s
+        | Text.null s = return ()
+        | otherwise = outputStrLn s
   outputStrLn forwardDecls
-  forM_ gens $ \gen ->
-    outputStrLn $ generatedCode gen
+  forM_ (HashMap.elems decls) outputNonEmpty
+
+  forM_ gens $ outputStrLn . generatedCode
+  let initName mn = "@" <> escape (fromModuleName mn) <> "-init"
+      initedName mn = "@" <> escape (fromModuleName mn) <> "-inited"
+      thisInitName = initName mname
+      thisInitedName = initedName mname
+
+  forM_ importedModules $ \i ->
+    outputStrLn $ "declare void " <> initName i <> "()"
+  outputStrLn $ thisInitedName <> " = internal unnamed_addr global i1 false"
   outputStrLn ""
-  outputStrLn "define i32 @main() {"
-  outputStrLn "  call void @GC_init()"
-  forM_ gens $ \gen -> do
-    let i = generated gen
-    unless (Text.null i) $ outputStrLn i
-  outputStrLn "  ret i32 0"
+  outputStrLn $ "define void " <> thisInitName <> "() {"
+  outputStrLn $ "  %isInited = load i1, i1* " <> thisInitedName
+  outputStrLn "  switch i1 %isInited, label %not-inited [i1 true, label %inited]"
+  outputStrLn "inited:"
+  outputStrLn "  ret void"
+  outputStrLn "not-inited:"
+  outputStrLn $ "  store i1 1, i1* " <> thisInitedName
+  forM_ importedModules $ \i ->
+    outputStrLn $ "  call void " <> initName i <> "()"
+  forM_ gens $ outputNonEmpty . generated
+  outputStrLn "  ret void"
   outputStrLn "}"
+  outputStrLn ""
+
+  when (mname == "Main") $ do
+    outputStrLn "define i32 @main() {"
+    outputStrLn "  call void @GC_init()"
+    outputStrLn $ "  call void " <> thisInitName <> "()"
+    outputStrLn "  ret i32 0"
+    outputStrLn "}"

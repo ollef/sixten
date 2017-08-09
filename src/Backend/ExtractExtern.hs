@@ -23,10 +23,10 @@ data ExtractState = ExtractState
 newtype Extract a = Extract { unExtract :: State ExtractState a }
   deriving (Functor, Applicative, Monad, MonadState ExtractState)
 
-runExtract :: [QName] -> Extract a -> Extracted.Module a
+runExtract :: [QName] -> Extract a -> Extracted.Submodule a
 runExtract names
   = (\(a, s) -> let (decls, defs) = unzip $ toList $ extractedCode s in
-      Extracted.Module decls ((,) C <$> defs) a)
+      Extracted.Submodule decls ((,) C <$> defs) a)
   . flip runState (ExtractState names mempty)
   . unExtract
 
@@ -153,7 +153,7 @@ extractDef
   :: Ord v
   => QName
   -> Sized.Definition Lifted.Expr v
-  -> Extracted.Module (Sized.Definition Extracted.Expr v)
+  -> Extracted.Submodule (Sized.Definition Extracted.Expr v)
 extractDef (QName mname name) def = case def of
   Sized.FunctionDef vis cl (Sized.Function tele s) -> runExtract names
     $ Sized.FunctionDef vis cl
@@ -161,17 +161,18 @@ extractDef (QName mname name) def = case def of
   Sized.ConstantDef vis (Sized.Constant e) -> runExtract names
     $ Sized.ConstantDef vis
     <$> (Sized.Constant <$> extractExpr Nothing e)
+  Sized.AliasDef -> runExtract names $ return Sized.AliasDef
   where
     names =
       [ QName mname $ if n == 0
-          then "sixten_extern__" <> name
-          else "sixten_extern_" <> shower n <> "__" <> name
+          then "_extern__" <> name
+          else "_extern_" <> shower n <> "__" <> name
       | n <- [(0 :: Int)..]
       ]
 
-moduleExterns :: Language -> [Extracted.Module innards] -> [Text]
+moduleExterns :: Language -> [Extracted.Submodule innards] -> [Text]
 moduleExterns lang modules = do
   modul <- modules
-  (lang', code) <- Extracted.moduleExterns modul
+  (lang', code) <- Extracted.submoduleExterns modul
   guard $ lang == lang'
   return code

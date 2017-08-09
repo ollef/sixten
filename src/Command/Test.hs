@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Command.Test where
 
+import Data.Foldable
 import Data.List
 import Data.Monoid
 import Options.Applicative
@@ -9,7 +10,7 @@ import System.Process
 
 import qualified Command.Compile as Compile
 import qualified Command.Compile.Options as Compile
-import qualified Processor.Error as Processor
+import qualified Processor.Result as Processor
 
 data Options = Options
   { expectedOutputFile :: Maybe FilePath
@@ -46,17 +47,19 @@ optionsParser = Options
 test :: Options -> IO ()
 test opts = Compile.compile (compileOptions opts) onCompileError onCompileSuccess
   where
-    onCompileError err = case err of
-      Processor.SyntaxError _
+    onCompileError errs = case errs of
+      Processor.SyntaxError _:_
         | expectSyntaxError opts -> success
-        | otherwise -> failed "No syntax error" $ Processor.printError err
-      Processor.ResolveError _
+        | otherwise -> failed "No syntax error" $ mapM_ Processor.printError errs
+      Processor.ResolveError _:_
         | expectSyntaxError opts -> success
-        | otherwise -> failed "No syntax error" $ Processor.printError err
-      Processor.TypeError _
+        | otherwise -> failed "No syntax error" $ mapM_ Processor.printError errs
+      Processor.TypeError _:_
         | expectTypeError opts -> success
-        | otherwise -> failed "No type error" $ Processor.printError err
-      Processor.CommandLineError _ -> failed "No command-line error error" $ Processor.printError err
+        | otherwise -> failed "No type error" $ mapM_ Processor.printError errs
+      Processor.CommandLineError _:_
+        -> failed "No command-line error" $ mapM_ Processor.printError errs
+      [] -> failed "No unknown error" (return ())
     onCompileSuccess f
       | expectSyntaxError opts = failed "Syntax error" $ putStrLn "Successful compilation"
       | expectTypeError opts = failed "Type error" $ putStrLn "Successful compilation"
@@ -69,10 +72,10 @@ test opts = Compile.compile (compileOptions opts) onCompileError onCompileSucces
           | output == expectedOutput -> success
           | otherwise -> failed expectedOutput $ putStrLn output
     success = do
-      putStrLn $ "OK: " ++ intercalate ", " (Compile.inputFiles $ compileOptions opts)
+      putStrLn $ "OK: " ++ intercalate ", " (toList $ Compile.inputFiles $ compileOptions opts)
       exitSuccess
     failed expected actual = do
-      putStrLn $ "FAILED: " ++ intercalate ", " (Compile.inputFiles $ compileOptions opts)
+      putStrLn $ "FAILED: " ++ intercalate ", " (toList $ Compile.inputFiles $ compileOptions opts)
       putStrLn "Expected:"
       putStrLn expected
       putStrLn "But got:"

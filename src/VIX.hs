@@ -213,8 +213,9 @@ signature
   :: QName
   -> VIX (Signature ReturnIndirect)
 signature name = do
+  sigs <- gets vixSignatures
   mres <- gets $ HashMap.lookup name . vixSignatures
-  maybe (throwError $ "Not in scope: signature for " ++ show name)
+  maybe (throwError $ "Not in scope: signature for " ++ show name ++ show sigs)
         return
         mres
 

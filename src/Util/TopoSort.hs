@@ -5,13 +5,14 @@ import Data.Graph
 import Data.Hashable
 import qualified Data.HashMap.Lazy as HashMap
 
+-- TODO: Check that this handles duplicates correctly
 topoSortWith
   :: (Foldable t, Functor t, Foldable t', Hashable name, Ord name)
   => (a -> name)
   -> (a -> t' name)
   -> t a
   -> [[a]]
-topoSortWith name deps as = (>>= fmap (nameMap HashMap.!)) $ topoSort $ (\a -> (name a, deps a)) <$> as
+topoSortWith name deps as = fmap (>>= (nameMap HashMap.!)) $ topoSort $ (\a -> (name a, deps a)) <$> as
   where
     nameMap = foldl' (\m dat -> HashMap.insertWith (++) (name dat) [dat] m) mempty as
 

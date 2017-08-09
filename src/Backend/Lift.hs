@@ -102,6 +102,7 @@ liftDefinitionM (Sized.FunctionDef vis cl (Sized.Function tele s)) = do
 liftDefinitionM (Sized.ConstantDef vis (Sized.Constant e)) = do
   e' <- liftExpr e
   return $ Sized.ConstantDef vis $ Sized.Constant e'
+liftDefinitionM Sized.AliasDef = return Sized.AliasDef
 
 liftClosures
   :: QName

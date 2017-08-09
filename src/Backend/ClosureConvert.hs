@@ -94,6 +94,7 @@ convertDefinition (Sized.ConstantDef vis (Sized.Constant expr)) = do
     $ Sized.ConstantDef vis
     $ Sized.Constant
     $ error "convertDefinition Constant" <$> expr'
+convertDefinition Sized.AliasDef = return $ Sized.AliasDef
 
 convertExpr :: Lifted.Expr Meta -> VIX (Closed.Expr Meta)
 convertExpr expr = case expr of

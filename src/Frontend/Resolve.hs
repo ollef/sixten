@@ -133,4 +133,7 @@ modul
   -> Except Text (Module (HashMap QName (SourceLoc, Definition QName, Type QName)))
 modul m = do
   newContents <- program (moduleName m) $ moduleContents m
-  return m { moduleContents = newContents }
+  return m
+    { moduleImports = Import "Sixten.Builtin" "Sixten.Builtin" AllExposed : moduleImports m
+    , moduleContents = newContents
+    }

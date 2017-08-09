@@ -4,6 +4,7 @@ module Util where
 
 import Bound
 import Bound.Var
+import Control.Applicative
 import Control.Monad.State
 import Data.Bifoldable
 import Data.Bifunctor
@@ -13,6 +14,8 @@ import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
+import Data.List.NonEmpty(NonEmpty)
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.Set(Set)
 import qualified Data.Set as Set
 import Data.String
@@ -145,3 +148,6 @@ multiUnions
   => [MultiHashMap k v]
   -> MultiHashMap k v
 multiUnions = foldl' multiUnion mempty
+
+nonEmptySome :: Alternative f => f a -> f (NonEmpty a)
+nonEmptySome p = (NonEmpty.:|) <$> p <*> many p

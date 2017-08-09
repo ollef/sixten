@@ -16,6 +16,9 @@ fromName (Name t) = fromText t
 newtype Constr = Constr Text
   deriving (Eq, Hashable, Ord, Show, IsString, Monoid)
 
+fromConstr :: IsString a => Constr -> a
+fromConstr (Constr t) = fromText t
+
 constrToName :: Constr -> Name
 constrToName (Constr c) = Name c
 

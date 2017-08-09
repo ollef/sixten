@@ -40,7 +40,6 @@ Language
   Specialisation pragma
   * Modules
     Use llvm.global_ctors
-    Split Processor into File, Def, and Modules processors
     LLVM Forward-declarations
     Add multi-file tests and test simple imports and exports
     Revamp handling of constructors (currently doesn't really work)

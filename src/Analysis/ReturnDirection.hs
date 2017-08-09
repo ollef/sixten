@@ -119,8 +119,8 @@ infer expr = case expr of
     es' <- mapM infer es
     return (Con c $ fst <$> es', MOutParam)  -- TODO: Can be improved.
   Call f es -> do
-    (retDir, argDirs) <- inferFunction f
-    inferCall Call retDir argDirs f es
+    (f', (retDir, argDirs)) <- inferFunction f
+    inferCall Call retDir argDirs f' es
   PrimCall retDir f es -> do
     let (argDirs, args) = Vector.unzip es
     inferCall
@@ -198,16 +198,18 @@ inferBranches _loc (LitBranches lbrs def) = do
 
 inferFunction
   :: Expr MetaVar
-  -> VIX (RetDirM, Vector Direction)
+  -> VIX (Expr MetaVar, (RetDirM, Vector Direction))
 inferFunction expr = case expr of
-  Var v -> return $ fromMaybe def $ metaFunSig v
-  Global g -> do
-    sig <- signature g
-    return $ case sig of
-      FunctionSig retDir argDirs -> (fromReturnIndirect <$> retDir, argDirs)
-      _ -> def
+  Var v -> return (expr, fromMaybe def $ metaFunSig v)
+  Global g -> go g
   _ -> return def
   where
+    go g = do
+      sig <- signature g
+      case sig of
+        FunctionSig retDir argDirs -> return (Global g, (fromReturnIndirect <$> retDir, argDirs))
+        ConstantSig _ -> def
+        AliasSig g' -> go g'
     def = error "ReturnDirection.inferFunction non-function"
 
 inferDefinition
@@ -230,10 +232,8 @@ inferDefinition MetaVar {metaFunSig = Just (retDir, argDirs)} (FunctionDef vis c
     ReturnDirect _ -> return ()
   let s' = abstract (teleAbstraction vs) e'
   return (FunctionDef vis cl $ Function (Telescope args') s', FunctionSig retDir argDirs)
-inferDefinition _ (ConstantDef vis (Constant (Anno (Global glob) sz))) = do
-  sig <- signature glob
-  (sz', _szLoc) <- infer sz
-  return (ConstantDef vis $ Constant $ Anno (Global glob) sz', fromReturnIndirect <$> sig)
+inferDefinition _ (ConstantDef _ (Constant (Anno (Global glob) _))) =
+  return (AliasDef, AliasSig glob)
 inferDefinition _ (ConstantDef vis (Constant e)) = do
   (e', _loc) <- infer e
   return (ConstantDef vis $ Constant e', ConstantSig $ sizeDir $ sizeOf e)
@@ -266,6 +266,7 @@ inferRecursiveDefs defs = do
                 (NonClosure, Anno _ t) -> toReturnDirection Nothing $ sizeDir t
                 _ -> ReturnIndirect (Just MOutParam)
           ConstantDef {} -> Nothing
+          AliasDef -> Nothing
     funSig' <- traverse (bitraverse (traverse $ maybe existsMetaReturnIndirect pure) pure) funSig
     exists h MProjection funSig'
 

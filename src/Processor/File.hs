@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+-- TODO rename to Module?
 module Processor.File where
 
 import Control.Monad.Except
@@ -9,9 +10,9 @@ import Data.Functor.Classes
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
+import Data.Maybe
 import Data.Monoid
 import Data.Text(Text)
-import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import qualified Data.Vector as Vector
 import Data.Void
@@ -28,13 +29,11 @@ import qualified Backend.Generate as Generate
 import Backend.Lift
 import qualified Backend.SLam as SLam
 import Backend.Target
-import qualified Builtin
 import qualified Frontend.Parse as Parse
 import qualified Frontend.Resolve as Resolve
 import qualified Frontend.ScopeCheck as ScopeCheck
 import qualified Inference.TypeCheck as TypeCheck
-import Paths_sixten
-import Processor.Error
+import Processor.Result
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
@@ -47,9 +46,12 @@ import qualified Syntax.Sized.SLambda as SLambda
 import Util
 import VIX
 
+-- TODO: Clean this up
+type DependencySigs = HashMap QName Text
+
 processResolved
   :: Module (HashMap QName (SourceLoc, Unscoped.Definition QName, Unscoped.Type QName))
-  -> VIX [Extracted.Module (Generate.Generated Text)]
+  -> VIX [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
 processResolved
   = scopeCheckProgram
   >=> mapM (prettyConcreteGroup "Concrete syntax" absurd)
@@ -57,7 +59,7 @@ processResolved
 
 processGroup
   :: [(QName, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]
-  -> VIX [Extracted.Module (Generate.Generated Text)]
+  -> VIX [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
 processGroup
   = prettyConcreteGroup "Concrete syntax" absurd
   >=> typeCheckGroup
@@ -91,7 +93,7 @@ processGroup
 
 processConvertedGroup
   :: [(QName, Sized.Definition Closed.Expr Void)]
-  -> VIX [Extracted.Module (Generate.Generated Text)]
+  -> VIX [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
 processConvertedGroup
   = liftConvertedGroup
   >>=> prettyGroup "Lambda-lifted (2)" vac
@@ -101,7 +103,7 @@ processConvertedGroup
   >=> prettyGroup "Directed (lifted)" vac
 
   >=> extractExternGroup
-  >=> prettyGroup "Extern extracted" (vac . Extracted.moduleContents)
+  >=> prettyGroup "Extern extracted" (vac . Extracted.submoduleContents)
 
   >=> generateGroup
   where
@@ -271,20 +273,23 @@ addSignaturesToContext defs = do
 
 extractExternGroup
   :: [(QName, Sized.Definition Lifted.Expr Void)]
-  -> VIX [(QName, Extracted.Module (Sized.Definition Extracted.Expr Void))]
+  -> VIX [(QName, Extracted.Submodule (Sized.Definition Extracted.Expr Void))]
 extractExternGroup defs = return $
   flip map defs $ \(n, d) -> (n, ExtractExtern.extractDef n d)
 
 generateGroup
-  :: [(QName, Extracted.Module (Sized.Definition Extracted.Expr Void))]
-  -> VIX [Extracted.Module (Generate.Generated Text)]
+  :: [(QName, Extracted.Submodule (Sized.Definition Extracted.Expr Void))]
+  -> VIX [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
 generateGroup defs = do
   target <- gets vixTarget
   qcindex <- qconstructorIndex
   sigs <- gets vixSignatures
   let env = Generate.GenEnv qcindex (`HashMap.lookup` sigs)
-  return $ flip map defs $ \(x, m) ->
-    Generate.generateModule env target x $ vacuous <$> m
+
+  return
+    [ Generate.generateModule env target x $ vacuous <$> m
+    | (x, m) <- defs
+    ]
 
 data ProcessFileArgs = ProcessFileArgs
   { procFile :: FilePath
@@ -294,45 +299,48 @@ data ProcessFileArgs = ProcessFileArgs
   , procVerbosity :: Int
   } deriving (Eq, Show)
 
-processFile :: ProcessFileArgs -> IO (Result (Maybe FilePath))
-processFile args = do
-  builtin1File <- getDataFileName "rts/Builtin1.vix"
-  builtin2File <- getDataFileName "rts/Builtin2.vix"
-  parse builtin1File $ \builtins1 ->
-    parse builtin2File $ \builtins2 ->
-    parse (procFile args) $ \prog -> do
-      procRes <- runVIX (process builtins1 builtins2 prog) target (procLogHandle args) $ procVerbosity args
-      case procRes of
-        Left err -> return $ Error $ TypeError $ Text.pack err
-        Right res -> do
-          withFile (procLlOutput args) WriteMode $
-            Generate.writeLlvmModule (Extracted.moduleContents <$> res)
-          fmap Success $ case ExtractExtern.moduleExterns C res of
-            [] -> return Nothing
-            externC -> withFile (procCOutput args) WriteMode $ \cHandle -> do
-              Text.hPutStrLn cHandle "#include <stdint.h>"
-              Text.hPutStrLn cHandle "#include <stdlib.h>"
-              Text.hPutStrLn cHandle "#include <stdio.h>"
-              forM_ externC $ \code -> do
-                Text.hPutStrLn cHandle ""
-                Text.hPutStrLn cHandle code
-              return $ Just $ procCOutput args
-  where
-    target = procTarget args
-    context = Builtin.context target
-    process builtins1 builtins2 prog = do
-      addContext context
-      addModule "Sixten.Builtin" $ HashSet.fromList $ qnameName <$> HashMap.keys (Builtin.context target)
-      addConvertedSignatures $ Builtin.convertedSignatures target
-      builtinResults1 <- processResolved builtins1
-      builtinResults2 <- processResolved builtins2
-      builtins <- processConvertedGroup $ HashMap.toList $ Builtin.convertedContext target
-      results <- processResolved prog
-      return $ builtinResults1 ++ builtinResults2 ++ builtins ++ results
+writeModule
+  :: Module [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
+  -> FilePath
+  -> [(Language, FilePath)]
+  -> IO [(Language, FilePath)]
+writeModule modul llOutputFile externOutputFiles = do
+  let subModules = moduleContents modul
+  withFile llOutputFile WriteMode $ do
+    let decls
+          = mconcat
+          $ snd . Generate.generated . Extracted.submoduleContents <$> subModules
+    Generate.writeLlvmModule
+      (moduleName modul)
+      (moduleImports modul)
+      (fmap fst . Extracted.submoduleContents <$> subModules)
+      decls
+  fmap catMaybes $
+    forM externOutputFiles $ \(lang, outFile) ->
+      case ExtractExtern.moduleExterns lang (fmap (fmap fst) <$> subModules) of
+        [] -> return Nothing
+        externCode -> withFile outFile WriteMode $ \handle -> do
+          -- TODO this is C specific
+          Text.hPutStrLn handle "#include <stdint.h>"
+          Text.hPutStrLn handle "#include <stdlib.h>"
+          Text.hPutStrLn handle "#include <stdio.h>"
+          forM_ externCode $ \code -> do
+            Text.hPutStrLn handle ""
+            Text.hPutStrLn handle code
+          return $ Just (lang, outFile)
 
-    parse file k = do
-      parseResult <- Parse.parseFromFileEx Parse.modul file
-      case Resolve.modul <$> parseResult of
-        Trifecta.Failure f -> return $ Error $ SyntaxError $ Trifecta._errDoc f
-        Trifecta.Success (ExceptT (Identity (Left err))) -> return $ Error $ ResolveError err
-        Trifecta.Success (ExceptT (Identity (Right resolved))) -> k resolved
+parse
+  :: FilePath
+  -> IO (Result (Module [(Parse.TopLevelParsed QName, Span)]))
+parse file = do
+  parseResult <- Parse.parseFromFileEx Parse.modul file
+  case parseResult of
+    Trifecta.Failure f -> return $ Failure $ pure $ SyntaxError $ Trifecta._errDoc f
+    Trifecta.Success res -> return $ Success res
+
+resolve
+  :: Module [(Parse.TopLevelParsed QName, Span)]
+  -> Result (Module (HashMap QName (SourceLoc, Unscoped.Definition QName, Unscoped.Type QName)))
+resolve modul = case Resolve.modul modul of
+  ExceptT (Identity (Left err)) -> Failure $ pure $ ResolveError err
+  ExceptT (Identity (Right resolved)) -> Success resolved

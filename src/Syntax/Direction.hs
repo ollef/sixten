@@ -6,6 +6,7 @@ import Data.Vector(Vector)
 
 import Pretty
 import Syntax.Annotation
+import Syntax.Module
 import Util
 
 data Direction = Direct Size | Indirect
@@ -67,4 +68,5 @@ instance Pretty ClosureDir where
 data Signature a
   = FunctionSig (ReturnDirection a) (Vector Direction)
   | ConstantSig Direction
+  | AliasSig QName
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)

@@ -3,7 +3,6 @@ module Syntax.Sized.Definition where
 
 import Bound
 import Control.Monad.Morph
-import Data.Foldable
 import Data.Monoid
 import Data.String
 import Data.Void
@@ -32,6 +31,7 @@ data IsClosure
 data Definition expr v
   = FunctionDef Visibility IsClosure (Function expr v)
   | ConstantDef Visibility (Constant expr v)
+  | AliasDef
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 -------------------------------------------------------------------------------
@@ -40,7 +40,7 @@ dependencyOrder
   :: (GlobalBind expr, Foldable expr)
   => [(QName, Definition expr Void)]
   -> [[(QName, Definition expr Void)]]
-dependencyOrder = topoSortWith fst (toList . bound absurd pure . snd)
+dependencyOrder = topoSortWith fst (bound absurd pure . snd)
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -53,6 +53,7 @@ instance MFunctor Function where
 instance MFunctor Definition where
   hoist f (FunctionDef vis cl fdef) = FunctionDef vis cl $ hoist f fdef
   hoist f (ConstantDef vis cdef) = ConstantDef vis $ hoist f cdef
+  hoist _ AliasDef = AliasDef
 
 instance GlobalBound Constant where
   bound f g (Constant expr) = Constant $ bind f g expr
@@ -63,6 +64,7 @@ instance GlobalBound Function where
 instance GlobalBound Definition where
   bound f g (FunctionDef vis cl fdef) = FunctionDef vis cl $ bound f g fdef
   bound f g (ConstantDef vis cdef) = ConstantDef vis $ bound f g cdef
+  bound _ _ AliasDef = AliasDef
 
 instance (Eq v, IsString v, Pretty v, Pretty (expr v), Monad expr)
   => Pretty (Function expr v) where
@@ -83,3 +85,4 @@ instance (Eq v, IsString v, Pretty v, Pretty (expr v), Monad expr)
   => Pretty (Definition expr v) where
   prettyM (ConstantDef v c) = prettyM v <+> prettyM c
   prettyM (FunctionDef v cl f) = prettyM v <+> prettyAnnotation cl (prettyM f)
+  prettyM AliasDef = "alias"

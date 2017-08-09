@@ -123,8 +123,8 @@ data LLVMState = LLVMState
   , instructions :: Tsil Text
   }
 
-runLLVM :: State LLVMState a -> Target -> (a, [Text])
-runLLVM s t = second (Foldable.toList . instructions) $ runState s LLVMState
+runLLVM :: Target -> State LLVMState a -> (a, [Text])
+runLLVM t s = second (Foldable.toList . instructions) $ runState s LLVMState
   { config = targetConfig t
   , target = t
   , boundNames = mempty
@@ -216,7 +216,10 @@ data Fun
 data Label
 
 global :: QName -> Operand a
-global qn = Operand $ "@" <> text (escape $ fromQName qn)
+global = Operand . fromText . textGlobal
+
+textGlobal :: QName -> Text
+textGlobal qn = "@" <> escape (fromQName qn)
 
 integer :: Operand Int -> C
 integer o = integerT <+> unOperand o
@@ -442,8 +445,24 @@ declareFun
   -> Vector Direction
   -> m ()
 declareFun retDir name ds
-  = emitRaw $ Instr
+  = emitRaw
+  $ Instr
   $ "declare" <+> function retDir (Just $ unOperand $ global name) ds
+
+declareConstant
+  :: MonadState LLVMState m
+  => Direction
+  -> QName
+  -> m ()
+declareConstant dir name
+  = emitRaw
+  $ Instr
+  $ unOperand (global name) <+> "=" <+> "external unnamed_addr constant" <+> typ
+  where
+    typ = case dir of
+      Indirect -> pointerT
+      Direct 0 -> pointerT
+      Direct sz -> directT sz
 
 functionT :: RetDir -> Vector Direction -> C
 functionT retDir = function retDir Nothing
