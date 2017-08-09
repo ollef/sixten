@@ -19,9 +19,7 @@ data-files:
 executable sixten
   ghc-options:         -Wall
                        -fwarn-tabs
-                       -fwarn-incomplete-uni-patterns
                        -fwarn-incomplete-record-updates
-                       -fwarn-auto-orphans
                        -funbox-strict-fields
   main-is:             Main.hs
   other-modules:
