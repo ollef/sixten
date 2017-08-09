@@ -2,7 +2,6 @@
 module Inference.Unify where
 
 import Control.Monad.Except
-import Control.Monad.ST.Class
 import Data.Bifunctor
 import Data.Foldable
 import Data.Monoid
@@ -61,6 +60,7 @@ occurs cxt l tv expr = traverse_ go expr
                ]
                 ++
                 intercalate ["", "while trying to unify"] explanation)
+              mempty
               mempty)
       | otherwise = do
         occurs cxt l tv typ
@@ -114,6 +114,7 @@ unify' cxt type1 type2
         $ Err
           (Just "Type mismatch")
           (intercalate ["", "while trying to unify"] explanation)
+          mempty
           mempty
   where
     absCase h a b s1 s2 = do

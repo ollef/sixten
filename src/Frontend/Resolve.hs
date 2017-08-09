@@ -112,7 +112,7 @@ err loc heading docs
   = throwError
   $ shower
   $ explain (render loc)
-  $ Err (Just heading) docs mempty
+  $ Err (Just heading) docs mempty mempty
 
 program
   :: ModuleName

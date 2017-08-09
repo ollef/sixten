@@ -2,7 +2,6 @@
 module Backend.ExtractExtern where
 
 import Control.Monad.State
-import Data.Bitraversable
 import Data.Foldable
 import Data.Monoid
 import qualified Data.Text as Text
@@ -53,7 +52,7 @@ extractExpr mtype expr = case expr of
   Lifted.Call e es -> Extracted.Call <$> extractExpr Nothing e <*> mapM (extractExpr Nothing) es
   Lifted.PrimCall retDir e es -> Extracted.PrimCall Nothing retDir
     <$> extractExpr Nothing e
-    <*> traverse (bitraverse (extractExpr Nothing) pure) es
+    <*> traverse (traverse (extractExpr Nothing)) es
   Lifted.Let h e s -> Extracted.Let h
     <$> extractExpr Nothing e
     <*> extractScope s
@@ -86,8 +85,8 @@ extractExtern retType (Extern C parts) = do
         <> Text.intercalate ", " ([typeStr <> " " <> exprName | (_, (exprName, typeStr, _)) <- exprsList] <> retParam) <> ") {"
         <> Text.concat (toList strs)
         <> "}"
-      args = toVector [(expr, dir) | (expr, (_, _, dir)) <- exprsList]
-      argDirs = snd <$> args
+      args = toVector [(dir, expr) | (expr, (_, _, dir)) <- exprsList]
+      argDirs = fst <$> args
       funDecl = Extracted.Declaration name retDir' argDirs
   addExtractedCode funDecl funDef
   return $ Extracted.PrimCall
@@ -129,12 +128,12 @@ extractBranches
   => Branches QConstr () Lifted.Expr v
   -> Extract (Branches QConstr () Extracted.Expr v)
 extractBranches (ConBranches cbrs) = ConBranches <$> sequence
-  [ (,,) qc <$> extractTelescope tele <*> extractScope s
-  | (qc, tele, s) <- cbrs
+  [ ConBranch qc <$> extractTelescope tele <*> extractScope s
+  | ConBranch qc tele s <- cbrs
   ]
 extractBranches (LitBranches lbrs def) = LitBranches <$> sequence
-  [ (,) l <$> extractExpr Nothing e
-  | (l, e) <- lbrs
+  [ LitBranch l <$> extractExpr Nothing e
+  | LitBranch l e <- lbrs
   ] <*> extractExpr Nothing def
 
 extractTelescope
@@ -142,7 +141,7 @@ extractTelescope
   => Telescope d Lifted.Expr v
   -> Extract (Telescope d Extracted.Expr v)
 extractTelescope (Telescope tele) = Telescope
-  <$> mapM (\(h, d, s) -> (,,) h d <$> extractScope s) tele
+  <$> mapM (\(TeleArg h d s) -> TeleArg h d <$> extractScope s) tele
 
 extractScope
   :: (Ord b, Ord v)

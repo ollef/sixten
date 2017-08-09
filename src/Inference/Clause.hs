@@ -32,6 +32,7 @@ exactlyEqualisePats [] ((p, pat):_) = do
     , "Expected: no more patterns."
     ]
     mempty
+    mempty
 exactlyEqualisePats (Implicit:ps) ((Implicit, pat):pats)
   = (:) (Implicit, pat) <$> exactlyEqualisePats ps pats
 exactlyEqualisePats (Explicit:ps) ((Explicit, pat):pats)
@@ -49,6 +50,7 @@ exactlyEqualisePats (Explicit:_) [] = do
     [ "Found the pattern: no patterns."
     , "Expected: an explicit pattern."
     ]
+    mempty
     mempty
 
 equalisePats
@@ -77,6 +79,7 @@ throwExpectedExplicit pat = do
     [ "Found the implicit pattern:" Leijen.<+> Leijen.red (runPrettyM $ prettyAnnotation Implicit (prettyM $ first (const ()) pat)) <> "."
     , "Expected:" Leijen.<+> "an" Leijen.<+> Leijen.dullgreen "explicit" Leijen.<+> "pattern."
     ]
+    mempty
     mempty
 
 equaliseClauses

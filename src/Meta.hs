@@ -2,10 +2,11 @@
 module Meta where
 
 import Control.Monad.Except
+import Control.Monad.ST
 import Control.Monad.State
-import Control.Monad.ST.Class
 import Data.Foldable
 import Data.Function
+import Data.Functor.Classes
 import Data.Hashable
 import Data.Maybe
 import Data.Monoid
@@ -13,7 +14,6 @@ import qualified Data.Set as Set
 import Data.STRef
 import Data.String
 import Data.Vector(Vector)
-import Prelude.Extras
 
 import Syntax
 import qualified Syntax.Abstract as Abstract
@@ -21,7 +21,7 @@ import qualified Syntax.Concrete.Scoped as Concrete
 import qualified Syntax.Sized.SLambda as SLambda
 import VIX
 
-type Exists e = STRef (World VIX) (Either Level (e (MetaVar e)))
+type Exists e = STRef RealWorld (Either Level (e (MetaVar e)))
 
 data MetaVar e = MetaVar
   { metaId   :: !Int
@@ -229,7 +229,7 @@ metaTelescope
   -> Telescope a e (MetaVar e)
 metaTelescope vs =
   Telescope
-  $ (\(a, v) -> (metaHint v, a, abstract abstr $ metaType v))
+  $ (\(a, v) -> TeleArg (metaHint v) a $ abstract abstr $ metaType v)
   <$> vs
   where
     abstr = teleAbstraction $ snd <$> vs
@@ -241,6 +241,6 @@ metaTelescopeM
 metaTelescopeM vs =
   fmap Telescope $ forM vs $ \(a, v) -> do
     s <- abstractM abstr $ metaType v
-    return (metaHint v, a, s)
+    return $ TeleArg (metaHint v) a s
   where
     abstr = teleAbstraction $ snd <$> vs

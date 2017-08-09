@@ -63,7 +63,7 @@ closeLambda tele lamScope = do
   let lamExpr = instantiateTele pure vs lamScope
       vs' = sortedFvs <> vs
       abstr = teleAbstraction vs'
-      tele'' = Telescope $ (\v -> (metaHint v, (), abstract abstr $ metaType v)) <$> vs'
+      tele'' = Telescope $ (\v -> TeleArg (metaHint v) () $ abstract abstr $ metaType v) <$> vs'
 
   lamExpr' <- closeExpr lamExpr
   let lamScope' = abstract abstr lamExpr'
@@ -82,16 +82,16 @@ closeLambda tele lamScope = do
 
 closeBranches :: BrsM SLambda.Expr -> VIX (BrsM Closed.Expr)
 closeBranches (ConBranches cbrs) = fmap ConBranches $
-  forM cbrs $ \(qc, tele, brScope) -> do
+  forM cbrs $ \(ConBranch qc tele brScope) -> do
     vs <- forTeleWithPrefixM tele $ \h () s vs -> do
       let e = instantiateTele pure vs s
       e' <- closeExpr e
       forall h e'
     let brExpr = instantiateTele pure vs brScope
         abstr = teleAbstraction vs
-        tele'' = Telescope $ (\v -> (metaHint v, (), abstract abstr $ metaType v)) <$> vs
+        tele'' = Telescope $ (\v -> TeleArg (metaHint v) () $ abstract abstr $ metaType v) <$> vs
     brExpr' <- closeExpr brExpr
     let brScope' = abstract abstr brExpr'
-    return (qc, tele'', brScope')
+    return $ ConBranch qc tele'' brScope'
 closeBranches (LitBranches lbrs def) = LitBranches
-  <$> mapM (\(l, e) -> (,) l <$> closeExpr e) lbrs <*> closeExpr def
+  <$> mapM (\(LitBranch l e) -> LitBranch l <$> closeExpr e) lbrs <*> closeExpr def

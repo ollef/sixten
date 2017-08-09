@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, TemplateHaskell #-}
 module Syntax.Concrete.Scoped
   ( module Definition
   , module Pattern
@@ -9,10 +9,10 @@ module Syntax.Concrete.Scoped
 import Control.Monad
 import Data.Bifunctor
 import Data.Bitraversable
+import Data.Functor.Classes
 import Data.Monoid
 import Data.String
 import Data.Traversable
-import Prelude.Extras
 
 import Syntax hiding (piView)
 import Syntax.Concrete.Definition as Definition
@@ -34,7 +34,6 @@ data Expr v
   | ExternCode (Extern (Expr v))
   | Wildcard
   | SourceLoc !SourceLoc (Expr v)
-  deriving (Show)
 
 -- | Synonym for documentation purposes
 type Type = Expr
@@ -48,24 +47,29 @@ piView _ = Nothing
 
 -------------------------------------------------------------------------------
 -- Instances
-instance Eq1 Expr
-instance Show1 Expr
+-- deriveShow1 ''Expr
+-- deriveShow ''Expr
+
+instance Eq1 Expr where
+  liftEq f (Var v1) (Var v2) = f v1 v2
+  liftEq _ (Global g1) (Global g2) = g1 == g2
+  liftEq _ (Lit l1) (Lit l2) = l1 == l2
+  liftEq _ (Con c1) (Con c2) = c1 == c2
+  liftEq f (Pi p1 pat1 s1) (Pi p2 pat2 s2) = and [p1 == p2, liftPatEq (liftEq f) (==) pat1 pat2, liftEq f s1 s2]
+  liftEq f (Lam p1 pat1 s1) (Lam p2 pat2 s2) = and [p1 == p2, liftPatEq (liftEq f) (==) pat1 pat2, liftEq f s1 s2]
+  liftEq f (App e1 p1 e1') (App e2 p2 e2') = liftEq f e1 e2 && p1 == p2 && liftEq f e1' e2'
+  liftEq f (Let h1 e1 s1) (Let h2 e2 s2) = h1 == h2 && liftEq f e1 e2 && liftEq f s1 s2
+  liftEq f (Case e1 brs1) (Case e2 brs2)
+    = liftEq f e1 e2
+    && liftEq (\(pat1, s1) (pat2, s2) -> liftPatEq (liftEq f) (==) pat1 pat2 && liftEq f s1 s2) brs1 brs2
+  liftEq f (ExternCode c) (ExternCode c') = liftEq (liftEq f) c c'
+  liftEq _ Wildcard Wildcard = True
+  liftEq f (SourceLoc _ e1) e2 = liftEq f e1 e2
+  liftEq f e1 (SourceLoc _ e2) = liftEq f e1 e2
+  liftEq _ _ _ = False
 
 instance Eq v => Eq (Expr v) where
-  Var v1 == Var v2 = v1 == v2
-  Global g1 == Global g2 = g1 == g2
-  Lit l1 == Lit l2 = l1 == l2
-  Con c1 == Con c2 = c1 == c2
-  Pi p1 pat1 s1 == Pi p2 pat2 s2 = and [p1 == p2, pat1 == pat2, s1 == s2]
-  Lam p1 pat1 s1 == Lam p2 pat2 s2 = and [p1 == p2, pat1 == pat2, s1 == s2]
-  App e1 p1 e1' == App e2 p2 e2' = e1 == e2 && p1 == p2 && e1' == e2'
-  Let h1 e1 s1 == Let h2 e2 s2 = h1 == h2 && e1 == e2 && s1 == s2
-  Case e1 brs1 == Case e2 brs2 = e1 == e2 && brs1 == brs2
-  ExternCode c == ExternCode c' = c == c'
-  Wildcard == Wildcard = True
-  SourceLoc _ e1 == e2 = e1 == e2
-  e1 == SourceLoc _ e2 = e1 == e2
-  _ == _ = False
+  (==) = liftEq (==)
 
 instance AppSyntax Expr where
   app = App

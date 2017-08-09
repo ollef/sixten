@@ -3,8 +3,7 @@ module Inference.TypeCheck where
 
 import Control.Applicative
 import Control.Monad.Except
-import Control.Monad.ST()
-import Control.Monad.ST.Class
+import Control.Monad.ST
 import Control.Monad.State
 import Data.Bifunctor
 import Data.Bitraversable
@@ -50,7 +49,7 @@ newtype InstBelow = InstBelow Plicitness
   deriving (Eq, Ord)
 
 data Expected typ
-  = Infer (STRef (World VIX) typ) InstBelow
+  = Infer (STRef RealWorld typ) InstBelow
   | Check typ
 
 -- | instExpected t2 t1 = e => e : t1 -> t2
@@ -267,7 +266,7 @@ tcBranches expr pbrs expected = do
 --------------------------------------------------------------------------------
 -- Patterns
 data ExpectedPat
-  = InferPat (STRef (World VIX) AbstractM)
+  = InferPat (STRef RealWorld AbstractM)
   | CheckPat AbstractM
 
 checkPat
@@ -529,7 +528,7 @@ resolveConstrsType cs expected = do
       throwError
         $ show
         $ explain loc
-        $ Err (Just heading) docs mempty
+        $ Err (Just heading) docs mempty mempty
     constrDoc = case either (Leijen.red . pretty) (Leijen.red . pretty) <$> cs of
       [pc] -> "constructor" Leijen.<+> pc
       pcs -> "constructors" Leijen.<+> prettyHumanList "and" pcs
@@ -656,7 +655,7 @@ funSubtypes startType plics = go plics startType mempty mempty mempty
             abstr = teleAbstraction vars
         tele' <- forM (toVector tele) $ \(h, p, t) -> do
           s <- abstractM abstr t
-          return (h, p, s)
+          return $ TeleArg h p s
 
         typeScope <- abstractM abstr typ
 
@@ -879,7 +878,7 @@ checkClausesRho clauses rhoType = do
   modifyIndent pred
 
   forM_ clauses' $ \(pats, body) -> do
-    forM_ pats $ \pat -> logMeta 20 "checkClausesRho clause pat" =<< bitraverse showMeta pure pat
+    forM_ pats $ logMeta 20 "checkClausesRho clause pat" <=< bitraverse showMeta pure
     logMeta 20 "checkClausesRho clause body" body
 
   argVars <- forTeleWithPrefixM (addTeleNames argTele $ Concrete.patternHint <$> firstPats) $ \h _ s argVars ->

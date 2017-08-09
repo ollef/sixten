@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns, MonadComprehensions, OverloadedStrings #-}
+{-# LANGUAGE MonadComprehensions, OverloadedStrings #-}
 module Inference.Cycle where
 
 import Data.Foldable as Foldable
@@ -41,6 +41,7 @@ detectTypeRepCycles defs = do
             ] ++
             ["which depends on the size of " <> Leijen.dullblue v' | v' <- drop 1 printedCycle]
             )
+            mempty
             mempty)
     [] -> return ()
 
@@ -72,6 +73,7 @@ detectDefCycles defs = do
             ] ++
             ["which depends " <> Leijen.dullblue v' | v' <- drop 1 printedCycle]
             )
+            mempty
             mempty)
     [] -> return ()
 

@@ -51,14 +51,14 @@ byteArrayPat bs = ConPat (Right Builtin.MkArrayConstr)
   , (Explicit
     , ConPat (Right Builtin.Ref)
     $ pure
-    $ ( Explicit
-      , ByteString.foldr
-        (\byte rest -> ConPat
-          (Right Builtin.MkPairConstr)
-          $ Vector.fromList [(Explicit, LitPat $ Byte byte), (Explicit, rest)])
-        (ConPat (Right Builtin.MkUnitConstr) mempty)
-        bs
-      )
+    ( Explicit
+    , ByteString.foldr
+      (\byte rest -> ConPat
+        (Right Builtin.MkPairConstr)
+        $ Vector.fromList [(Explicit, LitPat $ Byte byte), (Explicit, rest)])
+      (ConPat (Right Builtin.MkUnitConstr) mempty)
+      bs
+    )
     )
   ]
 

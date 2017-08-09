@@ -1,10 +1,10 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings, TypeFamilies, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings, TemplateHaskell, TypeFamilies, ViewPatterns #-}
 module Syntax.Abstract where
 
 import Control.Monad
+import Data.Deriving
 import Data.Monoid
 import Data.String
-import Prelude.Extras
 
 import Syntax
 import Util
@@ -21,7 +21,7 @@ data Expr v
   | Let !NameHint (Expr v) (Scope1 Expr v)
   | Case (Expr v) (Branches QConstr Plicitness Expr v) (Type v)
   | ExternCode (Extern (Expr v)) (Type v)
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  deriving (Foldable, Functor, Traversable)
 
 -- | Synonym for documentation purposes
 type Type = Expr
@@ -59,9 +59,12 @@ instance AppSyntax Expr where
   appView (App e1 a e2) = Just (e1, a, e2)
   appView _ = Nothing
 
-instance Eq1 Expr
-instance Ord1 Expr
-instance Show1 Expr
+deriveEq1 ''Expr
+deriveEq ''Expr
+deriveOrd1 ''Expr
+deriveOrd ''Expr
+deriveShow1 ''Expr
+deriveShow ''Expr
 
 instance Applicative Expr where
   pure = return

@@ -3,7 +3,6 @@ module VIX where
 
 import Control.Monad.Except
 import Control.Monad.ST
-import Control.Monad.ST.Class
 import Control.Monad.State
 import Data.Bifunctor
 import qualified Data.HashMap.Lazy as HashMap

@@ -5,6 +5,7 @@ import Control.Monad
 import Data.Bifoldable
 import Data.Bifunctor
 import Data.Bitraversable
+import Data.Functor.Classes
 import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
@@ -38,6 +39,24 @@ patternHint :: Pat typ b -> NameHint
 patternHint (VarPat h _) = h
 patternHint (PatLoc _ p) = patternHint p
 patternHint _ = mempty
+
+liftPatEq
+  :: (typ1 -> typ2 -> Bool)
+  -> (a -> b -> Bool)
+  -> Pat typ1 a
+  -> Pat typ2 b
+  -> Bool
+liftPatEq _ g (VarPat _ a) (VarPat _ b) = g a b
+liftPatEq _ _ WildcardPat WildcardPat = True
+liftPatEq _ _ (LitPat l1) (LitPat l2) = l1 == l2
+liftPatEq f g (ConPat c1 ps1) (ConPat c2 ps2)
+  = c1 == c2
+  && liftEq (\(p1, pat1) (p2, pat2) -> p1 == p2 && liftPatEq f g pat1 pat2) ps1 ps2
+liftPatEq f g (AnnoPat typ1 pat1) (AnnoPat typ2 pat2) = f typ1 typ2 && liftPatEq f g pat1 pat2
+liftPatEq f g (ViewPat typ1 pat1) (ViewPat typ2 pat2) = f typ1 typ2 && liftPatEq f g pat1 pat2
+liftPatEq f g (PatLoc _ pat1) pat2 = liftPatEq f g pat1 pat2
+liftPatEq f g pat1 (PatLoc _ pat2) = liftPatEq f g pat1 pat2
+liftPatEq _ _ _ _ = False
 
 -------------------------------------------------------------------------------
 -- Instances

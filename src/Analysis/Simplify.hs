@@ -62,9 +62,9 @@ simplifyBranches
   -> Branches c a Expr v
   -> Branches c a Expr v
 simplifyBranches glob applied (ConBranches cbrs) = ConBranches
-  [ (c, simplifyTele glob tele, simplifyScope glob applied s) | (c, tele, s) <- cbrs ]
+  [ ConBranch c (simplifyTele glob tele) $ simplifyScope glob applied s | ConBranch c tele s <- cbrs ]
 simplifyBranches glob applied (LitBranches lbrs def) = LitBranches
-  [(l, simplifyExpr glob applied e) | (l, e) <- lbrs]
+  [ LitBranch l $ simplifyExpr glob applied e | LitBranch l e <- lbrs]
   $ simplifyExpr glob applied def
 
 simplifyTele
@@ -72,7 +72,7 @@ simplifyTele
   -> Telescope a Expr v
   -> Telescope a Expr v
 simplifyTele glob tele
-  = Telescope $ forTele tele $ \h a fieldScope -> (h, a, simplifyScope glob 0 fieldScope)
+  = Telescope $ forTele tele $ \h a fieldScope -> TeleArg h a $ simplifyScope glob 0 fieldScope
 
 let_
   :: (QName -> Bool)

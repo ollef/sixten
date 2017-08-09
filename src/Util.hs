@@ -4,7 +4,6 @@ module Util where
 
 import Bound
 import Bound.Var
-import Control.Monad.Morph
 import Control.Monad.State
 import Data.Bifoldable
 import Data.Bifunctor

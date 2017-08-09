@@ -144,14 +144,14 @@ convertedContext target = HashMap.fromList $ concat
     , constDef $ Closed.Sized typeSize typeSize
     )
   , (SizeOfName
-    , funDef (Telescope $ pure (mempty, (), Scope typeSize))
+    , funDef (Telescope $ pure (TeleArg mempty () $ Scope typeSize))
       $ Scope $ Closed.Sized intSize $ pure $ B 0
     )
   , ( PiTypeName
     , constDef $ Closed.Sized intSize ptrSize
     )
   , ( PtrName
-    , funDef (Telescope $ pure (mempty, (), Scope typeSize))
+    , funDef (Telescope $ pure (TeleArg mempty () $ Scope typeSize))
       $ Scope $ Closed.Sized intSize ptrSize
     )
   , ( IntName
@@ -186,12 +186,10 @@ deref target e
   = Closed.Case (Closed.Sized intSize e)
   $ ConBranches
   $ pure
-    ( Ref
-    , Telescope
-      $ pure ("dereferenced", (), Scope unknownSize)
-    , toScope
-    $ Closed.Var $ B 0
-    )
+  $ ConBranch
+    Ref
+    (Telescope $ pure $ TeleArg "dereferenced" () $ Scope unknownSize)
+    (toScope $ Closed.Var $ B 0)
   where
     unknownSize = global "Sixten.Builtin.deref.UnknownSize"
     intSize = Closed.Lit $ Integer $ Target.ptrBytes target
@@ -204,23 +202,23 @@ apply target numArgs
   = Sized.FunctionDef Public Sized.NonClosure
   $ Sized.Function
     (Telescope
-    $ Vector.cons ("this", (), Scope ptrSize)
-    $ (\n -> (fromText $ "size" <> shower (unTele n), (), Scope intSize)) <$> Vector.enumFromN 0 numArgs
-    <|> (\n -> (fromText $ "x" <> shower (unTele n), (), Scope $ pure $ B $ 1 + n)) <$> Vector.enumFromN 0 numArgs)
+    $ Vector.cons (TeleArg "this" () $ Scope ptrSize)
+    $ (\n -> TeleArg (fromText $ "size" <> shower (unTele n)) () $ Scope intSize) <$> Vector.enumFromN 0 numArgs
+    <|> (\n -> TeleArg (fromText $ "x" <> shower (unTele n)) () $ Scope $ pure $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs)
   $ toScope
   $ Closed.Sized (Closed.Global "Sixten.Builtin.apply.unknownSize")
   $ Closed.Case (deref target $ Closed.Var $ B 0)
   $ ConBranches
   $ pure
-    ( Closure
-    , Telescope
-      $ Vector.fromList [("f_unknown", (), Scope ptrSize), ("n", (), Scope intSize)]
-    , toScope
+  $ ConBranch
+    Closure
+    (Telescope $ Vector.fromList
+      [TeleArg "f_unknown" () $ Scope ptrSize, TeleArg "n" () $ Scope intSize])
+    (toScope
       $ Closed.Case (Closed.Sized intSize $ Closed.Var $ B 1)
       $ LitBranches
-        [(Integer $ fromIntegral arity, br arity) | arity <- 1 :| [2..maxArity]]
-        $ Closed.Call (global FailName) $ pure $ Closed.Sized intSize (Closed.Lit $ Integer 1)
-    )
+        [LitBranch (Integer $ fromIntegral arity) $ br arity | arity <- 1 :| [2..maxArity]]
+        $ Closed.Call (global FailName) $ pure $ Closed.Sized intSize (Closed.Lit $ Integer 1))
   where
     intSize = Closed.Lit $ Integer $ Target.intBytes target
     ptrSize = Closed.Lit $ Integer $ Target.ptrBytes target
@@ -241,17 +239,17 @@ apply target numArgs
         <|> (\n -> Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + Tele numArgs + n) <$> Vector.enumFromN 0 numArgs
       | numArgs == arity
         = Closed.PrimCall (ReturnIndirect OutParam) (Closed.Var $ B 0)
-        $ Vector.cons (Closed.Sized ptrSize $ Closed.Var $ F $ B 0, directPtr)
-        $ (\n -> (Closed.Sized intSize $ Closed.Var $ F $ B $ 1 + n, directInt)) <$> Vector.enumFromN 0 numArgs
-        <|> (\n -> (Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + Tele numArgs + n, Indirect)) <$> Vector.enumFromN 0 numArgs
+        $ Vector.cons (directPtr, Closed.Sized ptrSize $ Closed.Var $ F $ B 0)
+        $ (\n -> (directInt, Closed.Sized intSize $ Closed.Var $ F $ B $ 1 + n)) <$> Vector.enumFromN 0 numArgs
+        <|> (\n -> (Indirect, Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + Tele numArgs + n)) <$> Vector.enumFromN 0 numArgs
       | otherwise
         = Closed.Call (global $ applyName $ numArgs - arity)
         $ Vector.cons
           (Closed.Sized ptrSize
           $ Closed.PrimCall (ReturnIndirect OutParam) (Closed.Var $ B 0)
-          $ Vector.cons (Closed.Sized ptrSize $ Closed.Var $ F $ B 0, directPtr)
-          $ (\n -> (Closed.Sized intSize $ Closed.Var $ F $ B $ 1 + n, directInt)) <$> Vector.enumFromN 0 arity
-          <|> (\n -> (Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + fromIntegral numArgs + n, Indirect)) <$> Vector.enumFromN 0 arity)
+          $ Vector.cons (directPtr, Closed.Sized ptrSize $ Closed.Var $ F $ B 0)
+          $ (\n -> (directInt, Closed.Sized intSize $ Closed.Var $ F $ B $ 1 + n)) <$> Vector.enumFromN 0 arity
+          <|> (\n -> (Indirect, Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + fromIntegral numArgs + n)) <$> Vector.enumFromN 0 arity)
         $ (\n -> Closed.Sized intSize $ Closed.Var $ F $ B $ 1 + n) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
         <|> (\n -> Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + fromIntegral numArgs + n) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
 
@@ -260,22 +258,23 @@ pap target k m
   = Sized.FunctionDef Public Sized.NonClosure
   $ Sized.Function
     (Telescope
-    $ Vector.cons ("this", (), Scope intSize)
-    $ (\n -> (fromText $ "size" <> shower (unTele n), (), Scope intSize)) <$> Vector.enumFromN 0 k
-    <|> (\n -> (fromText $ "x" <> shower (unTele n), (), Scope $ pure $ B $ 1 + n)) <$> Vector.enumFromN 0 k)
+    $ Vector.cons (TeleArg "this" () $ Scope intSize)
+    $ (\n -> TeleArg (fromText $ "size" <> shower (unTele n)) () $ Scope intSize) <$> Vector.enumFromN 0 k
+    <|> (\n -> TeleArg (fromText $ "x" <> shower (unTele n)) () $ Scope $ pure $ B $ 1 + n) <$> Vector.enumFromN 0 k)
   $ toScope
   $ Closed.Sized (Closed.Global "Sixten.Builtin.pap.unknownSize")
   $ Closed.Case (deref target $ Closed.Var $ B 0)
   $ ConBranches
   $ pure
-    ( Closure
-    , Telescope
-      $ Vector.cons ("_", (), Scope intSize)
-      $ Vector.cons ("_", (), Scope intSize)
-      $ Vector.cons ("that", (), Scope intSize)
-      $ (\n -> (fromText $ "size" <> shower (unTele n), (), Scope intSize)) <$> Vector.enumFromN 0 m
-      <|> (\n -> (fromText $ "y" <> shower (unTele n), (), Scope $ pure $ B $ 3 + n)) <$> Vector.enumFromN 0 m
-    , toScope
+  $ ConBranch
+    Closure
+    (Telescope
+      $ Vector.cons (TeleArg "_" () $ Scope intSize)
+      $ Vector.cons (TeleArg "_" () $ Scope intSize)
+      $ Vector.cons (TeleArg "that" () $ Scope intSize)
+      $ (\n -> TeleArg (fromText $ "size" <> shower (unTele n)) () $ Scope intSize) <$> Vector.enumFromN 0 m
+      <|> (\n -> TeleArg (fromText $ "y" <> shower (unTele n)) () $ Scope $ pure $ B $ 3 + n) <$> Vector.enumFromN 0 m)
+    (toScope
       $ Closed.Call (global $ applyName $ m + k)
       $ Vector.cons (Closed.Sized ptrSize $ Closed.Var $ B 2)
       $ (\n -> Closed.Sized intSize $ Closed.Var $ B $ 3 + n) <$> Vector.enumFromN 0 m

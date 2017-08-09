@@ -21,7 +21,7 @@ data Function expr v
   = Function (Telescope () expr v) (Scope Tele expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-data Constant expr v
+newtype Constant expr v
   = Constant (expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 

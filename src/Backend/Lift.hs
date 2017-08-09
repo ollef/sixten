@@ -3,7 +3,6 @@ module Backend.Lift where
 
 import Control.Monad.State
 import Data.Bifunctor
-import Data.Bitraversable
 import Data.Monoid
 import Data.Void
 
@@ -46,7 +45,7 @@ liftExpr expr = case expr of
   Closed.Call e es -> Lifted.Call <$> liftExpr e <*> mapM liftExpr es
   Closed.PrimCall retDir e es -> Lifted.PrimCall retDir
     <$> liftExpr e
-    <*> traverse (bitraverse liftExpr pure) es
+    <*> traverse (traverse liftExpr) es
   Closed.Let h e s -> Lifted.Let h
     <$> liftExpr e
     <*> transverseScope liftExpr s
@@ -58,19 +57,19 @@ liftBranches
   :: Branches QConstr () Closed.Expr v
   -> Lift (Branches QConstr () Lifted.Expr v)
 liftBranches (ConBranches cbrs) = ConBranches <$> sequence
-  [ (,,) qc <$> liftTelescope tele <*> transverseScope liftExpr s
-  | (qc, tele, s) <- cbrs
+  [ ConBranch qc <$> liftTelescope tele <*> transverseScope liftExpr s
+  | ConBranch qc tele s <- cbrs
   ]
 liftBranches (LitBranches lbrs def) = LitBranches <$> sequence
-  [ (,) l <$> liftExpr e
-  | (l, e) <- lbrs
+  [ LitBranch l <$> liftExpr e
+  | LitBranch l e <- lbrs
   ] <*> liftExpr def
 
 liftTelescope
   :: Telescope d Closed.Expr v
   -> Lift (Telescope d Lifted.Expr v)
 liftTelescope (Telescope tele) = Telescope
-  <$> mapM (\(h, d, s) -> (,,) h d <$> transverseScope liftExpr s) tele
+  <$> mapM (\(TeleArg h d s) -> TeleArg h d <$> transverseScope liftExpr s) tele
 
 liftToDefinitionM
   :: Closed.Expr Void

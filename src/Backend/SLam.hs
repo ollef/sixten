@@ -76,27 +76,27 @@ slamBranches
 slamBranches (ConBranches cbrs) = do
   logMeta 20 "slamBranches brs" $ ConBranches cbrs
   modifyIndent succ
-  cbrs' <- forM cbrs $ \(c, tele, brScope) -> do
+  cbrs' <- forM cbrs $ \(ConBranch c tele brScope) -> do
     tele' <- forTeleWithPrefixM tele $ \h a s tele' -> do
       let vs = fst <$> tele'
           abstr = teleAbstraction vs
           t = instantiateTele pure vs s
       tsz <- slam =<< whnf' True t
       v <- forall h t
-      return (v, (h, a, abstract abstr tsz))
+      return (v, TeleArg h a $ abstract abstr tsz)
     let vs = fst <$> tele'
         abstr = teleAbstraction vs
         tele'' = Telescope
-               $ fmap (\(h, _, t) -> (h, (), t))
+               $ fmap (\(TeleArg h _ t) -> TeleArg h () t)
                $ snd <$> tele'
     brScope' <- slam $ instantiateTele pure vs brScope
-    return (c, tele'', abstract abstr brScope')
+    return $ ConBranch c tele'' $ abstract abstr brScope'
   modifyIndent pred
   logMeta 20 "slamBranches res" $ ConBranches cbrs'
   return $ ConBranches cbrs'
 slamBranches (LitBranches lbrs d)
   = LitBranches
-    <$> sequence [(,) l <$> slam e | (l, e) <- lbrs]
+    <$> sequence [LitBranch l <$> slam e | LitBranch l e <- lbrs]
     <*> slam d
 
 slamExtern

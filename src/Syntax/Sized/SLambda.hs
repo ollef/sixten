@@ -1,12 +1,12 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, OverloadedStrings, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, OverloadedStrings, TemplateHaskell, ViewPatterns #-}
 module Syntax.Sized.SLambda where
 
 import Control.Monad
+import Data.Deriving
 import Data.Monoid
 import Data.String
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
-import Prelude.Extras
 
 import Syntax hiding (lamView)
 import Util
@@ -22,7 +22,7 @@ data Expr v
   | Case (Expr v) (Branches QConstr () Expr v)
   | Anno (Expr v) (Type v)
   | ExternCode (Extern (Expr v))
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  deriving (Foldable, Functor, Traversable)
 
 type Type = Expr
 
@@ -39,9 +39,12 @@ lamView _ = Nothing
 
 -------------------------------------------------------------------------------
 -- Instances
-instance Eq1 Expr
-instance Ord1 Expr
-instance Show1 Expr
+deriveEq1 ''Expr
+deriveEq ''Expr
+deriveOrd1 ''Expr
+deriveOrd ''Expr
+deriveShow1 ''Expr
+deriveShow ''Expr
 
 instance Applicative Expr where
   pure = Var

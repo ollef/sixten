@@ -106,11 +106,11 @@ normalise expr = do
         Case e'' brs' retType' -> Case e'' <$> (case brs' of
           ConBranches cbrs -> ConBranches
             <$> sequence
-              [ uncurry ((,,) qc) <$> normaliseTelescope tele s
-              | (qc, tele, s) <- cbrs
+              [ uncurry (ConBranch qc) <$> normaliseTelescope tele s
+              | ConBranch qc tele s <- cbrs
               ]
           LitBranches lbrs def -> LitBranches
-            <$> sequence [(,) l <$> normalise br | (l, br) <- lbrs]
+            <$> sequence [LitBranch l <$> normalise br | LitBranch l br <- lbrs]
             <*> normalise def)
           <*> normalise retType'
         _ -> return res
@@ -131,7 +131,7 @@ normalise expr = do
       scope' <- abstractM abstr e'
       tele' <- forM avs $ \(a, v) -> do
         s <- abstractM abstr $ metaType v
-        return (metaHint v, a, s)
+        return $ TeleArg (metaHint v) a s
       return (Telescope tele', scope')
     normaliseScope h _ c t s = do
       t' <- normalise t
@@ -167,12 +167,12 @@ chooseBranch
   -> m (Expr v)
 chooseBranch (Lit l) (LitBranches lbrs def) _ k = k chosenBranch
   where
-    chosenBranch = head $ [br | (l', br) <- NonEmpty.toList lbrs, l == l'] ++ [def]
+    chosenBranch = head $ [br | LitBranch l' br <- NonEmpty.toList lbrs, l == l'] ++ [def]
 chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs) _ k =
   k $ instantiateTele snd (Vector.drop (Vector.length argsv - numConArgs) argsv) chosenBranch
   where
     argsv = Vector.fromList args
-    (numConArgs, chosenBranch) = case [(teleLength tele, br) | (qc', tele, br) <- cbrs, qc == qc'] of
+    (numConArgs, chosenBranch) = case [(teleLength tele, br) | ConBranch qc' tele br <- cbrs, qc == qc'] of
       [br] -> br
       _ -> error "Normalise.chooseBranch"
 chooseBranch e brs retType _ = return $ Case e brs retType

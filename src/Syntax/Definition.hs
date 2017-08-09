@@ -4,8 +4,8 @@ module Syntax.Definition where
 import Control.Monad.Morph
 import Data.Bifunctor
 import Data.Bitraversable
+import Data.Functor.Classes
 import Data.String
-import Prelude.Extras
 
 import Pretty
 import Syntax.Class

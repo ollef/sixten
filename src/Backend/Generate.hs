@@ -145,7 +145,7 @@ generateExpr expr typ = case expr of
   Con qc es -> generateCon qc es typ
   Call funExpr es -> do
     (retDir, argDirs) <- funSignature funExpr $ Vector.length es
-    generateCall Nothing retDir funExpr (Vector.zip es argDirs) typ
+    generateCall Nothing retDir funExpr (Vector.zip argDirs es) typ
   PrimCall lang retDir funExpr es -> generateCall lang retDir funExpr es typ
   Let _h e s -> do
     v <- generateExpr e $ unknownSize "let"
@@ -185,11 +185,11 @@ generateCall
   :: Maybe Language
   -> RetDir
   -> Expr Var
-  -> Vector (Expr Var, Direction)
+  -> Vector (Direction, Expr Var)
   -> Expr Var
   -> Gen Var
 generateCall lang retDir funExpr es typ = do
-  let argDirs = snd <$> es
+  let argDirs = fst <$> es
   fun <- generateFunOp funExpr retDir argDirs
   args <- join <$> mapM (uncurry generateDirectedExpr) es
   case retDir of
@@ -222,7 +222,7 @@ storeExpr expr typ ret = case expr of
   Con qc es -> storeCon qc es ret
   Call funExpr es -> do
     (retDir, argDirs) <- funSignature funExpr $ Vector.length es
-    storeCall Nothing retDir funExpr (Vector.zip es argDirs) typ ret
+    storeCall Nothing retDir funExpr (Vector.zip argDirs es) typ ret
   PrimCall lang retDir funExpr es -> storeCall lang retDir funExpr es typ ret
   Let _h e s -> do
     v <- generateExpr e $ unknownSize "storeLet"
@@ -234,12 +234,12 @@ storeCall
   :: Maybe Language
   -> RetDir
   -> Expr Var
-  -> Vector (Expr Var, Direction)
+  -> Vector (Direction, Expr Var)
   -> Expr Var
   -> Operand Ptr
   -> Gen ()
 storeCall lang retDir funExpr es typ ret = do
-  let argDirs = snd <$> es
+  let argDirs = fst <$> es
   fun <- generateFunOp funExpr retDir argDirs
   args <- join <$> mapM (uncurry generateDirectedExpr) es
   case retDir of
@@ -266,10 +266,10 @@ funSignature expr arity = case expr of
 
 generateDirectedExpr
   :: Alternative f
-  => Expr Var
-  -> Direction
+  => Direction
+  -> Expr Var
   -> Gen (f Var)
-generateDirectedExpr expr dir
+generateDirectedExpr dir expr
   = generateExpr expr (unknownSize "generateDirectedExpr") >>= directed dir
 
 gcAllocExpr :: Expr Var -> Gen (Operand Ptr)
@@ -360,7 +360,7 @@ generateBranches caseExpr branches brCont = do
       void $ generateExpr caseExpr $ unknownSize "noBranches"
       emit unreachable
       return []
-    ConBranches [(Builtin.Ref, tele, brScope)] -> mdo
+    ConBranches [ConBranch Builtin.Ref tele brScope] -> mdo
       exprInt <- loadVar intSize "case-expr-int" =<< generateExpr caseExpr (unknownSize "caseRef")
       expr <- "case-expr" =: intToPtr (directInt exprInt)
       branchLabel <- freshLabel $ shower Builtin.RefName
@@ -369,7 +369,7 @@ generateBranches caseExpr branches brCont = do
       emitLabel branchLabel
       let teleVector = Vector.indexed $ unTelescope tele
           inst = instantiateTele pure $ toVector args
-          go (vs, index) (i, (h, (), s)) = do
+          go (vs, index) (i, TeleArg h () s) = do
             ptr <- h =: getElementPtr expr index
             nextIndex <- if i == Vector.length teleVector - 1
               then return index
@@ -385,7 +385,7 @@ generateBranches caseExpr branches brCont = do
       emitLabel postLabel
       return [(contResult, afterBranchLabel)]
 
-    ConBranches [(QConstr _ (Constr constrName), tele, brScope)] -> mdo
+    ConBranches [ConBranch (QConstr _ (Constr constrName)) tele brScope] -> mdo
       expr <- indirect "case-expr" =<< generateExpr caseExpr (unknownSize "case-single")
       branchLabel <- freshLabel constrName
 
@@ -393,7 +393,7 @@ generateBranches caseExpr branches brCont = do
       emitLabel branchLabel
       let teleVector = Vector.indexed $ unTelescope tele
           inst = instantiateTele pure $ toVector args
-          go (vs, index) (i, (h, (), s)) = do
+          go (vs, index) (i, TeleArg h () s) = do
             ptr <- h =: getElementPtr expr index
             nextIndex <- if i == Vector.length teleVector - 1
               then return index
@@ -414,7 +414,7 @@ generateBranches caseExpr branches brCont = do
       e0Ptr <- "tag-pointer" =: getElementPtr expr "0"
       e0 <- loadInt "tag" e0Ptr
 
-      branchLabels <- Traversable.forM cbrs $ \(qc@(QConstr _ (Constr constrName)), _, _) -> do
+      branchLabels <- Traversable.forM cbrs $ \(ConBranch qc@(QConstr _ (Constr constrName)) _ _) -> do
         Just qcIndex <- constrIndex qc
         branchLabel <- freshLabel constrName
         return (qcIndex, branchLabel)
@@ -422,12 +422,12 @@ generateBranches caseExpr branches brCont = do
       failLabel <- freshLabel "pattern-match-failed"
       emit $ switch e0 failLabel branchLabels
 
-      contResults <- Traversable.forM (zip cbrs branchLabels) $ \((_, tele, brScope), (_, branchLabel)) -> mdo
+      contResults <- Traversable.forM (zip cbrs branchLabels) $ \(ConBranch _ tele brScope, (_, branchLabel)) -> mdo
         emitLabel branchLabel
 
         let teleVector = Vector.indexed $ unTelescope tele
             inst = instantiateTele pure $ toVector args
-            go (vs, index) (i, (h, (), s)) = do
+            go (vs, index) (i, TeleArg h () s) = do
               ptr <- h =: getElementPtr expr index
               nextIndex <- if i == Vector.length teleVector - 1
                 then return index
@@ -447,18 +447,18 @@ generateBranches caseExpr branches brCont = do
       emitLabel postLabel
       return contResults
 
-    LitBranches lbrs@((Integer _, _) NonEmpty.:| _) def -> do
+    LitBranches lbrs@(LitBranch (Integer _) _ NonEmpty.:| _) def -> do
       let lbrs' = NonEmpty.toList lbrs
       e0 <- generateIntExpr caseExpr
 
-      branchLabels <- Traversable.forM lbrs' $ \(Integer l, _) -> do
+      branchLabels <- Traversable.forM lbrs' $ \(LitBranch (Integer l) _) -> do
         branchLabel <- freshLabel $ shower l
         return (fromIntegral l, branchLabel)
 
       defaultLabel <- freshLabel "default"
       emit $ switch e0 defaultLabel branchLabels
 
-      contResults <- Traversable.forM (zip lbrs' branchLabels) $ \((_, br), (_, brLabel)) -> do
+      contResults <- Traversable.forM (zip lbrs' branchLabels) $ \(LitBranch _ br, (_, brLabel)) -> do
         emitLabel brLabel
         contResult <- brCont br
         afterBranchLabel <- gets currentLabel
@@ -472,18 +472,18 @@ generateBranches caseExpr branches brCont = do
       emitLabel postLabel
       return $ (defaultContResult, afterDefaultLabel) : contResults
 
-    LitBranches lbrs@((Byte _, _) NonEmpty.:| _) def -> do
+    LitBranches lbrs@(LitBranch (Byte _) _ NonEmpty.:| _) def -> do
       let lbrs' = NonEmpty.toList lbrs
       e0 <- generateByteExpr caseExpr
 
-      branchLabels <- Traversable.forM lbrs' $ \(Byte l, _) -> do
+      branchLabels <- Traversable.forM lbrs' $ \(LitBranch (Byte l) _) -> do
         branchLabel <- freshLabel $ shower l
         return (l, branchLabel)
 
       defaultLabel <- freshLabel "default"
       emit $ switch8 e0 defaultLabel branchLabels
 
-      contResults <- Traversable.forM (zip lbrs' branchLabels) $ \((_, br), (_, brLabel)) -> do
+      contResults <- Traversable.forM (zip lbrs' branchLabels) $ \(LitBranch _ br, (_, brLabel)) -> do
         emitLabel brLabel
         contResult <- brCont br
         afterBranchLabel <- gets currentLabel

@@ -19,7 +19,7 @@ import Util
 import Util.TopoSort
 import VIX
 
-data ScopeEnv = ScopeEnv
+newtype ScopeEnv = ScopeEnv
   { scopeConstrTypes :: Constr -> HashSet QName -- TODO could be just bool?
   }
 

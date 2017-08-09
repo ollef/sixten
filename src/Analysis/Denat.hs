@@ -26,12 +26,12 @@ denatCase
   :: Expr v
   -> Branches QConstr () Expr v
   -> Expr v
-denatCase expr (ConBranches [(ZeroConstr, _ztele, zs), (SuccConstr, _stele, ss)])
+denatCase expr (ConBranches [ConBranch ZeroConstr _ztele zs, ConBranch SuccConstr _stele ss])
   = Let mempty expr (global NatName)
   $ toScope
   $ Case (pure $ B ())
     (LitBranches
-      (pure (Integer 0, F <$> instantiate (error "denatCase zs") (hoist denat zs)))
+      (pure (LitBranch (Integer 0) $ F <$> instantiate (error "denatCase zs") (hoist denat zs)))
       (Let "pred" (App (App (global SubIntName) (pure $ B ())) (Lit $ Integer 1)) (global NatName)
       $ mapScope (const ()) F $ hoist denat ss
       )
@@ -39,8 +39,8 @@ denatCase expr (ConBranches [(ZeroConstr, _ztele, zs), (SuccConstr, _stele, ss)]
 denatCase expr (ConBranches cbrs)
   = Case
     expr
-    (ConBranches [(c, hoist denat tele, hoist denat s) | (c, tele, s) <- cbrs])
+    (ConBranches [ConBranch c (hoist denat tele) (hoist denat s) | ConBranch c tele s <- cbrs])
 denatCase expr (LitBranches lbrs def)
   = Case
     expr
-    (LitBranches [(l, denat br) | (l, br) <- lbrs] (denat def))
+    (LitBranches [LitBranch l (denat br) | LitBranch l br <- lbrs] (denat def))

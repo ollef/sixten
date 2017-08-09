@@ -1,11 +1,10 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings, PatternSynonyms #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings, PatternSynonyms, TemplateHaskell #-}
 module Syntax.Sized.Lifted where
 
 import Control.Monad
-import Data.Bifunctor
+import Data.Deriving
 import Data.String
 import Data.Vector(Vector)
-import Prelude.Extras
 
 import Syntax hiding (Definition)
 import Util
@@ -16,17 +15,18 @@ data Expr v
   | Lit Literal
   | Con QConstr (Vector (Expr v)) -- ^ Fully applied
   | Call (Expr v) (Vector (Expr v)) -- ^ Fully applied, only global
-  | PrimCall RetDir (Expr v) (Vector (Expr v, Direction))
+  | PrimCall RetDir (Expr v) (Vector (Direction, Expr v))
   | Let NameHint (Expr v) (Scope1 Expr v)
   | Case (Expr v) (Branches QConstr () Expr v)
   | ExternCode (Extern (Expr v))
   | Anno (Expr v) (Type v)
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  deriving (Foldable, Functor, Traversable)
 
 type Type = Expr
 
 -------------------------------------------------------------------------------
 -- Helpers
+pattern Sized :: Type v -> Expr v -> Expr v
 pattern Sized sz e = Anno e sz
 
 sizeOf :: Expr v -> Expr v
@@ -39,9 +39,12 @@ sizeDir _ = Indirect
 
 -------------------------------------------------------------------------------
 -- Instances
-instance Eq1 Expr
-instance Ord1 Expr
-instance Show1 Expr
+deriveEq1 ''Expr
+deriveEq ''Expr
+deriveOrd1 ''Expr
+deriveOrd ''Expr
+deriveShow1 ''Expr
+deriveShow ''Expr
 
 instance GlobalBind Expr where
   global = Global
@@ -51,7 +54,7 @@ instance GlobalBind Expr where
     Lit l -> Lit l
     Con c es -> Con c (bind f g <$> es)
     Call e es -> Call (bind f g e) (bind f g <$> es)
-    PrimCall retDir e es -> PrimCall retDir (bind f g e) (first (bind f g) <$> es)
+    PrimCall retDir e es -> PrimCall retDir (bind f g e) (fmap (bind f g) <$> es)
     Let h e s -> Let h (bind f g e) (bound f g s)
     Case e brs -> Case (bind f g e) (bound f g brs)
     ExternCode c -> ExternCode (bind f g <$> c)
@@ -72,7 +75,7 @@ instance (Eq v, IsString v, Pretty v)
     Lit l -> prettyM l
     Con c es -> prettyApps (prettyM c) $ prettyM <$> es
     Call e es -> prettyApps (prettyM e) $ prettyM <$> es
-    PrimCall retDir f es -> "primcall" <+> prettyAnnotation retDir (prettyApps (prettyM f) $ (\(e, d) -> prettyAnnotation d $ prettyM e) <$> es)
+    PrimCall retDir f es -> "primcall" <+> prettyAnnotation retDir (prettyApps (prettyM f) $ (\(d, e) -> prettyAnnotation d $ prettyM e) <$> es)
     Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
       "let" <+> prettyM n <+> "=" <+> prettyM e <+> "in" <+>
         prettyM (Util.instantiate1 (pure $ fromName n) s)

@@ -1,10 +1,11 @@
-{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Processor.File where
 
 import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.State
 import Data.Bifunctor
+import Data.Functor.Classes
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
@@ -14,9 +15,7 @@ import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import qualified Data.Vector as Vector
 import Data.Void
-import Prelude.Extras
 import System.IO
-import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import qualified Text.Trifecta as Trifecta
 
 import Analysis.Denat
@@ -35,6 +34,7 @@ import qualified Frontend.Resolve as Resolve
 import qualified Frontend.ScopeCheck as ScopeCheck
 import qualified Inference.TypeCheck as TypeCheck
 import Paths_sixten
+import Processor.Error
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
@@ -286,37 +286,6 @@ generateGroup defs = do
   return $ flip map defs $ \(x, m) ->
     Generate.generateModule env target x $ vacuous <$> m
 
-data Error
-  = SyntaxError Doc
-  | ResolveError Text
-  | TypeError Text
-  | CommandLineError Doc
-  deriving Show
-
-printError :: Error -> IO ()
-printError err = case err of
-  SyntaxError doc -> do
-    Text.putStrLn "Syntax error"
-    Leijen.displayIO stdout
-      $ Leijen.renderPretty 0.8 80
-      $ doc <> Leijen.linebreak
-  ResolveError s -> do
-    Text.putStrLn "Syntax error"
-    Text.putStrLn s
-  TypeError s -> do
-    Text.putStrLn "Type error"
-    Text.putStrLn s
-  CommandLineError doc -> do
-    Text.putStrLn "Command-line error"
-    Leijen.displayIO stdout
-      $ Leijen.renderPretty 0.8 80
-      $ doc <> Leijen.linebreak
-
-data Result a
-  = Error Error
-  | Success a
-  deriving (Show, Functor, Foldable, Traversable)
-
 data ProcessFileArgs = ProcessFileArgs
   { procFile :: FilePath
   , procLlOutput, procCOutput :: FilePath
@@ -325,7 +294,7 @@ data ProcessFileArgs = ProcessFileArgs
   , procVerbosity :: Int
   } deriving (Eq, Show)
 
-processFile :: ProcessFileArgs -> IO (Result [FilePath])
+processFile :: ProcessFileArgs -> IO (Result (Maybe FilePath))
 processFile args = do
   builtin1File <- getDataFileName "rts/Builtin1.vix"
   builtin2File <- getDataFileName "rts/Builtin2.vix"
@@ -339,7 +308,7 @@ processFile args = do
           withFile (procLlOutput args) WriteMode $
             Generate.writeLlvmModule (Extracted.moduleContents <$> res)
           fmap Success $ case ExtractExtern.moduleExterns C res of
-            [] -> return []
+            [] -> return Nothing
             externC -> withFile (procCOutput args) WriteMode $ \cHandle -> do
               Text.hPutStrLn cHandle "#include <stdint.h>"
               Text.hPutStrLn cHandle "#include <stdlib.h>"
@@ -347,7 +316,7 @@ processFile args = do
               forM_ externC $ \code -> do
                 Text.hPutStrLn cHandle ""
                 Text.hPutStrLn cHandle code
-              return [procCOutput args]
+              return $ Just $ procCOutput args
   where
     target = procTarget args
     context = Builtin.context target
@@ -364,6 +333,6 @@ processFile args = do
     parse file k = do
       parseResult <- Parse.parseFromFileEx Parse.modul file
       case Resolve.modul <$> parseResult of
-        Trifecta.Failure xs -> return $ Error $ SyntaxError xs
+        Trifecta.Failure f -> return $ Error $ SyntaxError $ Trifecta._errDoc f
         Trifecta.Success (ExceptT (Identity (Left err))) -> return $ Error $ ResolveError err
         Trifecta.Success (ExceptT (Identity (Right resolved))) -> k resolved

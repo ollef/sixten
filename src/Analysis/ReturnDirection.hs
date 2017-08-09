@@ -3,7 +3,7 @@ module Analysis.ReturnDirection where
 
 import Control.Monad
 import Control.Monad.Except
-import Control.Monad.ST.Class
+import Control.Monad.ST
 import Data.Bitraversable
 import Data.Function
 import Data.Hashable
@@ -22,7 +22,7 @@ import VIX
 data MetaReturnIndirect
   = MProjection
   | MOutParam
-  | MRef (STRef (World VIX) (Maybe MetaReturnIndirect))
+  | MRef (STRef RealWorld (Maybe MetaReturnIndirect))
   deriving Eq
 
 type RetDirM = ReturnDirection MetaReturnIndirect
@@ -122,9 +122,9 @@ infer expr = case expr of
     (retDir, argDirs) <- inferFunction f
     inferCall Call retDir argDirs f es
   PrimCall retDir f es -> do
-    let (args, argDirs) = Vector.unzip es
+    let (argDirs, args) = Vector.unzip es
     inferCall
-      (\f' es' -> PrimCall retDir f' $ Vector.zip es' argDirs)
+      (\f' es' -> PrimCall retDir f' $ Vector.zip argDirs es')
       (fromReturnIndirect <$> retDir)
       argDirs
       f
@@ -171,7 +171,7 @@ inferBranches
   -> Branches c () Expr MetaVar
   -> VIX (Branches c () Expr MetaVar, Location)
 inferBranches loc (ConBranches cbrs) = do
-  locatedCBrs <- forM cbrs $ \(c, tele, brScope) -> do
+  locatedCBrs <- forM cbrs $ \(ConBranch c tele brScope) -> do
     vs <- forMTele tele $ \h _ _ -> exists h loc Nothing
     let abstr = abstract $ teleAbstraction vs
         br = instantiateTele pure vs brScope
@@ -180,17 +180,17 @@ inferBranches loc (ConBranches cbrs) = do
       (sz', _szLoc)  <- infer sz
       return sz'
     tele' <- forM (Vector.zip vs sizes) $ \(v, sz) ->
-      return (metaHint v, (), abstr sz)
+      return $ TeleArg (metaHint v) () $ abstr sz
     (br', brLoc) <- infer br
     let brScope' = abstr br'
-    return ((c, Telescope tele', brScope'), brLoc)
+    return (ConBranch c (Telescope tele') brScope', brLoc)
   let (cbrs', brLocs) = NonEmpty.unzip locatedCBrs
   brLoc <- foldM maxMetaReturnIndirect MProjection brLocs
   return (ConBranches cbrs', brLoc)
 inferBranches _loc (LitBranches lbrs def) = do
-  locatedLbrs <- forM lbrs $ \(lit, e) -> do
+  locatedLbrs <- forM lbrs $ \(LitBranch lit e) -> do
     (e', loc) <- infer e
-    return ((lit, e'), loc)
+    return (LitBranch lit e', loc)
   (def', defloc) <- infer def
   let (lbrs', locs) = NonEmpty.unzip locatedLbrs
   loc <- foldM maxMetaReturnIndirect defloc locs
@@ -220,7 +220,7 @@ inferDefinition MetaVar {metaFunSig = Just (retDir, argDirs)} (FunctionDef vis c
     let sz = instantiateTele pure vs szScope
     (sz', _szLoc) <- infer sz
     let szScope' = abstract (teleAbstraction vs) sz'
-    return (h, d, szScope')
+    return $ TeleArg h d szScope'
   let e = instantiateTele pure vs s
   (e', loc) <- infer e
   case retDir of

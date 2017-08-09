@@ -1,8 +1,9 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings, TemplateHaskell #-}
 module Syntax.Extern where
 
 import Data.Monoid
 import Data.Text(Text)
+import Data.Deriving
 
 import Pretty
 
@@ -17,6 +18,13 @@ data ExternPart a
   | ExprMacroPart a
   | TypeMacroPart a
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+deriveEq1 ''ExternPart
+deriveOrd1 ''ExternPart
+deriveShow1 ''ExternPart
+deriveEq1 ''Extern
+deriveOrd1 ''Extern
+deriveShow1 ''Extern
 
 instance Pretty Language where
   prettyM C = "C"

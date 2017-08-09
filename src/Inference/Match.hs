@@ -6,12 +6,12 @@ import Data.Bifunctor
 import Data.Bitraversable
 import Data.Foldable
 import Data.Function
+import Data.Functor.Classes
 import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Monoid
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
-import Prelude.Extras
 
 import qualified Analysis.Simplify as Simplify
 import qualified Builtin
@@ -147,7 +147,7 @@ matchCon expr retType exprs clauses expr0 = do
     rest <- match retType exprs' (decon clausesStartingWithC) (pure $ B Fail)
     restScope <- abstractF (teleAbstraction $ F <$> ys) rest
     tele <- patternTelescope ys ps
-    return (c, F <$> tele, restScope)
+    return $ ConBranch c (F <$> tele) restScope
 
   return $ fatBar (Case (F <$> expr) (ConBranches cbrs) retType) expr0
   where
@@ -183,7 +183,7 @@ patternTelescope ys ps = Telescope <$> mapM go ps
   where
     go (p, pat, e) = do
       s <- abstractM (teleAbstraction ys) e
-      return (patternHint pat, p, s)
+      return $ TeleArg (patternHint pat) p s
 
 matchLit :: AbstractM -> NonEmptyMatch
 matchLit expr retType exprs clauses expr0 = do
@@ -191,7 +191,7 @@ matchLit expr retType exprs clauses expr0 = do
   lbrs <- forM ls $ \l -> do
     let clausesStartingWithL = NonEmpty.filter ((== LitPat l) . firstPattern) clauses
     rest <- match retType exprs (decon clausesStartingWithL) (pure $ B Fail)
-    return (l, rest)
+    return $ LitBranch l rest
   return $ Case (F <$> expr) (LitBranches lbrs expr0) retType
   where
     lit (LitPat l) = l
