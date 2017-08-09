@@ -1,6 +1,7 @@
 Type checking
   Better checking for escaped vars
   Sanity type-check the Abstract syntax
+  Use a proper higher-order unification algorithm
 Matching
   Coverage and overlap checking
   Parse and typecheck view patterns
@@ -8,12 +9,17 @@ Matching
 Codegen
   Arity inference
   Use llvm-hs for llvm
+    Make a utility function that forward-declares everything undefined you use
+Parsing
+  Use megaparsec instead of trifecta?
+  Error recovery
 Compiler
   Add printing to compiler passes that are not VIX (make a MonadLog class?)
   Simplify/make consistent all the type synonyms
   Clean up MetaVar handling (not all modules need the full generality)
   Make code generation use VIX
   Try to get rid of zonking in normal TC operation
+  Implement e.g. language server protocol
 Error messages
   Write own error printer
   Make error message footnotes contain metavars
@@ -33,9 +39,12 @@ Language
     {l = A} : {l : A} : Type
   Specialisation pragma
   * Modules
+    Use llvm.global_ctors
     Split Processor into File, Def, and Modules processors
+    LLVM Forward-declarations
     Add multi-file tests and test simple imports and exports
     Revamp handling of constructors (currently doesn't really work)
+    Caching
   Mixfix definitions and noncompounds?
   * Inductive families
     Forcing
