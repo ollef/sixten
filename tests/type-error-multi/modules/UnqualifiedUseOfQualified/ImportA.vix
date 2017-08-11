@@ -1,0 +1,4 @@
+module ImportA exposing (..)
+
+fun : Int
+fun = 123

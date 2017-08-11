@@ -1,0 +1,4 @@
+import ImportA exposing (..)
+import ImportB exposing (..)
+
+test = fun

@@ -1,0 +1,11 @@
+import ImportA exposing (..)
+import ImportB as B exposing (..)
+import List exposing (..)
+
+main = map printInt
+  (Ref (Cons ImportA.funA
+  (Ref (Cons ImportB.funB
+  (Ref (Cons funA
+  (Ref (Cons funB
+  (Ref (Cons B.funB
+  (Ref Nil)))))))))))

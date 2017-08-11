@@ -1,0 +1,7 @@
+module List exposing (..)
+
+type List a = Nil | Cons a (Ptr (List a))
+
+map : forall {a b : Type}. (a -> b) -> Ptr (List a) -> Ptr (List b)
+map f (Ref Nil) = Ref Nil
+map f (Ref (Cons x xs)) = Ref (Cons (f x) (map f xs))

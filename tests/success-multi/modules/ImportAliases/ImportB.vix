@@ -1,0 +1,3 @@
+module ImportB exposing (fun)
+
+fun = 223
