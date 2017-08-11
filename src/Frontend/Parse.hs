@@ -391,5 +391,6 @@ exposedNames :: Parser ExposedNames
 exposedNames = symbol "(" *>% go <*% symbol ")"
   where
     go
-      = AllExposed <$% symbol ".."
-      <|> Exposed . HashSet.fromList <$>% sepBySI (symbol ",") name
+      = AllExposed <$ symbol ".."
+      <|> Exposed . HashSet.fromList <$> sepBySI name (symbol ",")
+      <|> pure (Exposed mempty)
