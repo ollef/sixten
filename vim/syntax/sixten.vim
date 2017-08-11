@@ -27,7 +27,7 @@ syn match sixtenIdentifier "[_a-z][a-zA-Z0-9_']*" contained
 syn match sixtenType "\<[A-Z][a-zA-Z0-9_']*\>"
 syn match sixtenDefinition "^\s*\([_a-zA-Z][a-zA-Z0-9_']*\_s*\)\+:"
 syn match sixtenNumber "\<[0-9]\+\>"
-syn keyword sixtenModuleKeyword import module as
+syn keyword sixtenModuleKeyword import module as exposing
 syn keyword sixtenTypeKeyword type where
 syn keyword sixtenCaseKeyword case of
 syn keyword sixtenForall forall
