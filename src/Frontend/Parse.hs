@@ -372,7 +372,7 @@ dataDef = ParsedData <$ reserved "type" <*>% name <*> manyTypedBindings <*>%
 -- | A definition or type declaration on the top-level
 modul :: Parser (Module [(TopLevelParsed QName, Span)])
 modul = Trifecta.whiteSpace >> dropAnchor
-  ((Module <$ reserved "module" <*>% modulName <*>% exposedNames
+  ((Module <$ reserved "module" <*>% modulName <*% reserved "exposing" <*>% exposedNames
      <|> pure (Module "Main" AllExposed))
   <*> manySameCol (dropAnchor impor)
   <*> manySameCol (dropAnchor topLevel))

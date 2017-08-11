@@ -1,4 +1,4 @@
-module Sixten.Builtin(..)
+module Sixten.Builtin exposing (..)
 
 type Unit = MkUnit
 type Pair A B = MkPair A B

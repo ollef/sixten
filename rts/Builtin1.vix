@@ -1,4 +1,4 @@
-module Sixten.Builtin(..)
+module Sixten.Builtin exposing (..)
 
 addInt : Int -> Int -> Int
 addInt x y = (C|
