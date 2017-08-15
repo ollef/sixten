@@ -53,6 +53,7 @@ Language
     Use `opt -internalize-public-api-list` to internalize extern C decls
     Extern LLVM
   IO
+  Mutable variables
 Optimisations
   Inlining
   Common subexpressions
