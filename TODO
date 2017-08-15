@@ -39,7 +39,6 @@ Language
     {l = A} : {l : A} : Type
   Specialisation pragma
   * Modules
-    Use llvm.global_ctors
     Revamp handling of constructors (currently doesn't really work)
     Caching
   Mixfix definitions and noncompounds?

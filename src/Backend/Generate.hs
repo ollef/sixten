@@ -658,6 +658,7 @@ writeLlvmModule mname imports gens decls handle = do
   outputStrLn "inited:"
   outputStrLn "  ret void"
   outputStrLn "not-inited:"
+  outputStrLn "  call void @GC_init()"
   outputStrLn $ "  store i1 1, i1* " <> thisInitedName
   forM_ importedModules $ \i ->
     outputStrLn $ "  call void " <> initName i <> "()"
@@ -666,9 +667,12 @@ writeLlvmModule mname imports gens decls handle = do
   outputStrLn "}"
   outputStrLn ""
 
+  outputStrLn "%\"global ctor\" = type { i32, void ()*, i8* }"
+  outputStrLn $ "@llvm.global_ctors = appending global [1 x %\"global ctor\"] [%\"global ctor\" { i32 610, void ()* " <> thisInitName <> ", i8* null }]"
+
   when (mname == "Main") $ do
+    outputStrLn ""
     outputStrLn "define i32 @main() {"
-    outputStrLn "  call void @GC_init()"
-    outputStrLn $ "  call void " <> thisInitName <> "()"
+    -- TODO
     outputStrLn "  ret i32 0"
     outputStrLn "}"
