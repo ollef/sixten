@@ -1,0 +1,5 @@
+import A exposing (..)
+
+type MainType = Con
+
+acon = Con

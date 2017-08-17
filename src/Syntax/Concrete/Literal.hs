@@ -2,6 +2,7 @@
 module Syntax.Concrete.Literal where
 
 import Data.ByteString as ByteString
+import qualified Data.HashSet as HashSet
 import Data.Text(Text)
 import Data.Text.Encoding as Encoding
 import qualified Data.Vector as Vector
@@ -12,10 +13,9 @@ import Syntax.Concrete.Unscoped as Unscoped
 
 import qualified Builtin
 
--- TODO don't use unqualified
 string :: Text -> Expr QName
 string
-  = App (Var $ unqualified $ constrToName Builtin.MkStringName) Explicit
+  = App (Var $ QName "Sixten.Builtin" $ fromConstr Builtin.MkStringName) Explicit
   . byteArray
   . Encoding.encodeUtf8
 
@@ -38,30 +38,30 @@ nat n = App (Var $ unqualified $ constrToName Builtin.SuccName) Explicit (nat (n
 
 stringPat :: Text -> Pat t v
 stringPat
-  = ConPat (Right Builtin.MkStringConstr)
+  = ConPat (HashSet.singleton Builtin.MkStringConstr)
   . pure
   . (,) Explicit
   . byteArrayPat
   . Encoding.encodeUtf8
 
 byteArrayPat :: ByteString -> Pat t v
-byteArrayPat bs = ConPat (Right Builtin.MkArrayConstr)
+byteArrayPat bs = ConPat (HashSet.singleton Builtin.MkArrayConstr)
   $ Vector.fromList
   [ (Explicit, natPat $ ByteString.length bs)
   , (Explicit
-    , ConPat (Right Builtin.Ref)
+    , ConPat (HashSet.singleton Builtin.Ref)
     $ pure
     ( Explicit
     , ByteString.foldr
       (\byte rest -> ConPat
-        (Right Builtin.MkPairConstr)
+        (HashSet.singleton Builtin.MkPairConstr)
         $ Vector.fromList [(Explicit, LitPat $ Byte byte), (Explicit, rest)])
-      (ConPat (Right Builtin.MkUnitConstr) mempty)
+      (ConPat (HashSet.singleton Builtin.MkUnitConstr) mempty)
       bs
     )
     )
   ]
 
 natPat :: (Eq a, Num a) => a -> Pat t v
-natPat 0 = ConPat (Right Builtin.ZeroConstr) mempty
-natPat n = ConPat (Right Builtin.SuccConstr) $ pure (Explicit, natPat (n - 1))
+natPat 0 = ConPat (HashSet.singleton Builtin.ZeroConstr) mempty
+natPat n = ConPat (HashSet.singleton Builtin.SuccConstr) $ pure (Explicit, natPat (n - 1))

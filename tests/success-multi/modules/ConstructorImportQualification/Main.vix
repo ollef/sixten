@@ -1,0 +1,4 @@
+import A exposing (..)
+
+test2 = A.Con
+test3 = Con

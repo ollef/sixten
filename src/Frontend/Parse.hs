@@ -174,7 +174,10 @@ qname :: Parser QName
 qname = Trifecta.ident qidStyle
 
 constructor :: Parser Constr
-constructor = Trifecta.ident qidStyle
+constructor = Trifecta.ident idStyle
+
+qconstructor :: Parser QConstr
+qconstructor = Trifecta.ident qidStyle
 
 modulName :: Parser ModuleName
 modulName = Trifecta.ident qidStyle
@@ -203,7 +206,7 @@ locatedPat p = (\(pat Trifecta.:~ s) -> PatLoc (Trifecta.render s) pat) <$> Trif
 
 pattern :: Parser (Pat (Type QName) QName)
 pattern = locatedPat $
-  ( Trifecta.try (ConPat <$> (Left <$> constructor) <*> (Vector.fromList <$> someSI plicitPattern))
+  ( Trifecta.try (ConPat <$> (HashSet.singleton <$> qconstructor) <*> (Vector.fromList <$> someSI plicitPattern))
     <|> atomicPattern
   ) <**>
   ( AnnoPat <$% symbol ":" <*> expr

@@ -190,8 +190,13 @@ scopeCheckProgram
   -> VIX [[(QName, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Type Void)]]
 scopeCheckProgram m = do
   res <- ScopeCheck.scopeCheckModule m
-  let mnames = HashSet.fromList $ qnameName <$> HashMap.keys (moduleContents m)
-  addModule (moduleName m) mnames
+  let defNames = HashSet.fromMap $ void $ moduleContents m
+      conNames = HashSet.fromList
+        [ QConstr n c
+        | (n, (_, Unscoped.DataDefinition _ d, _)) <- HashMap.toList $ moduleContents m
+        , c <- constrName <$> d
+        ]
+  addModule (moduleName m) $ HashSet.map Right defNames <> HashSet.map Left conNames
   return res
 
 typeCheckGroup

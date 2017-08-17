@@ -10,8 +10,6 @@ import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
 import Data.List as List
 import Data.Monoid
-import Data.Set(Set)
-import qualified Data.Set as Set
 import Data.String
 import Data.Text(Text)
 import qualified Data.Text.IO as Text
@@ -33,8 +31,7 @@ instance Pretty Level where
 data VIXState = VIXState
   { vixLocation :: SourceLoc
   , vixContext :: HashMap QName (Definition Expr Void, Type Void)
-  , vixModuleNames :: MultiHashMap ModuleName Name
-  , vixConstrs :: HashMap Constr (Set (QName, Type Void))
+  , vixModuleNames :: MultiHashMap ModuleName (Either QConstr QName)
   , vixConvertedSignatures :: HashMap QName Closed.FunSignature
   , vixSignatures :: HashMap QName (Signature ReturnIndirect)
   , vixIndent :: !Int
@@ -50,7 +47,6 @@ emptyVIXState target handle verbosity = VIXState
   { vixLocation = mempty
   , vixContext = mempty
   , vixModuleNames = mempty
-  , vixConstrs = mempty
   , vixConvertedSignatures = mempty
   , vixSignatures = mempty
   , vixIndent = 0
@@ -143,12 +139,7 @@ whenVerbose i m = do
 addContext :: HashMap QName (Definition Expr Void, Type Void) -> VIX ()
 addContext prog = modify $ \s -> s
   { vixContext = prog <> vixContext s
-  , vixConstrs = HashMap.unionWith (<>) cs $ vixConstrs s
-  } where
-    cs = HashMap.fromList $ do
-      (n, (DataDefinition d _, defType)) <- HashMap.toList prog
-      ConstrDef c t <- quantifiedConstrTypes d defType $ const Implicit
-      return (c, Set.fromList [(n, t)])
+  }
 
 definition :: QName -> VIX (Definition Expr v, Expr v)
 definition name = do
@@ -159,13 +150,13 @@ definition name = do
 
 addModule
   :: ModuleName
-  -> HashSet Name
+  -> HashSet (Either QConstr QName)
   -> VIX ()
 addModule m names = modify $ \s -> s
   { vixModuleNames = multiUnion (HashMap.singleton m names) $ vixModuleNames s
   }
 
-qconstructor :: QConstr -> VIX (Expr v)
+qconstructor :: QConstr -> VIX (Type v)
 qconstructor qc@(QConstr n c) = do
   (def, typ) <- definition n
   case def of
@@ -179,17 +170,6 @@ qconstructor qc@(QConstr n c) = do
     Opaque -> no
   where
     no = throwError $ "Not a data type: " ++ show n
-
-constructor
-  :: Ord v
-  => Either Constr QConstr
-  -> VIX (Set (QName, Type v))
-constructor (Right qc@(QConstr n _)) = Set.singleton . (,) n <$> qconstructor qc
-constructor (Left c)
-  = gets
-  $ maybe mempty (Set.map $ second vacuous)
-  . HashMap.lookup c
-  . vixConstrs
 
 -------------------------------------------------------------------------------
 -- Signatures

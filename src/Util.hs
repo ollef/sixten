@@ -16,6 +16,7 @@ import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
+import Data.Maybe
 import Data.Set(Set)
 import qualified Data.Set as Set
 import Data.String
@@ -134,7 +135,16 @@ forWithPrefixM
   -> m (Vector v')
 forWithPrefixM = flip mapWithPrefixM
 
+-- TODO make proper module
 type MultiHashMap k v = HashMap k (HashSet v)
+
+multiInsert
+  :: (Eq k, Hashable k, Eq v, Hashable v)
+  => k
+  -> v
+  -> MultiHashMap k v
+  -> MultiHashMap k v
+multiInsert k v = HashMap.insertWith HashSet.union k $ HashSet.singleton v
 
 multiUnion
   :: (Eq k, Hashable k, Eq v, Hashable v)
@@ -148,6 +158,30 @@ multiUnions
   => [MultiHashMap k v]
   -> MultiHashMap k v
 multiUnions = foldl' multiUnion mempty
+
+multiFromList
+  :: (Eq k, Hashable k, Eq v, Hashable v)
+  => [(k, v)]
+  -> MultiHashMap k v
+multiFromList = foldr (uncurry multiInsert) mempty
+
+multiMap
+  :: (Eq k, Hashable k, Eq v, Hashable v, Eq v', Hashable v')
+  => (v -> v')
+  -> MultiHashMap k v
+  -> MultiHashMap k v'
+multiMap = fmap . HashSet.map
+
+multiMapMaybe
+  :: (Eq k, Hashable k, Eq v, Hashable v, Eq v', Hashable v')
+  => (v -> Maybe v')
+  -> MultiHashMap k v
+  -> MultiHashMap k v'
+multiMapMaybe p
+  = fmap
+  $ HashSet.fromList
+  . mapMaybe p
+  . HashSet.toList
 
 nonEmptySome :: Alternative f => f a -> f (NonEmpty a)
 nonEmptySome p = (NonEmpty.:|) <$> p <*> many p

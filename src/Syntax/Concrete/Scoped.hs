@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Syntax.Concrete.Scoped
   ( module Definition
   , module Pattern
@@ -9,7 +9,9 @@ module Syntax.Concrete.Scoped
 import Control.Monad
 import Data.Bifunctor
 import Data.Bitraversable
+import Data.Foldable
 import Data.Functor.Classes
+import Data.HashSet(HashSet)
 import Data.Monoid
 import Data.String
 import Data.Traversable
@@ -19,13 +21,11 @@ import Syntax.Concrete.Definition as Definition
 import Syntax.Concrete.Pattern as Pattern
 import Util
 
-type Con = Either Constr QConstr
-
 data Expr v
   = Var v
   | Global QName
   | Lit Literal
-  | Con Con
+  | Con (HashSet QConstr)
   | Pi !Plicitness (Pat (PatternScope Type v) ()) (PatternScope Expr v)
   | Lam !Plicitness (Pat (PatternScope Type v) ()) (PatternScope Expr v)
   | App (Expr v) !Plicitness (Expr v)
@@ -126,8 +126,7 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
     Var v -> prettyM v
     Global g -> prettyM g
     Lit l -> prettyM l
-    Con (Left c) -> prettyM c
-    Con (Right qc) -> prettyM qc
+    Con c -> prettyM $ toList c
     Pi p pat s -> withNameHints (nameHints pat) $ \ns -> do
       let inst = instantiatePatternVec (pure . fromName) ns
       parens `above` absPrec $

@@ -38,8 +38,8 @@ Language
     r : Row : Type
     {l = A} : {l : A} : Type
   Specialisation pragma
-  * Modules
-    Revamp handling of constructors (currently doesn't really work)
+  Modules
+    Re-exports
     Caching
   Mixfix definitions and noncompounds?
   * Inductive families

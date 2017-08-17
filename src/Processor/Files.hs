@@ -85,7 +85,13 @@ processBuiltins
   -> VIX [Extracted.Submodule (Generate.Generated (Text, File.DependencySigs))]
 processBuiltins tgt builtins1 builtins2 = do
   addContext context
-  addModule "Sixten.Builtin" $ HashSet.fromList $ qnameName <$> HashMap.keys context
+  let builtinDefNames = HashSet.fromMap $ void context
+      builtinConstrNames = HashSet.fromList
+        [ QConstr n c
+        | (n, (DataDefinition d _, _)) <- HashMap.toList context
+        , c <- constrNames d -- $ constrName <$> d
+        ]
+  addModule "Sixten.Builtin" $ HashSet.map Right builtinDefNames <> HashSet.map Left builtinConstrNames
   addConvertedSignatures $ Builtin.convertedSignatures tgt
   builtinResults1 <- File.processResolved builtins1
   builtinResults2 <- File.processResolved builtins2

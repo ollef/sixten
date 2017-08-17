@@ -20,7 +20,7 @@ import Util.TopoSort
 import VIX
 
 newtype ScopeEnv = ScopeEnv
-  { scopeConstrTypes :: Constr -> HashSet QName -- TODO could be just bool?
+  { scopeConstrs :: QName -> HashSet QConstr
   }
 
 type ScopeCheck = RWS ScopeEnv () (HashSet QName)
@@ -34,19 +34,18 @@ scopeCheckModule
   :: Module (HashMap QName (SourceLoc, Unscoped.Definition QName, Unscoped.Type QName))
   -> VIX [[(QName, SourceLoc, Scoped.PatDefinition Scoped.Expr Void, Scoped.Type Void)]]
 scopeCheckModule modul = do
-  context <- gets vixContext
+  otherNames <- gets vixModuleNames
 
   let env = ScopeEnv lookupConstr
       lookupConstr c = HashMap.lookupDefault mempty c constrs
-      constrs = multiUnions $
-        [ HashMap.singleton c $ HashSet.singleton n
+      constrs = multiFromList
+        [ (QName mempty $ fromConstr c, QConstr n c)
         | (n, (_, Unscoped.DataDefinition _ d, _)) <- HashMap.toList $ moduleContents modul
         , c <- constrName <$> d
-        ] <>
-        [ HashMap.singleton c $ HashSet.singleton n
-        | (n, (DataDefinition d _, _)) <- HashMap.toList context
-        , c <- constrNames d
-        ]
+        ] `multiUnion`
+        importedConstrAliases
+      imports = Import "Sixten.Builtin" "Sixten.Builtin" AllExposed : moduleImports modul
+      importAliases = multiUnions $ importedAliases otherNames <$> imports
 
       checkedDefDeps = for (HashMap.toList $ moduleContents modul) $ \(n, (loc, def, typ)) -> do
         let (def', ddeps) = runScopeCheck (scopeCheckDefinition def) env
@@ -56,15 +55,15 @@ scopeCheckModule modul = do
       defDeps = for checkedDefDeps $ \(n, _, deps) -> (n, deps)
       checkedDefs = for checkedDefDeps $ \(n, def, _) -> (n, def)
 
-  otherNames <- gets vixModuleNames
+      importedNameAliases = multiMapMaybe (either (const Nothing) Just) importAliases
+      importedConstrAliases = multiMapMaybe (either Just $ const Nothing) importAliases
 
-  let localNames = HashMap.keys $ moduleContents modul
-      localAliases = HashMap.fromList
-        [ (unqualified $ qnameName qn, HashSet.singleton qn)
+      localNames = HashMap.keys $ moduleContents modul
+      localAliases = multiFromList
+        [ (unqualified $ qnameName qn, qn)
         | qn <- localNames
         ]
-      imports = Import "Sixten.Builtin" "Sixten.Builtin" AllExposed : moduleImports modul
-      aliases = multiUnions $ localAliases : (importedAliases otherNames <$> imports)
+      aliases = localAliases `multiUnion` importedNameAliases
       lookupAlias qname
         | HashSet.size candidates == 1 = return $ head $ HashSet.toList candidates
         | otherwise = throwError $ "scopeCheckProgram ambiguous " ++ show candidates
@@ -115,15 +114,14 @@ scopeCheckExpr
   :: Unscoped.Expr QName
   -> ScopeCheck (Scoped.Expr QName)
 scopeCheckExpr expr = case expr of
-  Unscoped.Var n | Just v <- isUnqualified n -> do -- TODO qualified constructors
-    let c = fromName v
-    defs <- asks (($ c) . scopeConstrTypes)
-    if HashSet.null defs then
-      return $ Scoped.Var n
+  Unscoped.Var v -> do
+    constrCandidates <- asks (($ v) . scopeConstrs)
+    if HashSet.null constrCandidates then
+      return $ Scoped.Var v
     else do
+      let defs = HashSet.map qconstrTypeName constrCandidates
       modify $ mappend defs
-      return $ Scoped.Con $ Left c
-  Unscoped.Var v -> return $ Scoped.Var v
+      return $ Scoped.Con constrCandidates
   Unscoped.Lit l -> return $ Scoped.Lit l
   Unscoped.Pi p pat e -> do
     pat' <- scopeCheckPat pat
@@ -159,25 +157,22 @@ scopeCheckPat
   :: Pat (Unscoped.Expr QName) QName
   -> ScopeCheck (Pat (Scoped.Expr QName) QName)
 scopeCheckPat pat = case pat of
-  VarPat h n | Just v <- isUnqualified n -> do -- TODO qualified constructors
-    let c = fromName v
-    defs <- asks (($ c) . scopeConstrTypes)
-    if HashSet.null defs then
-      return $ VarPat h n
+  VarPat h v -> do
+    constrCandidates <- asks (($ v) . scopeConstrs)
+    if HashSet.null constrCandidates then
+      return $ VarPat h v
     else do
-      modify $ mappend defs
-      return $ ConPat (Left c) mempty
-  VarPat h v -> return $ VarPat h v
+      modify $ mappend $ HashSet.map qconstrTypeName constrCandidates
+      return $ ConPat constrCandidates mempty
   WildcardPat -> return WildcardPat
   LitPat l -> return $ LitPat l
-  ConPat con ps -> do
-    case con of
-      Left c -> do
-        defs <- asks (($ c) . scopeConstrTypes)
-        modify $ mappend defs
-      Right (QConstr n _) -> -- TODO aliases
-        modify $ HashSet.insert n
-    ConPat con <$> mapM (\(p, pat') -> (,) p <$> scopeCheckPat pat') ps
+  ConPat cons ps -> do
+    conss <- forM (HashSet.toList cons) $ \(QConstr (QName mname _tname) cname) -> do
+      let qconName = QName mname $ fromConstr cname
+      constrCandidates <- asks (($ qconName) . scopeConstrs)
+      forM_ constrCandidates $ \(QConstr def _) -> modify $ HashSet.insert def
+      return constrCandidates
+    ConPat (HashSet.unions conss) <$> mapM (\(p, pat') -> (,) p <$> scopeCheckPat pat') ps
   AnnoPat t p -> AnnoPat <$> scopeCheckExpr t <*> scopeCheckPat p
   ViewPat t p -> ViewPat <$> scopeCheckExpr t <*> scopeCheckPat p
   PatLoc loc p -> PatLoc loc <$> scopeCheckPat p

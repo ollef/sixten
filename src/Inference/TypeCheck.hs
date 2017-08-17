@@ -9,19 +9,17 @@ import Data.Bifunctor
 import Data.Bitraversable
 import Data.Foldable as Foldable
 import qualified Data.HashSet as HashSet
-import Data.List as List
 import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Maybe
 import Data.Monoid
-import Data.Set(Set)
-import qualified Data.Set as Set
 import Data.STRef
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import Text.Trifecta.Result(Err(Err), explain)
+import Data.HashSet(HashSet)
 
 import Analysis.Simplify
 import qualified Backend.Target as Target
@@ -160,8 +158,8 @@ tcRho expr expected expectedAppResult = case expr of
   Concrete.Lit l -> do
     f <- instExpected expected $ typeOfLiteral l
     f $ Abstract.Lit l
-  Concrete.Con con -> do
-    qc <- resolveConstr con expectedAppResult
+  Concrete.Con cons -> do
+    qc <- resolveConstr cons expectedAppResult
     typ <- qconstructor qc
     f <- instExpected expected typ
     f $ Abstract.Con qc
@@ -355,8 +353,8 @@ tcPat' pat vs expected = case pat of
       (LitPat lit)
       (Abstract.Lit lit)
     return (p, e, vs)
-  Concrete.ConPat c pats -> do
-    qc@(QConstr typeName _) <- resolveConstr c $ case expected of
+  Concrete.ConPat cons pats -> do
+    qc@(QConstr typeName _) <- resolveConstr cons $ case expected of
       CheckPat expectedType -> Just expectedType
       InferPat _ -> Nothing
     (_, typeType) <- definition typeName
@@ -463,40 +461,27 @@ instantiateDataType typeName = mdo
 --------------------------------------------------------------------------------
 -- Constrs
 resolveConstr
-  :: Either Constr QConstr
+  :: HashSet QConstr
   -> Maybe Rhotype
   -> VIX QConstr
-resolveConstr (Left c) expected = do
-  typeName <- resolveConstrsType [Left c] expected
-  return (QConstr typeName c)
-resolveConstr (Right qc) _ = return qc
+resolveConstr cs expected = do
+  mExpectedTypeName <- expectedDataType
 
-resolveConstrsType
-  :: [Either Constr QConstr]
-  -> Maybe Rhotype
-  -> VIX QName
-resolveConstrsType cs expected = do
-  mExpectedType <- expectedDataType
-  possibleTypeSets <- forM cs $ \c -> do
-    possibleTypes <- constructor c
-    return $ Set.map fst (possibleTypes :: Set (QName, Abstract.Expr ()))
-  let possibleTypes = List.foldl1' Set.intersection possibleTypeSets
-
-  when (Set.null possibleTypes) $
+  when (HashSet.null cs) $
     err
       "No such data type"
       ["There is no data type with the" Leijen.<+> constrDoc <> "."]
 
-  let candidateTypes
+  let candidates
         = maybe
-          possibleTypes
-          (Set.intersection possibleTypes . Set.singleton)
-          mExpectedType
+          cs
+          (\e -> HashSet.filter ((== e) . qconstrTypeName) cs)
+          mExpectedTypeName
 
-  case (Set.toList candidateTypes, mExpectedType) of
-    ([], Just expectedType) ->
+  case (HashSet.toList candidates, mExpectedTypeName) of
+    ([], Just expectedTypeName) ->
       err "Undefined constructor"
-        [ Leijen.dullgreen (pretty expectedType)
+        [ Leijen.dullgreen (pretty expectedTypeName)
         Leijen.<+> "doesn't define the"
         Leijen.<+> constrDoc <> "."
         ]
@@ -529,7 +514,7 @@ resolveConstrsType cs expected = do
         $ show
         $ explain loc
         $ Err (Just heading) docs mempty mempty
-    constrDoc = case either (Leijen.red . pretty) (Leijen.red . pretty) <$> cs of
+    constrDoc = case (Leijen.red . pretty) <$> HashSet.toList cs of
       [pc] -> "constructor" Leijen.<+> pc
       pcs -> "constructors" Leijen.<+> prettyHumanList "and" pcs
 

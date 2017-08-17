@@ -5,7 +5,9 @@ import Control.Monad
 import Data.Bifoldable
 import Data.Bifunctor
 import Data.Bitraversable
+import Data.Foldable
 import Data.Functor.Classes
+import Data.HashSet(HashSet)
 import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
@@ -17,7 +19,7 @@ data Pat typ b
   = VarPat !NameHint b
   | WildcardPat
   | LitPat Literal
-  | ConPat (Either Constr QConstr) (Vector (Plicitness, Pat typ b))
+  | ConPat (HashSet QConstr) (Vector (Plicitness, Pat typ b))
   | AnnoPat typ (Pat typ b)
   | ViewPat typ (Pat typ b)
   | PatLoc !SourceLoc (Pat typ b)
@@ -113,7 +115,7 @@ instance (Pretty typ, Pretty b) => Pretty (Pat typ b) where
     VarPat _ b -> prettyM b
     WildcardPat -> "_"
     LitPat l -> prettyM l
-    ConPat c args -> prettyApps (prettyM c) $ (\(p, arg) -> prettyAnnotation p $ prettyM arg) <$> args
+    ConPat c args -> prettyApps (prettyM $ toList c) $ (\(p, arg) -> prettyAnnotation p $ prettyM arg) <$> args
     AnnoPat t p -> parens `above` annoPrec $
       prettyM p <+> ":" <+> prettyM t
     ViewPat t p -> parens `above` arrPrec $

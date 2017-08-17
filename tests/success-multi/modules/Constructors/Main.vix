@@ -1,0 +1,13 @@
+import A
+
+type MainType = Con
+
+acon = A.Con
+
+acon' : A.AType
+acon' = acon
+
+maincon = Con
+
+maincon' : MainType
+maincon' = Con

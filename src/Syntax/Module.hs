@@ -1,6 +1,7 @@
-{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveGeneric, DeriveTraversable, OverloadedStrings #-}
+{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveGeneric, DeriveTraversable, GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module Syntax.Module where
 
+import Data.Bifunctor
 import Data.Foldable(toList)
 import Data.Hashable
 import qualified Data.HashMap.Lazy as HashMap
@@ -43,7 +44,7 @@ isUnqualified (QName (ModuleName vs) n)
   | Vector.null vs = Just n
   | otherwise = Nothing
 
-data QConstr = QConstr QName Constr
+data QConstr = QConstr !QName !Constr
   deriving (Eq, Generic, Ord, Show)
 
 qconstrConstr :: QConstr -> Constr
@@ -57,7 +58,7 @@ fromQConstr (QConstr name constr) = fromQName name <> "." <> fromConstr constr
 
 newtype ModuleName
   = ModuleName (Vector Name)
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Monoid)
 
 data Module contents = Module
   { moduleName :: !ModuleName
@@ -74,7 +75,7 @@ fromModuleName (ModuleName parts)
   $ fromName <$> parts
 
 data ExposedNames
-  = Exposed (HashSet Name)
+  = Exposed (HashSet Name) -- TODO allow qualified names
   | AllExposed
   deriving (Eq, Show)
 
@@ -130,22 +131,33 @@ instance Monoid ExposedNames where
 ------------------------------------------------------------------------------
 -- Imports
 importedAliases
-  :: MultiHashMap ModuleName Name
+  :: MultiHashMap ModuleName (Either QConstr QName)
   -> Import
-  -> MultiHashMap QName QName
+  -> MultiHashMap QName (Either QConstr QName)
 importedAliases modules (Import modName asName exposed) =
   as unqualified expNames `multiUnion` as (QName asName) modContents
   where
-    modContents = HashMap.lookupDefault (error $ "Can't find " <> show modName) modName modules -- TODO error if import missing
+    modContents :: MultiHashMap Name (Either QConstr QName)
+    modContents = multiFromList
+      $ either
+        (\c -> (fromConstr $ qconstrConstr c, Left c))
+        (\d -> (qnameName d, Right d))
+      <$> HashSet.toList names
+      where
+        -- TODO error if import missing
+        names = HashMap.lookupDefault (error $ "Can't find " <> show modName) modName modules
 
+    expNames :: MultiHashMap Name (Either QConstr QName)
     expNames = case exposed of
       AllExposed -> modContents
-      Exposed names -> names
+      Exposed names -> HashMap.intersection modContents (HashSet.toMap names)
 
-    as f names = HashMap.fromList
-      [ (f name, HashSet.singleton $ QName modName name)
-      | name <- HashSet.toList names
-      ]
+    as
+      :: (Eq b, Hashable b)
+      => (a -> b)
+      -> MultiHashMap a (Either QConstr QName)
+      -> MultiHashMap b (Either QConstr QName)
+    as f = HashMap.fromList .  fmap (first f) . HashMap.toList
 
 dependencyOrder
   :: (Foldable t, Functor t)
