@@ -13,10 +13,15 @@ data Language = C
 data Extern a = Extern Language [ExternPart a]
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
+data TargetMacro
+  = AlignmentBits
+  deriving (Eq, Ord, Show)
+
 data ExternPart a
   = ExternPart Text
   | ExprMacroPart a
   | TypeMacroPart a
+  | TargetMacroPart TargetMacro
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 deriveEq1 ''ExternPart
@@ -38,3 +43,7 @@ instance Pretty a => Pretty (ExternPart a) where
     ExternPart t -> prettyM t
     ExprMacroPart e -> prettyTightApp "$" (prettyM e) <> " "
     TypeMacroPart t -> prettyTightApp "$type:" (prettyM t) <> " "
+    TargetMacroPart t -> prettyTightApp "$target:" (prettyM t) <> " "
+
+instance Pretty TargetMacro where
+  prettyM AlignmentBits = "alignmentBits"

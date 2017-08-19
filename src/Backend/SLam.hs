@@ -107,6 +107,7 @@ slamExtern (Extern lang parts)
     ExternPart str -> return $ ExternPart str
     ExprMacroPart e -> ExprMacroPart <$> slamSized e
     TypeMacroPart t -> TypeMacroPart <$> (slam =<< whnf' True t)
+    TargetMacroPart m -> return $ TargetMacroPart m
 
 slamDef
   :: Definition Abstract.Expr MetaA

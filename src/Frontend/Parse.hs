@@ -317,7 +317,8 @@ externCExpr
       <|> [] <$ symbol "|)"
       <|> consChar <$> Trifecta.anyChar <*> go
     macroPart
-      = TypeMacroPart <$ Trifecta.string "type:" <*> atomicExpr
+      = TargetMacroPart AlignmentBits <$ Trifecta.string "target:" <* Trifecta.string "alignmentBits"
+      <|> TypeMacroPart <$ Trifecta.string "type:" <*> atomicExpr
       <|> ExprMacroPart <$> atomicExpr
     consChar c (Right t : rest) = Right (c:t) : rest
     consChar c rest = Right [c] : rest

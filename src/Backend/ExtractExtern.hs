@@ -8,6 +8,7 @@ import qualified Data.Text as Text
 import Data.Text(Text)
 import qualified Data.Vector as Vector
 
+import Backend.Target
 import Syntax
 import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Extracted as Extracted
@@ -18,16 +19,17 @@ import Util.Tsil as Tsil
 data ExtractState = ExtractState
   { freshNames :: [QName]
   , extractedCode :: Tsil (Extracted.Declaration, Text)
+  , target :: Target
   }
 
 newtype Extract a = Extract { unExtract :: State ExtractState a }
   deriving (Functor, Applicative, Monad, MonadState ExtractState)
 
-runExtract :: [QName] -> Extract a -> Extracted.Submodule a
-runExtract names
+runExtract :: [QName] -> Target -> Extract a -> Extracted.Submodule a
+runExtract names tgt
   = (\(a, s) -> let (decls, defs) = unzip $ toList $ extractedCode s in
       Extracted.Submodule decls ((,) C <$> defs) a)
-  . flip runState (ExtractState names mempty)
+  . flip runState (ExtractState names mempty tgt)
   . unExtract
 
 freshName :: Extract Name
@@ -71,12 +73,13 @@ extractExtern
   -> Extract (Extracted.Expr v)
 extractExtern retType (Extern C parts) = do
   name <- freshName
+  tgt <- gets target
   let (retTypeStr, retDir) = extractType retType
       retDir' = toReturnDirection OutParam retDir
       (actualRetTypeStr, retParam) = case retDir of
         Direct _ -> (retTypeStr, mempty)
         Indirect -> ("void", [retTypeStr <> " return_"])
-      (strs, exprs, _) = foldl' go (mempty, mempty, 0 :: Int) parts
+      (strs, exprs, _) = foldl' (go tgt) (mempty, mempty, 0 :: Int) parts
       exprsList = toList exprs
       funDef
         = "__attribute__((always_inline))\n"
@@ -95,7 +98,7 @@ extractExtern retType (Extern C parts) = do
     (Extracted.Global $ unqualified name)
     args
   where
-    go (strs, exprs, !len) part = case part of
+    go tgt (strs, exprs, !len) part = case part of
       ExternPart str -> (Snoc strs str, exprs, len)
       TypeMacroPart typ -> (Snoc strs $ fst (extractType typ) <> " ", exprs, len)
       ExprMacroPart (Extracted.Anno expr typ) ->
@@ -106,6 +109,7 @@ extractExtern retType (Extern C parts) = do
               exprName = "extern_arg_" <> shower len
           Just (exprName, _, _) -> (Snoc strs $ exprName <> " ", exprs, len)
       ExprMacroPart _ -> error "extractExtern"
+      TargetMacroPart AlignmentBits -> (Snoc strs $ shower $ alignBits tgt, exprs, len)
 
 mangle :: QName -> Name
 mangle (QName (ModuleName parts) name)
@@ -153,15 +157,16 @@ extractDef
   :: Ord v
   => QName
   -> Sized.Definition Lifted.Expr v
+  -> Target
   -> Extracted.Submodule (Sized.Definition Extracted.Expr v)
-extractDef (QName mname name) def = case def of
-  Sized.FunctionDef vis cl (Sized.Function tele s) -> runExtract names
+extractDef (QName mname name) def tgt = case def of
+  Sized.FunctionDef vis cl (Sized.Function tele s) -> runExtract names tgt
     $ Sized.FunctionDef vis cl
     <$> (Sized.Function <$> extractTelescope tele <*> extractScope s)
-  Sized.ConstantDef vis (Sized.Constant e) -> runExtract names
+  Sized.ConstantDef vis (Sized.Constant e) -> runExtract names tgt
     $ Sized.ConstantDef vis
     <$> (Sized.Constant <$> extractExpr Nothing e)
-  Sized.AliasDef -> runExtract names $ return Sized.AliasDef
+  Sized.AliasDef -> runExtract names tgt $ return Sized.AliasDef
   where
     names =
       [ QName mname $ if n == 0

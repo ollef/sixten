@@ -279,8 +279,10 @@ addSignaturesToContext defs = do
 extractExternGroup
   :: [(QName, Sized.Definition Lifted.Expr Void)]
   -> VIX [(QName, Extracted.Submodule (Sized.Definition Extracted.Expr Void))]
-extractExternGroup defs = return $
-  flip map defs $ \(n, d) -> (n, ExtractExtern.extractDef n d)
+extractExternGroup defs = do
+  target <- gets vixTarget
+  return $
+    flip map defs $ \(n, d) -> (n, ExtractExtern.extractDef n d target)
 
 generateGroup
   :: [(QName, Extracted.Submodule (Sized.Definition Extracted.Expr Void))]
