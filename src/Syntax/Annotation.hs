@@ -29,3 +29,10 @@ data Visibility = Private | Public
 instance Pretty Visibility where
   prettyM Private = "private"
   prettyM Public = "public"
+
+data Abstract = Abstract | Concrete
+  deriving (Eq, Ord, Show)
+
+instance Pretty Abstract where
+  prettyM Abstract = "abstract"
+  prettyM Concrete = "concrete"

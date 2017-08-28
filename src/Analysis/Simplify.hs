@@ -93,11 +93,10 @@ simplifyDef
   :: (QName -> Bool)
   -> Definition Expr v
   -> Definition Expr v
-simplifyDef glob (Definition e)
-  = Definition $ simplifyExpr glob 0 e
+simplifyDef glob (Definition a e)
+  = Definition a $ simplifyExpr glob 0 e
 simplifyDef glob (DataDefinition d rep)
   = DataDefinition d $ simplifyExpr glob 0 rep
-simplifyDef _ Opaque = Opaque
 
 etaLams
   :: (QName -> Bool)

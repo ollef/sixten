@@ -46,14 +46,12 @@ whnfInner
   -> VIX AbstractM
 whnfInner expandTypeReps expr = case expr of
   Var v -> refineVar v $ whnf' expandTypeReps
-  Global g
-    | isAbstract g -> return expr
-    | otherwise -> do
-      (d, _) <- definition g
-      case d of
-        Definition e -> whnf' expandTypeReps e
-        DataDefinition _ e | expandTypeReps -> whnf' expandTypeReps e
-        _ -> return expr
+  Global g -> do
+    (d, _) <- definition g
+    case d of
+      Definition Concrete e -> whnf' expandTypeReps e
+      DataDefinition _ e | expandTypeReps -> whnf' expandTypeReps e
+      _ -> return expr
   Con _ -> return expr
   Lit _ -> return expr
   Pi {} -> return expr
@@ -76,13 +74,11 @@ normalise expr = do
   modifyIndent succ
   res <- case expr of
     Var v -> refineVar v normalise
-    Global g
-      | isAbstract g -> return expr
-      | otherwise -> do
-        (d, _) <- definition g
-        case d of
-          Definition e -> normalise e
-          _ -> return expr
+    Global g -> do
+      (d, _) <- definition g
+      case d of
+        Definition Concrete e -> normalise e
+        _ -> return expr
     Con _ -> return expr
     Lit _ -> return expr
     Pi n p a s -> normaliseScope n p (Pi n p) a s
@@ -176,11 +172,3 @@ chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs) _ k =
       [br] -> br
       _ -> error "Normalise.chooseBranch"
 chooseBranch e brs retType _ = return $ Case e brs retType
-
--- TODO: Find a less hacky way to do this
-isAbstract :: QName -> Bool
-isAbstract Builtin.AddIntName = True
-isAbstract Builtin.SubIntName = True
-isAbstract Builtin.MaxIntName = True
-isAbstract Builtin.FailName = True
-isAbstract _ = False

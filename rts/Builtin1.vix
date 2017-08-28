@@ -1,15 +1,18 @@
 module Sixten.Builtin exposing (..)
 
+abstract
 addInt : Int -> Int -> Int
 addInt x y = (C|
   return $x + $y;
 |)
 
+abstract
 subInt : Int -> Int -> Int
 subInt x y = (C|
   return $x - $y;
 |)
 
+abstract
 maxInt : Int -> Int -> Int
 maxInt x y = (C|
   return $x > $y ? $x : $y;

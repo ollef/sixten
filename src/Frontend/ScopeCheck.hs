@@ -91,8 +91,8 @@ scopeCheckModule modul = do
 scopeCheckDefinition
   :: Unscoped.Definition QName
   -> ScopeCheck (Scoped.PatDefinition Scoped.Expr QName)
-scopeCheckDefinition (Unscoped.Definition clauses) =
-  Scoped.PatDefinition <$> mapM scopeCheckClause clauses
+scopeCheckDefinition (Unscoped.Definition a clauses) =
+  Scoped.PatDefinition a <$> mapM scopeCheckClause clauses
 scopeCheckDefinition (Unscoped.DataDefinition params cs) = do
   let paramNames = (\(_, n, _) -> unqualified n) <$> params
       abstr = abstract $ teleAbstraction $ Vector.fromList paramNames

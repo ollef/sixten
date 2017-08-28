@@ -51,7 +51,7 @@ detectDefCycles
 detectDefCycles defs = do
   defExprs <- traverse
     (bitraverse pure zonk)
-    [(v, e) | (_, (v, Definition e, _)) <- defs]
+    [(v, e) | (_, (v, Definition _ e, _)) <- defs]
   let locMap = HashMap.fromList $ Vector.toList [(v, loc) | (loc, (v, _, _)) <- defs]
       recs =
         [ (v, unguardedOccurrences e)

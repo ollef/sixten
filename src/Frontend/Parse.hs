@@ -345,7 +345,7 @@ literalPat
 -- | A definition or type declaration on the top-level
 data TopLevelParsed v
   = ParsedClause (Maybe Name) (Unscoped.Clause v)
-  | ParsedTypeDecl Name (Type v)
+  | ParsedTypeDecl Abstract Name (Type v)
   | ParsedData Name [(Plicitness, Name, Type v)] [ConstrDef (Type v)]
   deriving (Show)
 
@@ -354,10 +354,11 @@ topLevel = (\(d Trifecta.:~ s) -> (d, s)) <$> Trifecta.spanned (dataDef <|> def)
 
 def :: Parser (TopLevelParsed QName)
 def
-  = name <**>% (typeDecl <|> mkDef Just)
+  = reserved "abstract" *> name <**>% typeDecl Abstract
+  <|> name <**>% (typeDecl Concrete <|> mkDef Just)
   <|> wildcard <**>% mkDef (const Nothing)
   where
-    typeDecl = flip ParsedTypeDecl <$ symbol ":" <*>% expr
+    typeDecl a = flip (ParsedTypeDecl a) <$ symbol ":" <*>% expr
     mkDef f = (\ps e n -> ParsedClause (f n) (Unscoped.Clause ps e)) <$> (Vector.fromList <$> manyPatterns) <*% symbol "=" <*>% expr
 
 dataDef :: Parser (TopLevelParsed QName)

@@ -112,6 +112,5 @@ slamExtern (Extern lang parts)
 slamDef
   :: Definition Abstract.Expr MetaA
   -> VIX LambdaM
-slamDef (Definition e) = slamSized e
+slamDef (Definition _ e) = slamSized e
 slamDef (DataDefinition _ e) = slamSized e
-slamDef Opaque = throwError "slam opaque"

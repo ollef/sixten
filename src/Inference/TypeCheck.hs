@@ -896,9 +896,9 @@ checkDefType
   -> AbstractM
   -> VIX (Definition Abstract.Expr MetaA, AbstractM)
 checkDefType v def loc typ = located (render loc) $ case def of
-  Concrete.PatDefinition clauses -> do
+  Concrete.PatDefinition a clauses -> do
     e' <- checkClauses clauses typ
-    return (Definition e', typ)
+    return (Definition a e', typ)
   Concrete.PatDataDefinition d -> do
     (d', rep, typ') <- checkDataType v d typ
     return (DataDefinition d' rep, typ')
@@ -910,11 +910,11 @@ generaliseDef
   -> VIX ( Definition Abstract.Expr MetaA
          , AbstractM
          )
-generaliseDef vs (Definition e) t = do
+generaliseDef vs (Definition a e) t = do
   let ivs = (,) Implicit <$> vs
   ge <- abstractMs ivs lam e
   gt <- abstractMs ivs pi_ t
-  return (Definition ge, gt)
+  return (Definition a ge, gt)
 generaliseDef vs (DataDefinition (DataDef cs) rep) typ = do
   let cs' = map (fmap $ toScope . splat f g) cs
       ivs = (,) Implicit <$> vs
@@ -925,10 +925,6 @@ generaliseDef vs (DataDefinition (DataDef cs) rep) typ = do
   where
     f v = pure $ maybe (F v) (B . Tele) (v `Vector.elemIndex` vs)
     g = pure . B . (+ Tele (length vs))
-generaliseDef vs Opaque typ = do
-  unless (Vector.null vs) $
-    throwError "generaliseDef opaque"
-  return (Opaque, typ)
 
 abstractMs
   :: Foldable t

@@ -30,7 +30,7 @@ data Expr v
 type Type = Expr
 
 data Definition v
-  = Definition (NonEmpty (Clause v))
+  = Definition Abstract (NonEmpty (Clause v))
   | DataDefinition [(Plicitness, Name, Type v)] [ConstrDef (Expr v)]
   deriving (Show)
 

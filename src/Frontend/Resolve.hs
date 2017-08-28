@@ -19,7 +19,7 @@ import Syntax.Concrete.Unscoped as Unscoped
 import Frontend.Parse(TopLevelParsed(..))
 import Util
 
-type MaybeTypedDef = (Maybe (Definition QName, Span), Maybe (Type QName, Span))
+type MaybeTypedDef = (Maybe (Definition QName, Span), Maybe (Abstract, Type QName, Span))
 type Resolve = (HashMap QName MaybeTypedDef, Maybe Name)
 
 resolveName
@@ -34,12 +34,12 @@ resolveName modName (prog, prevName) (parsedDef, loc) = case parsedDef of
       ["Wildcard definitions refer to the first named definition or type declaration above the current line."]
     Just name -> do
       prog' <- insertWithM mergeTypedDef (QName modName name)
-        (Just (Definition $ pure $ Unscoped.Clause pats expr, loc), Nothing)
+        (Just (Definition Concrete $ pure $ Unscoped.Clause pats expr, loc), Nothing)
         prog
       return (prog', Just name)
-  ParsedTypeDecl name typ -> do
+  ParsedTypeDecl a name typ -> do
     prog' <- insertWithM mergeTypedDef (QName modName name)
-      (Nothing, Just (typ, loc))
+      (Nothing, Just (a, typ, loc))
       prog
     return (prog', Just name)
   ParsedData name params dataDef -> do
@@ -47,7 +47,7 @@ resolveName modName (prog, prevName) (parsedDef, loc) = case parsedDef of
         typ = Unscoped.pis pats (Var Builtin.TypeName)
         tele = (\(p, n, t) -> (p, n, t)) <$> params
     prog' <- insertWithM mergeTypedDef (QName modName name)
-      (Just (DataDefinition tele dataDef, loc), Just (typ, loc))
+      (Just (DataDefinition tele dataDef, loc), Just (Concrete, typ, loc))
       prog
     return (prog', Nothing)
 
@@ -65,7 +65,7 @@ mergeTypedDef (Just newDef, mnewType) (Just oldDef, Nothing) = do
 mergeTypedDef (Just newDef, Nothing) (Just oldDef, moldType) = do
   d <- mergeDef newDef oldDef
   return (Just d, moldType)
-mergeTypedDef (_, Just (_, newLoc)) (Just (DataDefinition _ _, oldLoc), _) = do
+mergeTypedDef (_, Just (_, _, newLoc)) (Just (DataDefinition _ _, oldLoc), _) = do
   let r = render oldLoc
   err
     newLoc
@@ -74,7 +74,7 @@ mergeTypedDef (_, Just (_, newLoc)) (Just (DataDefinition _ _, oldLoc), _) = do
     , "Previous definition at " <> Leijen.pretty (delta r) <> ":"
     , Leijen.pretty r
     ]
-mergeTypedDef (_, Just (_, newLoc)) (_, Just (_, oldLoc)) = do
+mergeTypedDef (_, Just (_, _, newLoc)) (_, Just (_, _, oldLoc)) = do
   let r = render oldLoc
   err
     newLoc
@@ -87,8 +87,8 @@ mergeDef
   :: (Definition v, Span)
   -> (Definition v, Span)
   -> Except Text (Definition v, Span)
-mergeDef (Definition newClauses, newLoc) (Definition oldClauses, oldLoc)
-  = return (Definition $ oldClauses <> newClauses, addSpan newLoc oldLoc)
+mergeDef (Definition newA newClauses, newLoc) (Definition oldA oldClauses, oldLoc)
+  = return (Definition (min newA oldA) $ oldClauses <> newClauses, addSpan newLoc oldLoc)
 mergeDef (_, newLoc) (_, oldLoc) = do
   let r = render oldLoc
   err
@@ -122,11 +122,15 @@ program modName xs = do
   (prog, _) <- foldM (resolveName modName) (mempty, Nothing) xs
   forM prog $ \(mdef, mtyp) -> case (mdef, mtyp) of
     (Nothing, Nothing) -> error "Resolve: The impossible happened"
-    (Nothing, Just (_, loc)) -> err loc
+    (Nothing, Just (_, _, loc)) -> err loc
       "Type signature without a matching definition"
       []
-    (Just (def, defLoc), Just (typ, typLoc)) -> return (render $ addSpan defLoc typLoc, def, typ)
+    (Just (def, defLoc), Just (a, typ, typLoc)) -> return (render $ addSpan defLoc typLoc, withAbstract a def, typ)
     (Just (def, defLoc), Nothing) -> return (render defLoc, def, Wildcard)
+
+withAbstract :: Abstract -> Definition v -> Definition v
+withAbstract a (Definition a' e) = Definition (min a a') e
+withAbstract _ d@DataDefinition {} = d
 
 modul
   :: Module [(TopLevelParsed QName, Span)]

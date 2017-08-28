@@ -13,7 +13,7 @@ import Syntax
 import Syntax.Concrete.Pattern
 
 data PatDefinition expr v
-  = PatDefinition (NonEmpty (Clause expr v))
+  = PatDefinition Abstract (NonEmpty (Clause expr v))
   | PatDataDefinition (DataDef expr v)
   deriving (Foldable, Functor, Show, Traversable)
 
@@ -34,7 +34,7 @@ instance Traversable expr => Traversable (Clause expr) where
     <*> traverse f s
 
 instance GlobalBound PatDefinition where
-  bound f g (PatDefinition clauses) = PatDefinition $ bound f g <$> clauses
+  bound f g (PatDefinition a clauses) = PatDefinition a $ bound f g <$> clauses
   bound f g (PatDataDefinition dataDef) = PatDataDefinition $ bound f g dataDef
 
 instance GlobalBound Clause where
@@ -52,5 +52,5 @@ instance (Pretty (expr v), Monad expr, IsString v)
 
 instance (Pretty (expr v), Monad expr, IsString v)
   => Pretty (PatDefinition expr v) where
-  prettyM (PatDefinition clauses) = vcat $ prettyM <$> clauses
+  prettyM (PatDefinition a clauses) = prettyM a <+> vcat (prettyM <$> clauses)
   prettyM (PatDataDefinition dataDef) = prettyM dataDef
