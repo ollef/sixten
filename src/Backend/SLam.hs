@@ -6,7 +6,7 @@ import Control.Monad.Except
 import Data.Monoid
 import qualified Data.Vector as Vector
 
-import qualified Builtin
+import qualified Builtin.Names as Builtin
 import Inference.TypeOf
 import Meta
 import Inference.Normalise
@@ -64,7 +64,10 @@ slam expr = do
       sz <- slam t
       body <- slamSized $ instantiate1 (pure v) scope
       return $ SLambda.Let h e' sz $ abstract1 v body
-    Abstract.ExternCode c _retType -> SLambda.ExternCode <$> slamExtern c
+    Abstract.ExternCode c retType -> do
+        retType' <- slam =<< whnf' True retType
+        c' <- slamExtern c
+        return $ SLambda.Anno (SLambda.ExternCode c') retType'
   modifyIndent pred
   logMeta 20 "slam res" res
   return res

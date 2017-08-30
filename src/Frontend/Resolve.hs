@@ -12,7 +12,7 @@ import Data.Text(Text)
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import Text.Trifecta.Result(Err(Err), explain)
 
-import Builtin
+import qualified Builtin.Names as Builtin
 import Syntax hiding (DataDefinition, Definition)
 import Syntax.Concrete.Pattern
 import Syntax.Concrete.Unscoped as Unscoped

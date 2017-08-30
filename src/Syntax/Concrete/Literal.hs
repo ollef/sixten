@@ -11,7 +11,7 @@ import Syntax
 import Syntax.Concrete.Pattern
 import Syntax.Concrete.Unscoped as Unscoped
 
-import qualified Builtin
+import qualified Builtin.Names as Builtin
 
 string :: Text -> Expr QName
 string

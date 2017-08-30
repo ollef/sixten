@@ -25,11 +25,6 @@ Error messages
   Make error message footnotes contain metavars
   Use prettyprinter library
 Language
-  * Add alignment to type representation
-    alignment (Tuple A B) = max (alignment A) (alignment B)
-    size (Tuple A B) = size A + padding (size A) (alignment B) + size B
-    padding byteIndex align = nearestBiggerMultiple align byteIndex - byteIndex
-    Make constructor tags smaller when possible
   * Let(rec) definitions
   Named implicit arguments (maybe names should be mandatory?)
   Laziness
@@ -57,6 +52,7 @@ Language
   IO
   Mutable variables
 Optimisations
+  Make constructor tags smaller when possible
   Inlining
   Common subexpressions
   Tagged pointers

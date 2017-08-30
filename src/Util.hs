@@ -8,6 +8,7 @@ import Control.Applicative
 import Control.Monad.State
 import Data.Bifoldable
 import Data.Bifunctor
+import Data.Bits
 import Data.Foldable
 import Data.Hashable
 import Data.HashMap.Lazy(HashMap)
@@ -26,7 +27,6 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 type Scope1 = Scope ()
-type Size = Integer
 
 unusedVar :: (Monad f, Traversable f) => f (Var b a) -> Maybe (f a)
 unusedVar = traverse $ unvar (const Nothing) pure
@@ -185,3 +185,6 @@ multiMapMaybe p
 
 nonEmptySome :: Alternative f => f a -> f (NonEmpty a)
 nonEmptySome p = (NonEmpty.:|) <$> p <*> many p
+
+logBase2 :: FiniteBits b => b -> Int
+logBase2 x = finiteBitSize x - 1 - countLeadingZeros x

@@ -7,9 +7,10 @@ import Data.Vector(Vector)
 import Pretty
 import Syntax.Annotation
 import Syntax.Module
+import TypeRep
 import Util
 
-data Direction = Direct Size | Indirect
+data Direction = Direct TypeRep | Indirect
   deriving (Eq, Ord, Show)
 
 instance Pretty Direction where
@@ -21,7 +22,7 @@ instance PrettyAnnotation Direction where
   prettyAnnotation Indirect = prettyTightApp "&"
 
 data ReturnDirection a
-  = ReturnDirect Size
+  = ReturnDirect TypeRep
   | ReturnIndirect a
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 

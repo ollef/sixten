@@ -3,7 +3,7 @@ module Analysis.Denat where
 
 import qualified Data.Vector as Vector
 
-import Builtin
+import Builtin.Names
 import Syntax
 import Syntax.Sized.SLambda
 

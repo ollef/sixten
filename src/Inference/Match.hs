@@ -14,7 +14,7 @@ import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 
 import qualified Analysis.Simplify as Simplify
-import qualified Builtin
+import qualified Builtin.Names as Builtin
 import Inference.Normalise
 import Inference.TypeOf
 import Meta

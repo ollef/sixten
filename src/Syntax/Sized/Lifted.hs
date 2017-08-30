@@ -29,13 +29,13 @@ type Type = Expr
 pattern Sized :: Type v -> Expr v -> Expr v
 pattern Sized sz e = Anno e sz
 
-sizeOf :: Expr v -> Expr v
-sizeOf (Anno _ sz) = sz
-sizeOf _ = error "Lifted.sizeOf"
+typeOf :: Expr v -> Expr v
+typeOf (Anno _ sz) = sz
+typeOf _ = error "Lifted.typeOf"
 
-sizeDir :: Expr v -> Direction
-sizeDir (Lit (Integer n)) = Direct n
-sizeDir _ = Indirect
+typeDir :: Expr v -> Direction
+typeDir (Lit (TypeRep rep)) = Direct rep
+typeDir _ = Indirect
 
 -------------------------------------------------------------------------------
 -- Instances

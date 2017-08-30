@@ -9,6 +9,7 @@ import Data.Bifunctor
 import Data.Bitraversable
 import Data.Foldable as Foldable
 import qualified Data.HashSet as HashSet
+import Data.HashSet(HashSet)
 import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Maybe
@@ -19,11 +20,9 @@ import qualified Data.Vector as Vector
 import Data.Void
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import Text.Trifecta.Result(Err(Err), explain)
-import Data.HashSet(HashSet)
 
 import Analysis.Simplify
-import qualified Backend.Target as Target
-import qualified Builtin
+import qualified Builtin.Names as Builtin
 import Inference.Clause
 import Inference.Cycle
 import Inference.Match as Match
@@ -35,8 +34,9 @@ import Syntax
 import qualified Syntax.Abstract as Abstract
 import Syntax.Abstract.Pattern as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
-import Util.TopoSort
+import qualified TypeRep
 import Util
+import Util.TopoSort
 import Util.Tsil
 import VIX
 
@@ -733,7 +733,7 @@ checkConstrDef
 checkConstrDef (ConstrDef c typ) = do
   typ' <- zonk =<< checkPoly typ Builtin.Type
   (sizes, ret) <- go typ'
-  let size = foldr Builtin.addInt (Abstract.Lit $ Integer 0) sizes
+  let size = foldl' productType (Abstract.Lit $ TypeRep TypeRep.Unit) sizes
   return (ConstrDef c typ', ret, size)
   where
     go :: AbstractM -> VIX ([AbstractM], AbstractM)
@@ -766,15 +766,16 @@ checkDataType name (DataDef cs) typ = do
 
   mapM_ (unify [] constrRetType) rets
 
-  tagSize <- gets $ Target.intBytes . vixTarget
+  intRep <- gets $ TypeRep.int . vixTarget
 
-  let addTagSize = case cs of
-        [] -> id
-        [_] -> id
-        _ -> Builtin.addInt $ Abstract.Lit $ Integer tagSize
+  let tagRep = case cs of
+        [] -> TypeRep.Unit
+        [_] -> TypeRep.Unit
+        _ -> intRep -- TODO could be smarter
 
-      typeSize = addTagSize
-               $ foldr Builtin.maxInt (Abstract.Lit $ Integer 0) sizes
+      typeRep
+        = productType (Abstract.Lit $ TypeRep tagRep)
+        $ foldl' sumType (Abstract.Lit $ TypeRep TypeRep.Unit) sizes
 
   unify [] Builtin.Type =<< typeOfM constrRetType
 
@@ -785,10 +786,11 @@ checkDataType name (DataDef cs) typ = do
   params <- metaTelescopeM ps'
   let typ'' = pis params $ Scope Builtin.Type
 
-  typeSize' <- whnf' True typeSize
-  abstractedTypeSize <- abstractM abstr typeSize'
+  typeRep' <- whnf' True typeRep
+  abstractedTypeRep <- abstractM abstr typeRep'
+  logMeta 20 "checkDataType typeRep" typeRep'
 
-  return (DataDef abstractedCs, lams params abstractedTypeSize, typ'')
+  return (DataDef abstractedCs, lams params abstractedTypeRep, typ'')
 
 checkClauses
   :: NonEmpty (Concrete.Clause Concrete.Expr MetaA)
@@ -1043,6 +1045,22 @@ checkRecursiveDefs defs = do
   forM (Vector.zip names genDefs) $ \(name, (def, typ)) -> do
     let unexposedDef = bound unexpose global def
         unexposedTyp = bind unexpose global typ
+    logMeta 20 ("checkRecursiveDefs unexposedDef " ++ show (pretty name)) unexposedDef
+    logMeta 20 ("checkRecursiveDefs unexposedTyp " ++ show (pretty name)) unexposedTyp
     unexposedDef' <- traverse vf unexposedDef
     unexposedTyp' <- traverse vf unexposedTyp
     return (name, unexposedDef', unexposedTyp')
+
+-------------------------------------------------------------------------------
+-- Type helpers
+productType :: Abstract.Expr v -> Abstract.Expr v -> Abstract.Expr v
+productType (Abstract.Lit (TypeRep TypeRep.Unit)) e = e
+productType e (Abstract.Lit (TypeRep TypeRep.Unit)) = e
+productType (Abstract.Lit (TypeRep a)) (Abstract.Lit (TypeRep b)) = Abstract.Lit $ TypeRep $ TypeRep.product a b
+productType a b = Builtin.ProductTypeRep a b
+
+sumType :: Abstract.Expr v -> Abstract.Expr v -> Abstract.Expr v
+sumType (Abstract.Lit (TypeRep TypeRep.Unit)) e = e
+sumType e (Abstract.Lit (TypeRep TypeRep.Unit)) = e
+sumType (Abstract.Lit (TypeRep a)) (Abstract.Lit (TypeRep b)) = Abstract.Lit $ TypeRep $ TypeRep.sum a b
+sumType a b = Builtin.SumTypeRep a b

@@ -25,6 +25,8 @@ import Syntax.Direction
 import Syntax.Hint
 import Syntax.Module
 import Syntax.Name
+import qualified TypeRep
+import TypeRep(TypeRep(..))
 import Util
 import Util.Tsil
 
@@ -89,13 +91,13 @@ pointerT = C cfgPointerT
 data Direct = Void | Int | Array
   deriving (Eq, Ord, Show)
 
-directType :: Size -> Direct
-directType 0 = Void
-directType sz | sz <= 8 = Int
+directType :: TypeRep -> Direct
+directType TypeRep.Unit = Void
+directType (TypeRep sz _) | sz <= 8 = Int
 directType _ = Array
 
-directT :: Size -> C
-directT sz = case directType sz of
+directT :: TypeRep -> C
+directT rep@(TypeRep sz _) = case directType rep of
   Void -> "void"
   Int -> "i" <> shower (sz * 8)
   Array -> "[" <> shower sz <+> "x" <+> "i8]"
@@ -230,8 +232,8 @@ byte o = byteT <+> unOperand o
 pointer :: Operand Ptr -> C
 pointer o = pointerT <+> unOperand o
 
-direct :: Size -> Operand Direct -> C
-direct sz o = directT sz <+> unOperand o
+direct :: TypeRep -> Operand Direct -> C
+direct rep o = directT rep <+> unOperand o
 
 label :: Operand Label -> C
 label o = "label" <+> unOperand o
@@ -252,16 +254,6 @@ h =: i = do
   return $ Operand x
 infixr 6 =:
 
-adds
-  :: (MonadState LLVMState m, Foldable f)
-  => f (Operand Int)
-  -> m ([Operand Int], Operand Int)
-adds = fmap (first Foldable.toList) . Foldable.foldlM go (Nil, "0")
-  where
-    go (ys, v) o = do
-      name <- mempty =: add v o
-      return (Snoc ys v, name)
-
 memcpy
   :: MonadState LLVMState m
   => Operand Ptr
@@ -271,7 +263,7 @@ memcpy
 memcpy dst src sz = emit $ Instr
   $ "call" <+> voidT <+> "@llvm.memcpy.p0i8.p0i8." <> integerT <> "("
   <> pointer dst <> "," <+> pointer src <> ","
-  <+> integer sz <> ", i32" <+> align <> ", i1 false)"
+  <+> integer sz <> ", i32 1" <> ", i1 false)"
 
 gcAlloc
   :: MonadState LLVMState m
@@ -312,33 +304,35 @@ branch l = Instr $ "br" <+> label l
 
 loadDirect
   :: MonadState LLVMState m
-  => Size
+  => TypeRep
   -> NameHint
   -> Operand Ptr
   -> m (Operand Direct)
-loadDirect sz h o = case directType sz of
+loadDirect rep h o = case directType rep of
   Void -> return "0"
   Int -> nonVoidCase
   Array -> nonVoidCase
   where
+    t = directT rep
     nonVoidCase = do
-      directPtr <- "direct-ptr" =: Instr ("bitcast" <+> pointer o <+> "to" <+> directT sz <> "*")
-      h =: Instr ("load" <+> directT sz <> "," <+> directT sz <> "*" <+> unOperand directPtr)
+      directPtr <- "direct-ptr" =: Instr ("bitcast" <+> pointer o <+> "to" <+> t<> "*")
+      h =: Instr ("load" <+> t <> "," <+> t <> "*" <+> unOperand directPtr)
 
 storeDirect
   :: MonadState LLVMState m
-  => Size
+  => TypeRep
   -> Operand Direct
   -> Operand Ptr
   -> m ()
-storeDirect sz src dst = case directType sz of
+storeDirect rep src dst = case directType rep of
   Void -> return ()
   Int -> nonVoidCase
   Array -> nonVoidCase
   where
+    t = directT rep
     nonVoidCase = do
-      directPtr <- "direct-ptr" =: Instr ("bitcast" <+> pointer dst <+> "to" <+> directT sz <> "*")
-      emit $ Instr ("store" <+> direct sz src <> "," <+> directT sz <> "*" <+> unOperand directPtr)
+      directPtr <- "direct-ptr" =: Instr ("bitcast" <+> pointer dst <+> "to" <+> t <> "*")
+      emit $ Instr ("store" <+> direct rep src <> "," <+> t <> "*" <+> unOperand directPtr)
 
 loadPtr
   :: Operand PtrPtr
@@ -360,6 +354,15 @@ storeInt
   -> Operand Ptr
   -> m ()
 storeInt x ptr = do
+  intPtr <- "ptr" =: Instr ("bitcast" <+> pointer ptr <+> "to" <+> integerT <> "*")
+  emit $ Instr $ "store" <+> integer x <> "," <+> integerT <> "*" <+> unOperand intPtr
+
+storeTypeRep
+  :: MonadState LLVMState m
+  => Operand Int
+  -> Operand Ptr
+  -> m ()
+storeTypeRep x ptr = do
   intPtr <- "ptr" =: Instr ("bitcast" <+> pointer ptr <+> "to" <+> integerT <> "*")
   emit $ Instr $ "store" <+> integer x <> "," <+> integerT <> "*" <+> unOperand intPtr
 
@@ -406,11 +409,11 @@ phiPtr xs = Instr
   <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> unOperand v <> "," <+> unOperand l <> "]") <$> xs)
 
 phiDirect
-  :: Size
+  :: TypeRep
   -> [(Operand Direct, Operand Label)]
   -> Instr Direct
-phiDirect sz xs = Instr
-  $ "phi" <+> directT sz
+phiDirect rep xs = Instr
+  $ "phi" <+> directT rep
   <+> Foldable.fold (intersperse ", " $ (\(v, l) -> "[" <> unOperand v <> "," <+> unOperand l <> "]") <$> xs)
 
 undef :: Operand a
@@ -461,8 +464,8 @@ declareConstant dir name
   where
     typ = case dir of
       Indirect -> pointerT
-      Direct 0 -> pointerT
-      Direct sz -> directT sz
+      Direct TypeRep.Unit -> pointerT
+      Direct rep -> directT rep
 
 functionT :: RetDir -> Vector Direction -> C
 functionT retDir = function retDir Nothing
@@ -473,8 +476,8 @@ exit n = Instr $ "call" <+> voidT <+> "@exit(i32" <+> shower n <> ")"
 returnVoid :: Instr ()
 returnVoid = Instr $ "ret" <+> voidT
 
-returnDirect :: Size -> Operand Direct -> Instr ()
-returnDirect 0 _ = Instr "ret void"
+returnDirect :: TypeRep -> Operand Direct -> Instr ()
+returnDirect TypeRep.Unit _ = Instr "ret void"
 returnDirect sz o = Instr $ "ret" <+> direct sz o
 
 returnPtr :: Operand Ptr -> Instr ()

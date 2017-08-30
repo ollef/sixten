@@ -5,12 +5,14 @@ import Control.Monad.Except
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Vector as Vector
 
-import qualified Builtin
+import qualified Builtin.Names as Builtin
 import Meta
-import VIX
 import Syntax
 import Syntax.Abstract
+import TypeRep(TypeRep)
+import qualified TypeRep
 import Util
+import VIX
 
 whnf
   :: AbstractM
@@ -35,6 +37,14 @@ whnf' expandTypeReps expr = do
       case f' of
         Lam _ p' _ s | p == p' -> go (Util.instantiate1 e s) es'
         _ -> case apps f' es of
+          Builtin.ProductTypeRep x y -> typeRepBinOp
+            (Just TypeRep.Unit) (Just TypeRep.Unit)
+            TypeRep.product Builtin.ProductTypeRep
+            (whnf' expandTypeReps) x y
+          Builtin.SumTypeRep x y -> typeRepBinOp
+            (Just TypeRep.Unit) (Just TypeRep.Unit)
+            TypeRep.sum Builtin.SumTypeRep
+            (whnf' expandTypeReps) x y
           Builtin.SubInt x y -> binOp Nothing (Just 0) (-) Builtin.SubInt (whnf' expandTypeReps) x y
           Builtin.AddInt x y -> binOp (Just 0) (Just 0) (+) Builtin.AddInt (whnf' expandTypeReps) x y
           Builtin.MaxInt x y -> binOp (Just 0) (Just 0) max Builtin.MaxInt (whnf' expandTypeReps) x y
@@ -83,6 +93,14 @@ normalise expr = do
     Lit _ -> return expr
     Pi n p a s -> normaliseScope n p (Pi n p) a s
     Lam n p a s -> normaliseScope n p (Lam n p) a s
+    Builtin.ProductTypeRep x y -> typeRepBinOp
+      (Just TypeRep.Unit) (Just TypeRep.Unit)
+      TypeRep.product Builtin.ProductTypeRep
+      normalise x y
+    Builtin.SumTypeRep x y -> typeRepBinOp
+      (Just TypeRep.Unit) (Just TypeRep.Unit)
+      TypeRep.sum Builtin.SumTypeRep
+      normalise x y
     Builtin.SubInt x y -> binOp Nothing (Just 0) (-) Builtin.SubInt normalise x y
     Builtin.AddInt x y -> binOp (Just 0) (Just 0) (+) Builtin.AddInt normalise x y
     Builtin.MaxInt x y -> binOp (Just 0) (Just 0) max Builtin.MaxInt normalise x y
@@ -152,6 +170,25 @@ binOp lzero rzero op cop norm x y = do
       (Lit (Integer m), _) | Just m == lzero -> return y'
       (_, Lit (Integer n)) | Just n == rzero -> return x'
       (Lit (Integer m), Lit (Integer n)) -> return $ Lit $ Integer $ op m n
+      _ -> return $ cop x' y'
+
+typeRepBinOp
+  :: Monad m
+  => Maybe TypeRep
+  -> Maybe TypeRep
+  -> (TypeRep -> TypeRep -> TypeRep)
+  -> (Expr v -> Expr v -> Expr v)
+  -> (Expr v -> m (Expr v))
+  -> Expr v
+  -> Expr v
+  -> m (Expr v)
+typeRepBinOp lzero rzero op cop norm x y = do
+    x' <- norm x
+    y' <- norm y
+    case (x', y') of
+      (Lit (TypeRep m), _) | Just m == lzero -> return y'
+      (_, Lit (TypeRep n)) | Just n == rzero -> return x'
+      (Lit (TypeRep m), Lit (TypeRep n)) -> return $ Lit $ TypeRep $ op m n
       _ -> return $ cop x' y'
 
 chooseBranch

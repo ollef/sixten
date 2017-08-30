@@ -1,21 +1,22 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Backend.Target where
 
-import Data.Monoid
 import qualified Data.List as List
+import Data.Monoid
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 
 import Pretty
+import Util
 
 -- | The number of bits in a byte.
-byteBits :: Integer
+byteBits :: Int
 byteBits = 8
 
 data Target = Target
   { architecture :: String
-  , ptrBytes :: Integer -- ^ The number of bytes in a pointer.
-  , alignBits :: Integer -- ^ How many bits to represent an alignment number.
-  , ptrAlign :: Integer -- ^ The alignment of a pointer.
+  , ptrBytes :: Int -- ^ The number of bytes in a pointer.
+  , alignBits :: Int -- ^ How many bits to represent an alignment number.
+  , ptrAlign :: Int -- ^ The alignment of a pointer.
   } deriving (Eq, Ord, Show)
 
 x86 :: Target
@@ -35,15 +36,18 @@ x86_64 = Target
   }
 
 -- | The number of bits in a pointer.
-ptrBits :: Target -> Integer
+ptrBits :: Target -> Int
 ptrBits t = byteBits * ptrBytes t
 
-intBytes, intBits :: Target -> Integer
+intBytes, intBits :: Target -> Int
 intBytes = ptrBytes
 intBits = ptrBits
 
 targets :: [Target]
 targets = [x86, x86_64]
+
+log2PtrAlign :: Target -> Int
+log2PtrAlign = logBase2 . ptrAlign
 
 architectures :: [String]
 architectures = architecture <$> targets

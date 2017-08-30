@@ -159,7 +159,7 @@ qidLetter = idLetter
   <|> Trifecta.try (Trifecta.char '.' <* LookAhead.lookAhead idLetter)
 
 reservedIds :: HashSet String
-reservedIds = HashSet.fromList ["forall", "_", "case", "of", "where"]
+reservedIds = HashSet.fromList ["forall", "_", "case", "of", "where", "abstract"]
 
 idStyle :: Trifecta.IdentifierStyle Parser
 idStyle = Trifecta.IdentifierStyle "identifier" idStart idLetter reservedIds Highlight.Identifier Highlight.ReservedIdentifier

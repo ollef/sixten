@@ -40,9 +40,9 @@ apps e es = Call e es
 pattern Sized :: Type v -> Expr v -> Expr v
 pattern Sized sz e = Anno e sz
 
-sizeOf :: Expr v -> Expr v
-sizeOf (Anno _ sz) = sz
-sizeOf _ = error "sizeOf"
+typeOf :: Expr v -> Expr v
+typeOf (Anno _ sz) = sz
+typeOf _ = error "typeOf"
 
 -------------------------------------------------------------------------------
 -- Instances

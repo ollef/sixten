@@ -18,14 +18,61 @@ maxInt x y = (C|
   return $x > $y ? $x : $y;
 |)
 
+abstract
 printInt : Int -> Int
 printInt x = (C|
   printf("%zd\n", $x);
   return 0;
 |)
 
+abstract
 fail : (T : Type) -> T
 -- TODO why can't this be a wildcard?
 fail T = (C|
   exit(1);
+|)
+
+-- TODO: Should be defined by target
+IntPtr : Type
+IntPtr = Int
+
+abstract
+productPadding : IntPtr -> Type -> IntPtr
+productPadding offset B = (C|
+  $type:IntPtr one = 1;
+  $type:IntPtr b_align_mask = (one << $(alignmentOf B)) - one;
+  return ($offset + b_align_mask) & ~b_align_mask;
+|)
+
+abstract
+productTypeRep : Type -> Type -> Type
+productTypeRep A B = (C|
+  $type:Type b_start = $(productPadding (sizeOf A) B);
+
+  $type:Type result_size = b_start + $(sizeOf B);
+  $type:Type result_align = $(alignmentOf A) > $(alignmentOf B) ? $(alignmentOf A) : $(alignmentOf B);
+
+  return (result_size << $target:alignmentBits) | result_align;
+|)
+
+abstract
+sumTypeRep : Type -> Type -> Type
+sumTypeRep A B = (C|
+  $type:Type result_size = $(sizeOf A) > $(sizeOf B) ? $(sizeOf A) : $(sizeOf B);
+  $type:Type result_align = $(alignmentOf A) > $(alignmentOf B) ? $(alignmentOf A) : $(alignmentOf B);
+
+  return (result_size << $target:alignmentBits) | result_align;
+|)
+
+abstract
+sizeOf : Type -> IntPtr
+sizeOf T = (C|
+  return $T >> $target:alignmentBits;
+|)
+
+abstract
+alignmentOf : Type -> IntPtr
+alignmentOf T = (C|
+  $type:Type align_mask = (1 << $target:alignmentBits) - 1;
+  return $T & align_mask;
 |)

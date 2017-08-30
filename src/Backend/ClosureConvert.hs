@@ -11,13 +11,14 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 
-import qualified Backend.Target as Target
-import qualified Builtin
+import qualified Builtin as Builtin
+import qualified Builtin.Names as Builtin
 import Meta
 import Syntax
 import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Lifted as Lifted
+import qualified TypeRep
 import Util
 import VIX
 
@@ -136,12 +137,12 @@ unknownCall
   -> Vector (Closed.Expr Meta)
   -> VIX (Closed.Expr Meta)
 unknownCall e es = do
-  ptrSize <- gets (Closed.Lit . Integer . Target.ptrBytes . vixTarget)
-  intSize <- gets (Closed.Lit . Integer . Target.intBytes . vixTarget)
+  ptrRep <- gets (Closed.Lit . TypeRep . TypeRep.ptr . vixTarget)
+  intRep <- gets (Closed.Lit . TypeRep . TypeRep.int . vixTarget)
   return
     $ Closed.Call (global $ Builtin.applyName $ Vector.length es)
-    $ Vector.cons (Closed.Sized ptrSize e)
-    $ (Closed.Sized intSize . Closed.sizeOf <$> es) <|> es
+    $ Vector.cons (Closed.Sized ptrRep e)
+    $ (Closed.Sized intRep . Closed.typeOf <$> es) <|> es
 
 knownCall
   :: QName
@@ -152,17 +153,17 @@ knownCall f (tele, returnTypeScope) args
   | numArgs < arity = do
     vs <- forM fArgs $ \_ -> forall mempty Unit
     target <- gets vixTarget
-    let intSize, ptrSize :: Closed.Expr v
-        intSize = Closed.Lit $ Integer $ Target.intBytes target
-        ptrSize = Closed.Lit $ Integer $ Target.ptrBytes target
+    let intRep, ptrRep :: Closed.Expr v
+        intRep = Closed.Lit $ TypeRep $ TypeRep.int target
+        ptrRep = Closed.Lit $ TypeRep $ TypeRep.ptr target
     let returnType = instantiateTele pure vs $ vacuous returnTypeScope
         go v | i < Vector.length fArgs1 = B $ Tele $ 2 + i
              | otherwise = F $ Tele $ 1 + numXs - numArgs + i
           where
             i = fromMaybe (error "knownCall elemIndex") $ Vector.elemIndex v vs
     let tele' = Telescope
-          $ Vector.cons (TeleArg "x_this" () $ Scope ptrSize)
-          $ (\h -> TeleArg h () $ Scope intSize) <$> xs
+          $ Vector.cons (TeleArg "x_this" () $ Scope ptrRep)
+          $ (\h -> TeleArg h () $ Scope intRep) <$> xs
           <|> (\(n, h) -> TeleArg h () $ Scope $ pure $ B $ 1 + Tele n) <$> Vector.indexed xs
     let fNumArgs = Closed.Lams tele'
           $ toScope
@@ -172,17 +173,17 @@ knownCall f (tele, returnTypeScope) args
           $ pure
           $ ConBranch
             Builtin.Closure
-            (Telescope $ Vector.cons (TeleArg mempty () $ Scope intSize)
-                       $ Vector.cons (TeleArg mempty () $ Scope intSize) clArgs')
+            (Telescope $ Vector.cons (TeleArg mempty () $ Scope intRep)
+                       $ Vector.cons (TeleArg mempty () $ Scope intRep) clArgs')
             (toScope
             $ Closed.Sized (go <$> returnType)
             $ Closed.Call (global f) fArgs)
     return
       $ Closed.Con Builtin.Ref
       $ pure
-      $ Builtin.sizedCon target (Closed.Lit $ Integer 0) Builtin.Closure
-      $ Vector.cons (Closed.Sized ptrSize fNumArgs)
-      $ Vector.cons (Closed.Sized intSize $ Closed.Lit $ Integer $ fromIntegral $ arity - numArgs) args
+      $ Builtin.sizedCon (Closed.Lit $ TypeRep TypeRep.Unit) Builtin.Closure
+      $ Vector.cons (Closed.Sized ptrRep fNumArgs)
+      $ Vector.cons (Closed.Sized intRep $ Closed.Lit $ Integer $ fromIntegral $ arity - numArgs) args
   | numArgs == arity
     = return $ Closed.Call (global f) args
   | otherwise = do

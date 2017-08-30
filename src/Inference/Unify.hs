@@ -12,7 +12,7 @@ import qualified Data.Vector as Vector
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import Text.Trifecta.Result(Err(Err), explain)
 
-import qualified Builtin
+import qualified Builtin.Names as Builtin
 import Inference.Normalise
 import Inference.TypeOf
 import Meta

@@ -3,7 +3,7 @@ module Inference.TypeOf where
 
 import Control.Monad.Except
 
-import qualified Builtin
+import qualified Builtin.Names as Builtin
 import Inference.Normalise
 import Meta
 import Syntax
@@ -83,5 +83,6 @@ typeOf expr = do
 typeOfLiteral
   :: Literal
   -> Expr v
-typeOfLiteral (Integer _) = Builtin.IntType
-typeOfLiteral (Byte _) = Builtin.ByteType
+typeOfLiteral Integer {} = Builtin.IntType
+typeOfLiteral Byte {} = Builtin.ByteType
+typeOfLiteral TypeRep {} = Builtin.Type

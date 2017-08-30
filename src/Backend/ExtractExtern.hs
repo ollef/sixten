@@ -13,6 +13,7 @@ import Syntax
 import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Extracted as Extracted
 import qualified Syntax.Sized.Lifted as Lifted
+import qualified TypeRep
 import Util
 import Util.Tsil as Tsil
 
@@ -120,11 +121,13 @@ mangle (QName (ModuleName parts) name)
 extractType
   :: Extracted.Expr v
   -> (Text, Direction)
-extractType (Extracted.Lit (Integer 0)) = ("void", Direct 0)
-extractType (Extracted.Lit (Integer 1)) = ("uint8_t", Direct 1)
-extractType (Extracted.Lit (Integer 2)) = ("uint16_t", Direct 2)
-extractType (Extracted.Lit (Integer 4)) = ("uint32_t", Direct 4)
-extractType (Extracted.Lit (Integer 8)) = ("uint64_t", Direct 8)
+extractType (Extracted.Lit (TypeRep rep@(TypeRep.TypeRep sz _))) = case sz of
+  0 -> ("void", Direct rep)
+  1 -> ("uint8_t", Direct rep)
+  2 -> ("uint16_t", Direct rep)
+  4 -> ("uint32_t", Direct rep)
+  8 -> ("uint64_t", Direct rep)
+  _ -> ("uint8_t*", Indirect)
 extractType _ = ("uint8_t*", Indirect)
 
 extractBranches

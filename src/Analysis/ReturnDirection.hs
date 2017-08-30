@@ -236,7 +236,7 @@ inferDefinition _ (ConstantDef _ (Constant (Anno (Global glob) _))) =
   return (AliasDef, AliasSig glob)
 inferDefinition _ (ConstantDef vis (Constant e)) = do
   (e', _loc) <- infer e
-  return (ConstantDef vis $ Constant e', ConstantSig $ sizeDir $ sizeOf e)
+  return (ConstantDef vis $ Constant e', ConstantSig $ typeDir $ typeOf e)
 inferDefinition _ _ = error "ReturnDirection.inferDefinition"
 
 generaliseDefs
@@ -259,11 +259,11 @@ inferRecursiveDefs defs = do
           FunctionDef _ cl (Function args s) ->
             Just
               ( returnDir
-              , forTele args $ \_ _ s' -> sizeDir $ fromScope s'
+              , forTele args $ \_ _ s' -> typeDir $ fromScope s'
               )
             where
               returnDir = case (cl, fromScope s) of
-                (NonClosure, Anno _ t) -> toReturnDirection Nothing $ sizeDir t
+                (NonClosure, Anno _ t) -> toReturnDirection Nothing $ typeDir t
                 _ -> ReturnIndirect (Just MOutParam)
           ConstantDef {} -> Nothing
           AliasDef -> Nothing
