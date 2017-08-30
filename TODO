@@ -29,6 +29,7 @@ Language
     alignment (Tuple A B) = max (alignment A) (alignment B)
     size (Tuple A B) = size A + padding (size A) (alignment B) + size B
     padding byteIndex align = nearestBiggerMultiple align byteIndex - byteIndex
+    Make constructor tags smaller when possible
   * Let(rec) definitions
   Named implicit arguments (maybe names should be mandatory?)
   Laziness
@@ -49,6 +50,7 @@ Language
         Nil : Vector 0 A
         Cons : forall {n}. A -> Vector n A -> Vector (S n) a
   FFI
+    Make quasi quotes call back to Sixten and pass free vars as args
     Top-level extern declarations
     Use `opt -internalize-public-api-list` to internalize extern C decls
     Extern LLVM
