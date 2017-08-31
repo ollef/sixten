@@ -1,0 +1,8 @@
+intEquals : Int -> Int -> Bool
+intEquals x y = (C|
+  return $x == $y ? $True : $False;
+|)
+
+main = printInt (case intEquals 10 10 of
+  True -> 1
+  False -> 0)

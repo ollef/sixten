@@ -102,7 +102,7 @@ extractExtern retType (Extern C parts) = do
     go tgt (strs, exprs, !len) part = case part of
       ExternPart str -> (Snoc strs str, exprs, len)
       TypeMacroPart typ -> (Snoc strs $ fst (extractType typ) <> " ", exprs, len)
-      ExprMacroPart (Extracted.Anno expr typ) ->
+      ExprMacroPart expr@(Extracted.Anno _ typ) ->
         case Tsil.lookup expr exprs of
           Nothing -> (Snoc strs (exprName <> " "), Snoc exprs (expr, (exprName, typeStr, dir)), len + 1)
             where
