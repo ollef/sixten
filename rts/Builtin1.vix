@@ -3,6 +3,12 @@ module Sixten.Builtin exposing (..)
 type Bool = False | True
 
 abstract
+eqInt : Int -> Int -> Bool
+eqInt x y = (C|
+  return $x == $y ? $True : $False;
+|)
+
+abstract
 addInt : Int -> Int -> Int
 addInt x y = (C|
   return $x + $y;
