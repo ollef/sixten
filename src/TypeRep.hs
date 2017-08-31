@@ -1,4 +1,4 @@
-{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE PatternSynonyms, OverloadedStrings #-}
 module TypeRep where
 
 import Data.Bits
@@ -53,4 +53,4 @@ piRep :: Target -> TypeRep
 piRep = ptr
 
 instance Pretty TypeRep where
-  prettyM (TypeRep sz al) = prettyM (sz, al)
+  prettyM (TypeRep sz al) = prettyApps "TypeRep" [prettyM sz, prettyM al]

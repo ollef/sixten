@@ -16,4 +16,4 @@ data Literal
 instance Pretty Literal where
   prettyM (Integer i) = prettyM i
   prettyM (Byte i) = "(Byte)" <> prettyM (fromIntegral i :: Integer)
-  prettyM (TypeRep tr) = "(TypeRep)" <> prettyM tr
+  prettyM (TypeRep tr) = prettyM tr

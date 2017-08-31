@@ -8,17 +8,16 @@ import Pretty
 import Syntax.Annotation
 import Syntax.Module
 import TypeRep
-import Util
 
 data Direction = Direct TypeRep | Indirect
   deriving (Eq, Ord, Show)
 
 instance Pretty Direction where
-  prettyM (Direct sz) = "direct(" <> prettyM sz <> ")"
+  prettyM (Direct rep) = "direct(" <> prettyM rep <> ")"
   prettyM Indirect = "indirect"
 
 instance PrettyAnnotation Direction where
-  prettyAnnotation (Direct sz) = prettyTightApp (shower sz <> "~")
+  prettyAnnotation (Direct rep) = prettyTightApp (prettyM rep <> "~")
   prettyAnnotation Indirect = prettyTightApp "&"
 
 data ReturnDirection a
@@ -31,7 +30,7 @@ instance Pretty a => Pretty (ReturnDirection a) where
   prettyM (ReturnIndirect a) = "indirect" <+> prettyM a
 
 instance PrettyAnnotation a => PrettyAnnotation (ReturnDirection a) where
-  prettyAnnotation (ReturnDirect sz) = prettyTightApp (shower sz <> "~")
+  prettyAnnotation (ReturnDirect rep) = prettyTightApp (prettyM rep <> "~")
   prettyAnnotation (ReturnIndirect a) = prettyAnnotation a
 
 data ReturnIndirect
