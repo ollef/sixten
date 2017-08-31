@@ -5,10 +5,6 @@ type Bool2 where
   True : Bool2
   False : Bool2
 
-type Bool where
-  True : Bool
-  False : Bool
-
 tt : Bool2
 tt = True
 nil = Nil

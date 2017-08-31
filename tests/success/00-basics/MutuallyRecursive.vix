@@ -2,9 +2,6 @@ type Nat' where
   Zero : Nat'
   Succ : Ptr Nat' -> Nat'
 
-type Bool where
-  False True : Bool
-
 deref p = case p of
   Ref x -> x
 

@@ -1,5 +1,7 @@
 module Sixten.Builtin exposing (..)
 
+type Bool = False | True
+
 abstract
 addInt : Int -> Int -> Int
 addInt x y = (C|

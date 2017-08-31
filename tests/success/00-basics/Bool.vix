@@ -1,8 +1,8 @@
-type Bool where
-  True : Bool
-  False : Bool
+type Bool' where
+  True : Bool'
+  False : Bool'
 
-test (b : Bool) = case b of
+test (b : Bool') = case b of
   False -> 2
   True -> 3
 

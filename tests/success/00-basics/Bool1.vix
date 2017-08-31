@@ -1,19 +1,19 @@
-Bool : Type
-Bool = {a : Type} -> a -> a -> a
+Bool' : Type
+Bool' = {a : Type} -> a -> a -> a
 
-True : Bool
-True x y = x
+True' : Bool'
+True' x y = x
 
-False : Bool
-False x y = y
+False' : Bool'
+False' x y = y
 
-if : forall {a}. Bool -> a -> a -> a
+if : forall {a}. Bool' -> a -> a -> a
 if b = b
 
-and : Bool -> Bool -> Bool
-and b1 b2 = if b1 b2 False
+and : Bool' -> Bool' -> Bool'
+and b1 b2 = if b1 b2 False'
 
-or : Bool -> Bool -> Bool
-or b1 b2 = if b1 True b2
+or : Bool' -> Bool' -> Bool'
+or b1 b2 = if b1 True' b2
 
-main2 = printInt (if (or (and True False) True) 12 13)
+main2 = printInt (if (or (and True' False') True') 12 13)
