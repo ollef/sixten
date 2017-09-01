@@ -209,7 +209,6 @@ matchVar expr retType exprs clauses expr0 = do
         return $ subst y expr t'
       s' <- fromScope <$> zonkBound (toScope s)
       return (ps', subst (F y) (F <$> expr) s')
-    go (WildcardPat:ps, s) = return (ps, s)
     go _ = error "match var"
     subst v e e' = e' >>= f
       where

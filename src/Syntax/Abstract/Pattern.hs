@@ -15,7 +15,6 @@ import Util
 
 data Pat typ b
   = VarPat !NameHint b
-  | WildcardPat
   | LitPat Literal
   | ConPat
       QConstr
@@ -34,7 +33,6 @@ instance Monad (Pat typ) where
     VarPat h b -> case f b of
       VarPat h' b' -> VarPat (h' <> h) b'
       fb -> fb
-    WildcardPat -> WildcardPat
     LitPat l -> LitPat l
     ConPat c ps pats -> ConPat c ps [(a, p >>= f, typ) | (a, p, typ) <- pats]
     ViewPat t p -> ViewPat t $ p >>= f
@@ -45,7 +43,6 @@ instance Bifoldable Pat where bifoldMap = bifoldMapDefault
 instance Bitraversable Pat where
   bitraverse f g pat = case pat of
     VarPat h b -> VarPat h <$> g b
-    WildcardPat -> pure WildcardPat
     LitPat l -> pure $ LitPat l
     ConPat c ps pats -> ConPat c <$> traverse (traverse f) ps <*> traverse (bitraverse (bitraverse f g) f) pats
     ViewPat t p -> ViewPat <$> f t <*> bitraverse f g p
@@ -63,7 +60,6 @@ data PatternType t
 
 patternType :: Pat t b -> PatternType t
 patternType VarPat {} = VarPatType
-patternType WildcardPat = VarPatType
 patternType LitPat {} = LitPatType
 patternType ConPat {} = ConPatType
 patternType (ViewPat t _) = ViewPatType t
@@ -78,7 +74,6 @@ prettyPattern names = prettyM . fmap ((names Vector.!) . fst) . indexed
 instance (Pretty typ, Pretty b) => Pretty (Pat typ b) where
   prettyM pat = case pat of
     VarPat _ b -> prettyM b
-    WildcardPat -> "_"
     LitPat l -> prettyM l
     ConPat c ps args -> prettyApps (prettyM c)
       $ (\(p, e) -> prettyTightApp "~" $ prettyAnnotation p $ prettyM e) <$> ps

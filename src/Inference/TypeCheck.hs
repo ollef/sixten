@@ -345,7 +345,7 @@ tcPat' pat vs expected = case pat of
         return expectedType
       CheckPat expectedType -> return expectedType
     v <- forall mempty expectedType
-    return (Abstract.WildcardPat, pure v, vs)
+    return (Abstract.VarPat mempty v, pure v, vs)
   Concrete.LitPat lit -> do
     (p, e) <- instPatExpected
       expected
@@ -424,15 +424,11 @@ viewPat expectedType pat patExpr f = do
 
 patToTerm
   :: Abstract.Pat AbstractM MetaA
-  -> AbstractM
   -> VIX (Maybe AbstractM)
-patToTerm pat typ = case pat of
+patToTerm pat = case pat of
   Abstract.VarPat _ v -> return $ Just $ Abstract.Var v
-  Abstract.WildcardPat -> do
-    res <- exists mempty typ
-    return $ Just $ pure res
   Abstract.ConPat qc params pats -> do
-    mterms <- mapM (\(p, pat', typ') -> fmap ((,) p) <$> patToTerm pat' typ') pats
+    mterms <- mapM (\(p, pat', _typ') -> fmap ((,) p) <$> patToTerm pat') pats
     case sequence mterms of
       Nothing -> return Nothing
       Just terms -> return $ Just $
