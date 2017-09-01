@@ -15,7 +15,6 @@ module Pretty
   , prettyApp, prettyApps, prettyTightApp
   , prettyList
   , prettyM
-  , tilde
   , showWide
   , prettyHumanList
   , withName, withHint
@@ -95,9 +94,6 @@ hsep xs = Leijen.hsep <$> sequence (Foldable.toList xs)
 
 indent :: Int -> PrettyM Doc -> PrettyM Doc
 indent n = fmap $ Leijen.indent n
-
-tilde :: Doc
-tilde = Leijen.text "~"
 
 showWide :: Doc -> Text
 showWide d = Text.pack $ Leijen.displayS (Leijen.renderPretty 1.0 10000 d) ""
