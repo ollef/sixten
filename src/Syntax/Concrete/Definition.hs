@@ -46,9 +46,9 @@ instance (Pretty (expr v), Monad expr, IsString v)
     = withNameHints (join $ nameHints . snd <$> pats) $ \ns -> do
       let go (p, pat)
             = prettyAnnotation p
-            $ prettyM $ first (instantiatePatternVec (pure . fromName) ns) pat
+            $ prettyM $ first (instantiatePattern (pure . fromName) ns) pat
       "_" <+> hsep (go <$> renamePatterns ns pats)
-      <+> "=" <+> prettyM (instantiatePatternVec (pure . fromName) ns s)
+      <+> "=" <+> prettyM (instantiatePattern (pure . fromName) ns s)
 
 instance (Pretty (expr v), Monad expr, IsString v)
   => Pretty (PatDefinition expr v) where

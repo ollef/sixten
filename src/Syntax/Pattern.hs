@@ -9,8 +9,6 @@ import Data.Maybe
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import Util hiding (indexed)
-
 type PatternScope = Scope PatternVar
 newtype PatternVar = PatternVar Int
   deriving (Eq, Ord, Show, Num)
@@ -93,18 +91,10 @@ renamePatterns vs pats
   = fmap (fmap (\(v, _) -> vs Vector.! unPatternVar v)) <$> indexedPatterns pats
 
 instantiatePattern
-  :: (Monad f, Foldable pat)
-  => (v -> f v')
-  -> pat v
-  -> Scope PatternVar f v'
-  -> f v'
-instantiatePattern f pat = instantiatePatternVec f $ toVector pat
-
-instantiatePatternVec
   :: Monad f
   => (v -> f a)
   -> Vector v
   -> Scope PatternVar f a
   -> f a
-instantiatePatternVec f vs
+instantiatePattern f vs
   = instantiate (f . fromMaybe (error "instantiatePatternVec") . (vs Vector.!?) . unPatternVar)

@@ -128,12 +128,12 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
     Lit l -> prettyM l
     Con c -> prettyM $ toList c
     Pi p pat s -> withNameHints (nameHints pat) $ \ns -> do
-      let inst = instantiatePatternVec (pure . fromName) ns
+      let inst = instantiatePattern (pure . fromName) ns
       parens `above` absPrec $
         prettyAnnotation p (prettyPattern ns $ first inst pat) <+> "->" <+>
           associate absPrec (prettyM $ inst s)
     Lam p pat s -> withNameHints (nameHints pat) $ \ns -> do
-      let inst = instantiatePatternVec (pure . fromName) ns
+      let inst = instantiatePattern (pure . fromName) ns
       parens `above` absPrec $
         "\\" <> prettyAnnotation p (prettyPattern ns $ first inst pat) <> "." <+>
           associate absPrec (prettyM $ inst s)
@@ -148,5 +148,5 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
     SourceLoc _ e -> prettyM e
     where
       prettyBranch (pat, br) = withNameHints (nameHints pat) $ \ns -> do
-        let inst = instantiatePatternVec (pure . fromName) ns
+        let inst = instantiatePattern (pure . fromName) ns
         prettyPattern ns (first inst pat) <+> "->" <+> prettyM (inst br)

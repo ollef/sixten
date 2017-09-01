@@ -165,7 +165,7 @@ tcRho expr expected expectedAppResult = case expr of
     f $ Abstract.Con qc
   Concrete.Pi p pat bodyScope -> do
     (pat', _, vs, patType) <- inferPat pat mempty
-    let body = instantiatePatternVec pure vs bodyScope
+    let body = instantiatePattern pure vs bodyScope
         h = Concrete.patternHint pat
     body' <- enterLevel $ checkPoly body Builtin.Type
     f <- instExpected expected Builtin.Type
@@ -178,7 +178,7 @@ tcRho expr expected expectedAppResult = case expr of
     case expected of
       Infer {} -> do
         (pat', _, vs, argType) <- inferPat pat mempty
-        let body = instantiatePatternVec pure vs bodyScope
+        let body = instantiatePattern pure vs bodyScope
         (body', bodyType) <- enterLevel $ inferRho body (InstBelow Explicit) Nothing
         argVar <- forall h argType
         body'' <- matchSingle (pure argVar) pat' body' bodyType
@@ -191,7 +191,7 @@ tcRho expr expected expectedAppResult = case expr of
         (typeh, argType, bodyTypeScope, fResult) <- funSubtype expectedType p
         let h' = h <> typeh
         (pat', patExpr, vs) <- checkPat pat mempty argType
-        let body = instantiatePatternVec pure vs bodyScope
+        let body = instantiatePattern pure vs bodyScope
             bodyType = Util.instantiate1 patExpr bodyTypeScope
         body' <- enterLevel $ checkPoly body bodyType
         argVar <- forall h' argType
@@ -236,7 +236,7 @@ tcBranches expr pbrs expected = do
 
   inferredPats <- forM pbrs $ \(pat, brScope) -> do
     (pat', _, vs) <- checkPat (void pat) mempty exprType
-    let br = instantiatePatternVec pure vs brScope
+    let br = instantiatePattern pure vs brScope
     return (pat', br)
 
   (inferredBranches, resType) <- case expected of
@@ -312,7 +312,7 @@ tcPat
   -> VIX (Abstract.Pat AbstractM MetaA, AbstractM, Vector MetaA)
 tcPat pat vs expected = do
   whenVerbose 20 $ do
-    shownPat <- bitraverse (showMeta . instantiatePatternVec pure vs) pure pat
+    shownPat <- bitraverse (showMeta . instantiatePattern pure vs) pure pat
     logPretty 20 "tcPat" shownPat
   logMeta 30 "tcPat vs" vs
   modifyIndent succ
@@ -386,7 +386,7 @@ tcPat' pat vs expected = case pat of
 
     return (p, patExpr', vs')
   Concrete.AnnoPat s p -> do
-    let patType = instantiatePatternVec pure vs s
+    let patType = instantiatePattern pure vs s
     patType' <- checkPoly patType Builtin.Type
     (p', patExpr, vs') <- checkPat p vs patType'
     (p'', patExpr') <- instPatExpected expected patType' p' patExpr
@@ -856,7 +856,7 @@ checkClausesRho clauses rhoType = do
 
   clauses' <- forM clauses $ \(Concrete.Clause pats bodyScope) -> do
     (pats', patVars) <- tcPats (snd <$> pats) mempty argTele
-    let body = instantiatePatternVec pure patVars bodyScope
+    let body = instantiatePattern pure patVars bodyScope
         argExprs = snd3 <$> pats'
         returnType = instantiateTele id argExprs returnTypeScope
     body' <- checkRho body returnType
