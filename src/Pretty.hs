@@ -4,7 +4,7 @@ module Pretty
   , Pretty, PrettyM
   , runPrettyM
   , (<+>), (<$$>)
-  , indent, hcat, vcat, hsep
+  , align, indent, hcat, vcat, hsep
   , iff
   , above
   , absPrec, annoPrec, appPrec, arrPrec, casePrec, letPrec
@@ -91,6 +91,9 @@ hcat xs = Leijen.hcat <$> sequence (Foldable.toList xs)
 
 hsep :: Foldable f => f (PrettyM Doc) -> PrettyM Doc
 hsep xs = Leijen.hsep <$> sequence (Foldable.toList xs)
+
+align :: PrettyM Doc -> PrettyM Doc
+align = fmap Leijen.align
 
 indent :: Int -> PrettyM Doc -> PrettyM Doc
 indent n = fmap $ Leijen.indent n
