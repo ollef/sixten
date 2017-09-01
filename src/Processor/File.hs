@@ -203,7 +203,7 @@ typeCheckGroup
   :: [(QName, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]
   -> VIX [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
 typeCheckGroup
-  = fmap Vector.toList . TypeCheck.checkRecursiveDefs . Vector.fromList
+  = fmap Vector.toList . TypeCheck.checkTopLevelRecursiveDefs . Vector.fromList
 
 simplifyGroup
   :: [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]

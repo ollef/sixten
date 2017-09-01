@@ -987,17 +987,50 @@ generaliseDefs xs = do
     impure _ = error "generaliseDefs"
 
 checkRecursiveDefs
-  :: Vector ( QName
-            , SourceLoc
-            , Concrete.PatDefinition Concrete.Expr Void
-            , Concrete.Expr Void
-            )
-  -> VIX (Vector ( QName
-                 , Definition Abstract.Expr Void
-                 , Abstract.Expr Void
-                 )
-         )
+  :: Vector
+    ( MetaA
+    , ( SourceLoc
+      , Concrete.PatDefinition Concrete.Expr MetaA
+      , ConcreteM
+      )
+    )
+  -> VIX
+    (Vector
+      ( SourceLoc
+      , (MetaA, Definition Abstract.Expr MetaA
+        , AbstractM
+        )
+      )
+    )
 checkRecursiveDefs defs = do
+  checkedDefs <- forM defs $ \(evar, (loc, def, typ)) -> do
+    typ' <- checkPoly typ Builtin.Type
+    unify [] (metaType evar) typ'
+    (def', typ'') <- checkDefType evar def loc typ'
+    logMeta 20 ("checkRecursiveDefs res " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) def'
+    logMeta 20 ("checkRecursiveDefs res t " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) typ''
+    return (loc, (evar, def', typ''))
+
+  detectTypeRepCycles checkedDefs
+  detectDefCycles checkedDefs
+
+  return checkedDefs
+
+checkTopLevelRecursiveDefs
+  :: Vector
+    ( QName
+    , SourceLoc
+    , Concrete.PatDefinition Concrete.Expr Void
+    , Concrete.Expr Void
+    )
+  -> VIX
+    (Vector
+      ( QName
+      , Definition Abstract.Expr Void
+      , Abstract.Expr Void
+      )
+    )
+checkTopLevelRecursiveDefs defs = do
   let names = (\(v, _, _, _) -> v) <$> defs
 
   (checkedDefs, evars) <- enterLevel $ do
@@ -1015,16 +1048,7 @@ checkRecursiveDefs defs = do
     let exposedDefs = flip fmap defs $ \(_, loc, def, typ) ->
           (loc, bound absurd expose def, bind absurd expose typ)
 
-    checkedDefs <- forM (Vector.zip evars exposedDefs) $ \(evar, (loc, def, typ)) -> do
-      typ' <- checkPoly typ Builtin.Type
-      unify [] (metaType evar) typ'
-      (def', typ'') <- checkDefType evar def loc typ'
-      logMeta 20 ("checkRecursiveDefs res " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) def'
-      logMeta 20 ("checkRecursiveDefs res t " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) typ''
-      return (loc, (evar, def', typ''))
-
-    detectTypeRepCycles checkedDefs
-    detectDefCycles checkedDefs
+    checkedDefs <- checkRecursiveDefs (Vector.zip evars exposedDefs)
 
     return (checkedDefs, evars)
 
