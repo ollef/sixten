@@ -3,7 +3,7 @@ module Syntax.Concrete.Scoped
   ( module Definition
   , module Pattern
   , Expr(..), Type
-  , piView --, pisView
+  , piView
   ) where
 
 import Control.Monad
@@ -42,13 +42,8 @@ piView :: Expr v -> Maybe (Plicitness, Pat (PatternScope Type v) (), PatternScop
 piView (Pi p pat s) = Just (p, pat, s)
 piView _ = Nothing
 
--- pisView :: Expr v -> (PatternTelescope Con Expr v, Scope PatternVar Expr v)
--- pisView = patBindingsView Syntax.Concrete.piView
-
 -------------------------------------------------------------------------------
 -- Instances
--- deriveShow1 ''Expr
--- deriveShow ''Expr
 
 instance Eq1 Expr where
   liftEq f (Var v1) (Var v2) = f v1 v2
