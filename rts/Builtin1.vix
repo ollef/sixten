@@ -35,7 +35,6 @@ printInt x = (C|
 
 abstract
 fail : (T : Type) -> T
--- TODO why can't this be a wildcard?
 fail T = (C|
   exit(1);
 |)

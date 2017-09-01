@@ -1,0 +1,11 @@
+-- Works
+fail1 : (T : Type) -> T
+fail1 T = (C|
+  exit(1);
+|)
+
+-- Doesn't work
+fail : (T : Type) -> T
+fail _ = (C|
+  exit(1);
+|)
