@@ -235,8 +235,8 @@ tcBranches expr pbrs expected = do
   (expr', exprType) <- inferRho expr (InstBelow Explicit) Nothing
 
   inferredPats <- forM pbrs $ \(pat, brScope) -> do
-    (pat', _, _) <- checkPat (void pat) mempty exprType
-    let br = instantiatePattern pure pat' brScope
+    (pat', _, vs) <- checkPat (void pat) mempty exprType
+    let br = instantiatePatternVec pure vs brScope
     return (pat', br)
 
   (inferredBranches, resType) <- case expected of

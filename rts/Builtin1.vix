@@ -35,7 +35,7 @@ printInt x = (C|
 
 abstract
 fail : (T : Type) -> T
-fail T = (C|
+fail _ = (C|
   exit(1);
 |)
 
