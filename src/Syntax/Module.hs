@@ -116,6 +116,7 @@ instance IsString ModuleName where
       parts = splitOn "." s
 
 instance Pretty QName where
+  prettyM (QName q n) | q == mempty = prettyM n
   prettyM (QName q n) = prettyM q <> "." <> prettyM n
 instance Pretty QConstr where
   prettyM (QConstr q n) = prettyM q <> "." <> prettyM n

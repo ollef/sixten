@@ -15,6 +15,7 @@ import Data.Text(Text)
 import qualified Data.Text.IO as Text
 import Data.Void
 import System.IO
+import Text.Trifecta.Result(Err(Err), explain)
 
 import Backend.Target
 import Syntax
@@ -141,10 +142,18 @@ addContext prog = modify $ \s -> s
   { vixContext = prog <> vixContext s
   }
 
+throwLocated :: Doc -> VIX a
+throwLocated x = do
+  loc <- currentLocation
+  throwError
+    $ show
+    $ explain loc
+    $ Err (Just $ pretty x) mempty mempty mempty
+
 definition :: QName -> VIX (Definition Expr v, Expr v)
 definition name = do
   mres <- gets $ HashMap.lookup name . vixContext
-  maybe (throwError $ "Not in scope: " ++ show name)
+  maybe (throwLocated $ "Not in scope: " <> pretty name)
         (return . bimap vacuous vacuous)
         mres
 
@@ -163,12 +172,12 @@ qconstructor qc@(QConstr n c) = do
     DataDefinition dataDef _ -> do
       let qcs = quantifiedConstrTypes dataDef typ $ const Implicit
       case filter ((== c) . constrName) qcs of
-        [] -> throwError $ "Not in scope: constructor " ++ show qc
+        [] -> throwLocated $ "Not in scope: constructor " <> pretty qc
         [cdef] -> return $ constrType cdef
-        _ -> throwError $ "Ambiguous constructor: " ++ show qc
+        _ -> throwLocated $ "Ambiguous constructor: " <> pretty qc
     Definition {} -> no
   where
-    no = throwError $ "Not a data type: " ++ show n
+    no = throwLocated $ "Not a data type: " <> pretty n
 
 -------------------------------------------------------------------------------
 -- Signatures
