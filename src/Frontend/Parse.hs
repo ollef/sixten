@@ -4,6 +4,7 @@ module Frontend.Parse where
 import Control.Applicative((<**>), (<|>), Alternative)
 import Control.Monad.Except
 import Control.Monad.State
+import Data.Bifunctor
 import Data.Char
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
@@ -13,6 +14,7 @@ import Data.String
 import Data.Text(Text)
 import qualified Data.Text as Text
 import qualified Data.Vector as Vector
+import qualified Data.List.NonEmpty as NonEmpty
 import qualified Text.Parser.LookAhead as LookAhead
 import qualified Text.Parser.Token.Highlight as Highlight
 import qualified Text.Trifecta as Trifecta
@@ -342,30 +344,35 @@ literalPat
 
 -------------------------------------------------------------------------------
 -- * Definitions
--- | A definition or type declaration on the top-level
-data TopLevelParsed v
-  = ParsedClause (Maybe Name) (Unscoped.Clause v)
-  | ParsedTypeDecl Abstract Name (Type v)
-  | ParsedData Name [(Plicitness, Name, Type v)] [ConstrDef (Type v)]
-  deriving (Show)
+topLevel :: Parser (Name, SourceLoc, TopLevelDefinition QName)
+topLevel = (\((n, d) Trifecta.:~ s) -> (n, render s, d)) <$> Trifecta.spanned (dataDef <|> second TopLevelDefinition <$> def)
 
-topLevel :: Parser (TopLevelParsed QName, Span)
-topLevel = (\(d Trifecta.:~ s) -> (d, s)) <$> Trifecta.spanned (dataDef <|> def)
-
-def :: Parser (TopLevelParsed QName)
-def
-  = reserved "abstract" *> name <**>% typeDecl Abstract
-  <|> name <**>% (typeDecl Concrete <|> mkDef Just)
-  <|> wildcard <**>% mkDef (const Nothing)
+def :: Parser (Name, Unscoped.Definition QName)
+def = do
+  abstr
+    <- Abstract <$ reserved "abstract" <* sameCol
+    <|> pure Concrete
+  dropAnchor $ do
+    n <- name
+    sameLineOrIndented
+    let namedClause
+          = dropAnchor
+          $ (wildcard <|> void (reserved $ fromName n))
+          *>% clause
+    (mtyp, clauses)
+      <- (,) . Just <$> typeSig <*> someSameCol namedClause
+      <|> (,) Nothing <$> ((:) <$> clause <*> manySameCol namedClause)
+    return (n, Unscoped.Definition abstr (NonEmpty.fromList clauses) mtyp)
   where
-    typeDecl a = flip (ParsedTypeDecl a) <$ symbol ":" <*>% expr
-    mkDef f = (\ps e n -> ParsedClause (f n) (Unscoped.Clause ps e)) <$> (Vector.fromList <$> manyPatterns) <*% symbol "=" <*>% expr
+    typeSig = symbol ":" *>% expr
+    clause = Clause <$> (Vector.fromList <$> manyPatterns) <*% symbol "=" <*>% expr
 
-dataDef :: Parser (TopLevelParsed QName)
-dataDef = ParsedData <$ reserved "type" <*>% name <*> manyTypedBindings <*>%
+dataDef :: Parser (Name, TopLevelDefinition QName)
+dataDef = mkDataDef <$ reserved "type" <*>% name <*> manyTypedBindings <*>%
   (concat <$% reserved "where" <*> manyIndentedSameCol conDef
   <|> id <$% symbol "=" <*>% sepBySI adtConDef (symbol "|"))
   where
+    mkDataDef n ps cs = (n, TopLevelDataDefinition ps cs)
     conDef = constrDefs <$> ((:) <$> constructor <*> manySI constructor)
       <*% symbol ":" <*>% expr
     constrDefs cs t = [ConstrDef c t | c <- cs]
@@ -375,7 +382,7 @@ dataDef = ParsedData <$ reserved "type" <*>% name <*> manyTypedBindings <*>%
 -------------------------------------------------------------------------------
 -- * Module
 -- | A definition or type declaration on the top-level
-modul :: Parser (Module [(TopLevelParsed QName, Span)])
+modul :: Parser (Module [(Name, SourceLoc, Unscoped.TopLevelDefinition QName)])
 modul = Trifecta.whiteSpace >> dropAnchor
   ((Module <$ reserved "module" <*>% modulName <*% reserved "exposing" <*>% exposedNames
      <|> pure (Module "Main" AllExposed))

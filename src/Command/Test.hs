@@ -51,9 +51,6 @@ test opts = Compile.compile (compileOptions opts) onCompileError onCompileSucces
       Processor.SyntaxError _:_
         | expectSyntaxError opts -> success
         | otherwise -> failed "No syntax error" $ mapM_ Processor.printError errs
-      Processor.ResolveError _:_
-        | expectSyntaxError opts -> success
-        | otherwise -> failed "No syntax error" $ mapM_ Processor.printError errs
       Processor.TypeError _:_
         | expectTypeError opts -> success
         | otherwise -> failed "No type error" $ mapM_ Processor.printError errs

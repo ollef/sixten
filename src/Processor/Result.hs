@@ -11,7 +11,6 @@ import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 
 data Error
   = SyntaxError Leijen.Doc
-  | ResolveError Text
   | TypeError Text
   | CommandLineError Leijen.Doc
   deriving Show
@@ -23,9 +22,6 @@ printError err = case err of
     Leijen.displayIO stdout
       $ Leijen.renderPretty 0.8 80
       $ doc Monoid.<> Leijen.linebreak
-  ResolveError s -> do
-    Text.putStrLn "Syntax error"
-    Text.putStrLn s
   TypeError s -> do
     Text.putStrLn "Type error"
     Text.putStrLn s

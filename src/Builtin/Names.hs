@@ -10,6 +10,9 @@ import Syntax.Module
 import Syntax.Name
 import Util
 
+pattern BuiltinModuleName :: ModuleName
+pattern BuiltinModuleName <- ((==) "Sixten.Builtin" -> True) where BuiltinModuleName = "Sixten.Builtin"
+
 -- TODO Remove unused stuff (e.g. addInt)
 pattern IntName :: QName
 pattern IntName <- ((==) "Sixten.Builtin.Int" -> True) where IntName = "Sixten.Builtin.Int"
@@ -143,4 +146,3 @@ applyName n = fromString $ "Sixten.Builtin.apply_" <> shower n
 
 papName :: Int -> Int -> QName
 papName k m = fromString $ "Sixten.Builtin.pap_" <> shower k <> "_" <> shower m
-

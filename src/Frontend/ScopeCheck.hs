@@ -1,16 +1,18 @@
 {-# LANGUAGE FlexibleContexts, MonadComprehensions, OverloadedStrings #-}
 module Frontend.ScopeCheck where
 
-import Control.Monad.RWS
 import Control.Monad.Except
+import Control.Monad.RWS
 import Data.Bifunctor
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
+import Data.Maybe
 import qualified Data.Vector as Vector
 import Data.Void
 
+import qualified Builtin.Names as Builtin
 import Syntax
 import Syntax.Concrete.Pattern
 import qualified Syntax.Concrete.Scoped as Scoped
@@ -31,7 +33,7 @@ runScopeCheck m env = (a, s)
     (a, s, ~()) = runRWS m env mempty
 
 scopeCheckModule
-  :: Module (HashMap QName (SourceLoc, Unscoped.Definition QName, Unscoped.Type QName))
+  :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
   -> VIX [[(QName, SourceLoc, Scoped.PatDefinition Scoped.Expr Void, Scoped.Type Void)]]
 scopeCheckModule modul = do
   otherNames <- gets vixModuleNames
@@ -40,17 +42,16 @@ scopeCheckModule modul = do
       lookupConstr c = HashMap.lookupDefault mempty c constrs
       constrs = multiFromList
         [ (QName mempty $ fromConstr c, QConstr n c)
-        | (n, (_, Unscoped.DataDefinition _ d, _)) <- HashMap.toList $ moduleContents modul
+        | (n, (_, Unscoped.TopLevelDataDefinition _ d)) <- HashMap.toList $ moduleContents modul
         , c <- constrName <$> d
         ] `multiUnion`
         importedConstrAliases
-      imports = Import "Sixten.Builtin" "Sixten.Builtin" AllExposed : moduleImports modul
+      imports = Import Builtin.BuiltinModuleName Builtin.BuiltinModuleName AllExposed : moduleImports modul
       importAliases = multiUnions $ importedAliases otherNames <$> imports
 
-      checkedDefDeps = for (HashMap.toList $ moduleContents modul) $ \(n, (loc, def, typ)) -> do
-        let (def', ddeps) = runScopeCheck (scopeCheckDefinition def) env
-            (typ', tdeps) = runScopeCheck (scopeCheckExpr typ) env
-        (n, (loc, def', typ'), toHashSet def' <> toHashSet typ' <> ddeps <> tdeps)
+      checkedDefDeps = for (HashMap.toList $ moduleContents modul) $ \(n, (loc, def)) -> do
+        let ((def', typ'), deps) = runScopeCheck (scopeCheckDefinition def) env
+        (n, (loc, def', typ'), toHashSet def' <> toHashSet typ' <> deps)
 
       defDeps = for checkedDefDeps $ \(n, _, deps) -> (n, deps)
       checkedDefs = for checkedDefDeps $ \(n, def, _) -> (n, def)
@@ -89,14 +90,20 @@ scopeCheckModule modul = do
     for = flip map
 
 scopeCheckDefinition
-  :: Unscoped.Definition QName
-  -> ScopeCheck (Scoped.PatDefinition Scoped.Expr QName)
-scopeCheckDefinition (Unscoped.Definition a clauses) =
-  Scoped.PatDefinition a <$> mapM scopeCheckClause clauses
-scopeCheckDefinition (Unscoped.DataDefinition params cs) = do
-  let paramNames = (\(_, n, _) -> unqualified n) <$> params
+  :: Unscoped.TopLevelDefinition QName
+  -> ScopeCheck (Scoped.PatDefinition Scoped.Expr QName, Scoped.Type QName)
+scopeCheckDefinition (Unscoped.TopLevelDefinition (Unscoped.Definition a clauses mtyp)) = do
+  res <- Scoped.PatDefinition a <$> mapM scopeCheckClause clauses
+  typ <- scopeCheckExpr $ fromMaybe Unscoped.Wildcard mtyp
+  return (res, typ)
+scopeCheckDefinition (Unscoped.TopLevelDataDefinition params cs) = do
+  let pats = (\(p, n, t) -> (p, AnnoPat t $ VarPat (nameHint n) $ unqualified n)) <$> params
+      typ = Unscoped.pis pats $ pure Builtin.TypeName
+      paramNames = (\(_, n, _) -> unqualified n) <$> params
       abstr = abstract $ teleAbstraction $ Vector.fromList paramNames
-  Scoped.PatDataDefinition . DataDef <$> mapM (mapM (fmap abstr . scopeCheckExpr)) cs
+  typ' <- scopeCheckExpr typ
+  res <- Scoped.PatDataDefinition . DataDef <$> mapM (mapM (fmap abstr . scopeCheckExpr)) cs
+  return (res, typ')
 
 scopeCheckClause
   :: Unscoped.Clause QName

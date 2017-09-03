@@ -50,14 +50,14 @@ processFiles args = do
   let files = builtin1File NonEmpty.<| builtin2File NonEmpty.<| sourceFiles args
   moduleResults <- forM files $ \sourceFile -> do
     parseResult <- File.parse sourceFile
-    return $ fmap (:[]) $ File.resolve =<< parseResult
+    return $ fmap (:[]) $ File.dupCheck =<< parseResult
   let modulesResult = sconcat moduleResults
   compiledModules <- fmap join $ forM modulesResult $ processModules args
   forM compiledModules $ writeModules $ assemblyDir args
 
 processModules
   :: Arguments
-  -> [Module (HashMap QName (SourceLoc, Unscoped.Definition QName, Unscoped.Type QName))]
+  -> [Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))]
   -> IO (Result [Module [Extracted.Submodule (Generate.Generated (Text, File.DependencySigs))]])
 processModules args (builtins1 : builtins2 : modules) = do
   result <- runVIX go tgt (logHandle args) (verbosity args)
@@ -72,7 +72,7 @@ processModules args (builtins1 : builtins2 : modules) = do
       let builtinModule = Module "Sixten.Builtin" AllExposed mempty builtins
       let orderedModules = dependencyOrder modules
       results <- forM orderedModules $ \moduleGroup -> case moduleGroup of
-        [modul] -> traverse (const $ File.processResolved modul) modul
+        [modul] -> traverse (const $ File.processUnscoped modul) modul
         _ -> throwError -- TODO: Could be allowed?
           $ "Circular modules: " ++ intercalate ", " (fromModuleName . moduleName <$> moduleGroup)
       return $ builtinModule : results
@@ -80,8 +80,8 @@ processModules _ _ = error "processModules"
 
 processBuiltins
   :: Target
-  -> Module (HashMap QName (SourceLoc, Unscoped.Definition QName, Unscoped.Type QName))
-  -> Module (HashMap QName (SourceLoc, Unscoped.Definition QName, Unscoped.Type QName))
+  -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
+  -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
   -> VIX [Extracted.Submodule (Generate.Generated (Text, File.DependencySigs))]
 processBuiltins tgt builtins1 builtins2 = do
   addContext context
@@ -93,8 +93,8 @@ processBuiltins tgt builtins1 builtins2 = do
         ]
   addModule "Sixten.Builtin" $ HashSet.map Right builtinDefNames <> HashSet.map Left builtinConstrNames
   addConvertedSignatures $ Builtin.convertedSignatures tgt
-  builtinResults1 <- File.processResolved builtins1
-  builtinResults2 <- File.processResolved builtins2
+  builtinResults1 <- File.processUnscoped builtins1
+  builtinResults2 <- File.processUnscoped builtins2
   builtins <- File.processConvertedGroup $ HashMap.toList $ Builtin.convertedContext tgt
   return $ builtinResults1 ++ builtinResults2 ++ builtins
   where

@@ -42,7 +42,6 @@ executable sixten
                        Command.Run
                        Command.Test
                        Frontend.Parse
-                       Frontend.Resolve
                        Frontend.ScopeCheck
                        Inference.Clause
                        Inference.Cycle

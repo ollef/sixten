@@ -10,7 +10,7 @@ import Data.String
 import Data.Traversable
 import Data.Vector(Vector)
 
-import Syntax
+import Syntax hiding (Definition)
 import Syntax.Concrete.Pattern
 
 type Con = Either Constr QConstr
@@ -30,8 +30,12 @@ data Expr v
 type Type = Expr
 
 data Definition v
-  = Definition Abstract (NonEmpty (Clause v))
-  | DataDefinition [(Plicitness, Name, Type v)] [ConstrDef (Expr v)]
+  = Definition Abstract (NonEmpty (Clause v)) (Maybe (Type v))
+  deriving (Show)
+
+data TopLevelDefinition v
+  = TopLevelDefinition (Definition v)
+  | TopLevelDataDefinition [(Plicitness, Name, Type v)] [ConstrDef (Expr v)]
   deriving (Show)
 
 data Clause v = Clause (Vector (Plicitness, Pat (Type v) QName)) (Expr v)

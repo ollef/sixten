@@ -1,9 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 -- TODO rename to Module?
 module Processor.File where
 
 import Control.Monad.Except
-import Control.Monad.Identity
 import Control.Monad.State
 import Data.Bifunctor
 import Data.Functor.Classes
@@ -17,7 +16,9 @@ import qualified Data.Text.IO as Text
 import qualified Data.Vector as Vector
 import Data.Void
 import System.IO
+import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import qualified Text.Trifecta as Trifecta
+import Text.Trifecta.Result(Err(Err), explain)
 
 import Analysis.Denat
 import qualified Analysis.ReturnDirection as ReturnDirection
@@ -30,7 +31,6 @@ import Backend.Lift
 import qualified Backend.SLam as SLam
 import Backend.Target
 import qualified Frontend.Parse as Parse
-import qualified Frontend.Resolve as Resolve
 import qualified Frontend.ScopeCheck as ScopeCheck
 import qualified Inference.TypeCheck as TypeCheck
 import Processor.Result
@@ -49,10 +49,10 @@ import VIX
 -- TODO: Clean this up
 type DependencySigs = HashMap QName Text
 
-processResolved
-  :: Module (HashMap QName (SourceLoc, Unscoped.Definition QName, Unscoped.Type QName))
+processUnscoped
+  :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
   -> VIX [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
-processResolved
+processUnscoped
   = scopeCheckProgram
   >=> mapM (prettyConcreteGroup "Concrete syntax" absurd)
   >>=> processGroup
@@ -186,14 +186,14 @@ prettyGroup str f defs = do
   return defs
 
 scopeCheckProgram
-  :: Module (HashMap QName (SourceLoc, Unscoped.Definition QName, Unscoped.Type QName))
+  :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
   -> VIX [[(QName, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Type Void)]]
 scopeCheckProgram m = do
   res <- ScopeCheck.scopeCheckModule m
   let defNames = HashSet.fromMap $ void $ moduleContents m
       conNames = HashSet.fromList
         [ QConstr n c
-        | (n, (_, Unscoped.DataDefinition _ d, _)) <- HashMap.toList $ moduleContents m
+        | (n, (_, Unscoped.TopLevelDataDefinition _ d)) <- HashMap.toList $ moduleContents m
         , c <- constrName <$> d
         ]
   addModule (moduleName m) $ HashSet.map Right defNames <> HashSet.map Left conNames
@@ -338,16 +338,34 @@ writeModule modul llOutputFile externOutputFiles = do
 
 parse
   :: FilePath
-  -> IO (Result (Module [(Parse.TopLevelParsed QName, Span)]))
+  -> IO (Result (Module [(Name, SourceLoc, Unscoped.TopLevelDefinition QName)]))
 parse file = do
   parseResult <- Parse.parseFromFileEx Parse.modul file
   case parseResult of
     Trifecta.Failure f -> return $ Failure $ pure $ SyntaxError $ Trifecta._errDoc f
     Trifecta.Success res -> return $ Success res
 
-resolve
-  :: Module [(Parse.TopLevelParsed QName, Span)]
-  -> Result (Module (HashMap QName (SourceLoc, Unscoped.Definition QName, Unscoped.Type QName)))
-resolve modul = case Resolve.modul modul of
-  ExceptT (Identity (Left err)) -> Failure $ pure $ ResolveError err
-  ExceptT (Identity (Right resolved)) -> Success resolved
+dupCheck
+  :: Module [(Name, SourceLoc, Unscoped.TopLevelDefinition QName)]
+  -> Result (Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName)))
+dupCheck m = forM m $ foldM go mempty
+  where
+    go defs (name, loc, def)
+      | HashMap.member qname defs = do
+        let (prevLoc, _) = defs HashMap.! qname
+        Failure
+          $ pure
+          $ TypeError
+          $ err loc "Duplicate definition"
+          [ "Previous definition at " <> Leijen.pretty (delta prevLoc)
+          , Leijen.pretty prevLoc
+          ]
+      | otherwise = return $ HashMap.insert qname (loc, def) defs
+      where
+        qname = QName (moduleName m) name
+
+    err :: SourceLoc -> Doc -> [Doc] -> Text
+    err loc heading docs
+      = shower
+      $ explain loc
+      $ Err (Just heading) docs mempty mempty
