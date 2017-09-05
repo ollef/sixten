@@ -347,7 +347,7 @@ literalPat
 topLevel :: Parser (Name, SourceLoc, TopLevelDefinition QName)
 topLevel = (\((n, d) Trifecta.:~ s) -> (n, render s, d)) <$> Trifecta.spanned (dataDef <|> second TopLevelDefinition <$> def)
 
-def :: Parser (Name, Unscoped.Definition QName)
+def :: Parser (Name, Unscoped.Definition Unscoped.Expr QName)
 def = do
   abstr
     <- Abstract <$ reserved "abstract" <* sameCol

@@ -1,9 +1,10 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, OverloadedStrings #-}
 module Syntax.Concrete.Unscoped where
 
 import Control.Monad
 import Data.Bifunctor
 import Data.Bitraversable
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.List.NonEmpty(NonEmpty)
 import Data.Monoid
 import Data.String
@@ -29,16 +30,16 @@ data Expr v
 
 type Type = Expr
 
-data Definition v
-  = Definition Abstract (NonEmpty (Clause v)) (Maybe (Type v))
-  deriving (Show)
+data Definition e v
+  = Definition Abstract (NonEmpty (Clause e v)) (Maybe (e v))
+  deriving (Show, Functor, Foldable, Traversable)
 
 data TopLevelDefinition v
-  = TopLevelDefinition (Definition v)
+  = TopLevelDefinition (Definition Expr v)
   | TopLevelDataDefinition [(Plicitness, Name, Type v)] [ConstrDef (Expr v)]
   deriving (Show)
 
-data Clause v = Clause (Vector (Plicitness, Pat (Type v) QName)) (Expr v)
+data Clause e v = Clause (Vector (Plicitness, Pat (e v) QName)) (e v)
   deriving (Show)
 
 -------------------------------------------------------------------------------
@@ -105,8 +106,35 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
         "\\" <> prettyAnnotation p (prettyM pat) <> "." <+>
           associate absPrec (prettyM e)
     App e1 p e2 -> prettyApp (prettyM e1) (prettyAnnotation p $ prettyM e2)
+    Let ds e -> parens `above` letPrec $
+      "let" <+> align (vcat (uncurry prettyNamed . first prettyM <$> ds)) <$$> "in" <+> prettyM e
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (vcat [prettyM pat <+> "->" <+> prettyM br | (pat, br) <- brs])
     ExternCode c -> prettyM c
     Wildcard -> "_"
     SourceLoc _ e -> prettyM e
+
+instance Bound Definition where
+  Definition a cls mtyp >>>= f = Definition a ((>>>= f) <$> cls) ((>>= f) <$> mtyp)
+
+instance (Eq v, IsString v, Pretty v, Pretty (e v)) => PrettyNamed (Definition e v) where
+  prettyNamed name (Definition a cls Nothing)
+    = prettyM a <$$> vcat (prettyNamed name <$> cls)
+  prettyNamed name (Definition a cls (Just typ))
+    = prettyM a <$$> vcat (NonEmpty.cons (name <+> ":" <+> prettyM typ) (prettyNamed name <$> cls))
+
+instance Traversable e => Functor (Clause e) where
+  fmap = fmapDefault
+
+instance Traversable e => Foldable (Clause e) where
+  foldMap = foldMapDefault
+
+instance Traversable e => Traversable (Clause e) where
+  traverse f (Clause pats body)
+    = Clause <$> traverse (traverse $ bitraverse (traverse f) pure) pats <*> traverse f body
+
+instance Bound Clause where
+  Clause pats body >>>= f = Clause (second (first (>>= f)) <$> pats) (body >>= f)
+
+instance (Eq v, IsString v, Pretty v, Pretty (e v)) => PrettyNamed (Clause e v) where
+  prettyNamed name (Clause pats body) = name <+> hcat ((\(p, pat) -> prettyAnnotation p (prettyM pat)) <$> pats) <+> "=" <+> prettyM body

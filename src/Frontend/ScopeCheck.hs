@@ -106,7 +106,7 @@ scopeCheckDefinition (Unscoped.TopLevelDataDefinition params cs) = do
   return (res, typ')
 
 scopeCheckClause
-  :: Unscoped.Clause QName
+  :: Unscoped.Clause Unscoped.Expr QName
   -> ScopeCheck (Scoped.Clause Scoped.Expr QName)
 scopeCheckClause (Unscoped.Clause plicitPats e) = do
   plicitPats' <- traverse (traverse scopeCheckPat) plicitPats
