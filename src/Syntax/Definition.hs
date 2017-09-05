@@ -46,12 +46,16 @@ bitraverseDefinition f g (DataDefinition d e) = DataDefinition <$> bitraverseDat
 
 prettyTypedDef
   :: (Eq1 expr, Eq v, IsString v, Monad expr, Pretty (expr v), Syntax expr)
-  => Definition expr v
+  => PrettyM Doc
+  -> Definition expr v
   -> expr v
   -> PrettyM Doc
-prettyTypedDef (Definition a d) _ = prettyM a <+> prettyM d
-prettyTypedDef (DataDefinition d e) t = prettyDataDef (telescope t) d <+> "=" <+> prettyM e
+prettyTypedDef name (Definition a d) _ = prettyM a <$$> name <+> "=" <+> prettyM d
+prettyTypedDef name (DataDefinition d e) t = prettyDataDef name (telescope t) d <+> "=" <+> prettyM e
+
+instance (Monad expr, Pretty (expr v), IsString v) => PrettyNamed (Definition expr v) where
+  prettyNamed name (Definition a e) = name <+> "=" <+> prettyM a <+> prettyM e
+  prettyNamed name (DataDefinition d e) = prettyNamed name d <+> "=" <+> prettyM e
 
 instance (Monad expr, Pretty (expr v), IsString v) => Pretty (Definition expr v) where
-  prettyM (Definition a e) = prettyM a <+> prettyM e
-  prettyM (DataDefinition d e) = prettyM d <+> "=" <+> prettyM e
+  prettyM = prettyNamed "_"

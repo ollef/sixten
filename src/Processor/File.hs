@@ -132,7 +132,7 @@ prettyConcreteGroup str f defs = do
       VIX.log
         $ showWide
         $ runPrettyM
-        $ prettyM (f <$> d)
+        $ prettyNamed (prettyM n) (f <$> d)
       VIX.log ""
   return defs
 
@@ -164,7 +164,7 @@ prettyTypedGroup str f defs = do
       VIX.log
         $ showWide
         $ runPrettyM
-        $ prettyM n <+> "=" <+> prettyTypedDef (f <$> d) t'
+        $ prettyTypedDef (prettyM n) (f <$> d) t'
       VIX.log ""
   return defs
 

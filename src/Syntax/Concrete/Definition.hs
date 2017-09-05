@@ -41,16 +41,20 @@ instance GlobalBound Clause where
   bound f g (Clause pats s) = Clause (fmap (first (bound f g)) <$> pats) (bound f g s)
 
 instance (Pretty (expr v), Monad expr, IsString v)
-  => Pretty (Clause expr v) where
-  prettyM (Clause pats s)
+  => PrettyNamed (Clause expr v) where
+  prettyNamed name (Clause pats s)
     = withNameHints (join $ nameHints . snd <$> pats) $ \ns -> do
       let go (p, pat)
             = prettyAnnotation p
             $ prettyM $ first (instantiatePattern (pure . fromName) ns) pat
-      "_" <+> hsep (go <$> renamePatterns ns pats)
+      name <+> hsep (go <$> renamePatterns ns pats)
       <+> "=" <+> prettyM (instantiatePattern (pure . fromName) ns s)
 
 instance (Pretty (expr v), Monad expr, IsString v)
-  => Pretty (PatDefinition expr v) where
-  prettyM (PatDefinition a clauses) = prettyM a <+> vcat (prettyM <$> clauses)
-  prettyM (PatDataDefinition dataDef) = prettyM dataDef
+  => Pretty (Clause expr v) where
+  prettyM = prettyNamed "_"
+
+instance (Pretty (expr v), Monad expr, IsString v)
+  => PrettyNamed (PatDefinition expr v) where
+  prettyNamed name (PatDefinition a clauses) = prettyM a <+> vcat (prettyNamed name <$> clauses)
+  prettyNamed name (PatDataDefinition dataDef) = prettyNamed name dataDef

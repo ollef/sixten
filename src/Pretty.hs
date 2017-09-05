@@ -1,7 +1,7 @@
 {-# LANGUAGE GADTs, GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module Pretty
   ( module Text.PrettyPrint.ANSI.Leijen
-  , Pretty, PrettyM
+  , Pretty, PrettyM, PrettyNamed
   , runPrettyM
   , (<+>), (<$$>)
   , align, indent, hcat, vcat, hsep
@@ -15,6 +15,7 @@ module Pretty
   , prettyApp, prettyApps, prettyTightApp
   , prettyList
   , prettyM
+  , prettyNamed
   , showWide
   , prettyHumanList
   , withName, withHint
@@ -59,12 +60,15 @@ data PrettyEnv = PrettyEnv
   }
 
 class Pretty a where
-  pretty  :: a -> Doc
+  pretty :: a -> Doc
   pretty = runPrettyM . prettyM
   prettyM :: a -> PrettyM Doc
   prettyM = return . pretty
   prettyList :: [a] -> PrettyM Doc
   prettyList xs = list <$> mapM (inviolable . prettyM) xs
+
+class PrettyNamed a where
+  prettyNamed :: PrettyM Doc -> a -> PrettyM Doc
 
 runPrettyM :: PrettyM a -> a
 runPrettyM (PrettyM p) = p PrettyEnv
