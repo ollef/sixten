@@ -212,16 +212,16 @@ instance Pretty a => Pretty [a] where prettyM = prettyList
 instance Pretty a => Pretty (Vector a) where prettyM = prettyM . Vector.toList
 
 instance Pretty a => Pretty (Maybe a) where
-  prettyM Nothing  = pure $ text "Nothing"
-  prettyM (Just b) = prettyApp (pure $ text "Just") (prettyM b)
+  prettyM Nothing = "Nothing"
+  prettyM (Just b) = prettyApp "Just" (prettyM b)
 
 instance (Pretty b, Pretty a) => Pretty (Var b a) where
-  prettyM (B b) = prettyApp (pure $ text "B") (prettyM b)
-  prettyM (F a) = prettyApp (pure $ text "F") (prettyM a)
+  prettyM (B b) = prettyApp "B" (prettyM b)
+  prettyM (F a) = prettyApp "F" (prettyM a)
 
 instance (Pretty a, Pretty b) => Pretty (Either a b) where
-  prettyM (Left a)  = prettyApp (pure $ text "Left")  (prettyM a)
-  prettyM (Right b) = prettyApp (pure $ text "Right") (prettyM b)
+  prettyM (Left a) = prettyApp "Left" (prettyM a)
+  prettyM (Right b) = prettyApp "Right" (prettyM b)
 
 instance (Pretty a, Pretty b) => Pretty (a, b) where
   prettyM (a, b) = inviolable $ f <$> prettyM a
