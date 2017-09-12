@@ -921,7 +921,8 @@ generaliseDef vs (DataDefinition (DataDef cs) rep) typ = do
   gtyp <- abstractMs ivs pi_ typ
   return (DataDefinition (DataDef cs') grep, gtyp)
   where
-    f v = pure $ maybe (F v) (B . Tele) (v `Vector.elemIndex` vs)
+    varIndex = hashedElemIndex vs
+    f v = pure $ maybe (F v) (B . Tele) (varIndex v)
     g = pure . B . (+ Tele (length vs))
 
 abstractMs
@@ -974,8 +975,9 @@ generaliseDefs xs = do
   return genDefs
   where
     vars  = (\(v, _, _) -> v) <$> xs
+    varIndex = hashedElemIndex vars
     types = (\(_, _, t) -> t) <$> xs
-    sub instVars v | Just x <- v `Vector.elemIndex` vars
+    sub instVars v | Just x <- varIndex v
       = return $ fromMaybe (error "generaliseDefs") $ instVars Vector.!? x
     sub instVars v@(metaRef -> Just r) = do
       sol <- solution r
@@ -1039,7 +1041,8 @@ checkTopLevelRecursiveDefs defs = do
       typ <- existsType hint
       forall hint typ
 
-    let expose name = case Vector.elemIndex name names of
+    let nameIndex = hashedElemIndex names
+        expose name = case nameIndex name of
           Nothing -> global name
           Just index -> pure
             $ fromMaybe (error "checkRecursiveDefs 1")

@@ -5,9 +5,12 @@ import Bound
 import Control.Monad.State
 import Data.Bitraversable
 import Data.Functor.Identity
+import Data.Hashable
 import Data.Maybe
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
+
+import Util
 
 type PatternScope = Scope PatternVar
 newtype PatternVar = PatternVar Int
@@ -17,14 +20,14 @@ unPatternVar :: PatternVar -> Int
 unPatternVar (PatternVar i) = i
 
 patternAbstraction
-  :: Eq b
+  :: (Eq b, Hashable b)
   => Vector b
   -> b
   -> Maybe PatternVar
-patternAbstraction vs = fmap PatternVar . (`Vector.elemIndex` vs)
+patternAbstraction vs = fmap PatternVar . hashedElemIndex vs
 
 abstractPatternsTypes
-  :: (Bitraversable pat, Eq v, Monad typ, Traversable t)
+  :: (Bitraversable pat, Eq v, Hashable v, Monad typ, Traversable t)
   => Vector v
   -> t (p, pat (typ v) b)
   -> t (p, pat (PatternScope typ v) b)
@@ -32,13 +35,13 @@ abstractPatternsTypes vars
   = flip evalState 0 . traverse (bitraverse pure (bitraverse (abstractType vars) inc))
   where
     abstractType
-      :: (Eq v, Monad typ)
+      :: (Eq v, Hashable v, Monad typ)
       => Vector v
       -> typ v
       -> State Int (Scope PatternVar typ v)
     abstractType vs typ = do
       prefix <- get
-      let abstr v = case Vector.elemIndex v vs of
+      let abstr v = case hashedElemIndex vs v of
             Just i | i < prefix -> Just $ PatternVar i
             _ -> Nothing
       return $ abstract abstr typ
@@ -49,7 +52,7 @@ abstractPatternsTypes vars
       pure b
 
 abstractPatternTypes
-  :: (Bitraversable pat, Eq v, Monad typ)
+  :: (Bitraversable pat, Eq v, Hashable v, Monad typ)
   => Vector v
   -> pat (typ v) b
   -> pat (PatternScope typ v) b
@@ -97,4 +100,4 @@ instantiatePattern
   -> Scope PatternVar f a
   -> f a
 instantiatePattern f vs
-  = instantiate (f . fromMaybe (error "instantiatePatternVec") . (vs Vector.!?) . unPatternVar)
+  = instantiate (f . fromMaybe (error "instantiatePattern") . (vs Vector.!?) . unPatternVar)

@@ -188,3 +188,15 @@ nonEmptySome p = (NonEmpty.:|) <$> p <*> many p
 
 logBase2 :: FiniteBits b => b -> Int
 logBase2 x = finiteBitSize x - 1 - countLeadingZeros x
+
+hashedElemIndex
+  :: (Eq a, Hashable a)
+  => Vector a
+  -> a
+  -> Maybe Int
+hashedElemIndex xs
+  -- Just guessing the cutoff here
+  | Vector.length xs <= 16 = flip Vector.elemIndex xs
+  | otherwise = flip HashMap.lookup m
+  where
+    m = HashMap.fromList $ zip (Vector.toList xs) [0..]

@@ -157,10 +157,11 @@ knownCall f (tele, returnTypeScope) args
         intRep = Closed.Lit $ TypeRep $ TypeRep.int target
         ptrRep = Closed.Lit $ TypeRep $ TypeRep.ptr target
     let returnType = instantiateTele pure vs $ vacuous returnTypeScope
+        varIndex = hashedElemIndex vs
         go v | i < Vector.length fArgs1 = B $ Tele $ 2 + i
              | otherwise = F $ Tele $ 1 + numXs - numArgs + i
           where
-            i = fromMaybe (error "knownCall elemIndex") $ Vector.elemIndex v vs
+            i = fromMaybe (error "knownCall elemIndex") $ varIndex v
     let tele' = Telescope
           $ Vector.cons (TeleArg "x_this" () $ Scope ptrRep)
           $ (\h -> TeleArg h () $ Scope intRep) <$> xs

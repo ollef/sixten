@@ -258,8 +258,8 @@ instantiateTele
 instantiateTele f vs
   = instantiate (f . fromMaybe (error "instantiateTele") . (vs Vector.!?) . unTele)
 
-teleAbstraction :: Eq a => Vector a -> a -> Maybe Tele
-teleAbstraction vs = fmap Tele . (`Vector.elemIndex` vs)
+teleAbstraction :: (Eq a, Hashable a) => Vector a -> a -> Maybe Tele
+teleAbstraction vs = fmap Tele . hashedElemIndex vs
 
 -- | View consecutive bindings at the same time
 bindingsViewM

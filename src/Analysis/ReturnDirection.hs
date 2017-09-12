@@ -270,7 +270,8 @@ inferRecursiveDefs defs = do
     funSig' <- traverse (bitraverse (traverse $ maybe existsMetaReturnIndirect pure) pure) funSig
     exists h MProjection funSig'
 
-  let expose name = case Vector.elemIndex name names of
+  let nameIndex = hashedElemIndex names
+      expose name = case nameIndex name of
         Nothing -> global name
         Just index -> pure
           $ fromMaybe (error "InferDirection.inferRecursiveDefs expose")
@@ -285,7 +286,8 @@ inferRecursiveDefs defs = do
 
   genDefs <- generaliseDefs inferredDefs
 
-  let unexpose evar = case Vector.elemIndex evar evars of
+  let varIndex = hashedElemIndex evars
+      unexpose evar = case varIndex evar of
         Nothing -> pure evar
         Just index -> global
           $ fromMaybe (error "inferRecursiveDefs 2")
