@@ -57,6 +57,12 @@ toVector = Vector.fromList . toList
 toHashSet ::  (Eq a, Foldable f, Hashable a) => f a -> HashSet a
 toHashSet = foldMap HashSet.singleton
 
+subst1 :: (Monad expr, Eq v) => v -> expr v -> expr v -> expr v
+subst1 v e e' = e' >>= f
+  where
+    f i | i == v = e
+        | otherwise = pure i
+
 bimapScope
   :: Bifunctor f
   => (x -> x')

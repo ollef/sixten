@@ -206,14 +206,10 @@ matchVar expr retType exprs clauses expr0 = do
     go (VarPat _ y:ps, s) = do
       ps' <- forM ps $ flip bitraverse pure $ \t -> do
         t' <- zonk t
-        return $ subst y expr t'
+        return $ subst1 y expr t'
       s' <- fromScope <$> zonkBound (toScope s)
-      return (ps', subst (F y) (F <$> expr) s')
+      return (ps', subst1 (F y) (F <$> expr) s')
     go _ = error "match var"
-    subst v e e' = e' >>= f
-      where
-        f i | i == v = e
-            | otherwise = pure i
 
 matchView :: AbstractM -> NonEmptyMatch
 matchView expr retType exprs clauses = match retType (App f Explicit expr : exprs) $ NonEmpty.toList $ deview <$> clauses
