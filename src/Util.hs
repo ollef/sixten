@@ -1,5 +1,4 @@
 {-# LANGUAGE DeriveFunctor, Rank2Types #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 module Util where
 
 import Bound
