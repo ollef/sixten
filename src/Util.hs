@@ -92,6 +92,18 @@ indexed x = evalState (traverse go x) 0
       put $! i + 1
       return (i, a)
 
+itraverse :: (Applicative m, Traversable t) => (Int -> a -> m b) -> t a -> m (t b)
+itraverse f = traverse (uncurry f) . indexed
+
+iforM :: (Applicative m, Traversable t) => t a -> (Int -> a -> m b) -> m (t b)
+iforM = flip itraverse
+
+imap :: Traversable t => (Int -> a -> b) -> t a -> t b
+imap f = fmap (uncurry f) . indexed
+
+ifor :: Traversable t => t a -> (Int -> a -> b) -> t b
+ifor = flip imap
+
 data Unit a = Unit
   deriving (Functor)
 
