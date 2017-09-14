@@ -33,8 +33,8 @@ slam expr = do
       t' <- whnf' True t
       v <- forall h t'
       e <- slamSized $ instantiate1 (pure v) s
-      sz <- slam t'
-      return $ SLambda.Lam h sz $ abstract1 v e
+      rep <- slam t'
+      return $ SLambda.Lam h rep $ abstract1 v e
     (appsView -> (Abstract.Con qc@(QConstr typeName _), es)) -> do
       (_, typeType) <- definition typeName
       n <- constrArity qc
@@ -84,9 +84,9 @@ slamBranches (ConBranches cbrs) = do
       let vs = fst <$> tele'
           abstr = teleAbstraction vs
           t = instantiateTele pure vs s
-      tsz <- slam =<< whnf' True t
+      trep <- slam =<< whnf' True t
       v <- forall h t
-      return (v, TeleArg h a $ abstract abstr tsz)
+      return (v, TeleArg h a $ abstract abstr trep)
     let vs = fst <$> tele'
         abstr = teleAbstraction vs
         tele'' = Telescope
