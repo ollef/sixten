@@ -39,7 +39,7 @@ liftExpr expr = case expr of
   Closed.Con c es -> Lifted.Con c <$> mapM liftExpr es
   Closed.Lams tele s -> do
     s' <- transverseScope liftExpr s
-    tele' <- liftTelescope tele
+    tele' <- transverseTelescope liftExpr tele
     f <- liftFunction $ Sized.Function tele' s'
     return $ Lifted.Global f
   Closed.Call e es -> Lifted.Call <$> liftExpr e <*> mapM liftExpr es
@@ -57,7 +57,7 @@ liftBranches
   :: Branches QConstr () Closed.Expr v
   -> Lift (Branches QConstr () Lifted.Expr v)
 liftBranches (ConBranches cbrs) = ConBranches <$> sequence
-  [ ConBranch qc <$> liftTelescope tele <*> transverseScope liftExpr s
+  [ ConBranch qc <$> transverseTelescope liftExpr tele <*> transverseScope liftExpr s
   | ConBranch qc tele s <- cbrs
   ]
 liftBranches (LitBranches lbrs def) = LitBranches <$> sequence
@@ -65,17 +65,11 @@ liftBranches (LitBranches lbrs def) = LitBranches <$> sequence
   | LitBranch l e <- lbrs
   ] <*> liftExpr def
 
-liftTelescope
-  :: Telescope d Closed.Expr v
-  -> Lift (Telescope d Lifted.Expr v)
-liftTelescope (Telescope tele) = Telescope
-  <$> mapM (\(TeleArg h d s) -> TeleArg h d <$> transverseScope liftExpr s) tele
-
 liftToDefinitionM
   :: Closed.Expr Void
   -> Lift (Sized.Definition Lifted.Expr Void)
 liftToDefinitionM (Closed.Anno (Closed.Lams tele s) _) = do
-  tele' <- liftTelescope tele
+  tele' <- transverseTelescope liftExpr tele
   s' <- transverseScope liftExpr s
   return $ Sized.FunctionDef Public Sized.NonClosure $ Sized.Function tele' s'
 liftToDefinitionM sexpr
@@ -96,7 +90,7 @@ liftDefinitionM
   :: Sized.Definition Closed.Expr Void
   -> Lift (Sized.Definition Lifted.Expr Void)
 liftDefinitionM (Sized.FunctionDef vis cl (Sized.Function tele s)) = do
-  tele' <- liftTelescope tele
+  tele' <- transverseTelescope liftExpr tele
   s' <- transverseScope liftExpr s
   return $ Sized.FunctionDef vis cl $ Sized.Function tele' s'
 liftDefinitionM (Sized.ConstantDef vis (Sized.Constant e)) = do
