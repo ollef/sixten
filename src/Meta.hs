@@ -100,7 +100,7 @@ logMeta v s x = whenVerbose v $ do
 
 existsAtLevel :: NameHint -> e (MetaVar e) -> Level -> VIX (MetaVar e)
 existsAtLevel hint typ l = do
-  i   <- fresh
+  i <- fresh
   ref <- liftST $ newSTRef $ Left l
   logVerbose 20 $ "exists: " <> fromString (show i)
   return $ MetaVar i typ hint (Just ref)
