@@ -171,8 +171,7 @@ tcRho expr expected expectedAppResult = case expr of
     f <- instExpected expected Builtin.Type
     x <- forall h patType
     body'' <- matchSingle (pure x) pat' body' Builtin.Type
-    let body''' = body'' >>= unvar (\Match.Fail -> Builtin.Fail Builtin.Type) pure
-    f =<< Abstract.Pi h p patType <$> abstract1M x body'''
+    f =<< Abstract.Pi h p patType <$> abstract1M x body''
   Concrete.Lam p pat bodyScope -> do
     let h = Concrete.patternHint pat
     case expected of
@@ -182,8 +181,7 @@ tcRho expr expected expectedAppResult = case expr of
         (body', bodyType) <- enterLevel $ inferRho body (InstBelow Explicit) Nothing
         argVar <- forall h argType
         body'' <- matchSingle (pure argVar) pat' body' bodyType
-        let body''' = body'' >>= unvar (\Match.Fail -> Builtin.Fail bodyType) pure
-        bodyScope' <- abstract1M argVar body'''
+        bodyScope' <- abstract1M argVar body''
         bodyTypeScope <- abstract1M argVar bodyType
         f <- instExpected expected $ Abstract.Pi h p argType bodyTypeScope
         f $ Abstract.Lam h p argType bodyScope'
@@ -196,8 +194,7 @@ tcRho expr expected expectedAppResult = case expr of
         body' <- enterLevel $ checkPoly body bodyType
         argVar <- forall h' argType
         body'' <- matchSingle (pure argVar) pat' body' bodyType
-        let body''' = body'' >>= unvar (\Match.Fail -> Builtin.Fail bodyType) pure
-        fResult =<< Abstract.Lam h' p argType <$> abstract1M argVar body'''
+        fResult =<< Abstract.Lam h' p argType <$> abstract1M argVar body''
   Concrete.App fun p arg -> do
     (fun', funType) <- inferRho fun (InstBelow p) expectedAppResult
     (argType, resTypeScope, f1) <- subtypeFun funType p
@@ -259,7 +256,7 @@ tcBranches expr pbrs expected = do
   f <- instExpected expected resType
 
   matched <- matchCase expr' inferredBranches resType
-  f $ matched >>= unvar (\Match.Fail -> Builtin.Fail resType) pure
+  f matched
 
 --------------------------------------------------------------------------------
 -- Patterns
