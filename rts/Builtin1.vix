@@ -54,12 +54,12 @@ productPadding offset B = (C|
 abstract
 productTypeRep : Type -> Type -> Type
 productTypeRep A B = (C|
-  $type:Type b_start = $(productPadding (sizeOf A) B);
+  $type:Type one = 1;
+  $type:Type b_align_mask = ((one << $(alignmentOf B)) - one) << $target:alignmentBits;
 
-  $type:Type result_size = b_start + $(sizeOf B);
-  $type:Type result_align = $(alignmentOf A) > $(alignmentOf B) ? $(alignmentOf A) : $(alignmentOf B);
+  $type:Type min_align = $(alignmentOf A) < $(alignmentOf B) ? $(alignmentOf A) : $(alignmentOf B);
 
-  return (result_size << $target:alignmentBits) | result_align;
+  return (($A + b_align_mask) & ~b_align_mask) - min_align + $B;
 |)
 
 abstract
