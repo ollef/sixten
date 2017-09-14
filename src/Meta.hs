@@ -108,6 +108,13 @@ existsAtLevel hint typ l = do
 exists :: NameHint -> e (MetaVar e) -> VIX (MetaVar e)
 exists hint typ = existsAtLevel hint typ =<< level
 
+let_ :: NameHint -> e (MetaVar e) -> e (MetaVar e) -> VIX (MetaVar e)
+let_ hint expr typ = do
+  i <- fresh
+  ref <- liftST $ newSTRef $ Right expr
+  logVerbose 20 $ "let: " <> fromString (show i)
+  return $ MetaVar i typ hint $ Just ref
+
 existsVar
   :: Applicative g
   => NameHint

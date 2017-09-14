@@ -35,7 +35,9 @@ whnf' expandTypeReps expr = do
     go f es@((p, e):es') = do
       f' <- whnfInner expandTypeReps f
       case f' of
-        Lam _ p' _ s | p == p' -> go (Util.instantiate1 e s) es'
+        Lam h p' t s | p == p' -> do
+          eVar <- let_ h e t
+          go (Util.instantiate1 (pure eVar) s) es'
         _ -> case apps f' es of
           Builtin.ProductTypeRep x y -> typeRepBinOp
             (Just TypeRep.Unit) (Just TypeRep.Unit)
@@ -106,16 +108,19 @@ normalise expr = do
     Builtin.MaxInt x y -> binOp (Just 0) (Just 0) max Builtin.MaxInt normalise x y
     App e1 p e2 -> do
       e1' <- normalise e1
-      e2' <- normalise e2
       case e1' of
-        Lam _ p' _ s | p == p' -> normalise $ Util.instantiate1 e2' s
-        _ -> return $ App e1' p e2'
+        Lam h p' t s | p == p' -> do
+          e2Var <- let_ h e2 t
+          normalise $ Util.instantiate1 (pure e2Var) s
+        _ -> do
+          e2' <- normalise e2
+          return $ App e1' p e2'
     Let _ e s -> do
       e' <- normalise e
       normalise $ instantiate1 e' s
     Case e brs retType -> do
       e' <- whnf e
-      res <- chooseBranch e' brs retType whnf
+      res <- chooseBranch e' brs retType normalise
       case res of
         Case e'' brs' retType' -> Case e'' <$> (case brs' of
           ConBranches cbrs -> ConBranches
