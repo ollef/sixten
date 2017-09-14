@@ -23,13 +23,13 @@ simplifyExpr glob !applied expr = case expr of
   Global _ -> expr
   Con _ -> expr
   Lit _ -> expr
-  Pi h a t s -> Pi h a (simplifyExpr glob 0 t) $ simplifyScope glob 0 s
+  Pi h a t s -> Pi h a (simplifyExpr glob 0 t) $ hoist (simplifyExpr glob 0) s
   (lamsViewM -> Just (tele, s)) ->
     etaLams
       glob
       applied
       tele
-      $ simplifyScope glob (max 0 $ applied - teleLength tele) s
+      $ hoist (simplifyExpr glob $ max 0 $ applied - teleLength tele) s
   Lam {} -> error "simplifyExpr Lam"
   App e1 p e2 ->
     betaApp
@@ -40,39 +40,17 @@ simplifyExpr glob !applied expr = case expr of
     runIdentity
       $ chooseBranch
         (simplifyExpr glob 0 e)
-        (simplifyBranches glob applied brs)
+        (hoist (simplifyExpr glob applied) brs)
         (simplifyExpr glob 0 retType)
         (Identity . simplifyExpr glob applied)
-  Let h e s -> let_ glob h (simplifyExpr glob 0 e) (simplifyScope glob applied s)
+  Let h e s -> let_ glob h (simplifyExpr glob 0 e) $ hoist (simplifyExpr glob applied) s
   ExternCode c retType ->
     ExternCode
       (simplifyExpr glob 0 <$> c)
       (simplifyExpr glob 0 retType)
 
-simplifyScope
   :: (QName -> Bool)
-  -> Int
-  -> Scope b Expr v
-  -> Scope b Expr v
-simplifyScope glob applied = toScope . simplifyExpr glob applied . fromScope
 
-simplifyBranches
-  :: (QName -> Bool)
-  -> Int
-  -> Branches c a Expr v
-  -> Branches c a Expr v
-simplifyBranches glob applied (ConBranches cbrs) = ConBranches
-  [ ConBranch c (simplifyTele glob tele) $ simplifyScope glob applied s | ConBranch c tele s <- cbrs ]
-simplifyBranches glob applied (LitBranches lbrs def) = LitBranches
-  [ LitBranch l $ simplifyExpr glob applied e | LitBranch l e <- lbrs]
-  $ simplifyExpr glob applied def
-
-simplifyTele
-  :: (QName -> Bool)
-  -> Telescope a Expr v
-  -> Telescope a Expr v
-simplifyTele glob tele
-  = Telescope $ forTele tele $ \h a fieldScope -> TeleArg h a $ simplifyScope glob 0 fieldScope
 
 let_
   :: (QName -> Bool)
@@ -93,10 +71,7 @@ simplifyDef
   :: (QName -> Bool)
   -> Definition Expr v
   -> Definition Expr v
-simplifyDef glob (Definition a e)
-  = Definition a $ simplifyExpr glob 0 e
-simplifyDef glob (DataDefinition d rep)
-  = DataDefinition d $ simplifyExpr glob 0 rep
+simplifyDef glob = hoist $ simplifyExpr glob 0
 
 etaLams
   :: (QName -> Bool)
