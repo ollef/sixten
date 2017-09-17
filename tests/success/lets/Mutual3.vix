@@ -1,0 +1,21 @@
+fortyoneglobal = 41
+fortytwoglobal = 42
+
+main =
+  let
+    even 0 = 1
+    even n = odd (subInt n 1)
+
+    fortyone = even1 fortyoneglobal
+
+    even1 0 = 1
+    even1 n = odd1 (subInt n 1)
+
+    odd 0 = 0
+    odd n = even (subInt n 1)
+
+    fortytwo = even fortytwoglobal
+
+    odd1 0 = 0
+    odd1 n = even1 (subInt n 1)
+  printInt (addInt (addInt (even fortyone) (odd fortyone)) (addInt (even1 fortytwo) (odd1 fortytwo)))
