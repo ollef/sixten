@@ -1,110 +1,249 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, MonadComprehensions, OverloadedStrings #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings, MonadComprehensions, ViewPatterns #-}
 module Backend.Lift where
 
+import Control.Monad.Except
 import Control.Monad.State
 import Data.Bifunctor
+import Data.Foldable
+import Data.HashSet(HashSet)
+import qualified Data.HashSet as HashSet
 import Data.Monoid
+import Data.Vector(Vector)
+import qualified Data.Vector as Vector
 import Data.Void
 
+import Meta
 import Syntax
-import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Lifted as Lifted
+import qualified Syntax.Sized.SLambda as SLambda
 import Util
+import Util.TopoSort
+import VIX
 
-data LiftState = LiftState
+data LiftState thing = LiftState
   { freshNames :: [QName]
-  , liftedFunctions :: [(QName, Sized.Function Lifted.Expr Void)]
+  , liftedThings :: [(QName, thing)]
   }
 
-newtype Lift a = Lift { runLift :: State LiftState a }
-  deriving (Functor, Applicative, Monad, MonadState LiftState)
+newtype Lift thing m a = Lift (StateT (LiftState thing) m a)
+  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadTrans)
 
-liftFunction :: Sized.Function Lifted.Expr Void -> Lift QName
-liftFunction f = do
+freshName :: Monad m => Lift thing m QName
+freshName = do
   name:names <- gets freshNames
-  modify $ \s -> s
-    { freshNames = names
-    , liftedFunctions = (name, f) : liftedFunctions s
-    }
+  modify $ \s -> s { freshNames = names }
   return name
 
+freshNameWithHint :: Monad m => Name -> Lift thing m QName
+freshNameWithHint hint = do
+  QName mname name:names <- gets freshNames
+  modify $ \s -> s { freshNames = names }
+  return $ QName mname $ name <> "-" <> hint
+
+liftNamedThing :: Monad m => QName -> thing -> Lift thing m ()
+liftNamedThing name thing =
+  modify $ \s -> s
+    { liftedThings = (name, thing) : liftedThings s
+    }
+
+liftThing :: Monad m => thing -> Lift thing m QName
+liftThing thing = do
+  name <- freshName
+  liftNamedThing name thing
+  return name
+
+runLift
+  :: Functor m
+  => QName
+  -> Lift thing m a
+  -> m (a, [(QName, thing)])
+runLift (QName mname name) (Lift l)
+  = second liftedThings
+  <$> runStateT l LiftState
+  { freshNames = [QName mname $ name <> if n == 0 then "" else shower n | n <- [(0 :: Int)..]]
+  , liftedThings = mempty
+  }
+
+type Meta = MetaVar Lifted.Expr
+
+type LambdaLift = Lift (Sized.Function Lifted.Expr Void) VIX
+
 liftExpr
-  :: Closed.Expr v
-  -> Lift (Lifted.Expr v)
+  :: SLambda.Expr Meta
+  -> LambdaLift (Lifted.Expr Meta)
 liftExpr expr = case expr of
-  Closed.Var v -> return $ Lifted.Var v
-  Closed.Global g -> return $ Lifted.Global g
-  Closed.Lit l -> return $ Lifted.Lit l
-  Closed.Con c es -> Lifted.Con c <$> mapM liftExpr es
-  Closed.Lams tele s -> do
-    s' <- transverseScope liftExpr s
-    tele' <- transverseTelescope liftExpr tele
-    f <- liftFunction $ Sized.Function tele' s'
-    return $ Lifted.Global f
-  Closed.Call e es -> Lifted.Call <$> liftExpr e <*> mapM liftExpr es
-  Closed.PrimCall retDir e es -> Lifted.PrimCall retDir
-    <$> liftExpr e
-    <*> traverse (traverse liftExpr) es
-  Closed.Let h e s -> Lifted.Let h
-    <$> liftExpr e
-    <*> transverseScope liftExpr s
-  Closed.Case e brs -> Lifted.Case <$> liftExpr e <*> liftBranches brs
-  Closed.ExternCode c -> Lifted.ExternCode <$> mapM liftExpr c
-  Closed.Anno e t -> Lifted.Anno <$> liftExpr e <*> liftExpr t
+  SLambda.Var v -> return $ Lifted.Var v
+  SLambda.Global g -> return $ Lifted.Global g
+  SLambda.Lit l -> return $ Lifted.Lit l
+  SLambda.Con qc es -> Lifted.Con qc <$> mapM liftExpr es
+  SLambda.App e1 e2 -> Lifted.Call <$> liftExpr e1 <*> (pure <$> liftExpr e2)
+  SLambda.Let ds scope -> liftLet ds scope
+  SLambda.Case e brs -> Lifted.Case <$> liftExpr e <*> liftBranches brs
+  SLambda.Anno e t -> Lifted.Anno <$> liftExpr e <*> liftExpr t
+  SLambda.Lams tele s -> liftLambda tele s
+  SLambda.Lam {} -> lift $ throwError "liftExpr Lam"
+  SLambda.ExternCode c -> Lifted.ExternCode <$> mapM liftExpr c
+
+liftLambda
+  :: Telescope () SLambda.Expr Meta
+  -> Scope Tele SLambda.Expr Meta
+  -> LambdaLift (Lifted.Expr Meta)
+liftLambda tele lamScope = do
+  lift $ logMeta 20 "liftLambda" $ Sized.Function tele lamScope
+
+  let sortedFvs = topoSortVars $ toHashSet tele <> toHashSet lamScope
+
+  (closedTele, closedLamScope) <- closeLambda tele lamScope sortedFvs
+
+  let args = (\v -> Lifted.Anno (pure v) (metaType v)) <$> sortedFvs
+      addArgs | null args = id
+              | otherwise = (`Lifted.Call` args)
+
+  lift $ logMeta 20 "liftLambda result" $ Sized.Function (vacuous closedTele :: Telescope () Lifted.Expr Meta) (vacuous closedLamScope)
+
+  g <- liftThing $ Sized.Function closedTele closedLamScope
+
+  return $ addArgs $ global g
+
+closeLambda
+  :: Telescope () SLambda.Expr Meta
+  -> Scope Tele SLambda.Expr Meta
+  -> Vector Meta
+  -> LambdaLift (Telescope () Lifted.Expr Void, Scope Tele Lifted.Expr Void)
+closeLambda tele lamScope sortedFvs = do
+  vs <- forTeleWithPrefixM tele $ \h () s vs -> do
+    let e = instantiateTele pure vs s
+    e' <- liftExpr e
+    lift $ forall h e'
+
+  let lamExpr = instantiateTele pure vs lamScope
+      vs' = sortedFvs <> vs
+      abstr = teleAbstraction vs'
+      tele'' = Telescope $ (\v -> TeleArg (metaHint v) () $ abstract abstr $ metaType v) <$> vs'
+
+  lamExpr' <- liftExpr lamExpr
+  let lamScope' = abstract abstr lamExpr'
+
+  voidedTele <- traverse (const $ lift $ throwError "closeLambda") tele''
+  voidedLamScope <- traverse (const $ lift $ throwError "closeLambda") lamScope'
+
+  return (voidedTele, voidedLamScope)
+
+topoSortVars
+  :: HashSet Meta
+  -> Vector Meta
+topoSortVars vs
+  = Vector.fromList
+  $ fmap impure
+  $ topoSortWith id (toHashSet . metaType)
+  $ HashSet.toList vs
+  where
+    impure [a] = a
+    impure _ = error "topoSortVars"
+
+liftLet
+  :: LetRec SLambda.Expr Meta
+  -> Scope LetVar SLambda.Expr Meta
+  -> LambdaLift (Lifted.Expr Meta)
+liftLet ds scope = do
+  vs <- forMLet ds $ \h _ t -> do
+    t' <- liftExpr t
+    lift $ forall h t'
+
+  let instantiatedDs = Vector.zip vs $ instantiateLet pure vs <$> letBodies ds
+      dsToLift = [(v, body) | (v, body@(SLambda.lamView -> Just _)) <- instantiatedDs]
+      liftedVars = toHashSet $ fst <$> dsToLift
+      fvs = fold (toHashSet . snd <$> dsToLift) `HashSet.difference` liftedVars
+      sortedFvs = topoSortVars fvs
+      args = (\v -> Lifted.Anno (pure v) (metaType v)) <$> sortedFvs
+      addArgs | null args = id
+              | otherwise = (`Lifted.Call` args)
+
+  subVec <- forM dsToLift $ \(v, _) -> do
+    g <- freshNameWithHint $ fold $ unNameHint $ metaHint v
+    return (v, g)
+
+  lift $ logShow 20 "subVec" subVec
+  lift $ logShow 20 "sortedFvs" fvs
+
+  let varIndex = hashedElemIndex $ fst <$> subVec
+      go v = case varIndex v of
+        Just i -> global $ snd $ subVec Vector.! i
+        Nothing -> pure v
+      subBind e
+        | Vector.null subVec = e
+        | otherwise = bind go global e
+      subBound e
+        | Vector.null subVec = e
+        | otherwise = bound go global e
+
+  liftedDs <- forM instantiatedDs $ \(v, body) ->
+    case body of
+      SLambda.Lams lamTele lamScope -> do
+        let g = case varIndex v of
+              Just i -> snd $ subVec Vector.! i
+              Nothing -> error "liftLet g"
+        (lamTele', lamScope') <- closeLambda (subBound lamTele) (subBound lamScope) sortedFvs
+        liftNamedThing g $ Sized.Function lamTele' lamScope'
+        return $ addArgs $ global g
+      _ -> liftExpr $ subBind body
+
+  letBody <- liftExpr (subBind $ instantiateLet pure vs scope)
+
+  let sortedDs = topoSortWith fst (toHashSet . snd) (Vector.zip vs liftedDs)
+
+  return $ lets sortedDs letBody
 
 liftBranches
-  :: Branches QConstr () Closed.Expr v
-  -> Lift (Branches QConstr () Lifted.Expr v)
-liftBranches (ConBranches cbrs) = ConBranches <$> sequence
-  [ ConBranch qc <$> transverseTelescope liftExpr tele <*> transverseScope liftExpr s
-  | ConBranch qc tele s <- cbrs
-  ]
-liftBranches (LitBranches lbrs def) = LitBranches <$> sequence
-  [ LitBranch l <$> liftExpr e
-  | LitBranch l e <- lbrs
-  ] <*> liftExpr def
+  :: Branches QConstr () SLambda.Expr Meta
+  -> LambdaLift (Branches QConstr () Lifted.Expr Meta)
+liftBranches (ConBranches cbrs) = fmap ConBranches $
+  forM cbrs $ \(ConBranch qc tele brScope) -> do
+    vs <- forTeleWithPrefixM tele $ \h () s vs -> do
+      let e = instantiateTele pure vs s
+      e' <- liftExpr e
+      lift $ forall h e'
+    let brExpr = instantiateTele pure vs brScope
+        abstr = teleAbstraction vs
+        tele'' = Telescope $ (\v -> TeleArg (metaHint v) () $ abstract abstr $ metaType v) <$> vs
+    brExpr' <- liftExpr brExpr
+    let brScope' = abstract abstr brExpr'
+    return $ ConBranch qc tele'' brScope'
+liftBranches (LitBranches lbrs def) = LitBranches
+  <$> mapM (\(LitBranch l e) -> LitBranch l <$> liftExpr e) lbrs <*> liftExpr def
+
+lets
+  :: [[(Meta, Lifted.Expr Meta)]]
+  -> Lifted.Expr Meta
+  -> Lifted.Expr Meta
+lets = flip $ foldr go
+  where
+    go [(v, e)] = Lifted.Let (metaHint v) e . abstract1 v
+    go _ = error "Circular Lift lets"
 
 liftToDefinitionM
-  :: Closed.Expr Void
-  -> Lift (Sized.Definition Lifted.Expr Void)
-liftToDefinitionM (Closed.Anno (Closed.Lams tele s) _) = do
-  tele' <- transverseTelescope liftExpr tele
-  s' <- transverseScope liftExpr s
-  return $ Sized.FunctionDef Public Sized.NonClosure $ Sized.Function tele' s'
-liftToDefinitionM sexpr
-  = Sized.ConstantDef Public . Sized.Constant <$> liftExpr sexpr
+  :: SLambda.Expr Void
+  -> LambdaLift (Sized.Definition Lifted.Expr Void)
+liftToDefinitionM (SLambda.Anno (SLambda.Lams tele bodyScope) _) = do
+  vs <- forTeleWithPrefixM tele $ \h () s vs -> do
+    let e = instantiateTele pure vs $ vacuous s
+    e' <- liftExpr e
+    lift $ forall h e'
+  let body = instantiateTele pure vs $ vacuous bodyScope
+      abstr = teleAbstraction vs
+      tele' = Telescope $ (\v -> TeleArg (metaHint v) () $ abstract abstr $ metaType v) <$> vs
+  body' <- liftExpr body
+  let bodyScope' = abstract abstr body'
+  return $ Sized.FunctionDef Public Sized.NonClosure $ (\_ -> error "liftToDefinitionM") <$> Sized.Function tele' bodyScope'
+liftToDefinitionM sexpr = do
+  sexpr' <- liftExpr $ vacuous sexpr
+  lift $ logMeta 20 "liftToDefinitionM sexpr'" sexpr'
+  return $ Sized.ConstantDef Public $ Sized.Constant $ (\_ -> error "liftToDefinitionM 2") <$> sexpr'
 
 liftToDefinition
   :: QName
-  -> Closed.Expr Void
-  -> (Sized.Definition Lifted.Expr Void, [(QName, Sized.Function Lifted.Expr Void)])
+  -> SLambda.Expr Void
+  -> VIX (Sized.Definition Lifted.Expr Void, [(QName, Sized.Function Lifted.Expr Void)])
 liftToDefinition (QName mname name) expr
-  = second liftedFunctions
-  $ runState (runLift $ liftToDefinitionM expr) LiftState
-  { freshNames = [QName mname $ name <> "-lifted" <> if n == 0 then "" else shower n | n <- [(0 :: Int)..]]
-  , liftedFunctions = mempty
-  }
-
-liftDefinitionM
-  :: Sized.Definition Closed.Expr Void
-  -> Lift (Sized.Definition Lifted.Expr Void)
-liftDefinitionM (Sized.FunctionDef vis cl (Sized.Function tele s)) = do
-  tele' <- transverseTelescope liftExpr tele
-  s' <- transverseScope liftExpr s
-  return $ Sized.FunctionDef vis cl $ Sized.Function tele' s'
-liftDefinitionM (Sized.ConstantDef vis (Sized.Constant e)) = do
-  e' <- liftExpr e
-  return $ Sized.ConstantDef vis $ Sized.Constant e'
-liftDefinitionM Sized.AliasDef = return Sized.AliasDef
-
-liftClosures
-  :: QName
-  -> Sized.Definition Closed.Expr Void
-  -> (Sized.Definition Lifted.Expr Void, [(QName, Sized.Function Lifted.Expr Void)])
-liftClosures (QName mname name) expr
-  = second liftedFunctions
-  $ runState (runLift $ liftDefinitionM expr) LiftState
-  { freshNames = [QName mname $ name <> "-lifted-closure" <> if n == 0 then "" else shower n | n <- [(0 :: Int)..]]
-  , liftedFunctions = mempty
-  }
+  = runLift (QName mname $ name <> "-lifted") (liftToDefinitionM expr)

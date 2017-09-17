@@ -13,11 +13,11 @@ denat expr = case expr of
   Global _ -> expr
   Lit _ -> expr
   Con ZeroConstr _ -> Lit $ Integer 0
-  Con SuccConstr xs -> App (App (global AddIntName) (Lit $ Integer 1)) (denat $ Vector.head xs)
+  Con SuccConstr xs -> App (App (global AddIntName) (Anno (Lit $ Integer 1) (global IntName))) (denat $ Vector.head xs)
   Con c es -> Con c $ denat <$> es
   Lam h t e -> Lam h (denat t) (hoist denat e)
   App e1 e2 -> App (denat e1) (denat e2)
-  Let h e t s -> Let h (denat e) (denat t) (hoist denat s)
+  Let ds s -> Let (hoist denat ds) (hoist denat s)
   Case e brs -> denatCase (denat e) brs
   Anno e t -> Anno (denat e) (denat t)
   ExternCode c -> ExternCode (denat <$> c)
@@ -27,12 +27,12 @@ denatCase
   -> Branches QConstr () Expr v
   -> Expr v
 denatCase expr (ConBranches [ConBranch ZeroConstr _ztele zs, ConBranch SuccConstr _stele ss])
-  = Let mempty expr (global NatName)
+  = let_ mempty expr (global NatName)
   $ toScope
   $ Case (pure $ B ())
     (LitBranches
       (pure (LitBranch (Integer 0) $ F <$> instantiate (error "denatCase zs") (hoist denat zs)))
-      (Let "pred" (App (App (global SubIntName) (pure $ B ())) (Lit $ Integer 1)) (global NatName)
+      (let_ "pred" (App (App (global SubIntName) (pure $ B ())) (Lit $ Integer 1)) (global NatName)
       $ mapScope (const ()) F $ hoist denat ss
       )
     )

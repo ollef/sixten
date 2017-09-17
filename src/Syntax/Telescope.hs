@@ -38,6 +38,7 @@ import Syntax.Hint
 import Syntax.Name
 import Util
 
+-- TODO: Rename to TeleVar
 newtype Tele = Tele Int
   deriving (Eq, Enum, Hashable, Ord, Show, Num)
 
@@ -47,7 +48,6 @@ unTele (Tele i) = i
 newtype Telescope anno expr v = Telescope (Vector (TeleArg anno expr v))
   deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
 
--- TODO instances for TeleArg
 data TeleArg anno expr v = TeleArg !NameHint !anno !(Scope Tele expr v)
   deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
 
@@ -258,6 +258,7 @@ instantiateTele
 instantiateTele f vs
   = instantiate (f . fromMaybe (error "instantiateTele") . (vs Vector.!?) . unTele)
 
+-- TODO: Make sure this is always reused
 teleAbstraction :: (Eq a, Hashable a) => Vector a -> a -> Maybe Tele
 teleAbstraction vs = fmap Tele . hashedElemIndex vs
 
@@ -282,6 +283,20 @@ bindingsView f expr = go 0 $ F <$> expr
       where
         (Telescope ns, s') = (go $! x + 1) $ Util.instantiate1 (return $ B x) s
     go _ e = (Telescope mempty, toScope e)
+
+transverseTelescope
+  :: (Monad f, Traversable expr)
+  => (forall r. expr r -> f (expr' r))
+  -> Telescope a expr v
+  -> f (Telescope a expr' v)
+transverseTelescope f (Telescope xs) = Telescope <$> traverse (transverseTeleArg f) xs
+
+transverseTeleArg
+  :: (Monad f, Traversable expr)
+  => (forall r. expr r -> f (expr' r))
+  -> TeleArg a expr v
+  -> f (TeleArg a expr' v)
+transverseTeleArg f (TeleArg h a s) = TeleArg h a <$> transverseScope f s
 
 -------------------------------------------------------------------------------
 -- Instances

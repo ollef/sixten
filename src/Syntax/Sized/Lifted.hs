@@ -5,6 +5,8 @@ import Control.Monad
 import Data.Deriving
 import Data.String
 import Data.Vector(Vector)
+import qualified Data.Vector as Vector
+import Data.Void
 
 import Syntax hiding (Definition)
 import Util
@@ -24,6 +26,8 @@ data Expr v
 
 type Type = Expr
 
+type FunSignature = (Telescope () Type Void, Scope Tele Type Void)
+
 -------------------------------------------------------------------------------
 -- Helpers
 pattern Sized :: Type v -> Expr v -> Expr v
@@ -36,6 +40,13 @@ typeOf _ = error "Lifted.typeOf"
 typeDir :: Expr v -> Direction
 typeDir (Lit (TypeRep rep)) = Direct rep
 typeDir _ = Indirect
+
+callsView :: Expr v -> Maybe (Expr v, Vector (Expr v))
+callsView (Call expr exprs) = Just $ go expr [exprs]
+  where
+    go (Call e es) ess = go e (es : ess)
+    go e ess = (e, Vector.concat ess)
+callsView _ = Nothing
 
 -------------------------------------------------------------------------------
 -- Instances

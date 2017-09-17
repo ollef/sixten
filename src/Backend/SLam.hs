@@ -62,13 +62,16 @@ slam expr = do
     Abstract.Con _qc -> throwError "slam impossible"
     Abstract.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamSized e2
     Abstract.Case e brs _retType -> SLambda.Case <$> slamSized e <*> slamBranches brs
-    Abstract.Let h e scope -> do
-      t <- whnf' True =<< typeOf e
-      v <- forall h t
-      e' <- slamSized e
-      sz <- slam t
-      body <- slamSized $ instantiate1 (pure v) scope
-      return $ SLambda.Let h e' sz $ abstract1 v body
+    Abstract.Let ds scope -> do
+      vs <- forMLet ds $ \h _ t -> forall h t
+      let abstr = letAbstraction vs
+      ds' <- fmap LetRec $ forMLet ds $ \h s t -> do
+        e <- slamSized $ instantiateLet pure vs s
+        t' <- slam t
+        return $ LetBinding h (abstract abstr e) t'
+      body <- slamSized $ instantiateLet pure vs scope
+      let scope' = abstract abstr body
+      return $ SLambda.Let ds' scope'
     Abstract.ExternCode c retType -> do
         retType' <- slam =<< whnf' True retType
         c' <- slamExtern c

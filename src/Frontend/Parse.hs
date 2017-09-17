@@ -105,9 +105,9 @@ sameLineOrIndented = do
   pos <- Trifecta.position
   anchor <- get
   case (comparing deltaLine pos anchor, comparing deltaColumn pos anchor) of
-    (EQ, _)  -> return () -- Same line
+    (EQ, _) -> return () -- Same line
     (GT, GT) -> return () -- Indented
-    (_,  _)  -> Trifecta.unexpected "unindent"
+    (_,  _) -> Trifecta.unexpected "unindent"
 
 -- | One or more at the same indentation level.
 someSameCol :: Parser a -> Parser [a]
@@ -161,7 +161,7 @@ qidLetter = idLetter
   <|> Trifecta.try (Trifecta.char '.' <* LookAhead.lookAhead idLetter)
 
 reservedIds :: HashSet String
-reservedIds = HashSet.fromList ["forall", "_", "case", "of", "where", "abstract"]
+reservedIds = HashSet.fromList ["forall", "_", "case", "of", "let", "in", "where", "abstract"]
 
 idStyle :: Trifecta.IdentifierStyle Parser
 idStyle = Trifecta.IdentifierStyle "identifier" idStart idLetter reservedIds Highlight.Identifier Highlight.ReservedIdentifier
@@ -201,10 +201,13 @@ symbol = fmap fromString . Trifecta.symbol
 integer :: Parser Integer
 integer = Trifecta.try Trifecta.integer
 
+located :: Parser a -> Parser (SourceLoc, a)
+located p = (\(e Trifecta.:~ s) -> (Trifecta.render s, e)) <$> Trifecta.spanned p
+
 -------------------------------------------------------------------------------
 -- * Patterns
 locatedPat :: Parser (Pat typ v) -> Parser (Pat typ v)
-locatedPat p = (\(pat Trifecta.:~ s) -> PatLoc (Trifecta.render s) pat) <$> Trifecta.spanned p
+locatedPat p = uncurry PatLoc <$> located p
 
 pattern :: Parser (Pat (Type QName) QName)
 pattern = locatedPat $
@@ -268,23 +271,32 @@ manyTypedBindings = concat <$> manySI (Trifecta.try typedBinding <|> plicitBindi
 
 -------------------------------------------------------------------------------
 -- * Expressions
-located :: Parser (Expr v) -> Parser (Expr v)
-located p = (\(e Trifecta.:~ s) -> SourceLoc (Trifecta.render s) e) <$> Trifecta.spanned p
+locatedExpr :: Parser (Expr v) -> Parser (Expr v)
+locatedExpr p = (\(e Trifecta.:~ s) -> SourceLoc (Trifecta.render s) e) <$> Trifecta.spanned p
 
 atomicExpr :: Parser (Expr QName)
-atomicExpr = located
+atomicExpr = locatedExpr
   $ literal
   <|> Wildcard <$ wildcard
   <|> Var <$> qname
   <|> abstr (reserved "forall") Unscoped.pis
-  <|> abstr (symbol   "\\") Unscoped.lams
+  <|> abstr (symbol "\\") Unscoped.lams
   <|> Case <$ reserved "case" <*>% expr <*% reserved "of" <*> branches
-  -- <|> lett <$ reserved "let" <*>% manyIndentedSamecol def <*% reserved "in" <*> expr
+  <|> letExpr
   <|> ExternCode <$> externCExpr
   <|> symbol "(" *>% expr <*% symbol ")"
   <?> "atomic expression"
   where
     abstr t c = c <$ t <*>% somePatterns <*% symbol "." <*>% expr
+    letExpr
+      = dropAnchor
+      $ mkLet <$ reserved "let" <*>% dropAnchor (someSameCol $ located def)
+      <*>
+        ((sameLineOrIndented <|> sameCol) *> reserved "in" *>% expr
+        <|> sameCol *> expr
+        )
+      where
+        mkLet xs = Let $ Vector.fromList [(loc, n, d) | (loc, (n, d)) <- xs]
 
 branches :: Parser [(Pat (Type QName) QName, Expr QName)]
 branches = manyIndentedSameCol branch
@@ -292,7 +304,7 @@ branches = manyIndentedSameCol branch
     branch = (,) <$> pattern <*% symbol "->" <*>% expr
 
 expr :: Parser (Expr QName)
-expr = located
+expr = locatedExpr
   $ Unscoped.pis <$> Trifecta.try (somePatternBindings <*% symbol "->") <*>% expr
   <|> plicitPi Implicit <$ symbol "{" <*>% expr <*% symbol "}" <*% symbol "->" <*>% expr
   <|> Unscoped.apps <$> atomicExpr <*> manySI argument <**> (arr <|> pure id)

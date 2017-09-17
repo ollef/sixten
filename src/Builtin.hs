@@ -16,8 +16,8 @@ import Backend.Target(Target)
 import Builtin.Names
 import Syntax
 import Syntax.Abstract as Abstract
-import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.Definition as Sized
+import qualified Syntax.Sized.Lifted as Lifted
 import qualified TypeRep
 import Util
 
@@ -48,23 +48,23 @@ context target = HashMap.fromList
     ptrRep = Lit $ TypeRep $ TypeRep.ptr target
     typeRep = Lit $ TypeRep $ TypeRep.typeRep target
 
-convertedContext :: Target -> HashMap QName (Sized.Definition Closed.Expr Void)
+convertedContext :: Target -> HashMap QName (Sized.Definition Lifted.Expr Void)
 convertedContext target = HashMap.fromList $ concat
   [[( TypeName
-    , constDef $ Closed.Sized typeRep typeRep
+    , constDef $ Lifted.Sized typeRep typeRep
     )
   , ( PiTypeName
-    , constDef $ Closed.Sized typeRep ptrRep
+    , constDef $ Lifted.Sized typeRep ptrRep
     )
   , ( PtrName
     , funDef (Telescope $ pure (TeleArg mempty () $ Scope typeRep))
-      $ Scope $ Closed.Sized typeRep ptrRep
+      $ Scope $ Lifted.Sized typeRep ptrRep
     )
   , ( IntName
-    , constDef $ Closed.Sized typeRep intRep
+    , constDef $ Lifted.Sized typeRep intRep
     )
   , ( ByteName
-    , constDef $ Closed.Sized typeRep byteRep
+    , constDef $ Lifted.Sized typeRep byteRep
     )
   ]
   , [(papName left given, pap target left given) | given <- [1..maxArity - 1], left <- [1..maxArity - given]]
@@ -74,38 +74,38 @@ convertedContext target = HashMap.fromList $ concat
     constDef = Sized.ConstantDef Public . Sized.Constant
     funDef tele = Sized.FunctionDef Public Sized.NonClosure . Sized.Function tele
 
-    intRep = Closed.Lit $ TypeRep $ TypeRep.int target
-    typeRep = Closed.Lit $ TypeRep $ TypeRep.typeRep target
-    byteRep = Closed.Lit $ TypeRep TypeRep.byte
-    ptrRep = Closed.Lit $ TypeRep $ TypeRep.ptr target
+    intRep = Lifted.Lit $ TypeRep $ TypeRep.int target
+    typeRep = Lifted.Lit $ TypeRep $ TypeRep.typeRep target
+    byteRep = Lifted.Lit $ TypeRep TypeRep.byte
+    ptrRep = Lifted.Lit $ TypeRep $ TypeRep.ptr target
 
-convertedSignatures :: Target -> HashMap QName Closed.FunSignature
+convertedSignatures :: Target -> HashMap QName Lifted.FunSignature
 convertedSignatures target
   = flip HashMap.mapMaybeWithKey (convertedContext target) $ \name def ->
     case def of
       Sized.FunctionDef _ _ (Sized.Function tele s) -> case fromScope s of
-        Closed.Anno _ t -> Just (tele, toScope t)
+        Lifted.Anno _ t -> Just (tele, toScope t)
         _ -> error $ "Sixten.Builtin.convertedSignatures " <> show name
       Sized.ConstantDef _ _ -> Nothing
       Sized.AliasDef -> Nothing
 
-deref :: Target -> Closed.Expr v -> Closed.Expr v
+deref :: Target -> Lifted.Expr v -> Lifted.Expr v
 deref target e
-  = Closed.Case (Closed.Sized intRep e)
+  = Lifted.Case (Lifted.Sized intRep e)
   $ ConBranches
   $ pure
   $ ConBranch
     Ref
     (Telescope $ pure $ TeleArg "dereferenced" () $ Scope unknownSize)
-    (toScope $ Closed.Var $ B 0)
+    (toScope $ Lifted.Var $ B 0)
   where
     unknownSize = global "Sixten.Builtin.deref.UnknownSize"
-    intRep = Closed.Lit $ TypeRep $ TypeRep.int target
+    intRep = Lifted.Lit $ TypeRep $ TypeRep.int target
 
 maxArity :: Num n => n
 maxArity = 6
 
-apply :: Target -> Int -> Sized.Definition Closed.Expr Void
+apply :: Target -> Int -> Sized.Definition Lifted.Expr Void
 apply target numArgs
   = Sized.FunctionDef Public Sized.NonClosure
   $ Sized.Function
@@ -114,8 +114,8 @@ apply target numArgs
     $ (\n -> TeleArg (fromText $ "type" <> shower (unTele n)) () $ Scope typeRep) <$> Vector.enumFromN 0 numArgs
     <|> (\n -> TeleArg (fromText $ "x" <> shower (unTele n)) () $ Scope $ pure $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs)
   $ toScope
-  $ Closed.Sized (Closed.Global "Sixten.Builtin.apply.unknownSize")
-  $ Closed.Case (deref target $ Closed.Var $ B 0)
+  $ Lifted.Sized (Lifted.Global "Sixten.Builtin.apply.unknownSize")
+  $ Lifted.Case (deref target $ Lifted.Var $ B 0)
   $ ConBranches
   $ pure
   $ ConBranch
@@ -123,46 +123,46 @@ apply target numArgs
     (Telescope $ Vector.fromList
       [TeleArg "f_unknown" () $ Scope ptrRep, TeleArg "n" () $ Scope intRep])
     (toScope
-      $ Closed.Case (Closed.Sized intRep $ Closed.Var $ B 1)
+      $ Lifted.Case (Lifted.Sized intRep $ Lifted.Var $ B 1)
       $ LitBranches
         [LitBranch (Integer $ fromIntegral arity) $ br arity | arity <- 1 :| [2..maxArity]]
-        $ Closed.Call (global FailName) $ pure $ Closed.Sized intRep (Closed.Lit $ TypeRep $ TypeRep.Unit))
+        $ Lifted.Call (global FailName) $ pure $ Lifted.Sized intRep (Lifted.Lit $ TypeRep $ TypeRep.Unit))
   where
-    typeRep = Closed.Lit $ TypeRep $ TypeRep.typeRep target
-    intRep = Closed.Lit $ TypeRep $ TypeRep.int target
-    ptrRep = Closed.Lit $ TypeRep $ TypeRep.ptr target
+    typeRep = Lifted.Lit $ TypeRep $ TypeRep.typeRep target
+    intRep = Lifted.Lit $ TypeRep $ TypeRep.int target
+    ptrRep = Lifted.Lit $ TypeRep $ TypeRep.ptr target
 
     directPtr = Direct $ TypeRep.ptr target
     directType = Direct $ TypeRep.typeRep target
 
-    br :: Int -> Closed.Expr (Var Tele (Var Tele Void))
+    br :: Int -> Lifted.Expr (Var Tele (Var Tele Void))
     br arity
       | numArgs < arity
-        = Closed.Con Ref
+        = Lifted.Con Ref
         $ pure
-        $ sizedCon (Closed.Lit $ TypeRep TypeRep.Unit) Closure
-        $ Vector.cons (Closed.Sized ptrRep $ global $ papName (arity - numArgs) numArgs)
-        $ Vector.cons (Closed.Sized intRep $ Closed.Lit $ Integer $ fromIntegral $ arity - numArgs)
-        $ Vector.cons (Closed.Sized ptrRep $ Closed.Var $ F $ B 0)
-        $ (\n -> Closed.Sized typeRep $ Closed.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs
-        <|> (\n -> Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + Tele numArgs + n) <$> Vector.enumFromN 0 numArgs
+        $ sizedCon (Lifted.Lit $ TypeRep TypeRep.Unit) Closure
+        $ Vector.cons (Lifted.Sized ptrRep $ global $ papName (arity - numArgs) numArgs)
+        $ Vector.cons (Lifted.Sized intRep $ Lifted.Lit $ Integer $ fromIntegral $ arity - numArgs)
+        $ Vector.cons (Lifted.Sized ptrRep $ Lifted.Var $ F $ B 0)
+        $ (\n -> Lifted.Sized typeRep $ Lifted.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs
+        <|> (\n -> Lifted.Sized (Lifted.Var $ F $ B $ 1 + n) $ Lifted.Var $ F $ B $ 1 + Tele numArgs + n) <$> Vector.enumFromN 0 numArgs
       | numArgs == arity
-        = Closed.PrimCall (ReturnIndirect OutParam) (Closed.Var $ B 0)
-        $ Vector.cons (directPtr, Closed.Sized ptrRep $ Closed.Var $ F $ B 0)
-        $ (\n -> (directType, Closed.Sized typeRep $ Closed.Var $ F $ B $ 1 + n)) <$> Vector.enumFromN 0 numArgs
-        <|> (\n -> (Indirect, Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + Tele numArgs + n)) <$> Vector.enumFromN 0 numArgs
+        = Lifted.PrimCall (ReturnIndirect OutParam) (Lifted.Var $ B 0)
+        $ Vector.cons (directPtr, Lifted.Sized ptrRep $ Lifted.Var $ F $ B 0)
+        $ (\n -> (directType, Lifted.Sized typeRep $ Lifted.Var $ F $ B $ 1 + n)) <$> Vector.enumFromN 0 numArgs
+        <|> (\n -> (Indirect, Lifted.Sized (Lifted.Var $ F $ B $ 1 + n) $ Lifted.Var $ F $ B $ 1 + Tele numArgs + n)) <$> Vector.enumFromN 0 numArgs
       | otherwise
-        = Closed.Call (global $ applyName $ numArgs - arity)
+        = Lifted.Call (global $ applyName $ numArgs - arity)
         $ Vector.cons
-          (Closed.Sized ptrRep
-          $ Closed.PrimCall (ReturnIndirect OutParam) (Closed.Var $ B 0)
-          $ Vector.cons (directPtr, Closed.Sized ptrRep $ Closed.Var $ F $ B 0)
-          $ (\n -> (directType, Closed.Sized typeRep $ Closed.Var $ F $ B $ 1 + n)) <$> Vector.enumFromN 0 arity
-          <|> (\n -> (Indirect, Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + fromIntegral numArgs + n)) <$> Vector.enumFromN 0 arity)
-        $ (\n -> Closed.Sized typeRep $ Closed.Var $ F $ B $ 1 + n) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
-        <|> (\n -> Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + fromIntegral numArgs + n) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
+          (Lifted.Sized ptrRep
+          $ Lifted.PrimCall (ReturnIndirect OutParam) (Lifted.Var $ B 0)
+          $ Vector.cons (directPtr, Lifted.Sized ptrRep $ Lifted.Var $ F $ B 0)
+          $ (\n -> (directType, Lifted.Sized typeRep $ Lifted.Var $ F $ B $ 1 + n)) <$> Vector.enumFromN 0 arity
+          <|> (\n -> (Indirect, Lifted.Sized (Lifted.Var $ F $ B $ 1 + n) $ Lifted.Var $ F $ B $ 1 + fromIntegral numArgs + n)) <$> Vector.enumFromN 0 arity)
+        $ (\n -> Lifted.Sized typeRep $ Lifted.Var $ F $ B $ 1 + n) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
+        <|> (\n -> Lifted.Sized (Lifted.Var $ F $ B $ 1 + n) $ Lifted.Var $ F $ B $ 1 + fromIntegral numArgs + n) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
 
-pap :: Target -> Int -> Int -> Sized.Definition Closed.Expr Void
+pap :: Target -> Int -> Int -> Sized.Definition Lifted.Expr Void
 pap target k m
   = Sized.FunctionDef Public Sized.NonClosure
   $ Sized.Function
@@ -171,8 +171,8 @@ pap target k m
     $ (\n -> TeleArg (fromText $ "type" <> shower (unTele n)) () $ Scope typeRep) <$> Vector.enumFromN 0 k
     <|> (\n -> TeleArg (fromText $ "x" <> shower (unTele n)) () $ Scope $ pure $ B $ 1 + n) <$> Vector.enumFromN 0 k)
   $ toScope
-  $ Closed.Sized (Closed.Global "Sixten.Builtin.pap.unknownSize")
-  $ Closed.Case (deref target $ Closed.Var $ B 0)
+  $ Lifted.Sized (Lifted.Global "Sixten.Builtin.pap.unknownSize")
+  $ Lifted.Case (deref target $ Lifted.Var $ B 0)
   $ ConBranches
   $ pure
   $ ConBranch
@@ -184,30 +184,30 @@ pap target k m
       $ (\n -> TeleArg (fromText $ "type" <> shower (unTele n)) () $ Scope typeRep) <$> Vector.enumFromN 0 m
       <|> (\n -> TeleArg (fromText $ "y" <> shower (unTele n)) () $ Scope $ pure $ B $ 3 + n) <$> Vector.enumFromN 0 m)
     (toScope
-      $ Closed.Call (global $ applyName $ m + k)
-      $ Vector.cons (Closed.Sized ptrRep $ Closed.Var $ B 2)
-      $ (\n -> Closed.Sized typeRep $ Closed.Var $ B $ 3 + n) <$> Vector.enumFromN 0 m
-      <|> (\n -> Closed.Sized typeRep $ Closed.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 k
-      <|> (\n -> Closed.Sized (Closed.Var $ B $ 3 + n) $ Closed.Var $ B $ 3 + Tele m + n) <$> Vector.enumFromN 0 m
-      <|> (\n -> Closed.Sized (Closed.Var $ F $ B $ 1 + n) $ Closed.Var $ F $ B $ 1 + Tele k + n) <$> Vector.enumFromN 0 k
+      $ Lifted.Call (global $ applyName $ m + k)
+      $ Vector.cons (Lifted.Sized ptrRep $ Lifted.Var $ B 2)
+      $ (\n -> Lifted.Sized typeRep $ Lifted.Var $ B $ 3 + n) <$> Vector.enumFromN 0 m
+      <|> (\n -> Lifted.Sized typeRep $ Lifted.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 k
+      <|> (\n -> Lifted.Sized (Lifted.Var $ B $ 3 + n) $ Lifted.Var $ B $ 3 + Tele m + n) <$> Vector.enumFromN 0 m
+      <|> (\n -> Lifted.Sized (Lifted.Var $ F $ B $ 1 + n) $ Lifted.Var $ F $ B $ 1 + Tele k + n) <$> Vector.enumFromN 0 k
     )
   where
-    intRep = Closed.Lit $ TypeRep $ TypeRep.int target
-    ptrRep = Closed.Lit $ TypeRep $ TypeRep.ptr target
-    typeRep = Closed.Lit $ TypeRep $ TypeRep.typeRep target
+    intRep = Lifted.Lit $ TypeRep $ TypeRep.int target
+    ptrRep = Lifted.Lit $ TypeRep $ TypeRep.ptr target
+    typeRep = Lifted.Lit $ TypeRep $ TypeRep.typeRep target
 
 -- TODO sizes
-sizedCon :: Closed.Expr v -> QConstr -> Vector (Closed.Expr v) -> Closed.Expr v
+sizedCon :: Lifted.Expr v -> QConstr -> Vector (Lifted.Expr v) -> Lifted.Expr v
 sizedCon tagRep qc args
-  = Closed.Sized (productTypes $ Vector.cons tagRep argTypes) (Closed.Con qc args)
+  = Lifted.Sized (productTypes $ Vector.cons tagRep argTypes) (Lifted.Con qc args)
   where
-    argTypes = Closed.typeOf <$> args
+    argTypes = Lifted.typeOf <$> args
 
-productType :: Closed.Expr v -> Closed.Expr v -> Closed.Expr v
-productType a (Closed.Lit (TypeRep TypeRep.Unit)) = a
-productType (Closed.Lit (TypeRep TypeRep.Unit)) b = b
-productType (Closed.Lit (TypeRep a)) (Closed.Lit (TypeRep b)) = Closed.Lit $ TypeRep $ TypeRep.product a b
-productType a b = Closed.Call (global ProductTypeRepName) $ Vector.fromList [a, b]
+productType :: Lifted.Expr v -> Lifted.Expr v -> Lifted.Expr v
+productType a (Lifted.Lit (TypeRep TypeRep.Unit)) = a
+productType (Lifted.Lit (TypeRep TypeRep.Unit)) b = b
+productType (Lifted.Lit (TypeRep a)) (Lifted.Lit (TypeRep b)) = Lifted.Lit $ TypeRep $ TypeRep.product a b
+productType a b = Lifted.Call (global ProductTypeRepName) $ Vector.fromList [a, b]
 
-productTypes :: Vector (Closed.Expr v) -> Closed.Expr v
-productTypes = foldl' productType (Closed.Lit (TypeRep TypeRep.Unit))
+productTypes :: Vector (Lifted.Expr v) -> Lifted.Expr v
+productTypes = foldl' productType (Lifted.Lit (TypeRep TypeRep.Unit))

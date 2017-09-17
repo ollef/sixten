@@ -36,7 +36,11 @@ fatBar failVar e e' = case filter (== failVar) $ toList e of
   _ | Simplify.duplicable e' -> dup
   [] -> e
   [_] -> dup
-  _ -> Let mempty (Lam mempty Explicit Builtin.UnitType $ abstractNone e')
+  _ -> Simplify.let_
+    (const False)
+    mempty
+    (Lam mempty Explicit Builtin.UnitType $ abstractNone e')
+    (Pi mempty Explicit Builtin.UnitType $ abstractNone $ metaType failVar)
     $ abstract1 failVar
     $ subst1 failVar (App (pure failVar) Explicit Builtin.MkUnit) e
   where

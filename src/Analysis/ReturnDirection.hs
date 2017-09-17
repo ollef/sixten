@@ -1,4 +1,4 @@
-{-# LANGUAGE MonadComprehensions #-}
+{-# LANGUAGE MonadComprehensions, OverloadedStrings #-}
 module Analysis.ReturnDirection where
 
 import Control.Monad
@@ -17,6 +17,7 @@ import Data.Void
 import Syntax hiding (Definition, bitraverseDefinition)
 import Syntax.Sized.Definition
 import Syntax.Sized.Lifted
+import Util
 import VIX
 
 data MetaReturnIndirect

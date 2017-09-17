@@ -1,9 +1,10 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, ViewPatterns #-}
 module Backend.ClosureConvert where
 
 import Control.Applicative
 import Control.Monad.Except
 import Control.Monad.State
+import Data.Bifunctor
 import qualified Data.HashMap.Lazy as HashMap
 import Data.Maybe
 import Data.Monoid
@@ -11,26 +12,37 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 
-import qualified Builtin as Builtin
+import Backend.Lift(runLift, liftThing, Lift)
+import qualified Builtin
 import qualified Builtin.Names as Builtin
 import Meta
 import Syntax
-import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.Definition as Sized
-import qualified Syntax.Sized.Lifted as Lifted
+import Syntax.Sized.Lifted
 import qualified TypeRep
 import Util
 import VIX
 
 type Meta = MetaVar Unit
+type ClosureConvert = Lift (Sized.Function Expr Void) VIX
 
 convertDefinitions
-  :: [(QName, Sized.Definition Lifted.Expr Void)]
-  -> VIX [(QName, Sized.Definition Closed.Expr Void)]
-convertDefinitions defs = do
+  :: [(QName, Sized.Definition Expr Void)]
+  -> VIX [[(QName, Sized.Definition Expr Void)]]
+convertDefinitions [] = return []
+convertDefinitions ds@((QName mname name, _):_) = do
+  (ds', fs) <- runLift (QName mname $ name <> "-converted") (convertDefinitionsM ds)
+  return
+    $ Sized.dependencyOrder
+    $ ds' <|> second (Sized.FunctionDef Private Sized.IsClosure) <$> fs
+
+convertDefinitionsM
+  :: [(QName, Sized.Definition Expr Void)]
+  -> ClosureConvert [(QName, Sized.Definition Expr Void)]
+convertDefinitionsM defs = do
   funSigs <- forM defs $ \(name, def) -> case def of
     Sized.FunctionDef _ _ (Sized.Function tele scope) -> do
-      vs <- forMTele tele $ \h () _ ->
+      vs <- lift $ forMTele tele $ \h () _ ->
         forall h Unit
 
       es <- forMTele tele $ \_ () s ->
@@ -39,7 +51,7 @@ convertDefinitions defs = do
       let expr = instantiateTele pure vs $ vacuous scope
 
       convertedType <- case expr of
-        Lifted.Anno _ t -> convertExpr t
+        Anno _ t -> convertExpr t
         _ -> error "convertDefinitions"
 
       let abstr = teleAbstraction vs
@@ -48,22 +60,22 @@ convertDefinitions defs = do
           typeScope = error "convertDefinitions"
             <$> abstract abstr convertedType
       return $ Just (name, (tele', typeScope))
-    Sized.ConstantDef _ (Sized.Constant (Lifted.Anno (Lifted.Global glob) _)) -> do
-      msig <- convertedSignature glob
+    Sized.ConstantDef _ (Sized.Constant (Anno (Global glob) _)) -> do
+      msig <- lift $ convertedSignature glob
       return $ (,) name <$> msig
     _ -> return Nothing
 
-  addConvertedSignatures $ HashMap.fromList $ catMaybes funSigs
+  lift $ addConvertedSignatures $ HashMap.fromList $ catMaybes funSigs
 
   forM defs $ \(name, def) -> do
     def' <- convertDefinition def
     return (name, def')
 
 convertDefinition
-  :: Sized.Definition Lifted.Expr Void
-  -> VIX (Sized.Definition Closed.Expr Void)
+  :: Sized.Definition Expr Void
+  -> ClosureConvert (Sized.Definition Expr Void)
 convertDefinition (Sized.FunctionDef vis cl (Sized.Function tele scope)) = do
-  vs <- forMTele tele $ \h () _ ->
+  vs <- lift $ forMTele tele $ \h () _ ->
     forall h Unit
 
   es <- forMTele tele $ \_ () s ->
@@ -78,13 +90,13 @@ convertDefinition (Sized.FunctionDef vis cl (Sized.Function tele scope)) = do
     $ Sized.FunctionDef vis cl
     $ Sized.Function tele''
     $ error "convertDefinition Function" <$> scope'
-convertDefinition (Sized.ConstantDef vis (Sized.Constant expr@(Lifted.Anno (Lifted.Global glob) sz))) = do
-  msig <- convertedSignature glob
+convertDefinition (Sized.ConstantDef vis (Sized.Constant expr@(Anno (Global glob) sz))) = do
+  msig <- lift $ convertedSignature glob
   expr' <- case msig of
     Nothing -> convertExpr $ vacuous expr
     Just _ -> do
       sz' <- convertExpr $ vacuous sz
-      return $ Closed.Anno (Closed.Global glob) sz'
+      return $ Anno (Global glob) sz'
   return
     $ Sized.ConstantDef vis
     $ Sized.Constant
@@ -95,67 +107,68 @@ convertDefinition (Sized.ConstantDef vis (Sized.Constant expr)) = do
     $ Sized.ConstantDef vis
     $ Sized.Constant
     $ error "convertDefinition Constant" <$> expr'
-convertDefinition Sized.AliasDef = return $ Sized.AliasDef
+convertDefinition Sized.AliasDef = return Sized.AliasDef
 
-convertExpr :: Lifted.Expr Meta -> VIX (Closed.Expr Meta)
+convertExpr :: Expr Meta -> ClosureConvert (Expr Meta)
 convertExpr expr = case expr of
-  Lifted.Var v -> return $ Closed.Var v
-  Lifted.Global g -> do
-    msig <- convertedSignature g
+  Var v -> return $ Var v
+  Global g -> do
+    msig <- lift $ convertedSignature g
     case msig of
-      Nothing -> return $ Closed.Global g
+      Nothing -> return $ Global g
       Just sig -> knownCall g sig mempty
-  Lifted.Lit l -> return $ Closed.Lit l
-  Lifted.Con qc es -> Closed.Con qc <$> mapM convertExpr es
-  Lifted.Call (Lifted.Global g) es -> do
+  Lit l -> return $ Lit l
+  Con qc es -> Con qc <$> mapM convertExpr es
+  (callsView -> Just (Global g, es)) -> do
     es' <- mapM convertExpr es
-    msig <- convertedSignature g
+    msig <- lift $ convertedSignature g
     case msig of
-      Nothing -> unknownCall (Closed.Global g) es'
+      Nothing -> unknownCall (Global g) es'
       Just sig -> knownCall g sig es'
-  Lifted.Call e es -> do
+  (callsView -> Just (e, es)) -> do
     e' <- convertExpr e
     es' <- mapM convertExpr es
     unknownCall e' es'
-  Lifted.PrimCall retDir e es -> do
+  Call {} -> error "convertExpr Call"
+  PrimCall retDir e es -> do
     e' <- convertExpr e
     es' <- mapM (traverse convertExpr) es
-    return $ Closed.PrimCall retDir e' es'
-  Lifted.Let h e bodyScope -> do
+    return $ PrimCall retDir e' es'
+  Let h e bodyScope -> do
     e' <- convertExpr e
-    v <- forall h Unit
+    v <- lift $ forall h Unit
     let bodyExpr = Util.instantiate1 (pure v) bodyScope
     bodyExpr' <- convertExpr bodyExpr
     let bodyScope' = abstract1 v bodyExpr'
-    return $ Closed.Let h e' bodyScope'
-  Lifted.Case e brs -> Closed.Case <$> convertExpr e <*> convertBranches brs
-  Lifted.ExternCode c -> Closed.ExternCode <$> mapM convertExpr c
-  Lifted.Anno e t -> Closed.Anno <$> convertExpr e <*> convertExpr t
+    return $ Let h e' bodyScope'
+  Case e brs -> Case <$> convertExpr e <*> convertBranches brs
+  ExternCode c -> ExternCode <$> mapM convertExpr c
+  Anno e t -> Anno <$> convertExpr e <*> convertExpr t
 
 unknownCall
-  :: Closed.Expr Meta
-  -> Vector (Closed.Expr Meta)
-  -> VIX (Closed.Expr Meta)
+  :: Expr Meta
+  -> Vector (Expr Meta)
+  -> ClosureConvert (Expr Meta)
 unknownCall e es = do
-  ptrRep <- gets (Closed.Lit . TypeRep . TypeRep.ptr . vixTarget)
-  intRep <- gets (Closed.Lit . TypeRep . TypeRep.int . vixTarget)
+  ptrRep <- lift $ gets (Lit . TypeRep . TypeRep.ptr . vixTarget)
+  intRep <- lift $ gets (Lit . TypeRep . TypeRep.int . vixTarget)
   return
-    $ Closed.Call (global $ Builtin.applyName $ Vector.length es)
-    $ Vector.cons (Closed.Sized ptrRep e)
-    $ (Closed.Sized intRep . Closed.typeOf <$> es) <|> es
+    $ Call (global $ Builtin.applyName $ Vector.length es)
+    $ Vector.cons (Sized ptrRep e)
+    $ (Sized intRep . typeOf <$> es) <|> es
 
 knownCall
   :: QName
-  -> Closed.FunSignature
-  -> Vector (Closed.Expr Meta)
-  -> VIX (Closed.Expr Meta)
+  -> FunSignature
+  -> Vector (Expr Meta)
+  -> ClosureConvert (Expr Meta)
 knownCall f (tele, returnTypeScope) args
   | numArgs < arity = do
-    vs <- forM fArgs $ \_ -> forall mempty Unit
-    target <- gets vixTarget
-    let intRep, ptrRep :: Closed.Expr v
-        intRep = Closed.Lit $ TypeRep $ TypeRep.int target
-        ptrRep = Closed.Lit $ TypeRep $ TypeRep.ptr target
+    vs <- lift $ forM fArgs $ \_ -> forall mempty Unit
+    target <- lift $ gets vixTarget
+    let intRep, ptrRep :: Expr v
+        intRep = Lit $ TypeRep $ TypeRep.int target
+        ptrRep = Lit $ TypeRep $ TypeRep.ptr target
     let returnType = instantiateTele pure vs $ vacuous returnTypeScope
         varIndex = hashedElemIndex vs
         go v | i < Vector.length fArgs1 = B $ Tele $ 2 + i
@@ -166,10 +179,10 @@ knownCall f (tele, returnTypeScope) args
           $ Vector.cons (TeleArg "x_this" () $ Scope ptrRep)
           $ (\h -> TeleArg h () $ Scope intRep) <$> xs
           <|> (\(n, h) -> TeleArg h () $ Scope $ pure $ B $ 1 + Tele n) <$> Vector.indexed xs
-    let fNumArgs = Closed.Lams tele'
+    fNumArgs <- liftThing $ Sized.Function tele'
           $ toScope
           $ fmap B
-          $ Closed.Case (Builtin.deref target $ Closed.Var 0)
+          $ Case (Builtin.deref target $ Var 0)
           $ ConBranches
           $ pure
           $ ConBranch
@@ -177,40 +190,40 @@ knownCall f (tele, returnTypeScope) args
             (Telescope $ Vector.cons (TeleArg mempty () $ Scope intRep)
                        $ Vector.cons (TeleArg mempty () $ Scope intRep) clArgs')
             (toScope
-            $ Closed.Sized (go <$> returnType)
-            $ Closed.Call (global f) fArgs)
+            $ Sized (go <$> returnType)
+            $ Call (global f) fArgs)
     return
-      $ Closed.Con Builtin.Ref
+      $ Con Builtin.Ref
       $ pure
-      $ Builtin.sizedCon (Closed.Lit $ TypeRep TypeRep.Unit) Builtin.Closure
-      $ Vector.cons (Closed.Sized ptrRep fNumArgs)
-      $ Vector.cons (Closed.Sized intRep $ Closed.Lit $ Integer $ fromIntegral $ arity - numArgs) args
+      $ Builtin.sizedCon (Lit $ TypeRep TypeRep.Unit) Builtin.Closure
+      $ Vector.cons (Sized ptrRep $ global fNumArgs)
+      $ Vector.cons (Sized intRep $ Lit $ Integer $ fromIntegral $ arity - numArgs) args
   | numArgs == arity
-    = return $ Closed.Call (global f) args
+    = return $ Call (global f) args
   | otherwise = do
     let (knownArgs, unknownArgs) = Vector.splitAt arity args
-    unknownCall (Closed.Call (global f) knownArgs) unknownArgs
+    unknownCall (Call (global f) knownArgs) unknownArgs
   where
     numArgs = Vector.length args
     arity = teleLength tele
     clArgs = (\(TeleArg h d s) -> TeleArg h d $ mapBound (+ 2) s) <$> Vector.take numArgs (unTelescope tele)
     clArgs' = (\(TeleArg h _ s) -> TeleArg h () $ vacuous s) <$> clArgs
-    fArgs1 = Vector.zipWith Closed.Anno
-      (Closed.Var . B <$> Vector.enumFromN 2 numArgs)
+    fArgs1 = Vector.zipWith Anno
+      (Var . B <$> Vector.enumFromN 2 numArgs)
       ((\(TeleArg _ _ s) -> unvar F absurd <$> fromScope s) <$> clArgs)
-    fArgs2 = Vector.zipWith Closed.Anno
-      (Closed.Var . F <$> Vector.enumFromN (fromIntegral $ 1 + numXs) numXs)
-      (Closed.Var . F <$> Vector.enumFromN 1 numXs)
+    fArgs2 = Vector.zipWith Anno
+      (Var . F <$> Vector.enumFromN (fromIntegral $ 1 + numXs) numXs)
+      (Var . F <$> Vector.enumFromN 1 numXs)
     xs = Vector.drop numArgs $ teleNames tele
     numXs = Vector.length xs
     fArgs = fArgs1 <> fArgs2
 
 convertBranches
-  :: Branches QConstr () Lifted.Expr Meta
-  -> VIX (Branches QConstr () Closed.Expr Meta)
+  :: Branches QConstr () Expr Meta
+  -> ClosureConvert (Branches QConstr () Expr Meta)
 convertBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(ConBranch qc tele brScope) -> do
-    vs <- forMTele tele $ \h () _ ->
+    vs <- lift $ forMTele tele $ \h () _ ->
       forall h Unit
     es <- forMTele tele $ \_ () s ->
       convertExpr $ instantiateTele pure vs s

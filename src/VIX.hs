@@ -20,7 +20,7 @@ import Text.Trifecta.Result(Err(Err), explain)
 import Backend.Target
 import Syntax
 import Syntax.Abstract
-import qualified Syntax.Sized.Closed as Closed
+import qualified Syntax.Sized.Lifted as Lifted
 import Util
 
 newtype Level = Level Int
@@ -33,7 +33,7 @@ data VIXState = VIXState
   { vixLocation :: SourceLoc
   , vixContext :: HashMap QName (Definition Expr Void, Type Void)
   , vixModuleNames :: MultiHashMap ModuleName (Either QConstr QName)
-  , vixConvertedSignatures :: HashMap QName Closed.FunSignature
+  , vixConvertedSignatures :: HashMap QName Lifted.FunSignature
   , vixSignatures :: HashMap QName (Signature ReturnIndirect)
   , vixIndent :: !Int
   , vixFresh :: !Int
@@ -182,14 +182,14 @@ qconstructor qc@(QConstr n c) = do
 -------------------------------------------------------------------------------
 -- Signatures
 addConvertedSignatures
-  :: HashMap QName Closed.FunSignature
+  :: HashMap QName Lifted.FunSignature
   -> VIX ()
 addConvertedSignatures p
   = modify $ \s -> s { vixConvertedSignatures = p <> vixConvertedSignatures s }
 
 convertedSignature
   :: QName
-  -> VIX (Maybe Closed.FunSignature)
+  -> VIX (Maybe Lifted.FunSignature)
 convertedSignature name = gets $ HashMap.lookup name . vixConvertedSignatures
 
 addSignatures

@@ -89,7 +89,7 @@ processBuiltins tgt builtins1 builtins2 = do
       builtinConstrNames = HashSet.fromList
         [ QConstr n c
         | (n, (DataDefinition d _, _)) <- HashMap.toList context
-        , c <- constrNames d -- $ constrName <$> d
+        , c <- constrNames d
         ]
   addModule "Sixten.Builtin" $ HashSet.map Right builtinDefNames <> HashSet.map Left builtinConstrNames
   addConvertedSignatures $ Builtin.convertedSignatures tgt

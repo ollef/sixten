@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFunctor, Rank2Types #-}
+{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, Rank2Types #-}
 module Util where
 
 import Bound
@@ -39,13 +39,21 @@ abstractNone = Scope . return . F
 instantiate1 :: Monad f => f a -> Scope1 f a -> f a
 instantiate1 = Bound.instantiate1
 
-instantiateSome
+rebind
   :: Monad f
-  => (b -> f (Var b' a))
+  => (b -> Scope b' f a)
   -> Scope b f a
   -> Scope b' f a
-instantiateSome f s
-  = toScope $ fromScope s >>= unvar f (pure . pure)
+rebind f (Scope s) = Scope $ s >>= unvar (unscope . f) (pure . F)
+
+abstractSomeMore
+  :: Monad f
+  => (b -> b')
+  -> (a -> Maybe b')
+  -> Scope b f a
+  -> Scope b' f a
+abstractSomeMore f g s
+  = toScope $ fromScope s >>= unvar (pure . B . f) (\a -> pure $ maybe (F a) B (g a))
 
 toSet ::  (Ord a, Foldable f) => f a -> Set a
 toSet = foldMap Set.singleton
@@ -104,7 +112,7 @@ ifor :: Traversable t => t a -> (Int -> a -> b) -> t b
 ifor = flip imap
 
 data Unit a = Unit
-  deriving (Functor)
+  deriving (Functor, Foldable, Traversable)
 
 instance Applicative Unit where
   pure _ = Unit

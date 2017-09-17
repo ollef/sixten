@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, OverloadedStrings, TemplateHaskell, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, OverloadedStrings, PatternSynonyms, TemplateHaskell, ViewPatterns #-}
 module Syntax.Sized.SLambda where
 
 import Control.Monad
@@ -16,9 +16,9 @@ data Expr v
   | Global QName
   | Lit Literal
   | Con QConstr (Vector (Expr v)) -- ^ Fully applied
-  | Lam !NameHint (Expr v) (Scope1 Expr v)
+  | Lam !NameHint (Type v) (Scope1 Expr v)
   | App (Expr v) (Expr v)
-  | Let !NameHint (Expr v) (Type v) (Scope1 Expr v)
+  | Let (LetRec Expr v) (Scope LetVar Expr v)
   | Case (Expr v) (Branches QConstr () Expr v)
   | Anno (Expr v) (Type v)
   | ExternCode (Extern (Expr v))
@@ -37,6 +37,9 @@ lamView (Anno e _) = lamView e
 lamView (Lam h e s) = Just (h, (), e, s)
 lamView _ = Nothing
 
+let_ :: NameHint -> Expr v -> Type v -> Scope1 Expr v -> Expr v
+let_ h e t s = Let (LetRec $ pure $ LetBinding h (abstractNone e) t) (mapBound (\() -> 0) s)
+
 -------------------------------------------------------------------------------
 -- Instances
 deriveEq1 ''Expr
@@ -54,6 +57,9 @@ instance Monad Expr where
   return = Var
   expr >>= f = bind f Global expr
 
+pattern Lams :: Telescope () Expr v -> Scope Tele Expr v -> Expr v
+pattern Lams tele s <- (bindingsViewM lamView -> Just (tele, s))
+
 instance GlobalBind Expr where
   global = Global
   bind f g expr = case expr of
@@ -63,7 +69,7 @@ instance GlobalBind Expr where
     Con qc es -> Con qc (bind f g <$> es)
     Lam h e s -> Lam h (bind f g e) (bound f g s)
     App e1 e2 -> App (bind f g e1) (bind f g e2)
-    Let h e t s -> Let h (bind f g e) (bind f g t) (bound f g s)
+    Let ds s -> Let (bound f g ds) (bound f g s)
     Case e brs -> Case (bind f g e) (bound f g brs)
     Anno e t -> Anno (bind f g e) (bind f g t)
     ExternCode c -> ExternCode (bind f g <$> c)
@@ -76,9 +82,9 @@ instance (Eq v, IsString v, Pretty v)
     Con c es -> prettyApps (prettyM c) $ prettyM <$> es
     Lit l -> prettyM l
     App e1 e2 -> prettyApp (prettyM e1) (prettyM e2)
-    Let h e t s -> parens `above` letPrec $ withNameHint h $ \n ->
-      "let" <+> prettyM n <+> "=" <+> prettyM e <+> ":" <+> prettyM t <+> "in" <+>
-        prettyM (Util.instantiate1 (pure $ fromName n) s)
+    Let ds s -> parens `above` letPrec $ withLetHints ds $ \ns ->
+      "let" <+> align (prettyLet ns ds)
+      <+> "in" <+> prettyM (instantiateLet (pure . fromName) ns s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> indent 2 (prettyM brs)

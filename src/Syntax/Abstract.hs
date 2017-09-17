@@ -18,13 +18,16 @@ data Expr v
   | Pi !NameHint !Plicitness (Type v) (Scope1 Expr v)
   | Lam !NameHint !Plicitness (Type v) (Scope1 Expr v)
   | App (Expr v) !Plicitness (Expr v)
-  | Let !NameHint (Expr v) (Scope1 Expr v)
+  | Let (LetRec Expr v) (Scope LetVar Expr v)
   | Case (Expr v) (Branches QConstr Plicitness Expr v) (Type v)
   | ExternCode (Extern (Expr v)) (Type v)
   deriving (Foldable, Functor, Traversable)
 
 -- | Synonym for documentation purposes
 type Type = Expr
+
+let_ :: NameHint -> Expr v -> Type v -> Scope1 Expr v -> Expr v
+let_ h e t s = Let (LetRec $ pure $ LetBinding h (abstractNone e) t) (mapBound (\() -> 0) s)
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -38,7 +41,7 @@ instance GlobalBind Expr where
     Pi h a t s -> Pi h a (bind f g t) (bound f g s)
     Lam h a t s -> Lam h a (bind f g t) (bound f g s)
     App e1 a e2 -> App (bind f g e1) a (bind f g e2)
-    Let h e s -> Let h (bind f g e) (bound f g s)
+    Let ds scope -> Let (bound f g ds) (bound f g scope)
     Case e brs retType -> Case (bind f g e) (bound f g brs) (bind f g retType)
     ExternCode c t -> ExternCode (bind f g <$> c) (bind f g t)
 
@@ -95,9 +98,9 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
       prettyM (instantiateTele (pure . fromName) ns s)
     Lam {} -> error "impossible prettyPrec lam"
     App e1 a e2 -> prettyApp (prettyM e1) (prettyAnnotation a $ prettyM e2)
-    Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
-      "let" <+> prettyM n <+> "=" <+> inviolable (prettyM e) <+> "in"
-      <+> prettyM (Util.instantiate1 (pure $ fromName n) s)
+    Let ds s -> parens `above` letPrec $ withLetHints ds $ \ns ->
+      "let" <+> align (prettyLet ns ds)
+      <+> "in" <+> prettyM (instantiateLet (pure . fromName) ns s)
     Case e brs retType -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+> "of" <+> parens (prettyM retType)
         <$$> indent 2 (prettyM brs)

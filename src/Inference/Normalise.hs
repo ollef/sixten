@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, MonadComprehensions, ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts, MonadComprehensions, ViewPatterns, RecursiveDo #-}
 module Inference.Normalise where
 
 import Control.Monad.Except
@@ -36,7 +36,7 @@ whnf' expandTypeReps expr = do
       f' <- whnfInner expandTypeReps f
       case f' of
         Lam h p' t s | p == p' -> do
-          eVar <- let_ h e t
+          eVar <- shared h e t
           go (Util.instantiate1 (pure eVar) s) es'
         _ -> case apps f' es of
           Builtin.ProductTypeRep x y -> typeRepBinOp
@@ -69,7 +69,9 @@ whnfInner expandTypeReps expr = case expr of
   Pi {} -> return expr
   Lam {} -> return expr
   App {} -> return expr
-  Let _ e s -> whnf' expandTypeReps $ instantiate1 e s
+  Let ds scope -> do
+    e <- instantiateLetM ds scope
+    whnf' expandTypeReps e
   Case e brs retType -> do
     e' <- whnf' expandTypeReps e
     retType' <- whnf' expandTypeReps retType
@@ -110,14 +112,14 @@ normalise expr = do
       e1' <- normalise e1
       case e1' of
         Lam h p' t s | p == p' -> do
-          e2Var <- let_ h e2 t
+          e2Var <- shared h e2 t
           normalise $ Util.instantiate1 (pure e2Var) s
         _ -> do
           e2' <- normalise e2
           return $ App e1' p e2'
-    Let _ e s -> do
-      e' <- normalise e
-      normalise $ instantiate1 e' s
+    Let ds scope -> do
+      e <- instantiateLetM ds scope
+      normalise e
     Case e brs retType -> do
       e' <- whnf e
       res <- chooseBranch e' brs retType normalise
@@ -214,3 +216,8 @@ chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs) _ k =
       [br] -> br
       _ -> error "Normalise.chooseBranch"
 chooseBranch e brs retType _ = return $ Case e brs retType
+
+instantiateLetM :: LetRec Expr MetaA -> Scope LetVar Expr MetaA -> VIX AbstractM
+instantiateLetM ds scope = mdo
+  vs <- forMLet ds $ \h s t -> shared h (instantiateLet pure vs s) t
+  return $ instantiateLet pure vs scope

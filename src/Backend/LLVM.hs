@@ -9,7 +9,6 @@ import qualified Data.Foldable as Foldable
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.List
-import Data.Maybe
 import Data.Monoid
 import Data.String
 import qualified Data.Text as Text
@@ -429,7 +428,7 @@ bitcastFunToPtrExpr i retDir ds = Operand
   $ "bitcast" <+> "(" <> functionT retDir ds <> "*" <+> unOperand i <+> "to" <+> pointerT <> ")"
 
 function :: RetDir -> Maybe C -> Vector Direction -> C
-function retDir mname ds = retType <+> fromMaybe mempty mname <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList ds <|> [retParam]) <> ")"
+function retDir mname ds = retType <+> Foldable.fold mname <> "(" <> Foldable.fold (intersperse ", " $ concat $ go <$> Vector.toList ds <|> [retParam]) <> ")"
   where
     (retType, retParam) = case retDir of
       ReturnDirect sz -> (directT sz, mempty)

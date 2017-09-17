@@ -1,0 +1,8 @@
+main =
+  let
+    even 0 = 1
+    even n = odd (subInt n 1)
+
+    odd 0 = 0
+    odd n = even (subInt n 1)
+  printInt (even 41)

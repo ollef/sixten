@@ -27,6 +27,19 @@ data Pat typ b
 
 -------------------------------------------------------------------------------
 -- Helpers
+patEq :: (typ1 -> typ2 -> Bool) -> (a -> b -> Bool) -> Pat typ1 a -> Pat typ2 b -> Bool
+patEq _ g (VarPat _ a) (VarPat _ b) = g a b
+patEq _ _ WildcardPat WildcardPat = True
+patEq _ _ (LitPat l1) (LitPat l2) = l1 == l2
+patEq f g (ConPat qc1 as1) (ConPat qc2 as2)
+  = qc1 == qc2
+  && liftEq (\(p1, pat1) (p2, pat2) -> p1 == p2 && patEq f g pat1 pat2) as1 as2
+patEq f g (AnnoPat t1 p1) (AnnoPat t2 p2) = f t1 t2 && patEq f g p1 p2
+patEq f g (ViewPat t1 p1) (ViewPat t2 p2) = f t1 t2 && patEq f g p1 p2
+patEq f g (PatLoc _ p1) p2 = patEq f g p1 p2
+patEq f g p1 (PatLoc _ p2) = patEq f g p1 p2
+patEq _ _ _ _ = False
+
 nameHints :: Pat typ b -> Vector NameHint
 nameHints pat = case pat of
   VarPat h _ -> pure h

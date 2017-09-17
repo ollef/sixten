@@ -210,6 +210,25 @@ tcRho expr expected expectedAppResult = case expr of
         arg' <- checkPoly arg argType
         fun'' <- f1 fun'
         f2 $ Abstract.App fun'' p arg'
+  Concrete.Let ds scope -> do
+    let names = (\(_, n, _, _) -> n) <$> ds
+    evars <- forM names $ \name -> do
+      typ <- existsType name
+      forall name typ
+    let instantiatedDs
+          = (\(loc, _, def, typ) ->
+              ( loc
+              , Concrete.TopLevelPatDefinition $ Concrete.instantiateLetClause pure evars <$> def
+              , instantiateLet pure evars typ
+              )) <$> ds
+    ds' <- checkRecursiveDefs (Vector.zip evars instantiatedDs)
+    body <- tcRho (instantiateLet pure evars scope) expected expectedAppResult
+    let abstr = letAbstraction evars
+        ds'' = LetRec
+          -- TODO handle abstractness/concreteness
+          $ (\(_, (v, Definition _ e, t)) -> LetBinding (metaHint v) (abstract abstr e) t)
+          <$> ds'
+    return $ Abstract.Let ds'' $ abstract abstr body
   Concrete.Case e brs -> tcBranches e brs expected
   Concrete.ExternCode c -> do
     c' <- mapM (\e -> fst <$> inferRho e (InstBelow Explicit) Nothing) c
@@ -786,7 +805,7 @@ checkDataType name (DataDef cs) typ = do
   return (DataDef abstractedCs, lams params abstractedTypeRep, typ'')
 
 checkClauses
-  :: NonEmpty (Concrete.Clause Concrete.Expr MetaA)
+  :: NonEmpty (Concrete.Clause Void Concrete.Expr MetaA)
   -> Polytype
   -> VIX AbstractM
 checkClauses clauses polyType = do
@@ -816,7 +835,7 @@ checkClauses clauses polyType = do
     <$> metaTelescopeM vs
     <*> abstractM (teleAbstraction $ snd <$> vs) res
   where
-    instBelowClause :: Concrete.Clause Concrete.Expr v -> InstBelow
+    instBelowClause :: Concrete.Clause Void Concrete.Expr v -> InstBelow
     instBelowClause (Concrete.Clause pats s)
       | Vector.length pats > 0 = InstBelow $ fst $ Vector.head pats
       | otherwise = instBelowExpr $ fromScope s
@@ -833,7 +852,7 @@ checkClauses clauses polyType = do
     piPlicitnesses' _ = return mempty
 
 checkClausesRho
-  :: NonEmpty (Concrete.Clause Concrete.Expr MetaA)
+  :: NonEmpty (Concrete.Clause Void Concrete.Expr MetaA)
   -> Rhotype
   -> VIX AbstractM
 checkClausesRho clauses rhoType = do
@@ -847,7 +866,9 @@ checkClausesRho clauses rhoType = do
 
   modifyIndent succ
 
-  clauses' <- forM clauses $ \(Concrete.Clause pats bodyScope) -> do
+  clauses' <- forM clauses $ \clause -> do
+    let pats = Concrete.clausePatterns' clause
+        bodyScope = Concrete.clauseScope' clause
     (pats', patVars) <- tcPats (snd <$> pats) mempty argTele
     let body = instantiatePattern pure patVars bodyScope
         argExprs = snd3 <$> pats'
@@ -871,30 +892,34 @@ checkClausesRho clauses rhoType = do
     (NonEmpty.toList $ first Vector.toList <$> clauses')
     returnType
 
-  let body' = body >>= unvar (\Match.Fail -> Builtin.Fail returnType) pure
-
-  logMeta 25 "checkClausesRho body res" body'
+  logMeta 25 "checkClausesRho body res" body
 
   result <- foldrM
     (\(p, (f, v)) e ->
       f =<< Abstract.Lam (metaHint v) p (metaType v) <$> abstract1M v e)
-    body'
+    body
     (Vector.zip ps $ Vector.zip fs argVars)
 
   logMeta 20 "checkClausesRho res" result
   return result
 
 checkDefType
+  :: Concrete.PatDefinition (Concrete.Clause Void Concrete.Expr MetaA)
+  -> AbstractM
+  -> VIX (Definition Abstract.Expr MetaA, AbstractM)
+checkDefType (Concrete.PatDefinition a clauses) typ = do
+  e' <- checkClauses clauses typ
+  return (Definition a e', typ)
+
+checkTopLevelDefType
   :: MetaA
-  -> Concrete.PatDefinition Concrete.Expr MetaA
+  -> Concrete.TopLevelPatDefinition Concrete.Expr MetaA
   -> SourceLoc
   -> AbstractM
   -> VIX (Definition Abstract.Expr MetaA, AbstractM)
-checkDefType v def loc typ = located (render loc) $ case def of
-  Concrete.PatDefinition a clauses -> do
-    e' <- checkClauses clauses typ
-    return (Definition a e', typ)
-  Concrete.PatDataDefinition d -> do
+checkTopLevelDefType v def loc typ = located (render loc) $ case def of
+  Concrete.TopLevelPatDefinition def' -> checkDefType def' typ
+  Concrete.TopLevelPatDataDefinition d -> do
     (d', rep, typ') <- checkDataType v d typ
     return (DataDefinition d' rep, typ')
 
@@ -989,7 +1014,7 @@ checkRecursiveDefs
   :: Vector
     ( MetaA
     , ( SourceLoc
-      , Concrete.PatDefinition Concrete.Expr MetaA
+      , Concrete.TopLevelPatDefinition Concrete.Expr MetaA
       , ConcreteM
       )
     )
@@ -1005,7 +1030,7 @@ checkRecursiveDefs defs = do
   checkedDefs <- forM defs $ \(evar, (loc, def, typ)) -> do
     typ' <- checkPoly typ Builtin.Type
     unify [] (metaType evar) typ'
-    (def', typ'') <- checkDefType evar def loc typ'
+    (def', typ'') <- checkTopLevelDefType evar def loc typ'
     logMeta 20 ("checkRecursiveDefs res " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) def'
     logMeta 20 ("checkRecursiveDefs res t " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) typ''
     return (loc, (evar, def', typ''))
@@ -1019,21 +1044,21 @@ checkTopLevelRecursiveDefs
   :: Vector
     ( QName
     , SourceLoc
-    , Concrete.PatDefinition Concrete.Expr Void
-    , Concrete.Expr Void
+    , Concrete.TopLevelPatDefinition Concrete.Expr Void
+    , Concrete.Type Void
     )
   -> VIX
     (Vector
       ( QName
       , Definition Abstract.Expr Void
-      , Abstract.Expr Void
+      , Abstract.Type Void
       )
     )
 checkTopLevelRecursiveDefs defs = do
   let names = (\(v, _, _, _) -> v) <$> defs
 
   (checkedDefs, evars) <- enterLevel $ do
-    evars <- Vector.forM names $ \name -> do
+    evars <- forM names $ \name -> do
       let hint = fromQName name
       typ <- existsType hint
       forall hint typ
@@ -1042,7 +1067,7 @@ checkTopLevelRecursiveDefs defs = do
         expose name = case nameIndex name of
           Nothing -> global name
           Just index -> pure
-            $ fromMaybe (error "checkRecursiveDefs 1")
+            $ fromMaybe (error "checkTopLevelRecursiveDefs 1")
             $ evars Vector.!? index
 
     let exposedDefs = flip fmap defs $ \(_, loc, def, typ) ->
@@ -1054,19 +1079,20 @@ checkTopLevelRecursiveDefs defs = do
 
   genDefs <- generaliseDefs $ snd <$> checkedDefs
 
-  let unexpose evar = case Vector.elemIndex evar evars of
+  let varIndex = hashedElemIndex evars
+      unexpose evar = case varIndex evar of
         Nothing -> pure evar
         Just index -> global
-          $ fromMaybe (error "checkRecursiveDefs 2")
+          $ fromMaybe (error "checkTopLevelRecursiveDefs 2")
           $ names Vector.!? index
       vf :: MetaA -> VIX b
-      vf v = throwError $ "checkRecursiveDefs " ++ show v
+      vf v = throwError $ "checkTopLevelRecursiveDefs " ++ show v
 
   forM (Vector.zip names genDefs) $ \(name, (def, typ)) -> do
     let unexposedDef = bound unexpose global def
         unexposedTyp = bind unexpose global typ
-    logMeta 20 ("checkRecursiveDefs unexposedDef " ++ show (pretty name)) unexposedDef
-    logMeta 20 ("checkRecursiveDefs unexposedTyp " ++ show (pretty name)) unexposedTyp
+    logMeta 20 ("checkTopLevelRecursiveDefs unexposedDef " ++ show (pretty name)) unexposedDef
+    logMeta 20 ("checkTopLevelRecursiveDefs unexposedTyp " ++ show (pretty name)) unexposedTyp
     unexposedDef' <- traverse vf unexposedDef
     unexposedTyp' <- traverse vf unexposedTyp
     return (name, unexposedDef', unexposedTyp')

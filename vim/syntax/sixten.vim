@@ -11,6 +11,7 @@ highlight def link sixtenNumber Number
 highlight def link sixtenModuleKeyword Keyword
 highlight def link sixtenModifierKeyword Keyword
 highlight def link sixtenTypeKeyword Keyword
+highlight def link sixtenLetKeyword Keyword
 highlight def link sixtenCaseKeyword Conditional
 highlight def link sixtenForall Keyword
 highlight def link sixtenLambda Keyword
@@ -32,6 +33,7 @@ syn keyword sixtenModuleKeyword import module as exposing
 syn keyword sixtenModifierKeyword abstract
 syn keyword sixtenTypeKeyword type where
 syn keyword sixtenCaseKeyword case of
+syn keyword sixtenLetKeyword let in
 syn keyword sixtenForall forall
 syn match sixtenLambda "\\"
 syn match sixtenDot "\."

@@ -6,6 +6,7 @@ import Control.Monad
 import Data.Bifoldable
 import Data.Bifunctor
 import Data.Bitraversable
+import Data.Functor.Classes
 import Data.Monoid
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
@@ -22,6 +23,16 @@ data Pat typ b
       (Vector (Plicitness, Pat typ b, typ))
   | ViewPat typ (Pat typ b)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+patEq :: (typ1 -> typ2 -> Bool) -> (a -> b -> Bool) -> Pat typ1 a -> Pat typ2 b -> Bool
+patEq _ g (VarPat _ a) (VarPat _ b) = g a b
+patEq _ _ (LitPat l1) (LitPat l2) = l1 == l2
+patEq f g (ConPat qc1 ps1 as1) (ConPat qc2 ps2 as2)
+  = qc1 == qc2
+  && liftEq (\(p1, t1) (p2, t2) -> p1 == p2 && f t1 t2) ps1 ps2
+  && liftEq (\(p1, pat1, t1) (p2, pat2, t2) -> p1 == p2 && patEq f g pat1 pat2 && f t1 t2) as1 as2
+patEq f g (ViewPat t1 p1) (ViewPat t2 p2) = f t1 t2 && patEq f g p1 p2
+patEq _ _ _ _ = False
 
 instance Applicative (Pat typ) where
   pure = return

@@ -15,6 +15,8 @@ import Data.HashSet(HashSet)
 import Data.Monoid
 import Data.String
 import Data.Traversable
+import Data.Vector(Vector)
+import qualified Data.Vector as Vector
 
 import Syntax hiding (piView)
 import Syntax.Concrete.Definition as Definition
@@ -29,7 +31,7 @@ data Expr v
   | Pi !Plicitness (Pat (PatternScope Type v) ()) (PatternScope Expr v)
   | Lam !Plicitness (Pat (PatternScope Type v) ()) (PatternScope Expr v)
   | App (Expr v) !Plicitness (Expr v)
-  | Let !NameHint (Expr v) (Scope1 Expr v)
+  | Let (Vector (SourceLoc, NameHint, PatDefinition (Clause LetVar Expr v), Scope LetVar Type v)) (Scope LetVar Expr v)
   | Case (Expr v) [(Pat (PatternScope Type v) (), PatternScope Expr v)]
   | ExternCode (Extern (Expr v))
   | Wildcard
@@ -44,16 +46,15 @@ piView _ = Nothing
 
 -------------------------------------------------------------------------------
 -- Instances
-
 instance Eq1 Expr where
   liftEq f (Var v1) (Var v2) = f v1 v2
   liftEq _ (Global g1) (Global g2) = g1 == g2
   liftEq _ (Lit l1) (Lit l2) = l1 == l2
   liftEq _ (Con c1) (Con c2) = c1 == c2
-  liftEq f (Pi p1 pat1 s1) (Pi p2 pat2 s2) = and [p1 == p2, liftPatEq (liftEq f) (==) pat1 pat2, liftEq f s1 s2]
-  liftEq f (Lam p1 pat1 s1) (Lam p2 pat2 s2) = and [p1 == p2, liftPatEq (liftEq f) (==) pat1 pat2, liftEq f s1 s2]
+  liftEq f (Pi p1 pat1 s1) (Pi p2 pat2 s2) = p1 == p2 && liftPatEq (liftEq f) (==) pat1 pat2 && liftEq f s1 s2
+  liftEq f (Lam p1 pat1 s1) (Lam p2 pat2 s2) = p1 == p2 && liftPatEq (liftEq f) (==) pat1 pat2 && liftEq f s1 s2
   liftEq f (App e1 p1 e1') (App e2 p2 e2') = liftEq f e1 e2 && p1 == p2 && liftEq f e1' e2'
-  liftEq f (Let h1 e1 s1) (Let h2 e2 s2) = h1 == h2 && liftEq f e1 e2 && liftEq f s1 s2
+  liftEq f (Let tele1 s1) (Let tele2 s2) = liftEq (\(_, _, d1, t1) (_, _, d2, t2) -> liftEq (liftEq f) d1 d2 && liftEq f t1 t2) tele1 tele2 && liftEq f s1 s2
   liftEq f (Case e1 brs1) (Case e2 brs2)
     = liftEq f e1 e2
     && liftEq (\(pat1, s1) (pat2, s2) -> liftPatEq (liftEq f) (==) pat1 pat2 && liftEq f s1 s2) brs1 brs2
@@ -82,7 +83,7 @@ instance GlobalBind Expr where
     Pi p pat s -> Pi p (first (bound f g) pat) (bound f g s)
     Lam p pat s -> Lam p (first (bound f g) pat) (bound f g s)
     App e1 p e2 -> App (bind f g e1) p (bind f g e2)
-    Let h e s -> Let h (bind f g e) (bound f g s)
+    Let tele s -> Let ((\(loc, h, pd, t) -> (loc, h, bound f g <$> pd, bound f g t)) <$> tele) (bound f g s)
     Case e brs -> Case (bind f g e) (bimap (first (bound f g)) (bound f g) <$> brs)
     ExternCode c -> ExternCode (bind f g <$> c)
     Wildcard -> Wildcard
@@ -108,7 +109,7 @@ instance Traversable Expr where
     Pi p pat s -> Pi p <$> bitraverse (traverse f) pure pat <*> traverse f s
     Lam p pat s -> Lam p <$> bitraverse (traverse f) pure pat <*> traverse f s
     App e1 p e2 -> App <$> traverse f e1 <*> pure p <*> traverse f e2
-    Let h e s -> Let h <$> traverse f e <*> traverse f s
+    Let tele s -> Let <$> traverse (bitraverse (traverse $ traverse f) $ traverse f) tele <*> traverse f s
     Case e brs -> Case
       <$> traverse f e
       <*> traverse (bitraverse (bitraverse (traverse f) pure) (traverse f)) brs
@@ -133,9 +134,16 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
         "\\" <> prettyAnnotation p (prettyPattern ns $ first inst pat) <> "." <+>
           associate absPrec (prettyM $ inst s)
     App e1 p e2 -> prettyApp (prettyM e1) (prettyAnnotation p $ prettyM e2)
-    Let h e s -> parens `above` letPrec $ withNameHint h $ \n ->
-      "let" <+> prettyM n <+> "=" <+> inviolable (prettyM e) <+>
-      "in" <+> prettyM (Util.instantiate1 (pure $ fromName n) s)
+    Let clauses scope -> parens `above` letPrec $ withNameHints ((\(_, h, _, _) -> h) <$> clauses) $ \ns ->
+      let go = ifor clauses $ \i (_, _, clause, t) ->
+            prettyM (ns Vector.! i) <+> ":" <+>
+              prettyM (instantiateLet (pure . fromName) ns t)
+            <$$>
+            prettyNamed
+              (prettyM $ ns Vector.! i)
+              (instantiateLetClause (pure . fromName) ns <$> clause)
+       in "let" <+> align (vcat go)
+        <+> "in" <+> prettyM (instantiateLet (pure . fromName) ns scope)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (vcat $ prettyBranch <$> brs)
     ExternCode c -> prettyM c

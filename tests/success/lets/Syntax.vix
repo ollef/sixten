@@ -1,0 +1,41 @@
+letIn1 = let x = 123 in x
+
+letIn2 =
+  let x = 123
+  in x
+
+letNoIn =
+  let x = 123
+  x
+
+mutualLets =
+  let x = y
+      y = z
+      z = 123
+  x
+
+letArg =
+  let f x = addInt x 2
+  f let x = 3 in x
+
+letTypeSig =
+  let i : Int
+      i = 23
+      j : Int
+      j = 100
+  addInt i j
+
+type List a = Nil | Cons a (Ptr (List a))
+
+map f (Ref Nil) = Ref Nil
+map f (Ref (Cons x xs)) = Ref (Cons (f x) (map f xs))
+
+main = map printInt
+  (Ref (Cons letIn1
+  (Ref (Cons letIn2
+  (Ref (Cons letNoIn
+  (Ref (Cons mutualLets
+  (Ref (Cons letArg
+  (Ref (Cons letTypeSig
+  (Ref Nil)))))))))))))
+

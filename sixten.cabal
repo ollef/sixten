@@ -26,7 +26,6 @@ executable sixten
                        Analysis.Denat
                        Analysis.ReturnDirection
                        Analysis.Simplify
-                       Backend.Close
                        Backend.ClosureConvert
                        Backend.Compile
                        Backend.ExtractExtern
@@ -73,11 +72,11 @@ executable sixten
                        Syntax.Extern
                        Syntax.GlobalBind
                        Syntax.Hint
+                       Syntax.Let
                        Syntax.Literal
                        Syntax.Module
                        Syntax.Name
                        Syntax.Pattern
-                       Syntax.Sized.Closed
                        Syntax.Sized.Definition
                        Syntax.Sized.Extracted
                        Syntax.Sized.Lifted
@@ -102,6 +101,7 @@ executable sixten
                        hashable,
                        mmorph,
                        mtl,
+                       multiset,
                        optparse-applicative,
                        parsers,
                        process,

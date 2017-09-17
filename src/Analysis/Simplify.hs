@@ -2,15 +2,18 @@
 module Analysis.Simplify where
 
 import Bound
-import Control.Monad.Identity
 import Data.Bifunctor
 import Data.Foldable as Foldable
+import Data.Functor.Identity
+import Data.Maybe
+import Data.Monoid
+import qualified Data.MultiSet as MultiSet
 import qualified Data.Set as Set
 import qualified Data.Vector as Vector
 
 import Inference.Normalise
 import Syntax
-import Syntax.Abstract
+import Syntax.Abstract hiding (let_)
 import Util
 
 simplifyExpr
@@ -43,29 +46,50 @@ simplifyExpr glob !applied expr = case expr of
         (hoist (simplifyExpr glob applied) brs)
         (simplifyExpr glob 0 retType)
         (Identity . simplifyExpr glob applied)
-  Let h e s -> let_ glob h (simplifyExpr glob 0 e) $ hoist (simplifyExpr glob applied) s
+  Let ds s -> letRec glob (hoist (simplifyExpr glob 0) ds) $ hoist (simplifyExpr glob applied) s
   ExternCode c retType ->
     ExternCode
       (simplifyExpr glob 0 <$> c)
       (simplifyExpr glob 0 retType)
 
+-- TODO: Inlining can expose more simplification opportunities that aren't exploited.
+letRec
   :: (QName -> Bool)
+  -> LetRec Expr v
+  -> Scope LetVar Expr v
+  -> Expr v
+letRec glob ds scope
+  | Vector.null ds' = instantiate (error "letRec empty") scope'
+  | otherwise = Let (LetRec ds') scope'
+  where
+    occs = MultiSet.fromList (bindings scope)
+      <> foldMap (MultiSet.fromList . bindings) (letBodies ds)
+    dsFilter = iforLet ds $ \i h s t -> do
+      let e = fromScope s
+          v = LetVar i
+          s' = rebind rebinding s
+      if duplicable e || MultiSet.occur v occs <= 1 && terminates glob e
+        then (mempty, s')
+        else (pure (v, LetBinding h s' t), Scope $ pure $ B $ permute v)
+    rebinding (LetVar v) = snd $ dsFilter Vector.! v
+    oldVarsNewDs = Vector.concatMap fst dsFilter
+    permute = LetVar . fromJust . hashedElemIndex (fst <$> oldVarsNewDs)
 
+    ds' = snd <$> oldVarsNewDs
+    scope' = rebind rebinding scope
 
 let_
   :: (QName -> Bool)
   -> NameHint
   -> Expr v
+  -> Type v
   -> Scope1 Expr v
   -> Expr v
-let_ glob h e s = case bindings s of
-  _ | dupl -> Util.instantiate1 e s
-  [] | term -> Util.instantiate1 e s
-  [_] | term -> Util.instantiate1 e s
-  _ -> Let h e s
-  where
-    term = terminates glob e
-    dupl = duplicable e
+let_ glob h e t s
+  = letRec
+    glob
+    (LetRec $ pure $ LetBinding h (abstractNone e) t)
+    (mapBound (\() -> 0) s)
 
 simplifyDef
   :: (QName -> Bool)
@@ -100,7 +124,7 @@ etaLams glob applied tele scope = case go 0 $ fromScope scope of
     as = teleAnnotations tele
 
 betaApp ::  Expr v -> Plicitness -> Expr v -> Expr v
-betaApp (Lam h a1 _ s) a2 e2 | a1 == a2 = let_ (const True) h e2 s
+betaApp (Lam h a1 t s) a2 e2 | a1 == a2 = let_ (const True) h e2 t s
 betaApp e1 a e2 = app e1 a e2
 
 betaApps
@@ -134,7 +158,7 @@ terminates glob expr = case expr of
   Lam {} -> True
   App e1 _ e2 -> terminatesWhenCalled glob e1 && terminates glob e2
   Case {} -> False
-  Let _ e s -> terminates glob e && terminates glob (fromScope s)
+  Let ds s -> all (terminates glob) (fromScope <$> letBodies ds) && terminates glob (fromScope s)
   ExternCode {} -> False
 
 terminatesWhenCalled :: (QName -> Bool) -> Expr v -> Bool
@@ -147,5 +171,5 @@ terminatesWhenCalled glob expr = case expr of
   Lam {} -> False
   App {} -> False
   Case {} -> False
-  Let _ e s -> terminates glob e && terminatesWhenCalled glob (fromScope s)
+  Let ds s -> all (terminates glob) (fromScope <$> letBodies ds) && terminatesWhenCalled glob (fromScope s)
   ExternCode {} -> False

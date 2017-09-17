@@ -1,0 +1,14 @@
+main =
+  let
+    even 0 = 1
+    even n = odd (subInt n 1)
+
+    even1 0 = 1
+    even1 n = odd1 (subInt n 1)
+
+    odd 0 = 0
+    odd n = even (subInt n 1)
+
+    odd1 0 = 0
+    odd1 n = even1 (subInt n 1)
+  printInt (addInt (addInt (even 41) (odd 41)) (addInt (even1 41) (odd1 41)))

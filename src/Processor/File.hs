@@ -23,7 +23,6 @@ import Text.Trifecta.Result(Err(Err), explain)
 import Analysis.Denat
 import qualified Analysis.ReturnDirection as ReturnDirection
 import Analysis.Simplify
-import Backend.Close
 import qualified Backend.ClosureConvert as ClosureConvert
 import qualified Backend.ExtractExtern as ExtractExtern
 import qualified Backend.Generate as Generate
@@ -38,7 +37,6 @@ import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
 import qualified Syntax.Concrete.Unscoped as Unscoped
-import qualified Syntax.Sized.Closed as Closed
 import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Extracted as Extracted
 import qualified Syntax.Sized.Lifted as Lifted
@@ -58,7 +56,7 @@ processUnscoped
   >>=> processGroup
 
 processGroup
-  :: [(QName, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]
+  :: [(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Concrete.Expr Void)]
   -> VIX [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
 processGroup
   = prettyConcreteGroup "Concrete syntax" absurd
@@ -77,14 +75,11 @@ processGroup
   >=> denatGroup
   >=> prettyGroup "Denaturalised" vac
 
-  >=> closeGroup
-  >=> prettyGroup "Closed" vac
-
   >=> liftGroup
   >>=> prettyGroup "Lambda-lifted" vac
 
   >=> closureConvertGroup
-  >=> prettyGroup "Closure-converted" vac
+  >>=> prettyGroup "Closure-converted" vac
 
   >=> processConvertedGroup
   where
@@ -92,13 +87,10 @@ processGroup
     vac = vacuous
 
 processConvertedGroup
-  :: [(QName, Sized.Definition Closed.Expr Void)]
+  :: [(QName, Sized.Definition Lifted.Expr Void)]
   -> VIX [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
 processConvertedGroup
-  = liftConvertedGroup
-  >>=> prettyGroup "Lambda-lifted (2)" vac
-
-  >=> inferGroupDirections
+  = inferGroupDirections
   >=> addSignaturesToContext
   >=> prettyGroup "Directed (lifted)" vac
 
@@ -118,8 +110,8 @@ prettyConcreteGroup
   :: (Pretty (e QName), Monad e, Traversable e)
   => Text
   -> (v -> QName)
-  -> [(QName, SourceLoc, Concrete.PatDefinition e v, e v)]
-  -> VIX [(QName, SourceLoc, Concrete.PatDefinition e v, e v)]
+  -> [(QName, SourceLoc, Concrete.TopLevelPatDefinition e v, e v)]
+  -> VIX [(QName, SourceLoc, Concrete.TopLevelPatDefinition e v, e v)]
 prettyConcreteGroup str f defs = do
   whenVerbose 10 $ do
     VIX.log $ "----- " <> str <> " -----"
@@ -187,7 +179,7 @@ prettyGroup str f defs = do
 
 scopeCheckProgram
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
-  -> VIX [[(QName, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Type Void)]]
+  -> VIX [[(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Concrete.Type Void)]]
 scopeCheckProgram m = do
   res <- ScopeCheck.scopeCheckModule m
   let defNames = HashSet.fromMap $ void $ moduleContents m
@@ -200,7 +192,7 @@ scopeCheckProgram m = do
   return res
 
 typeCheckGroup
-  :: [(QName, SourceLoc, Concrete.PatDefinition Concrete.Expr Void, Concrete.Expr Void)]
+  :: [(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Concrete.Expr Void)]
   -> VIX [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
 typeCheckGroup
   = fmap Vector.toList . TypeCheck.checkTopLevelRecursiveDefs . Vector.fromList
@@ -234,32 +226,17 @@ denatGroup
   -> VIX [(QName, SLambda.Expr Void)]
 denatGroup defs = return [(n, denat def) | (n, def) <- defs]
 
-closeGroup
-  :: [(QName, SLambda.Expr Void)]
-  -> VIX [(QName, Closed.Expr Void)]
-closeGroup defs = forM defs $ \(x, e) -> do
-  e' <- closeExpr $ vacuous e
-  e'' <- traverse (throwError . ("closeGroup " ++) . show) e'
-  return (x, e'')
-
 liftGroup
-  :: [(QName, Closed.Expr Void)]
+  :: [(QName, SLambda.Expr Void)]
   -> VIX [[(QName, Sized.Definition Lifted.Expr Void)]]
 liftGroup defs = fmap (Sized.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
-  let (e', fs) = liftToDefinition name e
+  (e', fs) <- liftToDefinition name e
   return $ (name, e') : fmap (second $ Sized.FunctionDef Private Sized.NonClosure) fs
 
 closureConvertGroup
   :: [(QName, Sized.Definition Lifted.Expr Void)]
-  -> VIX [(QName, Sized.Definition Closed.Expr Void)]
-closureConvertGroup = ClosureConvert.convertDefinitions
-
-liftConvertedGroup
-  :: [(QName, Sized.Definition Closed.Expr Void)]
   -> VIX [[(QName, Sized.Definition Lifted.Expr Void)]]
-liftConvertedGroup defs = fmap (Sized.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
-  let (e', fs) = liftClosures name e
-  return $ (name, e') : fmap (second $ Sized.FunctionDef Private Sized.IsClosure) fs
+closureConvertGroup = ClosureConvert.convertDefinitions
 
 inferGroupDirections
   :: [(QName, Sized.Definition Lifted.Expr Void)]

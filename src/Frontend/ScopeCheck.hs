@@ -4,13 +4,13 @@ module Frontend.ScopeCheck where
 import Control.Monad.Except
 import Control.Monad.RWS
 import Data.Bifunctor
+import Data.Bitraversable
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Maybe
 import qualified Data.Vector as Vector
-import Data.Void
 
 import qualified Builtin.Names as Builtin
 import Syntax
@@ -34,7 +34,7 @@ runScopeCheck m env = (a, s)
 
 scopeCheckModule
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
-  -> VIX [[(QName, SourceLoc, Scoped.PatDefinition Scoped.Expr Void, Scoped.Type Void)]]
+  -> VIX [[(QName, SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void, Scoped.Type void)]]
 scopeCheckModule modul = do
   otherNames <- gets vixModuleNames
 
@@ -50,7 +50,7 @@ scopeCheckModule modul = do
       importAliases = multiUnions $ importedAliases otherNames <$> imports
 
       checkedDefDeps = for (HashMap.toList $ moduleContents modul) $ \(n, (loc, def)) -> do
-        let ((def', typ'), deps) = runScopeCheck (scopeCheckDefinition def) env
+        let ((def', typ'), deps) = runScopeCheck (scopeCheckTopLevelDefinition def) env
         (n, (loc, def', typ'), toHashSet def' <> toHashSet typ' <> deps)
 
       defDeps = for checkedDefDeps $ \(n, _, deps) -> (n, deps)
@@ -89,33 +89,39 @@ scopeCheckModule modul = do
   where
     for = flip map
 
-scopeCheckDefinition
+scopeCheckTopLevelDefinition
   :: Unscoped.TopLevelDefinition QName
-  -> ScopeCheck (Scoped.PatDefinition Scoped.Expr QName, Scoped.Type QName)
-scopeCheckDefinition (Unscoped.TopLevelDefinition (Unscoped.Definition a clauses mtyp)) = do
-  res <- Scoped.PatDefinition a <$> mapM scopeCheckClause clauses
-  typ <- scopeCheckExpr $ fromMaybe Unscoped.Wildcard mtyp
-  return (res, typ)
-scopeCheckDefinition (Unscoped.TopLevelDataDefinition params cs) = do
+  -> ScopeCheck (Scoped.TopLevelPatDefinition Scoped.Expr QName, Scoped.Type QName)
+scopeCheckTopLevelDefinition (Unscoped.TopLevelDefinition d) =
+  first Scoped.TopLevelPatDefinition <$> scopeCheckDefinition d
+scopeCheckTopLevelDefinition (Unscoped.TopLevelDataDefinition params cs) = do
   let pats = (\(p, n, t) -> (p, AnnoPat t $ VarPat (nameHint n) $ unqualified n)) <$> params
       typ = Unscoped.pis pats $ pure Builtin.TypeName
       paramNames = (\(_, n, _) -> unqualified n) <$> params
       abstr = abstract $ teleAbstraction $ Vector.fromList paramNames
   typ' <- scopeCheckExpr typ
-  res <- Scoped.PatDataDefinition . DataDef <$> mapM (mapM (fmap abstr . scopeCheckExpr)) cs
+  res <- Scoped.TopLevelPatDataDefinition . DataDef <$> mapM (mapM (fmap abstr . scopeCheckExpr)) cs
   return (res, typ')
+
+scopeCheckDefinition
+  :: Unscoped.Definition Unscoped.Expr QName
+  -> ScopeCheck (Scoped.PatDefinition (Scoped.Clause void Scoped.Expr QName), Scoped.Type QName)
+scopeCheckDefinition (Unscoped.Definition a clauses mtyp) = do
+  res <- Scoped.PatDefinition a <$> mapM scopeCheckClause clauses
+  typ <- scopeCheckExpr $ fromMaybe Unscoped.Wildcard mtyp
+  return (res, typ)
 
 scopeCheckClause
   :: Unscoped.Clause Unscoped.Expr QName
-  -> ScopeCheck (Scoped.Clause Scoped.Expr QName)
+  -> ScopeCheck (Scoped.Clause void Scoped.Expr QName)
 scopeCheckClause (Unscoped.Clause plicitPats e) = do
   plicitPats' <- traverse (traverse scopeCheckPat) plicitPats
 
   let pats = snd <$> plicitPats'
       vars = join (toVector <$> pats)
-      typedPats'' = second void <$> abstractPatternsTypes vars plicitPats'
+      typedPats'' = second (void . first (mapBound B)) <$> abstractPatternsTypes vars plicitPats'
 
-  Scoped.Clause typedPats'' . abstract (patternAbstraction vars) <$> scopeCheckExpr e
+  Scoped.Clause typedPats'' . abstract (fmap B . patternAbstraction vars) <$> scopeCheckExpr e
 
 scopeCheckExpr
   :: Unscoped.Expr QName
@@ -144,6 +150,19 @@ scopeCheckExpr expr = case expr of
     <$> scopeCheckExpr e1
     <*> pure p
     <*> scopeCheckExpr e2
+  Unscoped.Let defs body -> do
+    defs' <- traverse (bitraverse pure scopeCheckDefinition) defs
+    body' <- scopeCheckExpr body
+    let sortedDefs = topoSortWith (\(_, name, _) -> fromName name) (\(_, _, (d, t)) -> foldMap toHashSet d <> toHashSet t) defs'
+
+        go ds e = do
+          let ds' = Vector.fromList ds
+              abstr = letAbstraction $ fromName . snd3 <$> ds'
+          Scoped.Let
+            ((\(loc, name, (def, typ)) -> (loc, fromName name, Scoped.abstractClause abstr <$> def, abstract abstr typ)) <$> ds')
+            (abstract abstr e)
+
+    return $ foldr go body' sortedDefs
   Unscoped.Case e pats -> Scoped.Case
     <$> scopeCheckExpr e
     <*> mapM (uncurry scopeCheckBranch) pats

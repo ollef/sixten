@@ -35,10 +35,9 @@ typeOfM expr = do
       case e1type' of
         Pi _ a' _ resType | a == a' -> return $ instantiate1 e2 resType
         _ -> throwError $ "typeOfM: expected pi type " ++ show e1type'
-    Let h e s -> do
-      eType <- typeOfM e
-      v <- forall h eType
-      typeOfM $ instantiate1 (pure v) s
+    Let ds s -> do
+      xs <- forMLet ds $ \h _ t -> forall h t
+      typeOfM $ instantiateLet pure xs s
     Case _ _ retType -> return retType
     ExternCode _ retType -> return retType
   modifyIndent pred
@@ -70,10 +69,9 @@ typeOf expr = do
       case e1type' of
         Pi _ a' _ resType | a == a' -> return $ instantiate1 e2 resType
         _ -> throwError $ "typeOf: expected pi type " ++ show e1type'
-    Let h e s -> do
-      eType <- typeOf e
-      v <- forall h eType
-      typeOf $ instantiate1 (pure v) s
+    Let ds s -> do
+      xs <- forMLet ds $ \h _ t -> forall h t
+      typeOf $ instantiateLet pure xs s
     Case _ _ retType -> return retType
     ExternCode _ retType -> return retType
   modifyIndent pred

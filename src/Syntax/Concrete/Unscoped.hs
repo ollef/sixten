@@ -22,6 +22,7 @@ data Expr v
   | Pi !Plicitness (Pat (Type v) QName) (Expr v)
   | Lam !Plicitness (Pat (Type v) QName) (Expr v)
   | App (Expr v) !Plicitness (Expr v)
+  | Let (Vector (SourceLoc, Name, Definition Expr v)) (Expr v)
   | Case (Expr v) [(Pat (Expr v) QName, Expr v)]
   | ExternCode (Extern (Expr v))
   | Wildcard
@@ -76,6 +77,7 @@ instance Monad Expr where
     Pi p pat e -> Pi p (first (>>= f) pat) (e >>= f)
     Lam p pat e -> Lam p (first (>>= f) pat) (e >>= f)
     App e1 p e2 -> App (e1 >>= f) p (e2 >>= f)
+    Let ds e -> Let (bimap id (>>>= f) <$> ds) (e >>= f)
     Case e brs -> Case (e >>= f) [(first (>>= f) pat, br >>= f) | (pat, br) <- brs]
     ExternCode c -> ExternCode $ (>>= f) <$> c
     Wildcard -> Wildcard
@@ -90,6 +92,7 @@ instance Traversable Expr where
     Pi p pat e -> Pi p <$> bitraverse (traverse f) pure pat <*> traverse f e
     Lam p pat e -> Lam p <$> bitraverse (traverse f) pure pat <*> traverse f e
     App e1 p e2 -> App <$> traverse f e1 <*> pure p <*> traverse f e2
+    Let ds e -> Let <$> traverse (bitraverse pure (traverse f)) ds <*> traverse f e
     Case e brs -> Case <$> traverse f e <*> traverse (bitraverse (bitraverse (traverse f) pure) (traverse f)) brs
     ExternCode c -> ExternCode <$> traverse (traverse f) c
     Wildcard -> pure Wildcard
@@ -107,7 +110,7 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
           associate absPrec (prettyM e)
     App e1 p e2 -> prettyApp (prettyM e1) (prettyAnnotation p $ prettyM e2)
     Let ds e -> parens `above` letPrec $
-      "let" <+> align (vcat (uncurry prettyNamed . first prettyM <$> ds)) <$$> "in" <+> prettyM e
+      "let" <+> align (vcat ((\(_, name, d) -> prettyNamed (prettyM name) d) <$> ds)) <$$> "in" <+> prettyM e
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (vcat [prettyM pat <+> "->" <+> prettyM br | (pat, br) <- brs])
     ExternCode c -> prettyM c

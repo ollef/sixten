@@ -1,0 +1,4 @@
+main =
+  let f 0 = 1
+      f n = addInt n (f (subInt n 1))
+  f 5

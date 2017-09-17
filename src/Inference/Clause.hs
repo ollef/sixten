@@ -84,8 +84,8 @@ throwExpectedExplicit pat = do
 
 equaliseClauses
   :: (AppSyntax expr, Applicative expr)
-  => NonEmpty (Clause expr v)
-  -> NonEmpty (Clause expr v)
+  => NonEmpty (Clause b expr v)
+  -> NonEmpty (Clause b expr v)
 equaliseClauses clauses
   = NonEmpty.zipWith
     (uncurry etaClause)
@@ -93,8 +93,8 @@ equaliseClauses clauses
     (clauseScope <$> clauses)
   where
     go
-      :: NonEmpty [(Plicitness, Pat (PatternScope expr v) ())]
-      -> NonEmpty ([(Plicitness, Pat (PatternScope expr v) ())], [Plicitness])
+      :: NonEmpty [(Plicitness, Pat (Scope b expr v) ())]
+      -> NonEmpty ([(Plicitness, Pat (Scope b expr v) ())], [Plicitness])
     go clausePats
       | numEx == 0 && numIm == 0 = (\pats -> (pats, mempty)) <$> clausePats
       | numEx == len = NonEmpty.zipWith (first . (:)) heads $ go tails
@@ -109,15 +109,15 @@ equaliseClauses clauses
         tails = tail <$> clausePats
         len = length clausePats
     go'
-      :: NonEmpty ([(Plicitness, Pat (PatternScope expr v) ())], [Plicitness])
-      -> NonEmpty ([(Plicitness, Pat (PatternScope expr v) ())], [Plicitness])
+      :: NonEmpty ([(Plicitness, Pat (Scope b expr v) ())], [Plicitness])
+      -> NonEmpty ([(Plicitness, Pat (Scope b expr v) ())], [Plicitness])
     go' clausePats
       = NonEmpty.zipWith
         (\ps (pats, ps') -> (pats, ps ++ ps'))
         (snd <$> clausePats)
         (go $ fst <$> clausePats)
 
-    numExplicit, numImplicit :: NonEmpty [(Plicitness, Pat (PatternScope expr v) ())] -> Int
+    numExplicit, numImplicit :: NonEmpty [(Plicitness, Pat (Scope b expr v) ())] -> Int
     numExplicit = length . NonEmpty.filter (\xs -> case xs of
       (Explicit, _):_ -> True
       _ -> False)
@@ -127,8 +127,8 @@ equaliseClauses clauses
       _ -> False)
 
     addImplicit, addExplicit
-      :: [(Plicitness, Pat (PatternScope expr v) ())]
-      -> ([(Plicitness, Pat (PatternScope expr v) ())], [Plicitness])
+      :: [(Plicitness, Pat (Scope b expr v) ())]
+      -> ([(Plicitness, Pat (Scope b expr v) ())], [Plicitness])
     addImplicit pats@((Implicit, _):_) = (pats, mempty)
     addImplicit pats = ((Implicit, WildcardPat) : pats, mempty)
 
@@ -137,10 +137,10 @@ equaliseClauses clauses
 
 etaClause
   :: (AppSyntax expr, Applicative expr)
-  => [(Plicitness, Pat (PatternScope expr v) ())]
+  => [(Plicitness, Pat (Scope (Var PatternVar b) expr v) ())]
   -> [Plicitness]
-  -> PatternScope expr v
-  -> Clause expr v
+  -> Scope (Var PatternVar b) expr v
+  -> Clause b expr v
 etaClause pats extras (Scope scope)
   = Clause
     (Vector.fromList pats)
@@ -149,4 +149,4 @@ etaClause pats extras (Scope scope)
   where
     numBindings = length $ concat $ Foldable.toList . snd <$> pats
     numExtras = length extras
-    vs = zip extras $ pure . B . PatternVar <$> [numBindings - numExtras ..]
+    vs = zip extras $ pure . B . B . PatternVar <$> [numBindings - numExtras ..]
