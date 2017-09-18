@@ -333,7 +333,7 @@ gcAllocExpr _ = error "gcAllocExpr"
 productOffsets
   :: (Foldable f)
   => f (Operand TypeRep)
-  -> Gen ([Operand Int], Operand Int) -- TODO IntPtr
+  -> Gen ([Operand Int], Operand Int)
 productOffsets = fmap (first Foldable.toList) . Foldable.foldlM go (Nil, "0")
   where
     go (indices, offset) rep = do
@@ -534,67 +534,31 @@ generateBranches caseExpr branches brCont = do
       emitLabel postLabel
       return contResults
 
-    -- TODO merge with next branch
-    LitBranches lbrs@(LitBranch (Integer _) _ NonEmpty.:| _) def -> do
+    LitBranches lbrs@(LitBranch firstLit _ NonEmpty.:| _) def -> do
       let lbrs' = NonEmpty.toList lbrs
-      e0 <- generateIntExpr caseExpr
 
-      branchLabels <- Traversable.forM lbrs' $ \(LitBranch (Integer l) _) -> do
-        branchLabel <- freshLabel $ shower l
-        return (fromIntegral l, branchLabel)
+      branchLabels <- Traversable.forM lbrs' $ \(LitBranch lit _) -> do
+        branchLabel <- freshLabel $ shower lit
+        return (lit, branchLabel)
 
       defaultLabel <- freshLabel "default"
-      emit $ switch e0 defaultLabel branchLabels
 
-      contResults <- Traversable.forM (zip lbrs' branchLabels) $ \(LitBranch _ br, (_, brLabel)) -> do
-        emitLabel brLabel
-        contResult <- brCont br
-        afterBranchLabel <- gets currentLabel
-        emit $ branch postLabel
-        return (contResult, afterBranchLabel)
-
-      emitLabel defaultLabel
-      defaultContResult <- brCont def
-      afterDefaultLabel <- gets currentLabel
-      emit $ branch postLabel
-      emitLabel postLabel
-      return $ (defaultContResult, afterDefaultLabel) : contResults
-
-    LitBranches lbrs@(LitBranch (Byte _) _ NonEmpty.:| _) def -> do
-      let lbrs' = NonEmpty.toList lbrs
-      e0 <- generateByteExpr caseExpr
-
-      branchLabels <- Traversable.forM lbrs' $ \(LitBranch (Byte l) _) -> do
-        branchLabel <- freshLabel $ shower l
-        return (l, branchLabel)
-
-      defaultLabel <- freshLabel "default"
-      emit $ switch8 e0 defaultLabel branchLabels
-
-      contResults <- Traversable.forM (zip lbrs' branchLabels) $ \(LitBranch _ br, (_, brLabel)) -> do
-        emitLabel brLabel
-        contResult <- brCont br
-        afterBranchLabel <- gets currentLabel
-        emit $ branch postLabel
-        return (contResult, afterBranchLabel)
-
-      emitLabel defaultLabel
-      defaultContResult <- brCont def
-      afterDefaultLabel <- gets currentLabel
-      emit $ branch postLabel
-      emitLabel postLabel
-      return $ (defaultContResult, afterDefaultLabel) : contResults
-
-    LitBranches lbrs@(LitBranch (TypeRep _) _ NonEmpty.:| _) def -> do
-      let lbrs' = NonEmpty.toList lbrs
-      e0 <- generateIntExpr caseExpr
-
-      branchLabels <- Traversable.forM lbrs' $ \(LitBranch (TypeRep l) _) -> do
-        branchLabel <- freshLabel $ shower l
-        return (TypeRep.toInt tgt l, branchLabel)
-
-      defaultLabel <- freshLabel "default"
-      emit $ switch e0 defaultLabel branchLabels
+      case firstLit of
+        Integer _ -> do
+          e0 <- generateIntExpr caseExpr
+          emit
+            $ switch e0 defaultLabel
+            $ first (\(Integer i) -> fromIntegral i) <$> branchLabels
+        Byte _ -> do
+          e0 <- generateByteExpr caseExpr
+          emit
+            $ switch8 e0 defaultLabel
+            $ first (\(Byte b) -> b) <$> branchLabels
+        TypeRep _ -> do
+          e0 <- generateIntExpr caseExpr -- should really be generateTypeExpr
+          emit
+            $ switch e0 defaultLabel
+            $ first (\(TypeRep rep) -> TypeRep.toInt tgt rep) <$> branchLabels
 
       contResults <- Traversable.forM (zip lbrs' branchLabels) $ \(LitBranch _ br, (_, brLabel)) -> do
         emitLabel brLabel
