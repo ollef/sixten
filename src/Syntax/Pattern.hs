@@ -19,7 +19,6 @@ newtype PatternVar = PatternVar Int
 unPatternVar :: PatternVar -> Int
 unPatternVar (PatternVar i) = i
 
--- TODO: Make sure this is always reused
 patternAbstraction
   :: (Eq b, Hashable b)
   => Vector b
