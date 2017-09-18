@@ -22,6 +22,8 @@ Compiler
   Make code generation use VIX
   Try to get rid of zonking in normal TC operation
   Implement e.g. language server protocol
+  * Start doing testing of compiler components
+    - Simplifcation should be idempotent
 Error messages
   Write own error printer
   Make error message footnotes contain metavars
