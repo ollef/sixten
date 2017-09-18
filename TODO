@@ -14,7 +14,6 @@ Parsing
   Use megaparsec instead of trifecta?
   Error recovery
 Compiler
-  Make a TypeOf class and make typeOf pure?
   Make TypeRep a constructor and not a literal
   Add printing to compiler passes that are not VIX (make a MonadLog class?)
   Simplify/make consistent all the type synonyms
