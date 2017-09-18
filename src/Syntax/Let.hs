@@ -95,7 +95,6 @@ instantiateLet
 instantiateLet f vs
   = instantiate (f . fromMaybe (error "instantiateLet") . (vs Vector.!?) . unLetVar)
 
--- TODO: Make sure this is always reused
 letAbstraction :: (Eq a, Hashable a) => Vector a -> a -> Maybe LetVar
 letAbstraction vs = fmap LetVar . hashedElemIndex vs
 

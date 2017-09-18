@@ -258,7 +258,6 @@ instantiateTele
 instantiateTele f vs
   = instantiate (f . fromMaybe (error "instantiateTele") . (vs Vector.!?) . unTele)
 
--- TODO: Make sure this is always reused
 teleAbstraction :: (Eq a, Hashable a) => Vector a -> a -> Maybe Tele
 teleAbstraction vs = fmap Tele . hashedElemIndex vs
 

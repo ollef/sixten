@@ -219,10 +219,11 @@ inferDefinition
   -> VIX (Definition Expr MetaVar, Signature MetaReturnIndirect)
 inferDefinition MetaVar {metaFunSig = Just (retDir, argDirs)} (FunctionDef vis cl (Function args s)) = do
   vs <- forMTele args $ \h _ _ -> exists h MProjection Nothing
+  let abstr = teleAbstraction vs
   args' <- forMTele args $ \h d szScope -> do
     let sz = instantiateTele pure vs szScope
     (sz', _szLoc) <- infer sz
-    let szScope' = abstract (teleAbstraction vs) sz'
+    let szScope' = abstract abstr sz'
     return $ TeleArg h d szScope'
   let e = instantiateTele pure vs s
   (e', loc) <- infer e
@@ -231,7 +232,7 @@ inferDefinition MetaVar {metaFunSig = Just (retDir, argDirs)} (FunctionDef vis c
       glbdir <- maxMetaReturnIndirect loc m
       unifyMetaReturnIndirect glbdir m
     ReturnDirect _ -> return ()
-  let s' = abstract (teleAbstraction vs) e'
+  let s' = abstract abstr e'
   return (FunctionDef vis cl $ Function (Telescope args') s', FunctionSig retDir argDirs)
 inferDefinition _ (ConstantDef _ (Constant (Anno (Global glob) _))) =
   return (AliasDef, AliasSig glob)
