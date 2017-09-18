@@ -27,7 +27,6 @@ Error messages
   Make error message footnotes contain metavars
   Use prettyprinter library
 Language
-  * Where expressions
   * Pointer-align everything and revert (most of) the alignment stuff
   Named implicit arguments (maybe names should be mandatory?)
   Laziness

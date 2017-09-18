@@ -25,6 +25,13 @@ letTypeSig =
       j = 100
   addInt i j
 
+wheres = addInt i j
+  where
+    i : Int
+    i = 23
+    j : Int
+    j = 100
+
 type List a = Nil | Cons a (Ptr (List a))
 
 map f (Ref Nil) = Ref Nil
@@ -37,5 +44,5 @@ main = map printInt
   (Ref (Cons mutualLets
   (Ref (Cons letArg
   (Ref (Cons letTypeSig
-  (Ref Nil)))))))))))))
-
+  (Ref (Cons wheres
+  (Ref Nil)))))))))))))))

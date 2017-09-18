@@ -304,7 +304,9 @@ branches = manyIndentedSameCol branch
     branch = (,) <$> pattern <*% symbol "->" <*>% expr
 
 expr :: Parser (Expr QName)
-expr = locatedExpr
+expr
+  = locatedExpr
+  $ optionalWheres
   $ Unscoped.pis <$> Trifecta.try (somePatternBindings <*% symbol "->") <*>% expr
   <|> plicitPi Implicit <$ symbol "{" <*>% expr <*% symbol "}" <*% symbol "->" <*>% expr
   <|> Unscoped.apps <$> atomicExpr <*> manySI argument <**> (arr <|> pure id)
@@ -318,6 +320,13 @@ expr = locatedExpr
     argument
       = (,) Implicit <$ symbol "{" <*>% expr <*% symbol "}"
       <|> (,) Explicit <$> atomicExpr
+
+    optionalWheres e = e <**>
+      (mkLet <$% reserved "where" <*>% dropAnchor (someSameCol $ located def)
+      <|> pure id
+      )
+      where
+        mkLet xs = Let $ Vector.fromList [(loc, n, d) | (loc, (n, d)) <- xs]
 
 -------------------------------------------------------------------------------
 -- * Extern C
