@@ -129,7 +129,6 @@ matchCon expr failVar retType exprs clauses expr0 = do
 
   cbrs <- forM cs $ \c -> do
     let clausesStartingWithC = NonEmpty.filter ((== c) . firstCon) clauses
-    -- TODO Is there a nicer way to do this?
     params <- case clausesStartingWithC of
       firstClause:_ -> return $ typeParams $ firstPattern firstClause
       [] -> do
