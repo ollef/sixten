@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
--- TODO rename to Module?
 module Processor.File where
 
 import Control.Monad.Except
