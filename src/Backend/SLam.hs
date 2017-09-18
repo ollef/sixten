@@ -58,7 +58,7 @@ slam expr = do
             $ Scope
             $ apps (Abstract.Con qc)
             $ Vector.fromList (fmap (pure . pure) <$> es)
-            <> iforTele tele (\i _ a _ -> (a, pure $ B $ Tele i))
+            <> iforTele tele (\i _ a _ -> (a, pure $ B $ TeleVar i))
     Abstract.Con _qc -> throwError "slam impossible"
     Abstract.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamSized e2
     Abstract.Case e brs _retType -> SLambda.Case <$> slamSized e <*> slamBranches brs

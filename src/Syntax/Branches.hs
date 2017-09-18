@@ -28,7 +28,7 @@ data Branches c a expr v
   | LitBranches (NonEmpty (LitBranch expr v)) (expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-data ConBranch c a expr v = ConBranch c (Telescope a expr v) (Scope Tele expr v)
+data ConBranch c a expr v = ConBranch c (Telescope a expr v) (Scope TeleVar expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 data LitBranch expr v = LitBranch Literal (expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)

@@ -101,15 +101,15 @@ etaLams
   :: (QName -> Bool)
   -> Int
   -> Telescope Plicitness Expr v
-  -> Scope Tele Expr v
+  -> Scope TeleVar Expr v
   -> Expr v
 etaLams glob applied tele scope = case go 0 $ fromScope scope of
   Nothing -> lams tele scope
   Just (i, expr) -> lams (takeTele (len - i) tele) $ toScope expr
   where
     go i (App e a (Var (B n)))
-      | n == Tele (len - i')
-      , a == as Vector.! unTele n
+      | n == TeleVar (len - i')
+      , a == as Vector.! unTeleVar n
       , B n `Set.notMember` toSet (second (const ()) <$> e)
       = case go i' e of
         Nothing | etaAllowed e i' -> Just (i', e)

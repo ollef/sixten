@@ -18,7 +18,7 @@ import Syntax.Name
 import Syntax.Telescope
 import Util
 
-newtype DataDef typ v = DataDef { dataConstructors :: [ConstrDef (Scope Tele typ v)] }
+newtype DataDef typ v = DataDef { dataConstructors :: [ConstrDef (Scope TeleVar typ v)] }
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 instance GlobalBound DataDef where

@@ -640,7 +640,7 @@ funSubtypes
   -> Vector Plicitness
   -> VIX
     ( Telescope Plicitness Abstract.Expr MetaA
-    , Scope Tele Abstract.Expr MetaA
+    , Scope TeleVar Abstract.Expr MetaA
     , Vector (AbstractM -> VIX AbstractM)
     )
 funSubtypes startType plics = go plics startType mempty mempty mempty
@@ -944,8 +944,8 @@ generaliseDef vs (DataDefinition (DataDef cs) rep) typ = do
   return (DataDefinition (DataDef cs') grep, gtyp)
   where
     varIndex = hashedElemIndex vs
-    f v = pure $ maybe (F v) (B . Tele) (varIndex v)
-    g = pure . B . (+ Tele (length vs))
+    f v = pure $ maybe (F v) (B . TeleVar) (varIndex v)
+    g = pure . B . (+ TeleVar (length vs))
 
 abstractMs
   :: Foldable t

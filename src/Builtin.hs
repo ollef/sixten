@@ -111,8 +111,8 @@ apply target numArgs
   $ Sized.Function
     (Telescope
     $ Vector.cons (TeleArg "this" () $ Scope ptrRep)
-    $ (\n -> TeleArg (fromText $ "type" <> shower (unTele n)) () $ Scope typeRep) <$> Vector.enumFromN 0 numArgs
-    <|> (\n -> TeleArg (fromText $ "x" <> shower (unTele n)) () $ Scope $ pure $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs)
+    $ (\n -> TeleArg (fromText $ "type" <> shower (unTeleVar n)) () $ Scope typeRep) <$> Vector.enumFromN 0 numArgs
+    <|> (\n -> TeleArg (fromText $ "x" <> shower (unTeleVar n)) () $ Scope $ pure $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs)
   $ toScope
   $ Lifted.Sized (Lifted.Global "Sixten.Builtin.apply.unknownSize")
   $ Lifted.Case (deref target $ Lifted.Var $ B 0)
@@ -135,7 +135,7 @@ apply target numArgs
     directPtr = Direct $ TypeRep.ptr target
     directType = Direct $ TypeRep.typeRep target
 
-    br :: Int -> Lifted.Expr (Var Tele (Var Tele Void))
+    br :: Int -> Lifted.Expr (Var TeleVar (Var TeleVar Void))
     br arity
       | numArgs < arity
         = Lifted.Con Ref
@@ -145,12 +145,12 @@ apply target numArgs
         $ Vector.cons (Lifted.Sized intRep $ Lifted.Lit $ Integer $ fromIntegral $ arity - numArgs)
         $ Vector.cons (Lifted.Sized ptrRep $ Lifted.Var $ F $ B 0)
         $ (\n -> Lifted.Sized typeRep $ Lifted.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs
-        <|> (\n -> Lifted.Sized (Lifted.Var $ F $ B $ 1 + n) $ Lifted.Var $ F $ B $ 1 + Tele numArgs + n) <$> Vector.enumFromN 0 numArgs
+        <|> (\n -> Lifted.Sized (Lifted.Var $ F $ B $ 1 + n) $ Lifted.Var $ F $ B $ 1 + TeleVar numArgs + n) <$> Vector.enumFromN 0 numArgs
       | numArgs == arity
         = Lifted.PrimCall (ReturnIndirect OutParam) (Lifted.Var $ B 0)
         $ Vector.cons (directPtr, Lifted.Sized ptrRep $ Lifted.Var $ F $ B 0)
         $ (\n -> (directType, Lifted.Sized typeRep $ Lifted.Var $ F $ B $ 1 + n)) <$> Vector.enumFromN 0 numArgs
-        <|> (\n -> (Indirect, Lifted.Sized (Lifted.Var $ F $ B $ 1 + n) $ Lifted.Var $ F $ B $ 1 + Tele numArgs + n)) <$> Vector.enumFromN 0 numArgs
+        <|> (\n -> (Indirect, Lifted.Sized (Lifted.Var $ F $ B $ 1 + n) $ Lifted.Var $ F $ B $ 1 + TeleVar numArgs + n)) <$> Vector.enumFromN 0 numArgs
       | otherwise
         = Lifted.Call (global $ applyName $ numArgs - arity)
         $ Vector.cons
@@ -168,8 +168,8 @@ pap target k m
   $ Sized.Function
     (Telescope
     $ Vector.cons (TeleArg "this" () $ Scope ptrRep)
-    $ (\n -> TeleArg (fromText $ "type" <> shower (unTele n)) () $ Scope typeRep) <$> Vector.enumFromN 0 k
-    <|> (\n -> TeleArg (fromText $ "x" <> shower (unTele n)) () $ Scope $ pure $ B $ 1 + n) <$> Vector.enumFromN 0 k)
+    $ (\n -> TeleArg (fromText $ "type" <> shower (unTeleVar n)) () $ Scope typeRep) <$> Vector.enumFromN 0 k
+    <|> (\n -> TeleArg (fromText $ "x" <> shower (unTeleVar n)) () $ Scope $ pure $ B $ 1 + n) <$> Vector.enumFromN 0 k)
   $ toScope
   $ Lifted.Sized (Lifted.Global "Sixten.Builtin.pap.unknownSize")
   $ Lifted.Case (deref target $ Lifted.Var $ B 0)
@@ -181,15 +181,15 @@ pap target k m
       $ Vector.cons (TeleArg "_" () $ Scope ptrRep)
       $ Vector.cons (TeleArg "_" () $ Scope intRep)
       $ Vector.cons (TeleArg "that" () $ Scope ptrRep)
-      $ (\n -> TeleArg (fromText $ "type" <> shower (unTele n)) () $ Scope typeRep) <$> Vector.enumFromN 0 m
-      <|> (\n -> TeleArg (fromText $ "y" <> shower (unTele n)) () $ Scope $ pure $ B $ 3 + n) <$> Vector.enumFromN 0 m)
+      $ (\n -> TeleArg (fromText $ "type" <> shower (unTeleVar n)) () $ Scope typeRep) <$> Vector.enumFromN 0 m
+      <|> (\n -> TeleArg (fromText $ "y" <> shower (unTeleVar n)) () $ Scope $ pure $ B $ 3 + n) <$> Vector.enumFromN 0 m)
     (toScope
       $ Lifted.Call (global $ applyName $ m + k)
       $ Vector.cons (Lifted.Sized ptrRep $ Lifted.Var $ B 2)
       $ (\n -> Lifted.Sized typeRep $ Lifted.Var $ B $ 3 + n) <$> Vector.enumFromN 0 m
       <|> (\n -> Lifted.Sized typeRep $ Lifted.Var $ F $ B $ 1 + n) <$> Vector.enumFromN 0 k
-      <|> (\n -> Lifted.Sized (Lifted.Var $ B $ 3 + n) $ Lifted.Var $ B $ 3 + Tele m + n) <$> Vector.enumFromN 0 m
-      <|> (\n -> Lifted.Sized (Lifted.Var $ F $ B $ 1 + n) $ Lifted.Var $ F $ B $ 1 + Tele k + n) <$> Vector.enumFromN 0 k
+      <|> (\n -> Lifted.Sized (Lifted.Var $ B $ 3 + n) $ Lifted.Var $ B $ 3 + TeleVar m + n) <$> Vector.enumFromN 0 m
+      <|> (\n -> Lifted.Sized (Lifted.Var $ F $ B $ 1 + n) $ Lifted.Var $ F $ B $ 1 + TeleVar k + n) <$> Vector.enumFromN 0 k
     )
   where
     intRep = Lifted.Lit $ TypeRep $ TypeRep.int target

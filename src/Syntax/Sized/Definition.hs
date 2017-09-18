@@ -16,7 +16,7 @@ import Syntax.Telescope
 import Util.TopoSort
 
 data Function expr v
-  = Function (Telescope () expr v) (Scope Tele expr v)
+  = Function (Telescope () expr v) (Scope TeleVar expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 newtype Constant expr v

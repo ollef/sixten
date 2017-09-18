@@ -57,7 +57,7 @@ instance Monad Expr where
   return = Var
   expr >>= f = bind f Global expr
 
-pattern Lams :: Telescope () Expr v -> Scope Tele Expr v -> Expr v
+pattern Lams :: Telescope () Expr v -> Scope TeleVar Expr v -> Expr v
 pattern Lams tele s <- (bindingsViewM lamView -> Just (tele, s))
 
 instance GlobalBind Expr where

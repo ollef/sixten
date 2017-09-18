@@ -26,7 +26,7 @@ data Expr v
 
 type Type = Expr
 
-type FunSignature = (Telescope () Type Void, Scope Tele Type Void)
+type FunSignature = (Telescope () Type Void, Scope TeleVar Type Void)
 
 -------------------------------------------------------------------------------
 -- Helpers

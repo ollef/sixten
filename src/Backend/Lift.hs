@@ -87,7 +87,7 @@ liftExpr expr = case expr of
 
 liftLambda
   :: Telescope () SLambda.Expr Meta
-  -> Scope Tele SLambda.Expr Meta
+  -> Scope TeleVar SLambda.Expr Meta
   -> LambdaLift (Lifted.Expr Meta)
 liftLambda tele lamScope = do
   lift $ logMeta 20 "liftLambda" $ Sized.Function tele lamScope
@@ -108,9 +108,9 @@ liftLambda tele lamScope = do
 
 closeLambda
   :: Telescope () SLambda.Expr Meta
-  -> Scope Tele SLambda.Expr Meta
+  -> Scope TeleVar SLambda.Expr Meta
   -> Vector Meta
-  -> LambdaLift (Telescope () Lifted.Expr Void, Scope Tele Lifted.Expr Void)
+  -> LambdaLift (Telescope () Lifted.Expr Void, Scope TeleVar Lifted.Expr Void)
 closeLambda tele lamScope sortedFvs = do
   vs <- forTeleWithPrefixM tele $ \h () s vs -> do
     let e = instantiateTele pure vs s
