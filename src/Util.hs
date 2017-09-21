@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, Rank2Types #-}
+{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, Rank2Types, TemplateHaskell #-}
 module Util where
 
 import Bound
@@ -8,6 +8,7 @@ import Control.Monad.State
 import Data.Bifoldable
 import Data.Bifunctor
 import Data.Bits
+import Data.Deriving
 import Data.Foldable
 import Data.Hashable
 import Data.HashMap.Lazy(HashMap)
@@ -112,7 +113,11 @@ ifor :: Traversable t => t a -> (Int -> a -> b) -> t b
 ifor = flip imap
 
 data Unit a = Unit
-  deriving (Functor, Foldable, Traversable)
+  deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
+
+deriveEq1 ''Unit
+deriveOrd1 ''Unit
+deriveShow1 ''Unit
 
 instance Applicative Unit where
   pure _ = Unit
