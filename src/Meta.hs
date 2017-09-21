@@ -49,7 +49,7 @@ instance Hashable (MetaVar e) where
 
 instance Show1 e => Show (MetaVar e) where
   showsPrec d (MetaVar i t h _) = showParen (d > 10) $
-    showString "MetaA" . showChar ' ' . showsPrec 11 i .
+    showString "Meta" . showChar ' ' . showsPrec 11 i .
     showChar ' ' . showsPrec1 11 t . showChar ' ' . showsPrec 11 h .
     showChar ' ' . showString "<Ref>"
 
