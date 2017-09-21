@@ -9,6 +9,7 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import Syntax hiding (lamView)
+import TypeRep(TypeRep)
 import Util
 
 data Expr v
@@ -25,6 +26,16 @@ data Expr v
   deriving (Foldable, Functor, Traversable)
 
 type Type = Expr
+
+-------------------------------------------------------------------------------
+-- Helpers
+pattern MkType :: TypeRep -> Expr v
+pattern MkType rep <- (ignoreAnno -> Lit (TypeRep rep))
+  where MkType rep = Lit (TypeRep rep)
+
+ignoreAnno :: Expr v -> Expr v
+ignoreAnno (Anno e _) = e
+ignoreAnno e = e
 
 appsView :: Expr v -> (Expr v, Vector (Expr v))
 appsView = go []

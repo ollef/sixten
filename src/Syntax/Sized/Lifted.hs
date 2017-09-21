@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings, PatternSynonyms, TemplateHaskell #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings, PatternSynonyms, ViewPatterns, TemplateHaskell #-}
 module Syntax.Sized.Lifted where
 
 import Control.Monad
@@ -9,6 +9,7 @@ import qualified Data.Vector as Vector
 import Data.Void
 
 import Syntax hiding (Definition)
+import TypeRep(TypeRep)
 import Util
 
 data Expr v
@@ -33,12 +34,20 @@ type FunSignature = (Telescope () Type Void, Scope TeleVar Type Void)
 pattern Sized :: Type v -> Expr v -> Expr v
 pattern Sized sz e = Anno e sz
 
+pattern MkType :: TypeRep -> Expr v
+pattern MkType rep <- (ignoreAnno -> Lit (TypeRep rep))
+  where MkType rep = Lit (TypeRep rep)
+
+ignoreAnno :: Expr v -> Expr v
+ignoreAnno (Anno e _) = e
+ignoreAnno e = e
+
 typeOf :: Expr v -> Expr v
-typeOf (Anno _ sz) = sz
+typeOf (Anno _ rep) = rep
 typeOf _ = error "Lifted.typeOf"
 
 typeDir :: Expr v -> Direction
-typeDir (Lit (TypeRep rep)) = Direct rep
+typeDir (MkType rep) = Direct rep
 typeDir _ = Indirect
 
 callsView :: Expr v -> Maybe (Expr v, Vector (Expr v))

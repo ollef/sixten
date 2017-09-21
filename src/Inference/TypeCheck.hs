@@ -745,7 +745,7 @@ checkConstrDef
 checkConstrDef (ConstrDef c typ) = do
   typ' <- zonk =<< checkPoly typ Builtin.Type
   (sizes, ret) <- go typ'
-  let size = foldl' productType (Abstract.Lit $ TypeRep TypeRep.Unit) sizes
+  let size = foldl' productType (Abstract.MkType TypeRep.UnitRep) sizes
   return (ConstrDef c typ', ret, size)
   where
     go :: AbstractM -> VIX ([AbstractM], AbstractM)
@@ -778,16 +778,16 @@ checkDataType name (DataDef cs) typ = do
 
   mapM_ (unify [] constrRetType) rets
 
-  intRep <- gets $ TypeRep.int . vixTarget
+  intRep <- gets $ TypeRep.intRep . vixTarget
 
   let tagRep = case cs of
-        [] -> TypeRep.Unit
-        [_] -> TypeRep.Unit
-        _ -> intRep -- TODO could be smarter
+        [] -> TypeRep.UnitRep
+        [_] -> TypeRep.UnitRep
+        _ -> intRep
 
       typeRep
-        = productType (Abstract.Lit $ TypeRep tagRep)
-        $ foldl' sumType (Abstract.Lit $ TypeRep TypeRep.Unit) sizes
+        = productType (Abstract.MkType tagRep)
+        $ foldl' sumType (Abstract.MkType TypeRep.UnitRep) sizes
 
   unify [] Builtin.Type =<< typeOfM constrRetType
 
@@ -1100,13 +1100,13 @@ checkTopLevelRecursiveDefs defs = do
 -------------------------------------------------------------------------------
 -- Type helpers
 productType :: Abstract.Expr v -> Abstract.Expr v -> Abstract.Expr v
-productType (Abstract.Lit (TypeRep TypeRep.Unit)) e = e
-productType e (Abstract.Lit (TypeRep TypeRep.Unit)) = e
-productType (Abstract.Lit (TypeRep a)) (Abstract.Lit (TypeRep b)) = Abstract.Lit $ TypeRep $ TypeRep.product a b
+productType (Abstract.MkType TypeRep.UnitRep) e = e
+productType e (Abstract.MkType TypeRep.UnitRep) = e
+productType (Abstract.MkType a) (Abstract.MkType b) = Abstract.MkType $ TypeRep.product a b
 productType a b = Builtin.ProductTypeRep a b
 
 sumType :: Abstract.Expr v -> Abstract.Expr v -> Abstract.Expr v
-sumType (Abstract.Lit (TypeRep TypeRep.Unit)) e = e
-sumType e (Abstract.Lit (TypeRep TypeRep.Unit)) = e
-sumType (Abstract.Lit (TypeRep a)) (Abstract.Lit (TypeRep b)) = Abstract.Lit $ TypeRep $ TypeRep.sum a b
+sumType (Abstract.MkType TypeRep.UnitRep) e = e
+sumType e (Abstract.MkType TypeRep.UnitRep) = e
+sumType (Abstract.MkType a) (Abstract.MkType b) = Abstract.MkType $ TypeRep.sum a b
 sumType a b = Builtin.SumTypeRep a b

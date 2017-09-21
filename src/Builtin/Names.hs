@@ -54,9 +54,6 @@ pattern ProductTypeRepName <- ((==) "Sixten.Builtin.productTypeRep" -> True) whe
 pattern ProductTypeRep :: Expr t -> Expr t -> Expr t
 pattern ProductTypeRep e1 e2 = App (App (Global ProductTypeRepName) Explicit e1) Explicit e2
 
-pattern ProductPaddingName :: QName
-pattern ProductPaddingName <- ((==) "Sixten.Builtin.productPadding" -> True) where ProductPaddingName = "Sixten.Builtin.productPadding"
-
 pattern SumTypeRepName :: QName
 pattern SumTypeRepName <- ((==) "Sixten.Builtin.sumTypeRep" -> True) where SumTypeRepName = "Sixten.Builtin.sumTypeRep"
 pattern SumTypeRep :: Expr t -> Expr t -> Expr t
@@ -64,9 +61,6 @@ pattern SumTypeRep e1 e2 = App (App (Global SumTypeRepName) Explicit e1) Explici
 
 pattern SizeOfName :: QName
 pattern SizeOfName <- ((==) "Sixten.Builtin.sizeOf" -> True) where SizeOfName = "Sixten.Builtin.sizeOf"
-
-pattern AlignmentOfName :: QName
-pattern AlignmentOfName <- ((==) "Sixten.Builtin.alignmentOf" -> True) where AlignmentOfName = "Sixten.Builtin.alignmentOf"
 
 pattern RefName :: Constr
 pattern RefName <- ((==) "Ref" -> True) where RefName = "Ref"

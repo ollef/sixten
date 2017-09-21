@@ -46,19 +46,18 @@ import VIX
 -- TODO: Clean this up
 type DependencySigs = HashMap QName Text
 
-processUnscoped
+process
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
   -> VIX [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
-processUnscoped
+process = frontend >=> backend
+
+frontend
+  :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
+  -> VIX [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
+frontend
   = scopeCheckProgram
   >=> mapM (prettyConcreteGroup "Concrete syntax" absurd)
-  >>=> processGroup
-
-processGroup
-  :: [(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Concrete.Expr Void)]
-  -> VIX [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
-processGroup
-  = prettyConcreteGroup "Concrete syntax" absurd
+  >>=> prettyConcreteGroup "Concrete syntax" absurd
   >=> typeCheckGroup
 
   >=> prettyTypedGroup "Abstract syntax" absurd
@@ -68,7 +67,11 @@ processGroup
 
   >=> addGroupToContext
 
-  >=> slamGroup
+backend
+  :: [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  -> VIX [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
+backend
+  = slamGroup
   >=> prettyGroup "SLammed" vac
 
   >=> denatGroup

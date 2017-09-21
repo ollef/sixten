@@ -91,12 +91,12 @@ data Direct = Void | Int | Array
   deriving (Eq, Ord, Show)
 
 directType :: TypeRep -> Direct
-directType TypeRep.Unit = Void
-directType (TypeRep sz _) | sz <= 8 = Int
+directType TypeRep.UnitRep = Void
+directType (TypeRep sz) | sz <= 8 = Int
 directType _ = Array
 
 directT :: TypeRep -> C
-directT rep@(TypeRep sz _) = case directType rep of
+directT rep@(TypeRep sz) = case directType rep of
   Void -> "void"
   Int -> "i" <> shower (sz * 8)
   Array -> "[" <> shower sz <+> "x" <+> "i8]"
@@ -314,7 +314,7 @@ loadDirect rep h o = case directType rep of
   where
     t = directT rep
     nonVoidCase = do
-      directPtr <- "direct-ptr" =: Instr ("bitcast" <+> pointer o <+> "to" <+> t<> "*")
+      directPtr <- "direct-ptr" =: Instr ("bitcast" <+> pointer o <+> "to" <+> t <> "*")
       h =: Instr ("load" <+> t <> "," <+> t <> "*" <+> unOperand directPtr)
 
 storeDirect
@@ -463,7 +463,7 @@ declareConstant dir name
   where
     typ = case dir of
       Indirect -> pointerT
-      Direct TypeRep.Unit -> pointerT
+      Direct TypeRep.UnitRep -> pointerT
       Direct rep -> directT rep
 
 functionT :: RetDir -> Vector Direction -> C
@@ -476,7 +476,7 @@ returnVoid :: Instr ()
 returnVoid = Instr $ "ret" <+> voidT
 
 returnDirect :: TypeRep -> Operand Direct -> Instr ()
-returnDirect TypeRep.Unit _ = Instr "ret void"
+returnDirect TypeRep.UnitRep _ = Instr "ret void"
 returnDirect sz o = Instr $ "ret" <+> direct sz o
 
 returnPtr :: Operand Ptr -> Instr ()

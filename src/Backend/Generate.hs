@@ -83,11 +83,11 @@ loadVar rep h (IndirectVar o) = loadDirect rep h o
 
 loadIntVar :: NameHint -> Var -> Gen (Operand Int)
 loadIntVar h v = do
-  intRep <- gets $ TypeRep.int . target
+  intRep <- gets $ TypeRep.intRep . target
   directIntOperand <$> loadVar intRep h v
 
 loadByteVar :: NameHint -> Var -> Gen (Operand Word8)
-loadByteVar h v = directByteOperand <$> loadVar TypeRep.byte h v
+loadByteVar h v = directByteOperand <$> loadVar TypeRep.ByteRep h v
 
 loadTypeVar :: NameHint -> Var -> Gen (Operand TypeRep)
 loadTypeVar h v = do
@@ -112,8 +112,7 @@ typeDirect = Operand . unOperand
 indirect :: NameHint -> Var -> Gen (Operand Ptr)
 indirect _ VoidVar = return "null"
 indirect n (DirectVar rep o) = do
-  tgt <- gets target
-  result <- n =: alloca (Operand $ shower $ TypeRep.toInt tgt rep)
+  result <- n =: alloca (Operand $ shower $ TypeRep.size rep)
   storeDirect rep o result
   return result
 indirect _ (IndirectVar o) = return o
@@ -147,7 +146,7 @@ directed
   -> Var
   -> Gen (f Var)
 directed d v = case d of
-  Direct TypeRep.Unit -> return empty
+  Direct TypeRep.UnitRep -> return empty
   Direct rep -> pure . DirectVar rep <$> loadVar rep mempty v
   Indirect -> pure . IndirectVar <$> indirect mempty v
 
@@ -158,14 +157,13 @@ generateExpr expr typ = case expr of
   Var v -> return v
   Global g -> generateGlobal g
   Lit (Integer l) -> do
-    intRep <- gets $ TypeRep.int . target
+    intRep <- gets $ TypeRep.intRep . target
     return $ DirectVar intRep $ shower l
   Lit (Byte l) ->
-    return $ DirectVar TypeRep.byte $ shower l
+    return $ DirectVar TypeRep.ByteRep $ shower l
   Lit (TypeRep rep) -> do
-    tgt <- gets target
-    let typeRep = TypeRep.typeRep tgt
-    return $ DirectVar typeRep $ shower $ TypeRep.toInt tgt rep
+    typeRep <- gets $ TypeRep.typeRep . target
+    return $ DirectVar typeRep $ shower $ TypeRep.size rep
   Con qc es -> generateCon qc es typ
   Call funExpr es -> do
     (retDir, argDirs) <- funSignature funExpr $ Vector.length es
@@ -175,7 +173,7 @@ generateExpr expr typ = case expr of
     v <- generateExpr e $ unknownSize "let"
     generateExpr (Bound.instantiate1 (pure v) s) typ
   Case e brs -> case typ of
-    Lit (TypeRep rep) -> do
+    MkType rep -> do
       rets <- generateBranches e brs $ \br -> do
         v <- generateExpr br typ
         loadVar rep "case-result" v
@@ -192,32 +190,35 @@ generateExpr expr typ = case expr of
   Anno e typ' -> generateExpr e typ'
 
 generateTypeExpr :: Expr Var -> Gen (Operand TypeRep)
+generateTypeExpr (MkType rep) = return (shower $ TypeRep.size rep)
 generateTypeExpr expr = do
   typeRep <- gets $ TypeRep.typeRep . target
   repVar <- generateExpr expr $ Lit $ TypeRep typeRep
   loadTypeVar "typeRep" repVar
 
 generateTypeSize :: Expr Var -> Gen (Operand TypeRep, Operand Int)
-generateTypeSize (Lit (TypeRep rep)) = do
-  tgt <- gets target
-  return (shower $ TypeRep.toInt tgt rep, shower $ TypeRep.size rep)
+generateTypeSize (MkType rep) = return (shower $ TypeRep.size rep, shower $ TypeRep.size rep)
 generateTypeSize typ = do
   rep <- generateTypeExpr typ
+  size <- generateSizeOf rep
+  return (rep, size)
+
+generateSizeOf :: Operand TypeRep -> Gen (Operand Int)
+generateSizeOf rep = do
   typeRep <- gets $ TypeRep.typeRep . target
-  size <- generateIntExpr
+  generateIntExpr
     $ Call (Global Builtin.SizeOfName)
     $ pure $ pure $ DirectVar typeRep $ typeDirect rep
-  return (rep, size)
 
 generateIntExpr :: Expr Var -> Gen (Operand Int)
 generateIntExpr expr = do
-  intRep <- gets $ TypeRep.int . target
+  intRep <- gets $ TypeRep.intRep . target
   sizeVar <- generateExpr expr $ Lit $ TypeRep intRep
   loadIntVar "size" sizeVar
 
 generateByteExpr :: Expr Var -> Gen (Operand Word8)
 generateByteExpr expr = do
-  sizeVar <- generateExpr expr $ Lit $ TypeRep TypeRep.byte
+  sizeVar <- generateExpr expr $ Lit $ TypeRep TypeRep.ByteRep
   loadByteVar "size" sizeVar
 
 unknownSize :: Name -> Expr v
@@ -235,7 +236,7 @@ generateCall lang retDir funExpr es typ = do
   fun <- generateFunOp funExpr retDir argDirs
   args <- join <$> mapM (uncurry generateDirectedExpr) es
   case retDir of
-    ReturnDirect TypeRep.Unit -> do
+    ReturnDirect TypeRep.UnitRep -> do
       emit $ varCall lang voidT fun args
       return VoidVar
     ReturnDirect rep -> do
@@ -261,9 +262,7 @@ storeExpr expr typ ret = case expr of
     varcpy ret v sz
   Lit (Integer l) -> storeInt (shower l) ret
   Lit (Byte l) -> storeByte (shower l) ret
-  Lit (TypeRep l) -> do
-    tgt <- gets target
-    storeInt (shower $ TypeRep.toInt tgt l) ret
+  Lit (TypeRep l) -> storeInt (shower $ TypeRep.size l) ret
   Con qc es -> storeCon qc es ret
   Call funExpr es -> do
     (retDir, argDirs) <- funSignature funExpr $ Vector.length es
@@ -288,7 +287,7 @@ storeCall lang retDir funExpr es typ ret = do
   fun <- generateFunOp funExpr retDir argDirs
   args <- join <$> mapM (uncurry generateDirectedExpr) es
   case retDir of
-    ReturnDirect TypeRep.Unit -> emit $ varCall lang voidT fun args
+    ReturnDirect TypeRep.UnitRep -> emit $ varCall lang voidT fun args
     ReturnDirect rep -> do
       res <- "call-return" =: varCall lang (directT rep) fun args
       storeDirect rep res ret
@@ -321,7 +320,7 @@ gcAllocExpr :: Expr Var -> Gen (Operand Ptr)
 gcAllocExpr (Anno expr typ) = do
   rep <- generateTypeExpr typ
   typeRep <- gets $ TypeRep.typeRep . target
-  sz <- generateIntExpr $ Call (Global Builtin.SizeOfName) $ pure $ pure $ DirectVar typeRep $ typeDirect rep
+  sz <- generateSizeOf rep
   ref <- gcAlloc sz
   let typ' = case typ of
         Lit _ -> typ
@@ -331,39 +330,54 @@ gcAllocExpr (Anno expr typ) = do
 gcAllocExpr _ = error "gcAllocExpr"
 
 productOffsets
-  :: (Foldable f)
+  :: Foldable f
   => f (Operand TypeRep)
-  -> Gen ([Operand Int], Operand Int)
+  -> Gen ([Operand Int], Operand TypeRep)
 productOffsets = fmap (first Foldable.toList) . Foldable.foldlM go (Nil, "0")
   where
-    go (indices, offset) rep = do
+    go (indices, fullRep) rep = do
       typeRep <- gets $ TypeRep.typeRep . target
-      intRep <- gets $ TypeRep.int . target
-      index <- generateIntExpr
-        $ Call (Global Builtin.ProductPaddingName)
+      fullRep' <- generateTypeExpr
+        $ Call (Global Builtin.ProductTypeRepName)
         $ Vector.fromList
-          [ pure $ DirectVar intRep $ intDirect offset
+          [ pure $ DirectVar typeRep $ typeDirect fullRep
           , pure $ DirectVar typeRep $ typeDirect rep
           ]
-      size <- generateIntExpr
-        $ Call (Global Builtin.SizeOfName)
-        $ pure $ pure $ DirectVar typeRep $ typeDirect rep
-      nextOffset <- "offset" =: add index size
-      return (Snoc indices index, nextOffset)
+      index <- generateSizeOf fullRep
+      return (Snoc indices index, fullRep')
+
+productOffsets'
+  :: Vector (Operand TypeRep)
+  -> Gen [Operand Int]
+productOffsets' xs = fmap (Foldable.toList . fst) $ Foldable.foldlM go (Nil, "0") $ indexed xs
+  where
+    go (indices, fullRep) (i, rep) = do
+      typeRep <- gets $ TypeRep.typeRep . target
+      fullRep' <- if i == Vector.length xs - 1
+        then return fullRep
+        else generateTypeExpr
+          $ Call (Global Builtin.ProductTypeRepName)
+          $ Vector.fromList
+            [ pure $ DirectVar typeRep $ typeDirect fullRep
+            , pure $ DirectVar typeRep $ typeDirect rep
+            ]
+      index <- generateSizeOf fullRep
+      return (Snoc indices index, fullRep')
 
 generateCon :: QConstr -> Vector (Expr Var) -> Expr Var -> Gen Var
 generateCon Builtin.Ref es _ = do
   reps <- mapM (generateTypeExpr . typeOf) es
-  (is, fullSize) <- productOffsets reps
+  (is, fullRep) <- productOffsets reps
+  fullSize <- generateSizeOf fullRep
   ref <- gcAlloc fullSize
-  intRep <- gets $ TypeRep.int . target
+  typeRep <- gets $ TypeRep.typeRep . target
   Foldable.forM_ (zip (Vector.toList reps) $ zip is $ Vector.toList es) $ \(rep, (i, Anno e _)) -> do
     index <- "index" =: getElementPtr ref i
-    storeExpr e (pure $ DirectVar intRep $ typeDirect rep) index
+    storeExpr e (pure $ DirectVar typeRep $ typeDirect rep) index
   refInt <- "ref-int" =: ptrToInt ref
-  ptrRep <- gets $ TypeRep.ptr . target
+  ptrRep <- gets $ TypeRep.ptrRep . target
   return $ DirectVar ptrRep $ intDirect refInt
-generateCon _ _ (Lit (TypeRep TypeRep.Unit)) = return VoidVar
+generateCon _ _ (MkType TypeRep.UnitRep) = return VoidVar
 generateCon qc es typ = do
   (_, sz) <- generateTypeSize typ
   ret <- "cons-cell" =: alloca sz
@@ -372,17 +386,17 @@ generateCon qc es typ = do
 
 storeCon :: QConstr -> Vector (Expr Var) -> Operand Ptr -> Gen ()
 storeCon Builtin.Ref es ret = do
-  ptrRep <- gets $ TypeRep.ptr . target
+  ptrRep <- gets $ TypeRep.ptrRep . target
   v <- generateCon Builtin.Ref es $ Lit $ TypeRep ptrRep
   i <- loadVar ptrRep mempty v
   storeDirect ptrRep i ret
 storeCon qc es ret = do
-  intRep <- gets $ TypeRep.int . target
+  intRep <- gets $ TypeRep.intRep . target
   typeRep <- gets $ TypeRep.typeRep . target
   mqcIndex <- constrIndex qc
   let es' = maybe id (Vector.cons . Sized (Lit $ TypeRep intRep) . Lit . Integer . fromIntegral) mqcIndex es
   reps <- mapM (generateTypeExpr . typeOf) es'
-  (is, _) <- productOffsets reps
+  is <- productOffsets' reps
   Foldable.forM_ (zip (Vector.toList reps) $ zip is $ Vector.toList es') $ \(rep, (i, Anno e _)) -> do
     index <- "index" =: getElementPtr ret i
     storeExpr e (pure $ DirectVar typeRep $ typeDirect rep) index
@@ -399,9 +413,9 @@ generateFunOp e retDir argDirs = do
 generateGlobal :: QName -> Gen Var
 generateGlobal g = do
   msig <- asks (($ g) . signatures)
-  ptrRep <- gets $ TypeRep.ptr . target
+  ptrRep <- gets $ TypeRep.ptrRep . target
   case msig of
-    Just (ConstantSig (Direct TypeRep.Unit)) -> return VoidVar
+    Just (ConstantSig (Direct TypeRep.UnitRep)) -> return VoidVar
     Just (ConstantSig (Direct rep)) ->
       return $ IndirectVar $ Operand $ "bitcast" <+> "(" <> directT rep <> "*" <+> unOperand (global g) <+> "to" <+> pointerT <> ")"
     Just (ConstantSig Indirect) -> do
@@ -422,7 +436,7 @@ generateBranches
 generateBranches caseExpr branches brCont = do
   postLabel <- freshLabel "after-branch"
   tgt <- gets target
-  let intRep = TypeRep.int tgt
+  let intRep = TypeRep.intRep tgt
       typeRep = TypeRep.typeRep tgt
   case branches of
     ConBranches [] -> do
@@ -438,20 +452,22 @@ generateBranches caseExpr branches brCont = do
       emitLabel branchLabel
       let teleVector = Vector.indexed $ unTelescope tele
           inst = instantiateTele pure $ toVector args
-          go (vs, index) (i, TeleArg h () s) = do
+          go (vs, fullRep) (i, TeleArg h () s) = do
+            index <- generateIntExpr
+              $ Call (Global Builtin.SizeOfName)
+              $ pure $ pure $ DirectVar typeRep $ typeDirect fullRep
             ptr <- h =: getElementPtr expr index
-            nextIndex <- if i == Vector.length teleVector - 1
-              then return index
+            fullRep' <- if i == Vector.length teleVector - 1
+              then return fullRep
               else do
-                (rep, sz) <- generateTypeSize $ inst s
-                index' <- generateIntExpr
-                  $ Call (Global Builtin.ProductPaddingName)
+                rep <- generateTypeExpr $ inst s
+                generateTypeExpr
+                  $ Call (Global Builtin.ProductTypeRepName)
                   $ Vector.fromList
-                    [ pure $ DirectVar intRep $ intDirect index
+                    [ pure $ DirectVar typeRep $ typeDirect fullRep
                     , pure $ DirectVar typeRep $ typeDirect rep
                     ]
-                "index" =: add index' sz
-            return (Snoc vs $ IndirectVar ptr, nextIndex)
+            return (Snoc vs $ IndirectVar ptr, fullRep')
 
       (args, _) <- Foldable.foldlM go (mempty, "0") teleVector
       contResult <- brCont $ inst brScope
@@ -468,20 +484,22 @@ generateBranches caseExpr branches brCont = do
       emitLabel branchLabel
       let teleVector = Vector.indexed $ unTelescope tele
           inst = instantiateTele pure $ toVector args
-          go (vs, index) (i, TeleArg h () s) = do
+          go (vs, fullRep) (i, TeleArg h () s) = do
+            index <- generateIntExpr
+              $ Call (Global Builtin.SizeOfName)
+              $ pure $ pure $ DirectVar typeRep $ typeDirect fullRep
             ptr <- h =: getElementPtr expr index
-            nextIndex <- if i == Vector.length teleVector - 1
-              then return index
+            fullRep' <- if i == Vector.length teleVector - 1
+              then return fullRep
               else do
-                (rep, sz) <- generateTypeSize $ inst s
-                index' <- generateIntExpr
-                  $ Call (Global Builtin.ProductPaddingName)
+                rep <- generateTypeExpr $ inst s
+                generateTypeExpr
+                  $ Call (Global Builtin.ProductTypeRepName)
                   $ Vector.fromList
-                    [ pure $ DirectVar intRep $ intDirect index
+                    [ pure $ DirectVar typeRep $ typeDirect fullRep
                     , pure $ DirectVar typeRep $ typeDirect rep
                     ]
-                "index" =: add index' sz
-            return (Snoc vs $ IndirectVar ptr, nextIndex)
+            return (Snoc vs $ IndirectVar ptr, fullRep')
 
       (args, _) <- Foldable.foldlM go (mempty, "0") teleVector
       contResult <- brCont $ inst brScope
@@ -508,20 +526,22 @@ generateBranches caseExpr branches brCont = do
 
         let teleVector = Vector.indexed $ unTelescope tele
             inst = instantiateTele pure $ toVector args
-            go (vs, index) (i, TeleArg h () s) = do
+            go (vs, fullRep) (i, TeleArg h () s) = do
+              index <- generateIntExpr
+                $ Call (Global Builtin.SizeOfName)
+                $ pure $ pure $ DirectVar typeRep $ typeDirect fullRep
               ptr <- h =: getElementPtr expr index
-              nextIndex <- if i == Vector.length teleVector - 1
-                then return index
+              fullRep' <- if i == Vector.length teleVector - 1
+                then return fullRep
                 else do
-                  (rep, sz) <- generateTypeSize $ inst s
-                  index' <- generateIntExpr
-                    $ Call (Global Builtin.ProductPaddingName)
+                  rep <- generateTypeExpr $ inst s
+                  generateTypeExpr
+                    $ Call (Global Builtin.ProductTypeRepName)
                     $ Vector.fromList
-                      [ pure $ DirectVar intRep $ intDirect index
+                      [ pure $ DirectVar typeRep $ typeDirect fullRep
                       , pure $ DirectVar typeRep $ typeDirect rep
                       ]
-                  "index" =: add index' sz
-              return (Snoc vs $ IndirectVar ptr, nextIndex)
+              return (Snoc vs $ IndirectVar ptr, fullRep')
 
         (args, _) <- Foldable.foldlM go (mempty, shower $ TypeRep.size intRep) teleVector -- TODO: should use padding functionality even for the tag
         contResult <- brCont $ inst brScope
@@ -558,7 +578,7 @@ generateBranches caseExpr branches brCont = do
           e0 <- generateIntExpr caseExpr -- should really be generateTypeExpr
           emit
             $ switch e0 defaultLabel
-            $ first (\(TypeRep rep) -> TypeRep.toInt tgt rep) <$> branchLabels
+            $ first (\(TypeRep rep) -> fromIntegral $ TypeRep.size rep) <$> branchLabels
 
       contResults <- Traversable.forM (zip lbrs' branchLabels) $ \(LitBranch _ br, (_, brLabel)) -> do
         emitLabel brLabel
@@ -589,20 +609,18 @@ generateConstant visibility name (Constant e) = do
         (Anno (Lit lit) _, Direct rep) -> case lit of
           Byte b -> directLit b rep
           Integer i -> directLit i rep
-          TypeRep t -> do
-            tgt <- gets target
-            directLit (TypeRep.toInt tgt t) rep
+          TypeRep t -> directLit (TypeRep.size t) rep
         _ -> do
           let initName = "@" <> text (escape $ fromQName name <> "-init")
               typ = case dir of
                 Indirect -> pointerT
-                Direct TypeRep.Unit -> pointerT
+                Direct TypeRep.UnitRep -> pointerT
                 Direct rep -> directT rep
           emitRaw $ Instr $ gname <+> "=" <+> vis <+> "unnamed_addr global" <+> typ <+> "zeroinitializer, align" <+> align
           emitRaw $ Instr ""
           emitRaw $ Instr $ "define private fastcc" <+> voidT <+> initName <> "() {"
           case dir of
-            Direct TypeRep.Unit -> void $ generateExpr e $ Lit $ TypeRep TypeRep.Unit
+            Direct TypeRep.UnitRep -> void $ generateExpr e $ Lit $ TypeRep TypeRep.UnitRep
             Direct rep -> storeExpr e (Lit $ TypeRep rep) $ Operand $ "bitcast" <+> "(" <> directT rep <> "*" <+> unOperand (global name) <+> "to" <+> pointerT <> ")"
             Indirect -> do
               ptr <- gcAllocExpr e
@@ -622,7 +640,7 @@ generateFunction visibility name (Function args funScope) = do
     let d = argDirs Vector.! i
     n <- text <$> freshWithHint h
     return $ case d of
-      Direct TypeRep.Unit -> VoidVar
+      Direct TypeRep.UnitRep -> VoidVar
       Direct rep -> DirectVar rep $ Operand n
       Indirect -> IndirectVar $ Operand n
   let funExpr = instantiateTele pure vs funScope
@@ -677,8 +695,10 @@ genSubmodule name modul = flip fmap modul $ \innards -> do
 
   let globalDeps
         = HashSet.filter ((/= qnameModule name) . qnameModule)
-        $ HashSet.insert Builtin.ProductPaddingName -- TODO hack
-        $ HashSet.insert Builtin.SizeOfName -- TODO hack
+        -- These may be emitted by the code generator, so are implicit
+        -- dependencies of most code
+        $ HashSet.insert Builtin.SizeOfName
+        $ HashSet.insert Builtin.ProductTypeRepName
         $ boundGlobals innards
 
   env <- ask

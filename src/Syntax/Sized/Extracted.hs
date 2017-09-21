@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings, PatternSynonyms, TemplateHaskell #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings, PatternSynonyms, ViewPatterns, TemplateHaskell #-}
 module Syntax.Sized.Extracted where
 
 import Control.Monad
@@ -9,6 +9,7 @@ import Data.Text(Text)
 import Data.Vector(Vector)
 
 import Syntax hiding (Definition, Module)
+import TypeRep(TypeRep)
 import Util
 
 data Expr v
@@ -42,12 +43,20 @@ data Submodule contents = Submodule
 pattern Sized :: Type v -> Expr v -> Expr v
 pattern Sized sz e = Anno e sz
 
+pattern MkType :: TypeRep -> Expr v
+pattern MkType rep <- (ignoreAnno -> Lit (TypeRep rep))
+  where MkType rep = Lit (TypeRep rep)
+
+ignoreAnno :: Expr v -> Expr v
+ignoreAnno (Anno e _) = ignoreAnno e
+ignoreAnno e = e
+
 typeOf :: Expr v -> Expr v
 typeOf (Anno _ rep) = rep
 typeOf _ = error "Extracted.typeOf"
 
 typeDir :: Expr v -> Direction
-typeDir (Lit (TypeRep rep)) = Direct rep
+typeDir (MkType rep) = Direct rep
 typeDir _ = Indirect
 
 -------------------------------------------------------------------------------

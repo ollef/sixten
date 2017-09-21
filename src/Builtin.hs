@@ -23,13 +23,13 @@ import Util
 
 context :: Target -> HashMap QName (Definition Expr Void, Type Void)
 context target = HashMap.fromList
-  [ (TypeName, opaqueData typeRep Type)
-  , (PtrName, dataType (Lam mempty Explicit Type $ Scope ptrRep)
-                       (arrow Explicit Type Type)
-                       [ ConstrDef RefName $ toScope $ fmap B $ arrow Explicit (pure 0)
-                                           $ app (Global PtrName) Explicit (pure 0)
-                       ])
-  , (ByteName, opaqueData byteRep Type)
+  [ (TypeName, dataType typeRep Type [])
+  , (PtrName, dataType
+      (Lam mempty Explicit Type $ Scope ptrRep)
+      (arrow Explicit Type Type)
+      [ ConstrDef RefName $ toScope $ fmap B $ arrow Explicit (pure 0)
+        $ app (Global PtrName) Explicit (pure 0)
+      ])
   , (IntName, opaqueData intRep Type)
   , (NatName, dataType intRep Type
       [ ConstrDef ZeroName $ Scope Nat
@@ -43,41 +43,19 @@ context target = HashMap.fromList
     opaqueData rep t = dataType rep t mempty
     dataType rep t xs = (DataDefinition (DataDef xs) rep, cl t)
 
-    byteRep = Lit $ TypeRep TypeRep.byte
-    intRep = Lit $ TypeRep $ TypeRep.int target
-    ptrRep = Lit $ TypeRep $ TypeRep.ptr target
-    typeRep = Lit $ TypeRep $ TypeRep.typeRep target
+    intRep = MkType $ TypeRep.intRep target
+    ptrRep = MkType $ TypeRep.ptrRep target
+    typeRep = MkType $ TypeRep.typeRep target
 
 convertedContext :: Target -> HashMap QName (Sized.Definition Lifted.Expr Void)
 convertedContext target = HashMap.fromList $ concat
-  [[( TypeName
-    , constDef $ Lifted.Sized typeRep typeRep
-    )
-  , ( PiTypeName
-    , constDef $ Lifted.Sized typeRep ptrRep
-    )
-  , ( PtrName
-    , funDef (Telescope $ pure (TeleArg mempty () $ Scope typeRep))
-      $ Scope $ Lifted.Sized typeRep ptrRep
-    )
-  , ( IntName
-    , constDef $ Lifted.Sized typeRep intRep
-    )
-  , ( ByteName
-    , constDef $ Lifted.Sized typeRep byteRep
-    )
+  [ [(papName left given, pap target left given)
+    | given <- [1..maxArity - 1], left <- [1..maxArity - given]
+    ]
+  , [(applyName arity, apply target arity)
+    | arity <- [1..maxArity]
+    ]
   ]
-  , [(papName left given, pap target left given) | given <- [1..maxArity - 1], left <- [1..maxArity - given]]
-  , [(applyName arity, apply target arity) | arity <- [1..maxArity]]
-  ]
-  where
-    constDef = Sized.ConstantDef Public . Sized.Constant
-    funDef tele = Sized.FunctionDef Public Sized.NonClosure . Sized.Function tele
-
-    intRep = Lifted.Lit $ TypeRep $ TypeRep.int target
-    typeRep = Lifted.Lit $ TypeRep $ TypeRep.typeRep target
-    byteRep = Lifted.Lit $ TypeRep TypeRep.byte
-    ptrRep = Lifted.Lit $ TypeRep $ TypeRep.ptr target
 
 convertedSignatures :: Target -> HashMap QName Lifted.FunSignature
 convertedSignatures target
@@ -100,7 +78,7 @@ deref target e
     (toScope $ Lifted.Var $ B 0)
   where
     unknownSize = global "Sixten.Builtin.deref.UnknownSize"
-    intRep = Lifted.Lit $ TypeRep $ TypeRep.int target
+    intRep = Lifted.MkType $ TypeRep.intRep target
 
 maxArity :: Num n => n
 maxArity = 6
@@ -126,13 +104,14 @@ apply target numArgs
       $ Lifted.Case (Lifted.Sized intRep $ Lifted.Var $ B 1)
       $ LitBranches
         [LitBranch (Integer $ fromIntegral arity) $ br arity | arity <- 1 :| [2..maxArity]]
-        $ Lifted.Call (global FailName) $ pure $ Lifted.Sized intRep (Lifted.Lit $ TypeRep $ TypeRep.Unit))
+        $ Lifted.Call (global FailName) $ pure $ Lifted.Sized typeRep unitRep)
   where
-    typeRep = Lifted.Lit $ TypeRep $ TypeRep.typeRep target
-    intRep = Lifted.Lit $ TypeRep $ TypeRep.int target
-    ptrRep = Lifted.Lit $ TypeRep $ TypeRep.ptr target
+    unitRep = Lifted.MkType TypeRep.UnitRep
+    intRep = Lifted.MkType $ TypeRep.intRep target
+    ptrRep = Lifted.MkType $ TypeRep.ptrRep target
+    typeRep = Lifted.MkType $ TypeRep.typeRep target
 
-    directPtr = Direct $ TypeRep.ptr target
+    directPtr = Direct $ TypeRep.ptrRep target
     directType = Direct $ TypeRep.typeRep target
 
     br :: Int -> Lifted.Expr (Var TeleVar (Var TeleVar Void))
@@ -140,7 +119,7 @@ apply target numArgs
       | numArgs < arity
         = Lifted.Con Ref
         $ pure
-        $ sizedCon (Lifted.Lit $ TypeRep TypeRep.Unit) Closure
+        $ sizedCon target (Lifted.MkType TypeRep.UnitRep) Closure
         $ Vector.cons (Lifted.Sized ptrRep $ global $ papName (arity - numArgs) numArgs)
         $ Vector.cons (Lifted.Sized intRep $ Lifted.Lit $ Integer $ fromIntegral $ arity - numArgs)
         $ Vector.cons (Lifted.Sized ptrRep $ Lifted.Var $ F $ B 0)
@@ -192,22 +171,25 @@ pap target k m
       <|> (\n -> Lifted.Sized (Lifted.Var $ F $ B $ 1 + n) $ Lifted.Var $ F $ B $ 1 + TeleVar k + n) <$> Vector.enumFromN 0 k
     )
   where
-    intRep = Lifted.Lit $ TypeRep $ TypeRep.int target
-    ptrRep = Lifted.Lit $ TypeRep $ TypeRep.ptr target
-    typeRep = Lifted.Lit $ TypeRep $ TypeRep.typeRep target
+    intRep = Lifted.MkType $ TypeRep.intRep target
+    ptrRep = Lifted.MkType $ TypeRep.ptrRep target
+    typeRep = Lifted.MkType $ TypeRep.typeRep target
 
--- TODO sizes
-sizedCon :: Lifted.Expr v -> QConstr -> Vector (Lifted.Expr v) -> Lifted.Expr v
-sizedCon tagRep qc args
-  = Lifted.Sized (productTypes $ Vector.cons tagRep argTypes) (Lifted.Con qc args)
+sizedCon :: Target -> Lifted.Expr v -> QConstr -> Vector (Lifted.Expr v) -> Lifted.Expr v
+sizedCon target tagRep qc args
+  = Lifted.Sized (productTypes target $ Vector.cons tagRep argTypes) (Lifted.Con qc args)
   where
     argTypes = Lifted.typeOf <$> args
 
-productType :: Lifted.Expr v -> Lifted.Expr v -> Lifted.Expr v
-productType a (Lifted.Lit (TypeRep TypeRep.Unit)) = a
-productType (Lifted.Lit (TypeRep TypeRep.Unit)) b = b
-productType (Lifted.Lit (TypeRep a)) (Lifted.Lit (TypeRep b)) = Lifted.Lit $ TypeRep $ TypeRep.product a b
-productType a b = Lifted.Call (global ProductTypeRepName) $ Vector.fromList [a, b]
+productType :: Target -> Lifted.Expr v -> Lifted.Expr v -> Lifted.Expr v
+productType _ a (Lifted.MkType TypeRep.UnitRep) = a
+productType _ (Lifted.MkType TypeRep.UnitRep) b = b
+productType _ (Lifted.MkType rep1) (Lifted.MkType rep2) = Lifted.MkType $ TypeRep.product rep1 rep2
+productType target a b
+  = Lifted.Call (global ProductTypeRepName)
+  $ Vector.fromList [Lifted.Anno a (Lifted.MkType typeRep), Lifted.Anno b (Lifted.MkType typeRep)]
+  where
+     typeRep = TypeRep.typeRep target
 
-productTypes :: Vector (Lifted.Expr v) -> Lifted.Expr v
-productTypes = foldl' productType (Lifted.Lit (TypeRep TypeRep.Unit))
+productTypes :: Target -> Vector (Lifted.Expr v) -> Lifted.Expr v
+productTypes target = foldl' (productType target) (Lifted.MkType TypeRep.UnitRep)

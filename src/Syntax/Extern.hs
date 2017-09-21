@@ -14,7 +14,7 @@ data Extern a = Extern Language [ExternPart a]
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 data TargetMacro
-  = AlignmentBits
+  = PointerAlignment
   deriving (Eq, Ord, Show)
 
 data ExternPart a
@@ -46,4 +46,4 @@ instance Pretty a => Pretty (ExternPart a) where
     TargetMacroPart t -> prettyTightApp "$target:" (prettyM t) <> " "
 
 instance Pretty TargetMacro where
-  prettyM AlignmentBits = "alignmentBits"
+  prettyM PointerAlignment = "pointerAlignment"

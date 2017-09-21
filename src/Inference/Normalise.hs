@@ -40,11 +40,11 @@ whnf' expandTypeReps expr = do
           go (Util.instantiate1 (pure eVar) s) es'
         _ -> case apps f' es of
           Builtin.ProductTypeRep x y -> typeRepBinOp
-            (Just TypeRep.Unit) (Just TypeRep.Unit)
+            (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
             TypeRep.product Builtin.ProductTypeRep
             (whnf' expandTypeReps) x y
           Builtin.SumTypeRep x y -> typeRepBinOp
-            (Just TypeRep.Unit) (Just TypeRep.Unit)
+            (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
             TypeRep.sum Builtin.SumTypeRep
             (whnf' expandTypeReps) x y
           Builtin.SubInt x y -> binOp Nothing (Just 0) (-) Builtin.SubInt (whnf' expandTypeReps) x y
@@ -98,11 +98,11 @@ normalise expr = do
     Pi n p a s -> normaliseScope n p (Pi n p) a s
     Lam n p a s -> normaliseScope n p (Lam n p) a s
     Builtin.ProductTypeRep x y -> typeRepBinOp
-      (Just TypeRep.Unit) (Just TypeRep.Unit)
+      (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
       TypeRep.product Builtin.ProductTypeRep
       normalise x y
     Builtin.SumTypeRep x y -> typeRepBinOp
-      (Just TypeRep.Unit) (Just TypeRep.Unit)
+      (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
       TypeRep.sum Builtin.SumTypeRep
       normalise x y
     Builtin.SubInt x y -> binOp Nothing (Just 0) (-) Builtin.SubInt normalise x y
@@ -193,9 +193,9 @@ typeRepBinOp lzero rzero op cop norm x y = do
     x' <- norm x
     y' <- norm y
     case (x', y') of
-      (Lit (TypeRep m), _) | Just m == lzero -> return y'
-      (_, Lit (TypeRep n)) | Just n == rzero -> return x'
-      (Lit (TypeRep m), Lit (TypeRep n)) -> return $ Lit $ TypeRep $ op m n
+      (MkType m, _) | Just m == lzero -> return y'
+      (_, MkType n) | Just n == rzero -> return x'
+      (MkType m, MkType n) -> return $ MkType $ op m n
       _ -> return $ cop x' y'
 
 chooseBranch

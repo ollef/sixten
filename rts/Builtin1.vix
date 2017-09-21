@@ -39,47 +39,18 @@ fail _ = (C|
   exit(1);
 |)
 
--- TODO: Should be defined by target
-IntPtr : Type
-IntPtr = Int
+abstract
+sizeOf : Type -> Int
+sizeOf T = (C| return $T; |)
 
 abstract
-productPadding : IntPtr -> Type -> IntPtr
-productPadding offset B = (C|
-  $type:IntPtr one = 1;
-  $type:IntPtr b_align_mask = (one << $(alignmentOf B)) - one;
-  return ($offset + b_align_mask) & ~b_align_mask;
-|)
+MkType : Int -> Type
+MkType i = (C| return $i; |)
 
 abstract
 productTypeRep : Type -> Type -> Type
-productTypeRep A B = (C|
-  $type:Type one = 1;
-  $type:Type b_align_mask = ((one << $(alignmentOf B)) - one) << $target:alignmentBits;
-
-  $type:Type min_align = $(alignmentOf A) < $(alignmentOf B) ? $(alignmentOf A) : $(alignmentOf B);
-
-  return (($A + b_align_mask) & ~b_align_mask) - min_align + $B;
-|)
+productTypeRep S T = MkType (addInt (sizeOf S) (sizeOf T))
 
 abstract
 sumTypeRep : Type -> Type -> Type
-sumTypeRep A B = (C|
-  $type:Type result_size = $(sizeOf A) > $(sizeOf B) ? $(sizeOf A) : $(sizeOf B);
-  $type:Type result_align = $(alignmentOf A) > $(alignmentOf B) ? $(alignmentOf A) : $(alignmentOf B);
-
-  return (result_size << $target:alignmentBits) | result_align;
-|)
-
-abstract
-sizeOf : Type -> IntPtr
-sizeOf T = (C|
-  return $T >> $target:alignmentBits;
-|)
-
-abstract
-alignmentOf : Type -> IntPtr
-alignmentOf T = (C|
-  $type:Type align_mask = (1 << $target:alignmentBits) - 1;
-  return $T & align_mask;
-|)
+sumTypeRep S T = MkType (maxInt (sizeOf S) (sizeOf T))

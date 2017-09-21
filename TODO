@@ -14,7 +14,6 @@ Parsing
   Use megaparsec instead of trifecta?
   Error recovery
 Compiler
-  Make TypeRep a constructor and not a literal
   Add printing to compiler passes that are not VIX (make a MonadLog class?)
   Simplify/make consistent all the type synonyms
   Clean up MetaVar handling (not all modules need the full generality)
@@ -28,7 +27,6 @@ Error messages
   Make error message footnotes contain metavars
   Use prettyprinter library
 Language
-  * Pointer-align everything and revert (most of) the alignment stuff
   Named implicit arguments (maybe names should be mandatory?)
   Laziness
   * Type classes
@@ -64,6 +62,7 @@ Optimisations
 Runtime
   Do real GC with LLVM gcroots etc
     Alternative: Bartlett's mostly copying
+    Need some kind of dataptr type for pointers to e.g. byte arrays
   Closures
     Store the arity as a bitfield where the highest set bit determines the
     arity, and the other bits determine the arguments of size 8

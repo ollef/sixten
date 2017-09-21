@@ -72,7 +72,7 @@ processModules args (builtins1 : builtins2 : modules) = do
       let builtinModule = Module "Sixten.Builtin" AllExposed mempty builtins
       let orderedModules = dependencyOrder modules
       results <- forM orderedModules $ \moduleGroup -> case moduleGroup of
-        [modul] -> traverse (const $ File.processUnscoped modul) modul
+        [modul] -> traverse (const $ (File.frontend >=> File.backend) modul) modul
         _ -> throwError -- TODO: Could be allowed?
           $ "Circular modules: " ++ intercalate ", " (fromModuleName . moduleName <$> moduleGroup)
       return $ builtinModule : results
@@ -84,7 +84,6 @@ processBuiltins
   -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
   -> VIX [Extracted.Submodule (Generate.Generated (Text, File.DependencySigs))]
 processBuiltins tgt builtins1 builtins2 = do
-  addContext context
   let builtinDefNames = HashSet.fromMap $ void context
       builtinConstrNames = HashSet.fromList
         [ QConstr n c
@@ -92,11 +91,14 @@ processBuiltins tgt builtins1 builtins2 = do
         , c <- constrNames d
         ]
   addModule "Sixten.Builtin" $ HashSet.map Right builtinDefNames <> HashSet.map Left builtinConstrNames
+  addContext context
+  builtinResults1 <- File.process builtins1
+  let contextList = (\(n, (d, t)) -> (n, d, t)) <$> HashMap.toList context
+  contextResults <- File.backend contextList
   addConvertedSignatures $ Builtin.convertedSignatures tgt
-  builtinResults1 <- File.processUnscoped builtins1
-  builtinResults2 <- File.processUnscoped builtins2
-  builtins <- File.processConvertedGroup $ HashMap.toList $ Builtin.convertedContext tgt
-  return $ builtinResults1 ++ builtinResults2 ++ builtins
+  convertedResults <- File.processConvertedGroup $ HashMap.toList $ Builtin.convertedContext tgt
+  builtinResults2 <- File.process builtins2
+  return $ builtinResults1 <> contextResults <> convertedResults <> builtinResults2
   where
     context = Builtin.context tgt
 

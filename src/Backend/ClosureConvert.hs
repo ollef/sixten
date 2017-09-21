@@ -150,8 +150,8 @@ unknownCall
   -> Vector (Expr Meta)
   -> ClosureConvert (Expr Meta)
 unknownCall e es = do
-  ptrRep <- lift $ gets (Lit . TypeRep . TypeRep.ptr . vixTarget)
-  intRep <- lift $ gets (Lit . TypeRep . TypeRep.int . vixTarget)
+  ptrRep <- lift $ gets (MkType . TypeRep.ptrRep . vixTarget)
+  intRep <- lift $ gets (MkType . TypeRep.intRep . vixTarget)
   return
     $ Call (global $ Builtin.applyName $ Vector.length es)
     $ Vector.cons (Sized ptrRep e)
@@ -164,11 +164,11 @@ knownCall
   -> ClosureConvert (Expr Meta)
 knownCall f (tele, returnTypeScope) args
   | numArgs < arity = do
-    vs <- lift $ forM fArgs $ \_ -> forall mempty Unit
+    vs <- lift $ forM (teleNames tele) $ \h -> forall h Unit
     target <- lift $ gets vixTarget
     let intRep, ptrRep :: Expr v
-        intRep = Lit $ TypeRep $ TypeRep.int target
-        ptrRep = Lit $ TypeRep $ TypeRep.ptr target
+        intRep = MkType $ TypeRep.intRep target
+        ptrRep = MkType $ TypeRep.ptrRep target
     let returnType = instantiateTele pure vs $ vacuous returnTypeScope
         varIndex = hashedElemIndex vs
         go v | i < Vector.length fArgs1 = B $ TeleVar $ 2 + i
@@ -195,7 +195,7 @@ knownCall f (tele, returnTypeScope) args
     return
       $ Con Builtin.Ref
       $ pure
-      $ Builtin.sizedCon (Lit $ TypeRep TypeRep.Unit) Builtin.Closure
+      $ Builtin.sizedCon target (MkType TypeRep.UnitRep) Builtin.Closure
       $ Vector.cons (Sized ptrRep $ global fNumArgs)
       $ Vector.cons (Sized intRep $ Lit $ Integer $ fromIntegral $ arity - numArgs) args
   | numArgs == arity

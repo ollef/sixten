@@ -110,7 +110,7 @@ extractExtern retType (Extern C parts) = do
               exprName = "extern_arg_" <> shower len
           Just (exprName, _, _) -> (Snoc strs $ exprName <> " ", exprs, len)
       ExprMacroPart _ -> error "extractExtern"
-      TargetMacroPart AlignmentBits -> (Snoc strs $ shower $ alignBits tgt, exprs, len)
+      TargetMacroPart PointerAlignment -> (Snoc strs $ shower $ ptrAlign tgt, exprs, len)
 
 mangle :: QName -> Name
 mangle (QName (ModuleName parts) name)
@@ -121,7 +121,7 @@ mangle (QName (ModuleName parts) name)
 extractType
   :: Extracted.Expr v
   -> (Text, Direction)
-extractType (Extracted.Lit (TypeRep rep@(TypeRep.TypeRep sz _))) = case sz of
+extractType (Extracted.MkType rep) = case TypeRep.size rep of
   0 -> ("void", Direct rep)
   1 -> ("uint8_t", Direct rep)
   2 -> ("uint16_t", Direct rep)

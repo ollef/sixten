@@ -10,6 +10,9 @@ Vector (Succ n) A = Pair A (Vector n A)
 type Array A where
   MkArray : (n : Nat) -> Ptr (Vector n A) -> Array A
 
+Byte : Type
+Byte = MkType 1
+
 type String = MkString (Array Byte)
 
 intToNat : Int -> Nat

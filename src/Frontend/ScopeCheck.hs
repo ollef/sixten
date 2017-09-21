@@ -67,7 +67,7 @@ scopeCheckModule modul = do
       aliases = localAliases `multiUnion` importedNameAliases
       lookupAlias qname
         | HashSet.size candidates == 1 = return $ head $ HashSet.toList candidates
-        | otherwise = throwError $ "scopeCheckProgram ambiguous " ++ show candidates
+        | otherwise = throwError $ "scopeCheckModule ambiguous " ++ show candidates
         where
           candidates = HashMap.lookupDefault (HashSet.singleton qname) qname aliases
 

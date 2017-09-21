@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings, TemplateHaskell, TypeFamilies, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings, PatternSynonyms, TemplateHaskell, TypeFamilies, ViewPatterns #-}
 module Syntax.Abstract where
 
 import Control.Monad
@@ -8,6 +8,7 @@ import Data.String
 
 import Syntax
 import Util
+import TypeRep(TypeRep)
 
 -- | Expressions with variables of type @v@.
 data Expr v
@@ -25,6 +26,11 @@ data Expr v
 
 -- | Synonym for documentation purposes
 type Type = Expr
+
+-------------------------------------------------------------------------------
+-- Helpers
+pattern MkType :: TypeRep -> Expr v
+pattern MkType rep = Lit (TypeRep rep)
 
 let_ :: NameHint -> Expr v -> Type v -> Scope1 Expr v -> Expr v
 let_ h e t s = Let (LetRec $ pure $ LetBinding h (abstractNone e) t) (mapBound (\() -> 0) s)

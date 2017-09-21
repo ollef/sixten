@@ -6,7 +6,6 @@ import Data.Monoid
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 
 import Pretty
-import Util
 
 -- | The number of bits in a byte.
 byteBits :: Int
@@ -15,7 +14,6 @@ byteBits = 8
 data Target = Target
   { architecture :: String
   , ptrBytes :: Int -- ^ The number of bytes in a pointer.
-  , alignBits :: Int -- ^ How many bits to represent an alignment number.
   , ptrAlign :: Int -- ^ The alignment of a pointer.
   } deriving (Eq, Ord, Show)
 
@@ -23,7 +21,6 @@ x86 :: Target
 x86 = Target
   { architecture = "x86"
   , ptrBytes = 4
-  , alignBits = 2
   , ptrAlign = 4
   }
 
@@ -31,7 +28,6 @@ x86_64 :: Target
 x86_64 = Target
   { architecture = "x86-64"
   , ptrBytes = 8
-  , alignBits = 2
   , ptrAlign = 8
   }
 
@@ -45,9 +41,6 @@ intBits = ptrBits
 
 targets :: [Target]
 targets = [x86, x86_64]
-
-log2PtrAlign :: Target -> Int
-log2PtrAlign = logBase2 . ptrAlign
 
 architectures :: [String]
 architectures = architecture <$> targets
