@@ -32,10 +32,16 @@ denatCase expr (ConBranches [ConBranch ZeroConstr _ztele zs, ConBranch SuccConst
   $ Case (pure $ B ())
     (LitBranches
       (pure (LitBranch (Integer 0) $ F <$> instantiate (error "denatCase zs") (hoist denat zs)))
-      (let_ "pred" (App (App (global SubIntName) (pure $ B ())) (Lit $ Integer 1)) (global NatName)
-      $ mapScope (const ()) F $ hoist denat ss
+      (let_
+        "pred"
+        (App (App (global SubIntName) (intTyped $ pure $ B ())) (intTyped $ Lit $ Integer 1))
+        intType
+        $ mapScope (const ()) F $ hoist denat ss
       )
     )
+  where
+    intTyped = (`Anno` intType)
+    intType = global IntName
 denatCase expr (ConBranches cbrs)
   = Case
     expr
