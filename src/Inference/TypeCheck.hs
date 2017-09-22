@@ -77,7 +77,7 @@ checkPoly' expr polyType = do
   (vs, rhoType, f) <- prenexConvert polyType $ instBelowExpr expr
   e <- checkRho expr rhoType
   logShow 25 "checkPoly: prenexConvert vars" vs
-  f =<< lams
+  f =<< Abstract.lams
     <$> metaTelescopeM vs
     <*> abstractM (teleAbstraction $ snd <$> vs) e
 
@@ -376,9 +376,9 @@ tcPat' pat vs expected = case pat of
     (_, typeType) <- definition typeName
     conType <- qconstructor qc
 
-    let paramsTele = telescope typeType
+    let paramsTele = Abstract.telescope typeType
         numParams = teleLength paramsTele
-        (tele, retScope) = pisView conType
+        (tele, retScope) = Abstract.pisView conType
         argPlics = Vector.drop numParams $ teleAnnotations tele
 
     pats' <- Vector.fromList <$> exactlyEqualisePats (Vector.toList argPlics) (Vector.toList pats)
@@ -394,7 +394,7 @@ tcPat' pat vs expected = case pat of
         argTypes = thd3 <$> pats''
         pats''' = Vector.zip3 argPlics (fst3 <$> pats'') argTypes
         params = Vector.zip (teleAnnotations paramsTele) $ pure <$> paramVars
-        patExpr = apps (Abstract.Con qc) $ ((\v -> (Implicit, pure v)) <$> paramVars) <> Vector.zip argPlics argExprs
+        patExpr = Abstract.apps (Abstract.Con qc) $ ((\v -> (Implicit, pure v)) <$> paramVars) <> Vector.zip argPlics argExprs
 
         retType = instantiateTele id (pure <$> paramVars <|> argExprs) retScope
 
@@ -448,7 +448,7 @@ patToTerm pat = case pat of
     case sequence mterms of
       Nothing -> return Nothing
       Just terms -> return $ Just $
-        apps (Abstract.Con qc) $ params <> terms
+        Abstract.apps (Abstract.Con qc) $ params <> terms
   Abstract.LitPat l -> return $ Just $ Abstract.Lit l
   Abstract.ViewPat{} -> return Nothing
 
@@ -465,7 +465,7 @@ instantiateDataType typeName = mdo
     v <- exists h (inst s)
     return (p, v)
   let pureParamVars = fmap pure <$> paramVars
-      dataType = apps (Abstract.Global typeName) pureParamVars
+      dataType = Abstract.apps (Abstract.Global typeName) pureParamVars
       implicitParamVars = (\(_p, v) -> (Implicit, pure v)) <$> paramVars
   return (dataType, implicitParamVars)
 -}
@@ -553,7 +553,7 @@ prenexConvert' (Abstract.Pi h p t resScope) (InstBelow p') | p < p' = do
     Implicit ->
       ( Vector.cons (p, y) vs
       , resType'
-      , \x -> fmap (lam h p t) $ abstract1M y
+      , \x -> fmap (Abstract.Lam h p t) $ abstract1M y
         =<< f (betaApp x p $ pure y)
       )
     Explicit ->
@@ -561,7 +561,7 @@ prenexConvert' (Abstract.Pi h p t resScope) (InstBelow p') | p < p' = do
       , Abstract.Pi h p t $ abstract1 y resType'
       , \x -> fmap (Abstract.Lam h p t) . abstract1M y
         =<< f
-        =<< lams <$> metaTelescopeM vs
+        =<< Abstract.lams <$> metaTelescopeM vs
         <*> abstractM (teleAbstraction $ snd <$> vs)
         (betaApp (betaApps x $ second pure <$> vs) p $ pure y)
       )
@@ -592,13 +592,13 @@ subtype' (Abstract.Pi h1 p1 argType1 retScope1) (Abstract.Pi h2 p2 argType2 retS
         retType2 = Util.instantiate1 (pure v2) retScope2
     f2 <- subtype retType1 retType2
     return
-      $ \x -> fmap (lam h p2 argType2)
+      $ \x -> fmap (Abstract.Lam h p2 argType2)
       $ abstract1M v2 =<< f2 (Abstract.App x p1 v1)
 subtype' typ1 typ2 = do
   (as, rho, f1) <- prenexConvert typ2 $ InstBelow Explicit
   f2 <- subtypeRho typ1 rho $ InstBelow Explicit
   return $ \x ->
-    f1 =<< lams <$> metaTelescopeM as
+    f1 =<< Abstract.lams <$> metaTelescopeM as
     <*> (abstractM (teleAbstraction $ snd <$> as) =<< f2 x)
 
 subtypeRho :: Polytype -> Rhotype -> InstBelow -> VIX (AbstractM -> VIX AbstractM)
@@ -624,7 +624,7 @@ subtypeRho' (Abstract.Pi h1 p1 argType1 retScope1) (Abstract.Pi h2 p2 argType2 r
         retType2 = Util.instantiate1 (pure v2) retScope2
     f2 <- subtypeRho retType1 retType2 $ InstBelow Explicit
     return
-      $ \x -> fmap (lam h p2 argType2)
+      $ \x -> fmap (Abstract.Lam h p2 argType2)
       $ abstract1M v2 =<< f2 (Abstract.App x p1 v1)
 subtypeRho' (Abstract.Pi h p t s) typ2 (InstBelow p') | p < p' = do
   v <- exists h t
@@ -712,6 +712,7 @@ subtypeFun' typ p = do
 
 --------------------------------------------------------------------------------
 -- Generalisation
+{-
 generalise
   :: AbstractM
   -> AbstractM
@@ -729,13 +730,15 @@ generalise expr typ = do
     return (x, ds)
 
   let sorted = map go $ topoSort deps
-  genexpr <- foldrM (\v e -> lam (metaHint v) Implicit (metaType v) <$> abstract1M v e) expr sorted
-  gentype <- foldrM (\v e -> pi_ (metaHint v) Implicit (metaType v) <$> abstract1M v e) typ sorted
+      isorted = (,) Implicit <$> sorted
+  genexpr <- abstractMs isorted Abstract.Lam expr
+  gentype <- abstractMs isorted Abstract.Pi typ
 
   return (genexpr, gentype)
   where
     go [v] = v
     go _ = error "Generalise"
+    -}
 
 --------------------------------------------------------------------------------
 -- Definitions
@@ -764,13 +767,13 @@ checkDataType name (DataDef cs) typ = do
   typ' <- zonk typ
   logMeta 20 "checkDataType t" typ'
 
-  ps' <- forTeleWithPrefixM (telescope typ') $ \h p s ps' -> do
+  ps' <- forTeleWithPrefixM (Abstract.telescope typ') $ \h p s ps' -> do
     let is = instantiateTele pure (snd <$> ps') s
     v <- forall h is
     return (p, v)
 
   let vs = snd <$> ps'
-      constrRetType = apps (pure name) $ second pure <$> ps'
+      constrRetType = Abstract.apps (pure name) $ second pure <$> ps'
       abstr = teleAbstraction vs
 
   (cs', rets, sizes) <- fmap unzip3 $ forM cs $ \(ConstrDef c t) ->
@@ -796,13 +799,13 @@ checkDataType name (DataDef cs) typ = do
     traverse (abstractM abstr) c
 
   params <- metaTelescopeM ps'
-  let typ'' = pis params $ Scope Builtin.Type
+  let typ'' = Abstract.pis params $ Scope Builtin.Type
 
   typeRep' <- whnf' True typeRep
   abstractedTypeRep <- abstractM abstr typeRep'
   logMeta 20 "checkDataType typeRep" typeRep'
 
-  return (DataDef abstractedCs, lams params abstractedTypeRep, typ'')
+  return (DataDef abstractedCs, Abstract.lams params abstractedTypeRep, typ'')
 
 checkClauses
   :: NonEmpty (Concrete.Clause Void Concrete.Expr MetaA)
@@ -831,7 +834,7 @@ checkClauses clauses polyType = do
   modifyIndent pred
   logMeta 20 "checkClauses res" res
 
-  f =<< lams
+  f =<< Abstract.lams
     <$> metaTelescopeM vs
     <*> abstractM (teleAbstraction $ snd <$> vs) res
   where
@@ -932,15 +935,15 @@ generaliseDef
          )
 generaliseDef vs (Definition a e) t = do
   let ivs = (,) Implicit <$> vs
-  ge <- abstractMs ivs lam e
-  gt <- abstractMs ivs pi_ t
+  ge <- abstractMs ivs Abstract.Lam e
+  gt <- abstractMs ivs Abstract.Pi t
   return (Definition a ge, gt)
 generaliseDef vs (DataDefinition (DataDef cs) rep) typ = do
   let cs' = map (fmap $ toScope . splat f g) cs
       ivs = (,) Implicit <$> vs
   -- Abstract vs on top of typ
-  grep <- abstractMs ivs lam rep
-  gtyp <- abstractMs ivs pi_ typ
+  grep <- abstractMs ivs Abstract.Lam rep
+  gtyp <- abstractMs ivs Abstract.Pi typ
   return (DataDefinition (DataDef cs') grep, gtyp)
   where
     varIndex = hashedElemIndex vs
@@ -982,7 +985,7 @@ generaliseDefs xs = do
     return (x, ds)
 
   let sortedFvs = map impure $ topoSort deps
-      appl x = apps x [(Implicit, pure fv) | fv <- sortedFvs]
+      appl x = Abstract.apps x [(Implicit, pure fv) | fv <- sortedFvs]
       instVars = appl . pure <$> vars
 
   instDefs <- forM xs $ \(_, d, t) -> do

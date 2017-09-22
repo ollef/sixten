@@ -2,13 +2,16 @@
 module Syntax.Abstract where
 
 import Control.Monad
+import Data.Bifunctor
 import Data.Deriving
+import Data.Foldable as Foldable
 import Data.Monoid
 import Data.String
 
 import Syntax
-import Util
 import TypeRep(TypeRep)
+import Util
+import Util.Tsil
 
 -- | Expressions with variables of type @v@.
 data Expr v
@@ -35,6 +38,75 @@ pattern MkType rep = Lit (TypeRep rep)
 let_ :: NameHint -> Expr v -> Type v -> Scope1 Expr v -> Expr v
 let_ h e t s = Let (LetRec $ pure $ LetBinding h (abstractNone e) t) (mapBound (\() -> 0) s)
 
+apps :: Foldable t => Expr v -> t (Plicitness, Expr v) -> Expr v
+apps = Foldable.foldl' (uncurry . App)
+
+appsView :: Expr v -> (Expr v, [(Plicitness, Expr v)])
+appsView = second toList . go
+  where
+    go (App e1 p e2) = second (`Snoc` (p, e2)) $ go e1
+    go e = (e, Nil)
+
+piView :: Expr v -> Maybe (NameHint, Plicitness, Type v, Scope1 Expr v)
+piView (Pi h a t s) = Just (h, a, t, s)
+piView _ = Nothing
+
+lamView :: Expr v -> Maybe (NameHint, Plicitness, Type v, Scope1 Expr v)
+lamView (Lam h a t s) = Just (h, a, t, s)
+lamView _ = Nothing
+
+typeApp :: Expr v -> Expr v -> Maybe (Expr v)
+typeApp (Pi _ _ _ s) e = Just $ Util.instantiate1 e s
+typeApp _ _ = Nothing
+
+typeApps :: Foldable t => Expr v -> t (Expr v) -> Maybe (Expr v)
+typeApps = foldlM typeApp
+
+usedPiView
+  :: Expr v
+  -> Maybe (NameHint, Plicitness, Expr v, Scope1 Expr v)
+usedPiView (Pi n p e s@(unusedScope -> Nothing)) = Just (n, p, e, s)
+usedPiView _ = Nothing
+
+usedPisViewM :: Expr v -> Maybe (Telescope Plicitness Expr v, Scope TeleVar Expr v)
+usedPisViewM = bindingsViewM usedPiView
+
+telescope :: Expr v -> Telescope Plicitness Expr v
+telescope (pisView -> (tele, _)) = tele
+
+pisView :: Expr v -> (Telescope Plicitness Expr v, Scope TeleVar Expr v)
+pisView = bindingsView piView
+
+lamsViewM :: Expr v -> Maybe (Telescope Plicitness Expr v, Scope TeleVar Expr v)
+lamsViewM = bindingsViewM lamView
+
+lams :: Telescope Plicitness Expr v -> Scope TeleVar Expr v -> Expr v
+lams tele s = quantify Lam s tele
+
+pis :: Telescope Plicitness Expr v -> Scope TeleVar Expr v -> Expr v
+pis tele s = quantify Pi s tele
+
+arrow :: Plicitness -> Expr v -> Expr v -> Expr v
+arrow p a b = Pi mempty p a $ Scope $ pure $ F b
+
+quantifiedConstrTypes
+  :: DataDef Type v
+  -> Type v
+  -> (Plicitness -> Plicitness)
+  -> [ConstrDef (Type v)]
+quantifiedConstrTypes (DataDef cs) typ anno = map (fmap $ pis ps) cs
+  where
+    ps = mapAnnotations anno $ telescope typ
+
+prettyTypedDef
+  :: (Eq v, IsString v, Pretty v)
+  => PrettyM Doc
+  -> Definition Expr v
+  -> Expr v
+  -> PrettyM Doc
+prettyTypedDef name (Definition a d) _ = prettyM a <$$> name <+> "=" <+> prettyM d
+prettyTypedDef name (DataDefinition d e) t = prettyDataDef name (telescope t) d <+> "=" <+> prettyM e
+
 -------------------------------------------------------------------------------
 -- Instances
 instance GlobalBind Expr where
@@ -50,23 +122,6 @@ instance GlobalBind Expr where
     Let ds scope -> Let (bound f g ds) (bound f g scope)
     Case e brs retType -> Case (bind f g e) (bound f g brs) (bind f g retType)
     ExternCode c t -> ExternCode (bind f g <$> c) (bind f g t)
-
-instance Syntax Expr where
-  lam = Lam
-
-  lamView (Lam n a e s) = Just (n, a, e, s)
-  lamView _ = Nothing
-
-  pi_ = Pi
-
-  piView (Pi n a e s) = Just (n, a, e, s)
-  piView _ = Nothing
-
-instance AppSyntax Expr where
-  app = App
-
-  appView (App e1 a e2) = Just (e1, a, e2)
-  appView _ = Nothing
 
 deriveEq1 ''Expr
 deriveEq ''Expr

@@ -4,7 +4,6 @@ module Processor.File where
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Bifunctor
-import Data.Functor.Classes
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
@@ -130,22 +129,11 @@ prettyConcreteGroup str f defs = do
       VIX.log ""
   return defs
 
-prettyLocatedGroup
-  :: (Pretty (e QName), Eq1 e, Syntax e)
-  => Text
-  -> (v -> QName)
-  -> [(QName, x, Definition e v, e v)]
-  -> VIX [(QName, x, Definition e v, e v)]
-prettyLocatedGroup x f defs = do
-  void $ prettyTypedGroup x f $ (\(n, _, d, t) -> (n, d, t)) <$> defs
-  return defs
-
 prettyTypedGroup
-  :: (Pretty (e QName), Eq1 e, Syntax e)
-  => Text
+  :: Text
   -> (v -> QName)
-  -> [(QName, Definition e v, e v)]
-  -> VIX [(QName, Definition e v, e v)]
+  -> [(QName, Definition Abstract.Expr v, Abstract.Expr v)]
+  -> VIX [(QName, Definition Abstract.Expr v, Abstract.Expr v)]
 prettyTypedGroup str f defs = do
   whenVerbose 10 $ do
     VIX.log $ "----- " <> str <> " -----"
@@ -158,7 +146,7 @@ prettyTypedGroup str f defs = do
       VIX.log
         $ showWide
         $ runPrettyM
-        $ prettyTypedDef (prettyM n) (f <$> d) t'
+        $ Abstract.prettyTypedDef (prettyM n) (f <$> d) t'
       VIX.log ""
   return defs
 

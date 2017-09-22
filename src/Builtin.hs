@@ -28,7 +28,7 @@ context target = HashMap.fromList
       (Lam mempty Explicit Type $ Scope ptrRep)
       (arrow Explicit Type Type)
       [ ConstrDef RefName $ toScope $ fmap B $ arrow Explicit (pure 0)
-        $ app (Global PtrName) Explicit (pure 0)
+        $ Abstract.App (Global PtrName) Explicit (pure 0)
       ])
   , (IntName, opaqueData intRep Type)
   , (NatName, dataType intRep Type

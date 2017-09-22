@@ -125,7 +125,7 @@ etaLams glob applied tele scope = case go 0 $ fromScope scope of
 
 betaApp ::  Expr v -> Plicitness -> Expr v -> Expr v
 betaApp (Lam h a1 t s) a2 e2 | a1 == a2 = let_ (const True) h e2 t s
-betaApp e1 a e2 = app e1 a e2
+betaApp e1 a e2 = App e1 a e2
 
 betaApps
   :: Foldable t

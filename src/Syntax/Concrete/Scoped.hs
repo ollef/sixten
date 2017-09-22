@@ -4,12 +4,13 @@ module Syntax.Concrete.Scoped
   , module Pattern
   , Expr(..), Type
   , piView
+  , apps
   ) where
 
 import Control.Monad
 import Data.Bifunctor
 import Data.Bitraversable
-import Data.Foldable
+import Data.Foldable as Foldable
 import Data.Functor.Classes
 import Data.HashSet(HashSet)
 import Data.Monoid
@@ -18,7 +19,7 @@ import Data.Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import Syntax hiding (piView)
+import Syntax
 import Syntax.Concrete.Definition as Definition
 import Syntax.Concrete.Pattern as Pattern
 import Util
@@ -40,9 +41,14 @@ data Expr v
 -- | Synonym for documentation purposes
 type Type = Expr
 
+-------------------------------------------------------------------------------
+-- Helpers
 piView :: Expr v -> Maybe (Plicitness, Pat (PatternScope Type v) (), PatternScope Expr v)
 piView (Pi p pat s) = Just (p, pat, s)
 piView _ = Nothing
+
+apps :: Foldable t => Expr v -> t (Plicitness, Expr v) -> Expr v
+apps = Foldable.foldl' (uncurry . App)
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -66,12 +72,6 @@ instance Eq1 Expr where
 
 instance Eq v => Eq (Expr v) where
   (==) = liftEq (==)
-
-instance AppSyntax Expr where
-  app = App
-
-  appView (App e1 p e2) = Just (e1, p, e2)
-  appView _ = Nothing
 
 instance GlobalBind Expr where
   global = Global

@@ -40,23 +40,23 @@ slam expr = do
       e <- slamSized $ instantiate1 (pure v) s
       rep <- slam t'
       return $ SLambda.Lam h rep $ abstract1 v e
-    (appsView -> (Abstract.Con qc@(QConstr typeName _), es)) -> do
+    (Abstract.appsView -> (Abstract.Con qc@(QConstr typeName _), es)) -> do
       (_, typeType) <- definition typeName
       n <- constrArity qc
       case compare (length es) n of
         GT -> throwError $ "slam: too many args for constructor: " ++ show qc
         EQ -> do
-          let numParams = teleLength $ telescope typeType
+          let numParams = teleLength $ Abstract.telescope typeType
               es' = drop numParams es
           SLambda.Con qc <$> mapM slamSized (Vector.fromList $ snd <$> es')
         LT -> do
           conType <- qconstructor qc
-          let Just appliedConType = typeApps conType $ snd <$> es
-              tele = telescope appliedConType
+          let Just appliedConType = Abstract.typeApps conType $ snd <$> es
+              tele = Abstract.telescope appliedConType
           slam
-            $ lams tele
+            $ Abstract.lams tele
             $ Scope
-            $ apps (Abstract.Con qc)
+            $ Abstract.apps (Abstract.Con qc)
             $ Vector.fromList (fmap (pure . pure) <$> es)
             <> iforTele tele (\i _ a _ -> (a, pure $ B $ TeleVar i))
     Abstract.Con _qc -> throwError "slam impossible"

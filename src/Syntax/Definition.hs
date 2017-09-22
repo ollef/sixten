@@ -4,12 +4,10 @@ module Syntax.Definition where
 import Control.Monad.Morph
 import Data.Bifunctor
 import Data.Bitraversable
-import Data.Functor.Classes
 import Data.String
 
 import Pretty
 import Syntax.Annotation
-import Syntax.Class
 import Syntax.Data
 import Syntax.GlobalBind
 
@@ -43,15 +41,6 @@ bitraverseDefinition
   -> f (Definition (expr a') b')
 bitraverseDefinition f g (Definition a d) = Definition a <$> bitraverse f g d
 bitraverseDefinition f g (DataDefinition d e) = DataDefinition <$> bitraverseDataDef f g d <*> bitraverse f g e
-
-prettyTypedDef
-  :: (Eq1 expr, Eq v, IsString v, Monad expr, Pretty (expr v), Syntax expr)
-  => PrettyM Doc
-  -> Definition expr v
-  -> expr v
-  -> PrettyM Doc
-prettyTypedDef name (Definition a d) _ = prettyM a <$$> name <+> "=" <+> prettyM d
-prettyTypedDef name (DataDefinition d e) t = prettyDataDef name (telescope t) d <+> "=" <+> prettyM e
 
 instance (Monad expr, Pretty (expr v), IsString v) => PrettyNamed (Definition expr v) where
   prettyNamed name (Definition a e) = name <+> "=" <+> prettyM a <+> prettyM e

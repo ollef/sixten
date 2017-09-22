@@ -8,7 +8,7 @@ import Data.String
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import Syntax hiding (lamView)
+import Syntax
 import TypeRep(TypeRep)
 import Util
 

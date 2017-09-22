@@ -60,7 +60,6 @@ executable sixten
                        Syntax.Abstract.Pattern
                        Syntax.Annotation
                        Syntax.Branches
-                       Syntax.Class
                        Syntax.Concrete.Definition
                        Syntax.Concrete.Literal
                        Syntax.Concrete.Pattern

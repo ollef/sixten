@@ -12,7 +12,6 @@ import Data.String
 
 import Pretty
 import Syntax.Annotation
-import Syntax.Class
 import Syntax.GlobalBind
 import Syntax.Name
 import Syntax.Telescope
@@ -42,16 +41,6 @@ bitraverseDataDef
   -> DataDef (typ a) b
   -> f (DataDef (typ a') b')
 bitraverseDataDef f g (DataDef cs) = DataDef <$> traverse (traverse $ bitraverseScope f g) cs
-
-quantifiedConstrTypes
-  :: Syntax typ
-  => DataDef typ v
-  -> typ v
-  -> (Plicitness -> Plicitness)
-  -> [ConstrDef (typ v)]
-quantifiedConstrTypes (DataDef cs) typ anno = map (fmap $ pis ps) cs
-  where
-    ps = mapAnnotations anno $ telescope typ
 
 constrNames :: DataDef typ v -> [Constr]
 constrNames = map constrName . dataConstructors

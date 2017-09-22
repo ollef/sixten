@@ -12,8 +12,7 @@ import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import Text.Trifecta.Result(Err(Err), explain)
 
 import Syntax
-import Syntax.Concrete.Definition
-import Syntax.Concrete.Pattern
+import Syntax.Concrete.Scoped
 import VIX
 
 exactlyEqualisePats
@@ -83,9 +82,8 @@ throwExpectedExplicit pat = do
     mempty
 
 equaliseClauses
-  :: (AppSyntax expr, Applicative expr)
-  => NonEmpty (Clause b expr v)
-  -> NonEmpty (Clause b expr v)
+  :: NonEmpty (Clause b Expr v)
+  -> NonEmpty (Clause b Expr v)
 equaliseClauses clauses
   = NonEmpty.zipWith
     (uncurry etaClause)
@@ -136,11 +134,10 @@ equaliseClauses clauses
     addExplicit pats = ((Explicit, VarPat mempty ()) : pats, pure Explicit)
 
 etaClause
-  :: (AppSyntax expr, Applicative expr)
-  => [(Plicitness, Pat (Scope (Var PatternVar b) expr v) ())]
+  :: [(Plicitness, Pat (Scope (Var PatternVar b) Expr v) ())]
   -> [Plicitness]
-  -> Scope (Var PatternVar b) expr v
-  -> Clause b expr v
+  -> Scope (Var PatternVar b) Expr v
+  -> Clause b Expr v
 etaClause pats extras (Scope scope)
   = Clause
     (Vector.fromList pats)
