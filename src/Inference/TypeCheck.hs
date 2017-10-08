@@ -802,13 +802,13 @@ generaliseDefs xs = do
   tfvs <- fold <$> mapM (foldMapM HashSet.singleton) types
   let fvs = dfvs <> tfvs
 
+  mergeConstraintVars fvs
+
   l <- level
   logShow 30 "level" l
   let p MetaVar { metaRef = Just r } = either (> l) (const False) <$> solution r
       p _ = return False
   fvs' <- fmap HashSet.fromList $ filterM p $ HashSet.toList fvs
-  logShow 30 "fvs" fvs
-  logShow 30 "fvs'" fvs'
 
   deps <- forM (HashSet.toList fvs') $ \x -> do
     ds <- foldMapM HashSet.singleton $ metaType x

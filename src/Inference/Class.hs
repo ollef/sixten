@@ -5,8 +5,11 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.Bifunctor
+import Data.Foldable
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
+import Data.HashSet(HashSet)
+import qualified Data.Map as Map
 import Data.Maybe
 import Data.Monoid
 import Data.Vector(Vector)
@@ -229,3 +232,30 @@ elabRecursiveDefs defs = enterLevel $ do
     typ' <- elabExpr typ
     def' <- elabDef def typ'
     return (loc, (v, def', typ'))
+
+mergeConstraintVars
+  :: HashSet MetaA
+  -> Infer ()
+mergeConstraintVars = void . foldlM go mempty
+  where
+    go varTypes v@MetaVar { metaRef = Just r, metaData = Constraint } = do
+      sol <- solution r
+      case sol of
+        Right _ -> return varTypes
+        Left l -> do
+          typ <- zonk $ metaType v
+          case Map.lookup typ varTypes of
+            Just v'@MetaVar { metaRef = Just r' } -> do
+              sol' <- solution r'
+              case sol' of
+                Right _ -> return $ Map.insert typ v varTypes
+                Left l'
+                  | l < l' -> do
+                    solve r' $ pure v
+                    return $ Map.insert typ v varTypes
+                  | otherwise -> do
+                    solve r $ pure v'
+                    return $ Map.insert typ v' varTypes
+            _ -> return $ Map.insert typ v varTypes
+
+    go varTypes _ = return varTypes
