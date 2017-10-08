@@ -543,7 +543,7 @@ generateBranches caseExpr branches brCont = do
                       ]
               return (Snoc vs $ IndirectVar ptr, fullRep')
 
-        (args, _) <- Foldable.foldlM go (mempty, shower $ TypeRep.size intRep) teleVector -- TODO: should use padding functionality even for the tag
+        (args, _) <- Foldable.foldlM go (mempty, shower $ TypeRep.size intRep) teleVector
         contResult <- brCont $ inst brScope
         afterBranchLabel <- gets currentLabel
         emit $ branch postLabel
