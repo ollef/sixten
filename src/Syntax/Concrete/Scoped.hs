@@ -1,10 +1,11 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, PatternSynonyms, ViewPatterns #-}
 module Syntax.Concrete.Scoped
   ( module Definition
   , module Pattern
   , Expr(..), Type
   , piView
-  , apps
+  , apps, appsView
+  , pattern Pi1
   ) where
 
 import Control.Monad
@@ -23,6 +24,7 @@ import Syntax
 import Syntax.Concrete.Definition as Definition
 import Syntax.Concrete.Pattern as Pattern
 import Util
+import Util.Tsil
 
 data Expr v
   = Var v
@@ -49,6 +51,31 @@ piView _ = Nothing
 
 apps :: Foldable t => Expr v -> t (Plicitness, Expr v) -> Expr v
 apps = Foldable.foldl' (uncurry . App)
+
+appsView :: Expr v -> (Expr v, [(Plicitness, Expr v)])
+appsView = second toList . go
+  where
+    go (SourceLoc _ e) = go e
+    go (App e1 p e2) = second (`Snoc` (p, e2)) $ go e1
+    go e = (e, Nil)
+
+annoPatView
+  :: Pat (Scope b Expr a) t
+  -> (Scope b Expr a, Pat (Scope b Expr a) t)
+annoPatView (PatLoc _ p) = annoPatView p
+annoPatView (AnnoPat t p) = (t, p)
+annoPatView p = (Scope Wildcard, p)
+
+pattern Pi1
+  :: NameHint
+  -> Plicitness
+  -> Expr v
+  -> Scope1 Expr v
+  -> Expr v
+pattern Pi1 h p t s <- Pi p (annoPatView -> (unusedScope -> Just t, varPatView -> Just h)) (mapBound (\0 -> ()) -> s)
+  where
+    Pi1 h p Wildcard s = Pi p (VarPat h ()) $ mapBound (\() -> 0) s
+    Pi1 h p t s = Pi p (AnnoPat (abstractNone t) (VarPat h ())) $ mapBound (\() -> 0) s
 
 -------------------------------------------------------------------------------
 -- Instances

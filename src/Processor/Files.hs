@@ -70,9 +70,9 @@ processModules args (builtins1 : builtins2 : modules) = do
     go = do
       builtins <- processBuiltins tgt builtins1 builtins2
       let builtinModule = Module "Sixten.Builtin" AllExposed mempty builtins
-      let orderedModules = dependencyOrder modules
+      let orderedModules = moduleDependencyOrder modules
       results <- forM orderedModules $ \moduleGroup -> case moduleGroup of
-        [modul] -> traverse (const $ (File.frontend >=> File.backend) modul) modul
+        [modul] -> traverse (const $ File.process modul) modul
         _ -> throwError -- TODO: Could be allowed?
           $ "Circular modules: " ++ intercalate ", " (fromModuleName . moduleName <$> moduleGroup)
       return $ builtinModule : results

@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Inference.Match where
 
 import Control.Monad.Except
@@ -16,6 +16,7 @@ import qualified Analysis.Simplify as Simplify
 import qualified Builtin.Names as Builtin
 import Inference.Normalise
 import Inference.TypeOf
+import Inference.Monad
 import Meta
 import Syntax
 import Syntax.Abstract
@@ -51,9 +52,9 @@ matchSingle
   -> PatM
   -> AbstractM
   -> AbstractM
-  -> VIX ExprF
+  -> Infer ExprF
 matchSingle expr pat innerExpr retType = do
-  failVar <- forall "fail" retType
+  failVar <- forall "fail" Explicit retType
   result <- match failVar retType [expr] [([pat], innerExpr)] innerExpr
   return $ subst1 failVar (Builtin.Fail retType) result
 
@@ -61,9 +62,9 @@ matchCase
   :: AbstractM
   -> [(PatM, AbstractM)]
   -> AbstractM
-  -> VIX ExprF
+  -> Infer ExprF
 matchCase expr pats retType = do
-  failVar <- forall "fail" retType
+  failVar <- forall "fail" Explicit retType
   result <- match failVar retType [expr] (first pure <$> pats) (pure failVar)
   return $ subst1 failVar (Builtin.Fail retType) result
 
@@ -71,9 +72,9 @@ matchClauses
   :: [AbstractM]
   -> [([PatM], AbstractM)]
   -> AbstractM
-  -> VIX ExprF
+  -> Infer ExprF
 matchClauses exprs pats retType = do
-  failVar <- forall "fail" retType
+  failVar <- forall "fail" Explicit retType
   result <- match failVar retType exprs pats (pure failVar)
   return $ subst1 failVar (Builtin.Fail retType) result
 
@@ -83,7 +84,7 @@ type Match
   -> [AbstractM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
   -> [Clause] -- ^ Clauses
   -> ExprF -- ^ The continuation for pattern match failure
-  -> VIX ExprF
+  -> Infer ExprF
 
 type NonEmptyMatch
   = MetaA -- ^ Failure variable
@@ -91,7 +92,7 @@ type NonEmptyMatch
   -> [AbstractM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
   -> NonEmpty Clause -- ^ Clauses
   -> ExprF -- ^ The continuation for pattern match failure
-  -> VIX ExprF
+  -> Infer ExprF
 
 -- | Desugar pattern matching clauses
 match :: Match
@@ -159,13 +160,13 @@ matchCon expr failVar retType exprs clauses expr0 = do
 conPatArgs
   :: QConstr
   -> Vector (Plicitness, AbstractM)
-  -> VIX (Vector (Plicitness, PatM, AbstractM), Vector MetaA)
+  -> Infer (Vector (Plicitness, PatM, AbstractM), Vector MetaA)
 conPatArgs c params = do
   ctype <- qconstructor c
   let (tele, _) = pisView (ctype :: AbstractM)
       tele' = instantiatePrefix (snd <$> params) tele
-  vs <- forTeleWithPrefixM tele' $ \h _ s vs ->
-    forall h $ instantiateTele pure vs s
+  vs <- forTeleWithPrefixM tele' $ \h p s vs ->
+    forall h p $ instantiateTele pure vs s
   let ps = (\(p, v) -> (p, VarPat (metaHint v) v, metaType v))
         <$> Vector.zip (teleAnnotations tele') vs
   return (ps, vs)
@@ -173,7 +174,7 @@ conPatArgs c params = do
 patternTelescope
   :: Vector MetaA
   -> Vector (a, Pat typ b, AbstractM)
-  -> VIX (Telescope a Expr MetaA)
+  -> Infer (Telescope a Expr MetaA)
 patternTelescope ys ps = Telescope <$> mapM go ps
   where
     go (p, pat, e) = do
@@ -197,7 +198,7 @@ matchVar expr failVar retType exprs clauses expr0 = do
   clauses' <- traverse go clauses
   match failVar retType exprs (NonEmpty.toList clauses') expr0
   where
-    go :: Clause -> VIX Clause
+    go :: Clause -> Infer Clause
     go (VarPat _ y:ps, e) = do
       ps' <- forM ps $ flip bitraverse pure $ \t -> do
         t' <- zonk t

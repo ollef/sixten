@@ -160,8 +160,8 @@ importedAliases modules (Import modName asName exposed) =
       -> MultiHashMap b (Either QConstr QName)
     as f = HashMap.fromList .  fmap (first f) . HashMap.toList
 
-dependencyOrder
+moduleDependencyOrder
   :: (Foldable t, Functor t)
   => t (Module contents)
   -> [[Module contents]]
-dependencyOrder = topoSortWith moduleName $ fmap importModule . moduleImports
+moduleDependencyOrder = topoSortWith moduleName $ fmap importModule . moduleImports

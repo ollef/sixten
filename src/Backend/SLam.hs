@@ -23,7 +23,7 @@ slam expr = do
   logMeta 20 "slam expr" expr
   modifyIndent succ
   res <- case expr of
-    Abstract.Var v@(metaRef -> Just r) -> do
+    Abstract.Var v@MetaVar { metaRef = Just r } -> do
       sol <- solution r
       case sol of
         Left _ -> return $ SLambda.Var v
@@ -34,9 +34,9 @@ slam expr = do
     Abstract.Pi {} -> do
       t <- whnf' True $ Abstract.Global Builtin.PiTypeName
       slam t
-    Abstract.Lam h _ t s -> do
+    Abstract.Lam h p t s -> do
       t' <- whnf' True t
-      v <- forall h t'
+      v <- forall h p t'
       e <- slamSized $ instantiate1 (pure v) s
       rep <- slam t'
       return $ SLambda.Lam h rep $ abstract1 v e
@@ -63,7 +63,7 @@ slam expr = do
     Abstract.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamSized e2
     Abstract.Case e brs _retType -> SLambda.Case <$> slamSized e <*> slamBranches brs
     Abstract.Let ds scope -> do
-      vs <- forMLet ds $ \h _ t -> forall h t
+      vs <- forMLet ds $ \h _ t -> forall h Explicit t
       let abstr = letAbstraction vs
       ds' <- fmap LetRec $ forMLet ds $ \h s t -> do
         e <- slamSized $ instantiateLet pure vs s
@@ -88,13 +88,13 @@ slamBranches (ConBranches cbrs) = do
   logMeta 20 "slamBranches brs" $ ConBranches cbrs
   modifyIndent succ
   cbrs' <- forM cbrs $ \(ConBranch c tele brScope) -> do
-    tele' <- forTeleWithPrefixM tele $ \h a s tele' -> do
+    tele' <- forTeleWithPrefixM tele $ \h p s tele' -> do
       let vs = fst <$> tele'
           abstr = teleAbstraction vs
           t = instantiateTele pure vs s
       trep <- slam =<< whnf' True t
-      v <- forall h t
-      return (v, TeleArg h a $ abstract abstr trep)
+      v <- forall h p t
+      return (v, TeleArg h p $ abstract abstr trep)
     let vs = fst <$> tele'
         abstr = teleAbstraction vs
         tele'' = Telescope
@@ -123,5 +123,5 @@ slamExtern (Extern lang parts)
 slamDef
   :: Definition Abstract.Expr MetaA
   -> VIX LambdaM
-slamDef (Definition _ e) = slamSized e
+slamDef (Definition _ _ e) = slamSized e
 slamDef (DataDefinition _ e) = slamSized e

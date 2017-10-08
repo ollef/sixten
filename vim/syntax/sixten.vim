@@ -9,6 +9,7 @@ highlight def link sixtenType Type
 highlight def link sixtenDefinition Function
 highlight def link sixtenNumber Number
 highlight def link sixtenModuleKeyword Keyword
+highlight def link sixtenClassKeyword Keyword
 highlight def link sixtenModifierKeyword Keyword
 highlight def link sixtenTypeKeyword Keyword
 highlight def link sixtenLetKeyword Keyword
@@ -18,6 +19,7 @@ highlight def link sixtenLambda Keyword
 highlight def link sixtenDot Keyword
 highlight def link sixtenArrow Operator
 highlight def link sixtenEquals Operator
+highlight def link sixtenConstraintArrow Operator
 highlight def link sixtenTypeAnno Operator
 highlight def link sixtenPipe Operator
 highlight def link sixtenLineComment Comment
@@ -30,6 +32,7 @@ syn match sixtenType "\<[A-Z][a-zA-Z0-9_']*\>"
 syn match sixtenDefinition "^\s*\([_a-zA-Z][a-zA-Z0-9_']*\_s*\)\+:"
 syn match sixtenNumber "\<[0-9]\+\>"
 syn keyword sixtenModuleKeyword import module as exposing
+syn keyword sixtenClassKeyword instance class
 syn keyword sixtenModifierKeyword abstract
 syn keyword sixtenTypeKeyword type where
 syn keyword sixtenCaseKeyword case of
@@ -39,6 +42,7 @@ syn match sixtenLambda "\\"
 syn match sixtenDot "\."
 syn match sixtenArrow "->"
 syn match sixtenEquals "="
+syn match sixtenConstraintArrow "=>"
 syn match sixtenTypeAnno ":"
 syn match sixtenPipe "|"
 

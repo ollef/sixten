@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving, Rank2Types, TypeFamilies, OverloadedStrings #-}
+{-# LANGUAGE ConstraintKinds, FlexibleContexts, FlexibleInstances, GeneralizedNewtypeDeriving, Rank2Types, TypeFamilies, OverloadedStrings #-}
 module VIX where
 
 import Control.Monad.Except
@@ -9,10 +9,12 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
 import Data.List as List
+import Data.Maybe
 import Data.Monoid
 import Data.String
 import Data.Text(Text)
 import qualified Data.Text.IO as Text
+import Data.Vector(Vector)
 import Data.Void
 import System.IO
 import Text.Trifecta.Result(Err(Err), explain)
@@ -35,6 +37,8 @@ data VIXState = VIXState
   , vixModuleNames :: MultiHashMap ModuleName (Either QConstr QName)
   , vixConvertedSignatures :: HashMap QName Lifted.FunSignature
   , vixSignatures :: HashMap QName (Signature ReturnIndirect)
+  , vixClassMethods :: HashMap QName (Vector Name)
+  , vixClassInstances :: HashMap QName [(QName, Type Void)]
   , vixIndent :: !Int
   , vixFresh :: !Int
   , vixLevel :: !Level
@@ -43,6 +47,8 @@ data VIXState = VIXState
   , vixTarget :: Target
   }
 
+type MonadVIX = MonadState VIXState
+
 emptyVIXState :: Target -> Handle -> Int -> VIXState
 emptyVIXState target handle verbosity = VIXState
   { vixLocation = mempty
@@ -50,6 +56,8 @@ emptyVIXState target handle verbosity = VIXState
   , vixModuleNames = mempty
   , vixConvertedSignatures = mempty
   , vixSignatures = mempty
+  , vixClassMethods = mempty
+  , vixClassInstances = mempty
   , vixIndent = 0
   , vixFresh = 0
   , vixLevel = Level 1
@@ -58,17 +66,18 @@ emptyVIXState target handle verbosity = VIXState
   , vixTarget = target
   }
 
-newtype VIX a = VIX (ExceptT String (StateT VIXState IO) a)
+newtype VIX a = VIX (StateT VIXState (ExceptT String IO) a)
   deriving (Functor, Applicative, Monad, MonadFix, MonadError String, MonadState VIXState, MonadIO)
 
-liftST :: ST RealWorld a -> VIX a
-liftST = VIX . liftIO . stToIO
+liftST :: MonadIO m => ST RealWorld a -> m a
+liftST = liftIO . stToIO
 
 unVIX
   :: VIX a
-  -> ExceptT String (StateT VIXState IO) a
+  -> StateT VIXState (ExceptT String IO) a
 unVIX (VIX x) = x
 
+-- TODO vixFresh should probably be a mutable variable
 runVIX
   :: VIX a
   -> Target
@@ -76,19 +85,20 @@ runVIX
   -> Int
   -> IO (Either String a)
 runVIX vix target handle verbosity
-  = evalStateT (runExceptT $ unVIX vix)
+  = runExceptT
+  $ evalStateT (unVIX vix)
   $ emptyVIXState target handle verbosity
 
-fresh :: VIX Int
+fresh :: MonadVIX m => m Int
 fresh = do
   i <- gets vixFresh
   modify $ \s -> s {vixFresh = i + 1}
   return i
 
-level :: VIX Level
+level :: MonadVIX m => m Level
 level = gets vixLevel
 
-enterLevel :: VIX a -> VIX a
+enterLevel :: MonadVIX m => m a -> m a
 enterLevel x = do
   l <- level
   modify $ \s -> s {vixLevel = l + 1}
@@ -96,7 +106,7 @@ enterLevel x = do
   modify $ \s -> s {vixLevel = l}
   return r
 
-located :: SourceLoc -> VIX a -> VIX a
+located :: MonadVIX m => SourceLoc -> m a -> m a
 located loc m = do
   oldLoc <- gets vixLocation
   modify $ \s -> s { vixLocation = loc }
@@ -104,45 +114,62 @@ located loc m = do
   modify $ \s -> s { vixLocation = oldLoc }
   return res
 
-currentLocation :: VIX SourceLoc
+currentLocation :: MonadVIX m => m SourceLoc
 currentLocation = gets vixLocation
 
 -------------------------------------------------------------------------------
 -- Debugging
-log :: Text -> VIX ()
+log :: (MonadIO m, MonadVIX m) => Text -> m ()
 log l = do
   h <- gets vixLogHandle
   liftIO $ Text.hPutStrLn h l
 
-logVerbose :: Int -> Text -> VIX ()
+logVerbose :: (MonadIO m, MonadVIX m) => Int -> Text -> m ()
 logVerbose v l = whenVerbose v $ VIX.log l
 
-modifyIndent :: (Int -> Int) -> VIX ()
+modifyIndent :: (MonadIO m, MonadVIX m) => (Int -> Int) -> m ()
 modifyIndent f = modify $ \s -> s {vixIndent = f $ vixIndent s}
 
-logPretty :: Pretty a => Int -> String -> a -> VIX ()
+logPretty :: (MonadIO m, MonadVIX m, Pretty a) => Int -> String -> a -> m ()
 logPretty v s x = whenVerbose v $ do
   i <- gets vixIndent
   VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide (pretty x)
 
-logShow :: Show a => Int -> String -> a -> VIX ()
+logShow :: (MonadIO m, MonadVIX m, Show a) => Int -> String -> a -> m ()
 logShow v s x = whenVerbose v $ do
   i <- gets vixIndent
   VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> fromString (show x)
 
-whenVerbose :: Int -> VIX () -> VIX ()
+whenVerbose :: MonadVIX m => Int -> m () -> m ()
 whenVerbose i m = do
   v <- gets vixVerbosity
   when (v >= i) m
 
 -------------------------------------------------------------------------------
 -- Working with abstract syntax
-addContext :: HashMap QName (Definition Expr Void, Type Void) -> VIX ()
+addContext :: MonadVIX m => HashMap QName (Definition Expr Void, Type Void) -> m ()
 addContext prog = modify $ \s -> s
   { vixContext = prog <> vixContext s
+  , vixClassInstances = HashMap.unionWith (<>) instances $ vixClassInstances s
   }
+  where
+    instances
+      = HashMap.fromList
+      $ catMaybes
+      $ flip map (HashMap.toList prog) $ \(defName, (def, typ)) -> case def of
+        DataDefinition {} -> Nothing
+        Definition _ IsOrdinaryDefinition _ -> Nothing
+        Definition _ IsInstance _ -> do
+          let (_, s) = pisView typ
+          case appsView $ fromScope s of
+            (Global className, _) -> Just (className, [(defName, typ)])
+            _ -> Nothing
 
-throwLocated :: Doc -> VIX a
+
+throwLocated
+  :: (MonadError String m, MonadVIX m)
+  => Doc
+  -> m a
 throwLocated x = do
   loc <- currentLocation
   throwError
@@ -150,7 +177,10 @@ throwLocated x = do
     $ explain loc
     $ Err (Just $ pretty x) mempty mempty mempty
 
-definition :: QName -> VIX (Definition Expr v, Expr v)
+definition
+  :: (MonadVIX m, MonadError String m)
+  => QName
+  -> m (Definition Expr v, Expr v)
 definition name = do
   mres <- gets $ HashMap.lookup name . vixContext
   maybe (throwLocated $ "Not in scope: " <> pretty name)
@@ -158,14 +188,15 @@ definition name = do
         mres
 
 addModule
-  :: ModuleName
+  :: MonadVIX m
+  => ModuleName
   -> HashSet (Either QConstr QName)
-  -> VIX ()
+  -> m ()
 addModule m names = modify $ \s -> s
   { vixModuleNames = multiUnion (HashMap.singleton m names) $ vixModuleNames s
   }
 
-qconstructor :: QConstr -> VIX (Type v)
+qconstructor :: (MonadVIX m, MonadError String m) => QConstr -> m (Type v)
 qconstructor qc@(QConstr n c) = do
   (def, typ) <- definition n
   case def of
@@ -182,24 +213,28 @@ qconstructor qc@(QConstr n c) = do
 -------------------------------------------------------------------------------
 -- Signatures
 addConvertedSignatures
-  :: HashMap QName Lifted.FunSignature
-  -> VIX ()
+  :: MonadVIX m
+  => HashMap QName Lifted.FunSignature
+  -> m ()
 addConvertedSignatures p
   = modify $ \s -> s { vixConvertedSignatures = p <> vixConvertedSignatures s }
 
 convertedSignature
-  :: QName
-  -> VIX (Maybe Lifted.FunSignature)
+  :: MonadVIX m
+  => QName
+  -> m (Maybe Lifted.FunSignature)
 convertedSignature name = gets $ HashMap.lookup name . vixConvertedSignatures
 
 addSignatures
-  :: HashMap QName (Signature ReturnIndirect)
-  -> VIX ()
+  :: MonadVIX m
+  => HashMap QName (Signature ReturnIndirect)
+  -> m ()
 addSignatures p = modify $ \s -> s { vixSignatures = p <> vixSignatures s }
 
 signature
-  :: QName
-  -> VIX (Signature ReturnIndirect)
+  :: (MonadError String m, MonadVIX m)
+  => QName
+  -> m (Signature ReturnIndirect)
 signature name = do
   sigs <- gets vixSignatures
   mres <- gets $ HashMap.lookup name . vixSignatures
@@ -209,7 +244,9 @@ signature name = do
 
 -------------------------------------------------------------------------------
 -- General constructor queries
-qconstructorIndex :: VIX (QConstr -> Maybe Int)
+qconstructorIndex
+  :: MonadVIX m
+  => m (QConstr -> Maybe Int)
 qconstructorIndex = do
   cxt <- gets vixContext
   return $ \(QConstr n c) -> do
@@ -220,15 +257,17 @@ qconstructorIndex = do
       _ -> findIndex ((== c) . constrName) constrDefs
 
 constrArity
-  :: QConstr
-  -> VIX Int
+  :: (MonadVIX m, MonadError String m)
+  => QConstr
+  -> m Int
 constrArity
   = fmap (teleLength . fst . pisView)
-  . (qconstructor :: QConstr -> VIX (Expr Void))
+  . qconstructor
 
 constrIndex
-  :: QConstr
-  -> VIX Int
+  :: (MonadError String m, MonadVIX m)
+  => QConstr
+  -> m Int
 constrIndex qc@(QConstr n c) = do
   (DataDefinition (DataDef cs) _, _) <- definition n
   case List.findIndex ((== c) . constrName) cs of

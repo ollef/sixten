@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, ViewPatterns, OverloadedStrings #-}
 module Meta where
 
 import Control.Monad.Except
@@ -21,16 +21,17 @@ import qualified Syntax.Concrete.Scoped as Concrete
 import qualified Syntax.Sized.SLambda as SLambda
 import VIX
 
-type Exists e = STRef RealWorld (Either Level (e (MetaVar e)))
+type Exists d e = STRef RealWorld (Either Level (e (MetaVar d e)))
 
-data MetaVar e = MetaVar
-  { metaId   :: !Int
-  , metaType :: e (MetaVar e)
+data MetaVar d e = MetaVar
+  { metaId  :: !Int
+  , metaType :: e (MetaVar d e)
   , metaHint :: !NameHint
-  , metaRef  :: !(Maybe (Exists e))
+  , metaRef :: !(Maybe (Exists d e))
+  , metaData :: !d
   }
 
-type MetaA = MetaVar Abstract.Expr
+type MetaA = MetaVar Plicitness Abstract.Expr
 
 type ConcreteM = Concrete.Expr MetaA
 type AbstractM = Abstract.Expr MetaA
@@ -38,101 +39,93 @@ type LambdaM = SLambda.Expr MetaA
 type ScopeM b f = Scope b f MetaA
 type BranchesM c a f = Branches c a f MetaA
 
-instance Eq (MetaVar e) where
+instance Eq (MetaVar d e) where
   (==) = (==) `on` metaId
 
-instance Ord (MetaVar e) where
+instance Ord (MetaVar d e) where
   compare = compare `on` metaId
 
-instance Hashable (MetaVar e) where
+instance Hashable (MetaVar d e) where
   hashWithSalt s = hashWithSalt s . metaId
 
-instance Show1 e => Show (MetaVar e) where
-  showsPrec d (MetaVar i t h _) = showParen (d > 10) $
+instance Show1 e => Show (MetaVar d e) where
+  showsPrec d (MetaVar i t h _ _) = showParen (d > 10) $
     showString "Meta" . showChar ' ' . showsPrec 11 i .
     showChar ' ' . showsPrec1 11 t . showChar ' ' . showsPrec 11 h .
     showChar ' ' . showString "<Ref>"
 
-forall :: NameHint -> e (MetaVar e) -> VIX (MetaVar e)
-forall hint typ = do
+refineVar
+  :: (Applicative e, MonadIO m)
+  => MetaVar d e
+  -> (e (MetaVar d e) -> m (e (MetaVar d e)))
+  -> m (e (MetaVar d e))
+refineVar v@MetaVar { metaRef = Nothing } _ = return $ pure v
+refineVar v@MetaVar { metaRef = Just r } f = refineIfSolved r (pure v) f
+
+forall
+  :: (MonadVIX m, MonadIO m)
+  => NameHint
+  -> d
+  -> e (MetaVar d e)
+  -> m (MetaVar d e)
+forall hint d typ = do
   i <- fresh
   logVerbose 20 $ "forall: " <> fromString (show i)
-  return $ MetaVar i typ hint Nothing
+  return $ MetaVar i typ hint Nothing d
 
-refineVar
-  :: Applicative e
-  => MetaVar e
-  -> (e (MetaVar e) -> VIX (e (MetaVar e)))
-  -> VIX (e (MetaVar e))
-refineVar v@(metaRef -> Nothing) _ = return $ pure v
-refineVar v@(metaRef -> Just r) f = refineIfSolved r (pure v) f
-refineVar _ _ = error "refineVar impossible"
-
-showMeta
-  :: (Functor e, Foldable e, Functor f, Foldable f, Pretty (f String), Pretty (e String))
-  => f (MetaVar e)
-  -> VIX Doc
-showMeta x = do
-  vs <- foldMapM Set.singleton x
-  let p (metaRef -> Just r) = solution r
-      p _                   = return $ Left $ Level (-1)
-  let vsl = Set.toList vs
-  pvs <- mapM p vsl
-  let sv v = "$" ++ fromMaybe "" (fromName <$> unNameHint (metaHint v)) ++ (if isJust $ metaRef v then "∃" else "")
-          ++ show (metaId v)
-  let solutions = [(sv v, pretty $ sv <$> metaType v, pretty $ fmap sv <$> msol) | (v, msol) <- zip vsl pvs]
-  return
-    $ pretty (sv <$> x)
-    <> if null solutions
-      then mempty
-      else text ", metavars: " <> pretty solutions
-
-logMeta
-  :: (Functor e, Foldable e, Functor f, Foldable f, Pretty (f String), Pretty (e String))
-  => Int
-  -> String
-  -> f (MetaVar e)
-  -> VIX ()
-logMeta v s x = whenVerbose v $ do
-  i <- gets vixIndent
-  r <- showMeta x
-  VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide r
-
-existsAtLevel :: NameHint -> e (MetaVar e) -> Level -> VIX (MetaVar e)
-existsAtLevel hint typ l = do
+existsAtLevel
+  :: (MonadVIX m, MonadIO m)
+  => NameHint
+  -> d
+  -> e (MetaVar d e)
+  -> Level
+  -> m (MetaVar d e)
+existsAtLevel hint d typ l = do
   i <- fresh
   ref <- liftST $ newSTRef $ Left l
   logVerbose 20 $ "exists: " <> fromString (show i)
-  return $ MetaVar i typ hint (Just ref)
+  return $ MetaVar i typ hint (Just ref) d
 
-exists :: NameHint -> e (MetaVar e) -> VIX (MetaVar e)
-exists hint typ = existsAtLevel hint typ =<< level
+exists
+  :: (MonadVIX m, MonadIO m)
+  => NameHint
+  -> d
+  -> e (MetaVar d e)
+  -> m (MetaVar d e)
+exists hint d typ = existsAtLevel hint d typ =<< level
 
-shared :: NameHint -> e (MetaVar e) -> e (MetaVar e) -> VIX (MetaVar e)
-shared hint expr typ = do
+shared
+  :: (MonadVIX m, MonadIO m)
+  => NameHint
+  -> d
+  -> e (MetaVar d e)
+  -> e (MetaVar d e)
+  -> m (MetaVar d e)
+shared hint d expr typ = do
   i <- fresh
   ref <- liftST $ newSTRef $ Right expr
   logVerbose 20 $ "let: " <> fromString (show i)
-  return $ MetaVar i typ hint $ Just ref
+  return $ MetaVar i typ hint (Just ref) d
 
-existsVar
-  :: Applicative g
-  => NameHint
-  -> e (MetaVar e)
-  -> VIX (g (MetaVar e))
-existsVar hint typ = pure <$> exists hint typ
-
-solution :: Exists e -> VIX (Either Level (e (MetaVar e)))
+solution
+  :: MonadIO m
+  => Exists d e
+  -> m (Either Level (e (MetaVar d e)))
 solution = liftST . readSTRef
 
-solve :: Exists e -> e (MetaVar e) -> VIX ()
+solve
+  :: MonadIO m
+  => Exists d e
+  -> e (MetaVar d e)
+  -> m ()
 solve r x = liftST $ writeSTRef r $ Right x
 
 refineIfSolved
-  :: Exists e
-  -> e (MetaVar e)
-  -> (e (MetaVar e) -> VIX (e (MetaVar e)))
-  -> VIX (e (MetaVar e))
+  :: MonadIO m
+  => Exists d e
+  -> e (MetaVar d e)
+  -> (e (MetaVar d e) -> m (e (MetaVar d e)))
+  -> m (e (MetaVar d e))
 refineIfSolved r d f = do
   sol <- solution r
   case sol of
@@ -143,10 +136,10 @@ refineIfSolved r d f = do
       return e'
 
 foldMapM
-  :: (Foldable e, Foldable f, Monoid m)
-  => (MetaVar e -> m)
-  -> f (MetaVar e)
-  -> VIX m
+  :: (Foldable e, Foldable f, Monoid a, MonadIO m)
+  => (MetaVar d e -> a)
+  -> f (MetaVar d e)
+  -> m a
 foldMapM f = foldrM go mempty
   where
     go v m = (<> m) . (<> f v) <$>
@@ -159,10 +152,10 @@ foldMapM f = foldrM go mempty
         Nothing -> return mempty
 
 abstractM
-  :: (Monad e, Traversable e, Show1 e)
-  => (MetaVar e -> Maybe b)
-  -> e (MetaVar e)
-  -> VIX (Scope b e (MetaVar e))
+  :: (Monad e, Traversable e, Show1 e, MonadError String m, MonadIO m)
+  => (MetaVar d e -> Maybe b)
+  -> e (MetaVar d e)
+  -> m (Scope b e (MetaVar d e))
 abstractM f e = do
   e' <- zonk e
   changed <- liftST $ newSTRef False
@@ -173,7 +166,7 @@ abstractM f e = do
     go changed (f -> Just b) = do
       liftST $ writeSTRef changed True
       return $ pure $ B b
-    go changed (v'@(metaRef -> Just r)) = do
+    go changed v'@MetaVar { metaRef = Just r } = do
       tfvs <- foldMapM Set.singleton $ metaType v'
       let mftfvs = Set.filter (isJust . f) tfvs
       unless (Set.null mftfvs)
@@ -194,19 +187,34 @@ abstractM f e = do
     go _ v' = free v'
     free = pure . pure . pure . pure
 
+bindM
+  :: (Monad e, Traversable e, MonadIO m)
+  => (MetaVar d e -> m (e v))
+  -> e (MetaVar d e)
+  -> m (e v)
+bindM f = fmap join . traverse go
+  where
+    go v@MetaVar { metaRef = Just r } = do
+      sol <- solution r
+      case sol of
+        Left _ -> f v
+        Right x -> bindM f x
+    go v = f v
+
 abstract1M
-  :: MetaA
+  :: (MonadIO m, MonadVIX m, MonadError String m)
+  => MetaA
   -> AbstractM
-  -> VIX (ScopeM () Abstract.Expr)
+  -> m (ScopeM () Abstract.Expr)
 abstract1M v e = do
   logVerbose 20 $ "abstracting " <> fromString (show $ metaId v)
   abstractM (\v' -> if v == v' then Just () else Nothing) e
 
 zonkVar
-  :: (Monad e, Traversable e)
-  => MetaVar e
-  -> VIX (e (MetaVar e))
-zonkVar v@(metaRef -> Just r) = do
+  :: (Monad e, Traversable e, MonadIO m)
+  => MetaVar d e
+  -> m (e (MetaVar d e))
+zonkVar v@MetaVar { metaRef = Just r } = do
   sol <- solution r
   case sol of
     Left _ -> do
@@ -219,21 +227,21 @@ zonkVar v@(metaRef -> Just r) = do
 zonkVar v = return $ pure v
 
 zonk
-  :: (Monad e, Traversable e)
-  => e (MetaVar e)
-  -> VIX (e (MetaVar e))
+  :: (Monad e, Traversable e, MonadIO m)
+  => e (MetaVar d e)
+  -> m (e (MetaVar d e))
 zonk = fmap join . traverse zonkVar
 
 zonkBound
-  :: (Monad e, Traversable e, Traversable (t e), Bound t)
-  => t e (MetaVar e)
-  -> VIX (t e (MetaVar e))
+  :: (Monad e, Traversable e, Traversable (t e), Bound t, MonadIO m)
+  => t e (MetaVar d e)
+  -> m (t e (MetaVar d e))
 zonkBound = fmap (>>>= id) . traverse zonkVar
 
 metaTelescope
   :: Monad e
-  => Vector (a, MetaVar e)
-  -> Telescope a e (MetaVar e)
+  => Vector (a, MetaVar d e)
+  -> Telescope a e (MetaVar d e)
 metaTelescope vs =
   Telescope
   $ (\(a, v) -> TeleArg (metaHint v) a $ abstract abstr $ metaType v)
@@ -242,12 +250,42 @@ metaTelescope vs =
     abstr = teleAbstraction $ snd <$> vs
 
 metaTelescopeM
-  :: (Monad e, Traversable e, Show1 e)
-  => Vector (a, MetaVar e)
-  -> VIX (Telescope a e (MetaVar e))
+  :: (Monad e, Traversable e, Show1 e, MonadIO m, MonadError String m)
+  => Vector (a, MetaVar d e)
+  -> m (Telescope a e (MetaVar d e))
 metaTelescopeM vs =
   fmap Telescope $ forM vs $ \(a, v) -> do
     s <- abstractM abstr $ metaType v
     return $ TeleArg (metaHint v) a s
   where
     abstr = teleAbstraction $ snd <$> vs
+
+showMeta
+  :: (Functor e, Foldable e, Functor f, Foldable f, Pretty (f String), Pretty (e String), MonadIO m)
+  => f (MetaVar d e)
+  -> m Doc
+showMeta x = do
+  vs <- foldMapM Set.singleton x
+  let p MetaVar { metaRef = Just r } = solution r
+      p _ = return $ Left $ Level (-1)
+  let vsl = Set.toList vs
+  pvs <- mapM p vsl
+  let sv v = "$" ++ fromMaybe "" (fromName <$> unNameHint (metaHint v)) ++ (if isJust $ metaRef v then "∃" else "")
+          ++ show (metaId v)
+  let solutions = [(sv v, pretty $ sv <$> metaType v, pretty $ fmap sv <$> msol) | (v, msol) <- zip vsl pvs]
+  return
+    $ pretty (sv <$> x)
+    <> if null solutions
+      then mempty
+      else text ", metavars: " <> pretty solutions
+
+logMeta
+  :: (Functor e, Foldable e, Functor f, Foldable f, Pretty (f String), Pretty (e String), MonadIO m, MonadVIX m)
+  => Int
+  -> String
+  -> f (MetaVar d e)
+  -> m ()
+logMeta v s x = whenVerbose v $ do
+  i <- gets vixIndent
+  r <- showMeta x
+  VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide r

@@ -42,7 +42,7 @@ scopeCheckModule modul = do
       lookupConstr c = HashMap.lookupDefault mempty c constrs
       constrs = multiFromList
         [ (QName mempty $ fromConstr c, QConstr n c)
-        | (n, (_, Unscoped.TopLevelDataDefinition _ d)) <- HashMap.toList $ moduleContents modul
+        | (n, (_, Unscoped.TopLevelDataDefinition _ _ d)) <- HashMap.toList $ moduleContents modul
         , c <- constrName <$> d
         ] `multiUnion`
         importedConstrAliases
@@ -63,7 +63,12 @@ scopeCheckModule modul = do
       localAliases = multiFromList
         [ (unqualified $ qnameName qn, qn)
         | qn <- localNames
+        ] `multiUnion` localMethods
+      localMethods = multiFromList
+        [ (QName mempty m, QName modName m)
+        | (m, QName modName _) <- methodClasses
         ]
+
       aliases = localAliases `multiUnion` importedNameAliases
       lookupAlias qname
         | HashSet.size candidates == 1 = return $ head $ HashSet.toList candidates
@@ -71,16 +76,26 @@ scopeCheckModule modul = do
         where
           candidates = HashMap.lookupDefault (HashSet.singleton qname) qname aliases
 
+      methodClasses =
+        [ (m, n)
+        | (n, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList $ moduleContents modul
+        , m <- methodName <$> ms
+        ]
+      methodDeps = multiFromList [(QName mempty m, n) | (m, n) <- methodClasses]
+      depAliases = aliases `multiUnion` methodDeps
+      lookupAliasDep qname = HashMap.lookupDefault (HashSet.singleton qname) qname depAliases
+
   resolvedDefs <- forM checkedDefs $ \(n, (loc, def, typ)) -> do
     def' <- traverse lookupAlias def
     typ' <- traverse lookupAlias typ
     return (n, (loc, bound global global def', bind global global typ'))
 
-  resolvedDefDeps <- forM defDeps $ \(n, deps) -> do
-    deps' <- traverse lookupAlias $ HashSet.toList deps
-    return (n, HashSet.fromList deps')
+  let resolvedDefDeps = for defDeps $ \(n, deps) -> do
+        let deps' = lookupAliasDep <$> HashSet.toList deps
+        (n, HashSet.unions deps')
 
   let resolvedDefsMap = HashMap.fromList resolvedDefs
+      -- TODO use topoSortWith
       sortedDeps = topoSort resolvedDefDeps
   return $ for sortedDeps $ \ns -> for ns $ \n -> do
     let (loc, def, typ) = resolvedDefsMap HashMap.! n
@@ -93,23 +108,48 @@ scopeCheckTopLevelDefinition
   :: Unscoped.TopLevelDefinition QName
   -> ScopeCheck (Scoped.TopLevelPatDefinition Scoped.Expr QName, Scoped.Type QName)
 scopeCheckTopLevelDefinition (Unscoped.TopLevelDefinition d) =
-  first Scoped.TopLevelPatDefinition <$> scopeCheckDefinition d
-scopeCheckTopLevelDefinition (Unscoped.TopLevelDataDefinition params cs) = do
-  let pats = (\(p, n, t) -> (p, AnnoPat t $ VarPat (nameHint n) $ unqualified n)) <$> params
-      typ = Unscoped.pis pats $ pure Builtin.TypeName
-      paramNames = (\(_, n, _) -> unqualified n) <$> params
-      abstr = abstract $ teleAbstraction $ Vector.fromList paramNames
+  first Scoped.TopLevelPatDefinition . snd <$> scopeCheckDefinition d
+scopeCheckTopLevelDefinition (Unscoped.TopLevelDataDefinition _name params cs) = do
+  (typ, abstr) <- scopeCheckParamsType params $ pure Builtin.TypeName
+  cs' <- mapM (mapM (fmap abstr . scopeCheckExpr)) cs
+  let res = Scoped.TopLevelPatDataDefinition $ DataDef cs'
+  return (res, typ)
+scopeCheckTopLevelDefinition (Unscoped.TopLevelClassDefinition _name params ms) = do
+  (typ, abstr) <- scopeCheckParamsType params $ pure Builtin.TypeName -- TODO: Should this be a constraint?
+  ms' <- mapM (mapM (fmap abstr . scopeCheckExpr)) ms
+  let res = Scoped.TopLevelPatClassDefinition $ ClassDef ms'
+  return (res, typ)
+scopeCheckTopLevelDefinition (Unscoped.TopLevelInstanceDefinition typ ms) = do
   typ' <- scopeCheckExpr typ
-  res <- Scoped.TopLevelPatDataDefinition . DataDef <$> mapM (mapM (fmap abstr . scopeCheckExpr)) cs
+  ms' <- mapM (\(loc, m) -> (,) loc <$> scopeCheckDefinition m) ms
+  let res = Scoped.TopLevelPatInstanceDefinition
+        $ Scoped.PatInstanceDef
+        $ Vector.fromList
+        $ (\(loc, (n, (d, _typ))) -> (n, loc, d)) -- TODO use the type
+        <$> ms'
   return (res, typ')
+
+scopeCheckParamsType
+  :: Monad f
+  => [(Plicitness, Name, Unscoped.Type QName)]
+  -> Unscoped.Expr QName
+  -> ScopeCheck (Scoped.Expr QName, f QName -> Scope TeleVar f QName)
+scopeCheckParamsType params kind = do
+  typ' <- scopeCheckExpr typ
+  return (typ', abstr)
+  where
+    pats = (\(p, n, t) -> (p, AnnoPat t $ VarPat (nameHint n) $ unqualified n)) <$> params
+    typ = Unscoped.pis pats kind
+    paramNames = (\(_, n, _) -> unqualified n) <$> params
+    abstr = abstract $ teleAbstraction $ Vector.fromList paramNames
 
 scopeCheckDefinition
   :: Unscoped.Definition Unscoped.Expr QName
-  -> ScopeCheck (Scoped.PatDefinition (Scoped.Clause void Scoped.Expr QName), Scoped.Type QName)
-scopeCheckDefinition (Unscoped.Definition a clauses mtyp) = do
-  res <- Scoped.PatDefinition a <$> mapM scopeCheckClause clauses
+  -> ScopeCheck (Name, (Scoped.PatDefinition (Scoped.Clause void Scoped.Expr QName), Scoped.Type QName))
+scopeCheckDefinition (Unscoped.Definition name a clauses mtyp) = do
+  res <- Scoped.PatDefinition a IsOrdinaryDefinition <$> mapM scopeCheckClause clauses
   typ <- scopeCheckExpr $ fromMaybe Unscoped.Wildcard mtyp
-  return (res, typ)
+  return (name, (res, typ))
 
 scopeCheckClause
   :: Unscoped.Clause Unscoped.Expr QName
@@ -153,13 +193,16 @@ scopeCheckExpr expr = case expr of
   Unscoped.Let defs body -> do
     defs' <- traverse (bitraverse pure scopeCheckDefinition) defs
     body' <- scopeCheckExpr body
-    let sortedDefs = topoSortWith (\(_, name, _) -> fromName name) (\(_, _, (d, t)) -> foldMap toHashSet d <> toHashSet t) defs'
+    let sortedDefs = topoSortWith
+          (\(_, (name, _)) -> fromName name)
+          (\(_, (_, (d, t))) -> foldMap toHashSet d <> toHashSet t)
+          defs'
 
         go ds e = do
           let ds' = Vector.fromList ds
-              abstr = letAbstraction $ fromName . snd3 <$> ds'
+              abstr = letAbstraction $ fromName . fst . snd <$> ds'
           Scoped.Let
-            ((\(loc, name, (def, typ)) -> (loc, fromName name, Scoped.abstractClause abstr <$> def, abstract abstr typ)) <$> ds')
+            ((\(loc, (name, (def, typ))) -> (loc, fromName name, Scoped.abstractClause abstr <$> def, abstract abstr typ)) <$> ds')
             (abstract abstr e)
 
     return $ foldr go body' sortedDefs

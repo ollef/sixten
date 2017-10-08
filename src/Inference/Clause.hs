@@ -11,6 +11,7 @@ import qualified Data.Vector as Vector
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import Text.Trifecta.Result(Err(Err), explain)
 
+import Inference.Monad
 import Syntax
 import Syntax.Concrete.Scoped
 import VIX
@@ -19,7 +20,7 @@ exactlyEqualisePats
   :: Pretty v
   => [Plicitness]
   -> [(Plicitness, Pat e v)]
-  -> VIX [(Plicitness, Pat e v)]
+  -> Infer [(Plicitness, Pat e v)]
 exactlyEqualisePats [] [] = return []
 exactlyEqualisePats [] ((p, pat):_) = do
   loc <- currentLocation
@@ -28,16 +29,22 @@ exactlyEqualisePats [] ((p, pat):_) = do
     $ explain loc
     $ Err (Just "Too many patterns for type")
     [ "Found the pattern:" Leijen.<+> Leijen.red (runPrettyM $ prettyAnnotation p (prettyM $ first (const ()) pat)) <> "."
-    , "Expected: no more patterns."
+    , Leijen.bold "Expected:" Leijen.<+> "no more patterns."
     ]
     mempty
     mempty
+exactlyEqualisePats (Constraint:ps) ((Constraint, pat):pats)
+  = (:) (Implicit, pat) <$> exactlyEqualisePats ps pats
 exactlyEqualisePats (Implicit:ps) ((Implicit, pat):pats)
   = (:) (Implicit, pat) <$> exactlyEqualisePats ps pats
 exactlyEqualisePats (Explicit:ps) ((Explicit, pat):pats)
   = (:) (Explicit, pat) <$> exactlyEqualisePats ps pats
+exactlyEqualisePats (Constraint:ps) pats
+  = (:) (Constraint, WildcardPat) <$> exactlyEqualisePats ps pats
 exactlyEqualisePats (Implicit:ps) pats
   = (:) (Implicit, WildcardPat) <$> exactlyEqualisePats ps pats
+exactlyEqualisePats (Explicit:_) ((Constraint, pat):_)
+  = throwExpectedExplicit pat
 exactlyEqualisePats (Explicit:_) ((Implicit, pat):_)
   = throwExpectedExplicit pat
 exactlyEqualisePats (Explicit:_) [] = do
@@ -47,7 +54,7 @@ exactlyEqualisePats (Explicit:_) [] = do
     $ explain loc
     $ Err (Just "Not enough patterns for type")
     [ "Found the pattern: no patterns."
-    , "Expected: an explicit pattern."
+    , Leijen.bold "Expected:" Leijen.<+> "an explicit pattern."
     ]
     mempty
     mempty
@@ -56,19 +63,25 @@ equalisePats
   :: Pretty v
   => [Plicitness]
   -> [(Plicitness, Pat e v)]
-  -> VIX [(Plicitness, Pat e v)]
+  -> Infer [(Plicitness, Pat e v)]
 equalisePats _ [] = return []
 equalisePats [] pats = return pats
+equalisePats (Constraint:ps) ((Constraint, pat):pats)
+  = (:) (Constraint, pat) <$> equalisePats ps pats
 equalisePats (Implicit:ps) ((Implicit, pat):pats)
   = (:) (Implicit, pat) <$> equalisePats ps pats
 equalisePats (Explicit:ps) ((Explicit, pat):pats)
   = (:) (Explicit, pat) <$> equalisePats ps pats
+equalisePats (Constraint:ps) pats
+  = (:) (Constraint, WildcardPat) <$> equalisePats ps pats
 equalisePats (Implicit:ps) pats
   = (:) (Implicit, WildcardPat) <$> equalisePats ps pats
 equalisePats (Explicit:_) ((Implicit, pat):_)
   = throwExpectedExplicit pat
+equalisePats (Explicit:_) ((Constraint, pat):_)
+  = throwExpectedExplicit pat
 
-throwExpectedExplicit :: Pretty v => Pat e v -> VIX a
+throwExpectedExplicit :: Pretty v => Pat e v -> Infer a
 throwExpectedExplicit pat = do
   loc <- currentLocation
   throwError
@@ -76,7 +89,7 @@ throwExpectedExplicit pat = do
     $ explain loc
     $ Err (Just "Explicit/implicit mismatch")
     [ "Found the implicit pattern:" Leijen.<+> Leijen.red (runPrettyM $ prettyAnnotation Implicit (prettyM $ first (const ()) pat)) <> "."
-    , "Expected:" Leijen.<+> "an" Leijen.<+> Leijen.dullgreen "explicit" Leijen.<+> "pattern."
+    , Leijen.bold "Expected:" Leijen.<+> "an" Leijen.<+> Leijen.dullgreen "explicit" Leijen.<+> "pattern."
     ]
     mempty
     mempty

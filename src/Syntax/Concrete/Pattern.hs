@@ -73,6 +73,14 @@ liftPatEq f g (PatLoc _ pat1) pat2 = liftPatEq f g pat1 pat2
 liftPatEq f g pat1 (PatLoc _ pat2) = liftPatEq f g pat1 pat2
 liftPatEq _ _ _ _ = False
 
+varPatView
+  :: Pat t ()
+  -> Maybe NameHint
+varPatView (PatLoc _ p) = varPatView p
+varPatView (VarPat h ~()) = Just h
+varPatView WildcardPat = Just mempty
+varPatView _ = Nothing
+
 -------------------------------------------------------------------------------
 -- Instances
 instance (Eq typ, Eq b) => Eq (Pat typ b) where

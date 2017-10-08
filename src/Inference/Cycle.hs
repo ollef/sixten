@@ -1,25 +1,25 @@
 {-# LANGUAGE MonadComprehensions, OverloadedStrings #-}
 module Inference.Cycle where
 
-import Data.Foldable as Foldable
-import qualified Data.Vector as Vector
 import Control.Monad.Except
 import Data.Bitraversable
+import Data.Foldable as Foldable
 import qualified Data.HashMap.Lazy as HashMap
 import Data.Monoid
+import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import Text.Trifecta.Result(Err(Err), explain)
 
+import Inference.Monad
 import Meta
 import Syntax
 import Syntax.Abstract
-import VIX
 import Util.TopoSort
 
 detectTypeRepCycles
   :: Vector (SourceLoc, (MetaA, Definition Expr MetaA, AbstractM))
-  -> VIX ()
+  -> Infer ()
 detectTypeRepCycles defs = do
   reps <- traverse
     (bitraverse pure zonk)
@@ -47,11 +47,11 @@ detectTypeRepCycles defs = do
 
 detectDefCycles
   :: Vector (SourceLoc, (MetaA, Definition Expr MetaA, AbstractM))
-  -> VIX ()
+  -> Infer ()
 detectDefCycles defs = do
   defExprs <- traverse
     (bitraverse pure zonk)
-    [(v, e) | (_, (v, Definition _ e, _)) <- defs]
+    [(v, e) | (_, (v, Definition _ _ e, _)) <- defs]
   let locMap = HashMap.fromList $ Vector.toList [(v, loc) | (loc, (v, _, _)) <- defs]
       recs =
         [ (v, unguardedOccurrences e)

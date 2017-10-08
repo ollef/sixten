@@ -162,12 +162,12 @@ quantify
   :: Monad expr
   => (NameHint -> a
                -> expr (Var TeleVar v)
-               -> Scope () expr (Var TeleVar v')
+               -> Scope1 expr (Var TeleVar v')
                -> expr (Var TeleVar v'))
-  -> Scope TeleVar expr v'
   -> Telescope a expr v
+  -> Scope TeleVar expr v'
   -> expr v'
-quantify pifun s (Telescope ps) =
+quantify pifun (Telescope ps) s =
    unvar err id <$> Vector.ifoldr
      (\i (TeleArg h p s') -> pifun h p (fromScope s') . abstract (abstr i))
      (fromScope s)

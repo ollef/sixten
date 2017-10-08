@@ -4,15 +4,15 @@ module Inference.Unify where
 import Control.Monad.Except
 import Data.Bifunctor
 import Data.Foldable
-import Data.Monoid
 import Data.List
+import Data.Monoid
 import qualified Data.Set as Set
 import Data.STRef
 import qualified Data.Vector as Vector
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import Text.Trifecta.Result(Err(Err), explain)
 
-import qualified Builtin.Names as Builtin
+import Inference.Monad
 import Inference.Normalise
 import Inference.TypeOf
 import Meta
@@ -20,18 +20,15 @@ import Syntax
 import Syntax.Abstract
 import VIX
 
-existsType :: Monad e => NameHint -> VIX (e MetaA)
-existsType n = existsVar n Builtin.Type
-
 occurs
   :: [(AbstractM, AbstractM)]
   -> Level
   -> MetaA
   -> AbstractM
-  -> VIX ()
+  -> Infer ()
 occurs cxt l tv expr = traverse_ go expr
   where
-    go tv'@(MetaVar _ typ _ mr)
+    go tv'@(MetaVar _ typ _ mr _)
       | tv == tv' = do
         loc <- currentLocation
         explanation <- forM cxt $ \(t1, t2) -> do
@@ -66,13 +63,13 @@ occurs cxt l tv expr = traverse_ go expr
         occurs cxt l tv typ
         case mr of
           Nothing -> return ()
-          Just r  -> do
+          Just r -> do
             sol <- solution r
             case sol of
-              Left l'    -> liftST $ writeSTRef r $ Left $ min l l'
+              Left l' -> liftST $ writeSTRef r $ Left $ min l l'
               Right typ' -> traverse_ go typ'
 
-unify :: [(AbstractM, AbstractM)] -> AbstractM -> AbstractM -> VIX ()
+unify :: [(AbstractM, AbstractM)] -> AbstractM -> AbstractM -> Infer ()
 unify cxt type1 type2 = do
   logMeta 30 "unify t1" type1
   logMeta 30 "      t2" type2
@@ -80,20 +77,20 @@ unify cxt type1 type2 = do
   type2' <- zonk =<< whnf type2
   unify' ((type1', type2') : cxt) type1' type2'
 
-unify' :: [(AbstractM, AbstractM)] -> AbstractM -> AbstractM -> VIX ()
+unify' :: [(AbstractM, AbstractM)] -> AbstractM -> AbstractM -> Infer ()
 unify' cxt type1 type2
-  | type1 == type2 = return ()
+  | type1 == type2 = return () -- TODO make specialised equality function to get rid of zonking in this and subtyping
   | otherwise = case (type1, type2) of
     -- If we have 'unify (f xs) t', where 'f' is an existential, and 'xs' are
     -- distinct universally quantified variables, then 'f = \xs. t' is a most
     -- general solution (see Miller, Dale (1991) "A Logic programming...")
-    (appsView -> (Var v@(metaRef -> Just r), distinctForalls -> Just pvs), _) -> solveVar unify r v pvs type2
-    (_, appsView -> (Var v@(metaRef -> Just r), distinctForalls -> Just pvs)) -> solveVar (flip . unify) r v pvs type1
-    (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) t1 t2 s1 s2
-    (Lam h1 p1 t1 s1, Lam h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) t1 t2 s1 s2
+    (appsView -> (Var v@MetaVar { metaRef = Just r }, distinctForalls -> Just pvs), _) -> solveVar unify r v pvs type2
+    (_, appsView -> (Var v@MetaVar {metaRef = Just r }, distinctForalls -> Just pvs)) -> solveVar (flip . unify) r v pvs type1
+    (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
+    (Lam h1 p1 t1 s1, Lam h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
     -- Since we've already tried reducing the application, we can only hope to
     -- unify it pointwise.
-    (App e1 a1 e1', App e2 a2 e2') | a1 == a2 -> do
+    (App e1 p1 e1', App e2 p2 e2') | p1 == p2 -> do
       unify cxt e1  e2
       unify cxt e1' e2'
     _ -> do
@@ -117,14 +114,14 @@ unify' cxt type1 type2
           mempty
           mempty
   where
-    absCase h a b s1 s2 = do
-      unify cxt a b
-      v <- pure <$> forall h a
-      unify cxt (instantiate1 v s1) (instantiate1 v s2)
+    absCase h p t1 t2 s1 s2 = do
+      unify cxt t1 t2
+      v <- forall h p t1
+      unify cxt (instantiate1 (pure v) s1) (instantiate1 (pure v) s2)
     distinctForalls pes = case traverse isForall pes of
       Just pes' | distinct pes' -> Just pes'
       _ -> Nothing
-    isForall (p, Var v@(metaRef -> Nothing)) = Just (p, v)
+    isForall (p, Var v@MetaVar { metaRef = Nothing }) = Just (p, v)
     isForall _ = Nothing
     distinct pes = Set.size (Set.fromList es) == length es where es = map snd pes
     solveVar recurse r v pvs t = do

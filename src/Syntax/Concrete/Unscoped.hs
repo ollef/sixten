@@ -16,13 +16,14 @@ import Syntax.Concrete.Pattern
 
 type Con = Either Constr QConstr
 
+-- TODO: Maybe the types in this module don't need the type variable?
 data Expr v
   = Var v
   | Lit Literal
   | Pi !Plicitness (Pat (Type v) QName) (Expr v)
   | Lam !Plicitness (Pat (Type v) QName) (Expr v)
   | App (Expr v) !Plicitness (Expr v)
-  | Let (Vector (SourceLoc, Name, Definition Expr v)) (Expr v)
+  | Let (Vector (SourceLoc, Definition Expr v)) (Expr v)
   | Case (Expr v) [(Pat (Expr v) QName, Expr v)]
   | ExternCode (Extern (Expr v))
   | Wildcard
@@ -32,12 +33,17 @@ data Expr v
 type Type = Expr
 
 data Definition e v
-  = Definition Abstract (NonEmpty (Clause e v)) (Maybe (e v))
+  = Definition Name Abstract (NonEmpty (Clause e v)) (Maybe (e v))
   deriving (Show, Functor, Foldable, Traversable)
+
+definitionName :: Definition e v -> Name
+definitionName (Definition n _ _ _) = n
 
 data TopLevelDefinition v
   = TopLevelDefinition (Definition Expr v)
-  | TopLevelDataDefinition [(Plicitness, Name, Type v)] [ConstrDef (Expr v)]
+  | TopLevelDataDefinition Name [(Plicitness, Name, Type v)] [ConstrDef (Expr v)]
+  | TopLevelClassDefinition Name [(Plicitness, Name, Type v)] [MethodDef (Expr v)]
+  | TopLevelInstanceDefinition (Type v) [(SourceLoc, Definition Expr v)]
   deriving (Show)
 
 data Clause e v = Clause (Vector (Plicitness, Pat (e v) QName)) (e v)
@@ -110,7 +116,7 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
           associate absPrec (prettyM e)
     App e1 p e2 -> prettyApp (prettyM e1) (prettyAnnotation p $ prettyM e2)
     Let ds e -> parens `above` letPrec $
-      "let" <+> align (vcat ((\(_, name, d) -> prettyNamed (prettyM name) d) <$> ds)) <$$> "in" <+> prettyM e
+      "let" <+> align (vcat ((\(_, d) -> prettyM d) <$> ds)) <$$> "in" <+> prettyM e
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (vcat [prettyM pat <+> "->" <+> prettyM br | (pat, br) <- brs])
     ExternCode c -> prettyM c
@@ -118,13 +124,13 @@ instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
     SourceLoc _ e -> prettyM e
 
 instance Bound Definition where
-  Definition a cls mtyp >>>= f = Definition a ((>>>= f) <$> cls) ((>>= f) <$> mtyp)
+  Definition n a cls mtyp >>>= f = Definition n a ((>>>= f) <$> cls) ((>>= f) <$> mtyp)
 
-instance (Eq v, IsString v, Pretty v, Pretty (e v)) => PrettyNamed (Definition e v) where
-  prettyNamed name (Definition a cls Nothing)
-    = prettyM a <$$> vcat (prettyNamed name <$> cls)
-  prettyNamed name (Definition a cls (Just typ))
-    = prettyM a <$$> vcat (NonEmpty.cons (name <+> ":" <+> prettyM typ) (prettyNamed name <$> cls))
+instance (Eq v, IsString v, Pretty v, Pretty (e v)) => Pretty (Definition e v) where
+  prettyM (Definition name a cls Nothing)
+    = prettyM a <$$> vcat (prettyNamed (prettyM name) <$> cls)
+  prettyM (Definition name a cls (Just typ))
+    = prettyM a <$$> vcat (NonEmpty.cons (prettyM name <+> ":" <+> prettyM typ) (prettyNamed (prettyM name) <$> cls))
 
 instance Traversable e => Functor (Clause e) where
   fmap = fmapDefault

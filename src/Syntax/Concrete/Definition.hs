@@ -21,10 +21,15 @@ import Util
 data TopLevelPatDefinition expr v
   = TopLevelPatDefinition (PatDefinition (Clause Void expr v))
   | TopLevelPatDataDefinition (DataDef expr v)
+  | TopLevelPatClassDefinition (ClassDef expr v)
+  | TopLevelPatInstanceDefinition (PatInstanceDef expr v)
   deriving (Foldable, Functor, Show, Traversable)
 
 data PatDefinition clause
-  = PatDefinition Abstract (NonEmpty clause)
+  = PatDefinition Abstract IsInstance (NonEmpty clause)
+  deriving (Foldable, Functor, Show, Traversable)
+
+newtype PatInstanceDef expr v = PatInstanceDef (Vector (Name, SourceLoc, PatDefinition (Clause Void expr v)))
   deriving (Foldable, Functor, Show, Traversable)
 
 data Clause b expr v = Clause
@@ -61,6 +66,11 @@ instance (Eq1 expr, Monad expr, Eq b) => Eq1 (Clause b expr) where
 instance GlobalBound TopLevelPatDefinition where
   bound f g (TopLevelPatDefinition d) = TopLevelPatDefinition $ bound f g <$> d
   bound f g (TopLevelPatDataDefinition dataDef) = TopLevelPatDataDefinition $ bound f g dataDef
+  bound f g (TopLevelPatClassDefinition classDef) = TopLevelPatClassDefinition $ bound f g classDef
+  bound f g (TopLevelPatInstanceDefinition instanceDef) = TopLevelPatInstanceDefinition $ bound f g instanceDef
+
+instance GlobalBound PatInstanceDef where
+  bound f g (PatInstanceDef ms) = PatInstanceDef $ second (bound f g <$>) <$> ms
 
 instance GlobalBound (Clause b) where
   bound f g (Clause pats s) = Clause (fmap (first (bound f g)) <$> pats) (bound f g s)
@@ -73,7 +83,7 @@ instance (Pretty (expr v), Monad expr, IsString v, void ~ Void)
             = prettyAnnotation p
             $ prettyM $ first (instantiatePattern (pure . fromName) ns) pat
           removeVoid = mapBound $ unvar id absurd
-      name <+> hsep (go <$> renamePatterns ns (fmap (first removeVoid) <$> pats))
+      prettyApps name (go <$> renamePatterns ns (fmap (first removeVoid) <$> pats))
         <+> "=" <+> prettyM (instantiatePattern (pure . fromName) ns $ removeVoid s)
 
 instance (Pretty (expr v), Monad expr, IsString v, void ~ Void)
@@ -84,11 +94,18 @@ instance (Pretty (expr v), Monad expr, IsString v)
   => PrettyNamed (TopLevelPatDefinition expr v) where
   prettyNamed name (TopLevelPatDefinition d) = prettyNamed name d
   prettyNamed name (TopLevelPatDataDefinition dataDef) = prettyNamed name dataDef
+  prettyNamed name (TopLevelPatClassDefinition c) = prettyNamed name c
+  prettyNamed name (TopLevelPatInstanceDefinition i) = prettyNamed name i
 
 instance PrettyNamed clause => PrettyNamed (PatDefinition clause) where
-  prettyNamed name (PatDefinition a clauses) = prettyM a <$$> vcat (prettyNamed name <$> clauses)
+  prettyNamed name (PatDefinition a i clauses) = prettyM a <+> prettyM i <$$> vcat (prettyNamed name <$> clauses)
 
 deriveEq1 ''PatDefinition
+
+instance (Pretty (expr v), Monad expr, IsString v) => PrettyNamed (PatInstanceDef expr v) where
+  prettyNamed name (PatInstanceDef ms)
+    = name <+> "=" <+> "instance" <+> "where" <$$>
+    indent 2 (vcat $ (\(n, _, m) -> prettyNamed (prettyM n) m) <$> ms)
 
 instantiateClause
   :: Monad expr

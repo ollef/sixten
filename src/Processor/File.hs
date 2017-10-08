@@ -27,8 +27,10 @@ import qualified Backend.Generate as Generate
 import Backend.Lift
 import qualified Backend.SLam as SLam
 import Backend.Target
+import qualified Frontend.Declassify as Declassify
 import qualified Frontend.Parse as Parse
 import qualified Frontend.ScopeCheck as ScopeCheck
+import qualified Inference.Monad as TypeCheck
 import qualified Inference.TypeCheck as TypeCheck
 import Processor.Result
 import Syntax
@@ -55,8 +57,11 @@ frontend
   -> VIX [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
 frontend
   = scopeCheckProgram
-  >=> mapM (prettyConcreteGroup "Concrete syntax" absurd)
   >>=> prettyConcreteGroup "Concrete syntax" absurd
+
+  >=> declassifyGroup
+
+  >>=> prettyConcreteGroup "Declassified" absurd
   >=> typeCheckGroup
 
   >=> prettyTypedGroup "Abstract syntax" absurd
@@ -172,20 +177,29 @@ scopeCheckProgram
   -> VIX [[(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Concrete.Type Void)]]
 scopeCheckProgram m = do
   res <- ScopeCheck.scopeCheckModule m
-  let defNames = HashSet.fromMap $ void $ moduleContents m
-      conNames = HashSet.fromList
+  let defnames = HashSet.fromMap $ void $ moduleContents m
+      connames = HashSet.fromList
         [ QConstr n c
-        | (n, (_, Unscoped.TopLevelDataDefinition _ d)) <- HashMap.toList $ moduleContents m
+        | (n, (_, Unscoped.TopLevelDataDefinition _ _ d)) <- HashMap.toList $ moduleContents m
         , c <- constrName <$> d
         ]
-  addModule (moduleName m) $ HashSet.map Right defNames <> HashSet.map Left conNames
+  addModule (moduleName m) $ HashSet.map Right defnames <> HashSet.map Left connames
   return res
+
+declassifyGroup
+  :: [(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Concrete.Type Void)]
+  -> VIX [[(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Concrete.Type Void)]]
+declassifyGroup xs = do
+  results <- forM xs $
+    \(name, loc, def, typ) -> Declassify.declassify name loc def typ
+  let (preResults, postResults) = unzip results
+  return $ preResults : [concat postResults]
 
 typeCheckGroup
   :: [(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Concrete.Expr Void)]
   -> VIX [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
 typeCheckGroup
-  = fmap Vector.toList . TypeCheck.checkTopLevelRecursiveDefs . Vector.fromList
+  = fmap Vector.toList . TypeCheck.runInfer . TypeCheck.checkTopLevelRecursiveDefs . Vector.fromList
 
 simplifyGroup
   :: [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
@@ -305,7 +319,7 @@ writeModule modul llOutputFile externOutputFiles = do
 
 parse
   :: FilePath
-  -> IO (Result (Module [(Name, SourceLoc, Unscoped.TopLevelDefinition QName)]))
+  -> IO (Result (Module [(SourceLoc, Unscoped.TopLevelDefinition QName)]))
 parse file = do
   parseResult <- Parse.parseFromFileEx Parse.modul file
   case parseResult of
@@ -313,23 +327,30 @@ parse file = do
     Trifecta.Success res -> return $ Success res
 
 dupCheck
-  :: Module [(Name, SourceLoc, Unscoped.TopLevelDefinition QName)]
+  :: Module [(SourceLoc, Unscoped.TopLevelDefinition QName)]
   -> Result (Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName)))
-dupCheck m = forM m $ foldM go mempty
+dupCheck m = forM m $ flip evalStateT (0 :: Int) . foldM go mempty
   where
-    go defs (name, loc, def)
-      | HashMap.member qname defs = do
+    go defs (loc, def) = do
+      name <- case def of
+        Unscoped.TopLevelDefinition d -> return $ Unscoped.definitionName d
+        Unscoped.TopLevelDataDefinition n _ _ -> return n
+        Unscoped.TopLevelClassDefinition n _ _ -> return n
+        Unscoped.TopLevelInstanceDefinition {} -> do
+          i <- get
+          put $! i + 1
+          return $ "instance-" <> shower i -- TODO: Make up better names for instances
+      let qname = QName (moduleName m) name
+      if HashMap.member qname defs then do
         let (prevLoc, _) = defs HashMap.! qname
-        Failure
+        lift $ Failure
           $ pure
           $ TypeError
           $ err loc "Duplicate definition"
           [ "Previous definition at " <> Leijen.pretty (delta prevLoc)
           , Leijen.pretty prevLoc
           ]
-      | otherwise = return $ HashMap.insert qname (loc, def) defs
-      where
-        qname = QName (moduleName m) name
+      else return $ HashMap.insert qname (loc, def) defs
 
     err :: SourceLoc -> Doc -> [Doc] -> Text
     err loc heading docs

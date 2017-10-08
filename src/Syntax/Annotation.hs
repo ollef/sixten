@@ -11,15 +11,19 @@ class Eq a => PrettyAnnotation a where
 instance PrettyAnnotation () where
   prettyAnnotation _ = id
 
-data Plicitness = Implicit | Explicit
+data Plicitness = Constraint | Implicit | Explicit
   deriving (Eq, Ord)
 
 instance Show Plicitness where
+  show Constraint = "Co"
   show Implicit = "Im"
   show Explicit = "Ex"
 
 instance PrettyAnnotation Plicitness where
-  prettyAnnotation p = braces `iff` (p == Implicit)
+  prettyAnnotation Constraint = brackets
+  prettyAnnotation Implicit = braces
+  prettyAnnotation Explicit = id
+  prettyAnnotationParens Constraint = brackets
   prettyAnnotationParens Implicit = braces
   prettyAnnotationParens Explicit = parens
 
@@ -36,3 +40,12 @@ data Abstract = Abstract | Concrete
 instance Pretty Abstract where
   prettyM Abstract = "abstract"
   prettyM Concrete = "concrete"
+
+data IsInstance
+  = IsOrdinaryDefinition
+  | IsInstance
+  deriving (Eq, Ord, Show)
+
+instance Pretty IsInstance where
+  prettyM IsOrdinaryDefinition = mempty
+  prettyM IsInstance = "instance"

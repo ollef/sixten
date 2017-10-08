@@ -40,12 +40,16 @@ executable sixten
                        Command.Compile.Options
                        Command.Run
                        Command.Test
+                       Frontend.Declassify
                        Frontend.Parse
                        Frontend.ScopeCheck
+                       Inference.Class
                        Inference.Clause
                        Inference.Cycle
                        Inference.Match
+                       Inference.Monad
                        Inference.Normalise
+                       Inference.Subtype
                        Inference.TypeCheck
                        Inference.TypeOf
                        Inference.Unify
@@ -60,6 +64,7 @@ executable sixten
                        Syntax.Abstract.Pattern
                        Syntax.Annotation
                        Syntax.Branches
+                       Syntax.Class
                        Syntax.Concrete.Definition
                        Syntax.Concrete.Literal
                        Syntax.Concrete.Pattern

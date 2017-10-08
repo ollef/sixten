@@ -23,7 +23,7 @@ import qualified TypeRep
 import Util
 import VIX
 
-type Meta = MetaVar Unit
+type Meta = MetaVar () Unit
 type ClosureConvert = Lift (Sized.Function Expr Void) VIX
 
 convertDefinitions
@@ -43,7 +43,7 @@ convertDefinitionsM defs = do
   funSigs <- forM defs $ \(name, def) -> case def of
     Sized.FunctionDef _ _ (Sized.Function tele scope) -> do
       vs <- lift $ forMTele tele $ \h () _ ->
-        forall h Unit
+        forall h () Unit
 
       es <- forMTele tele $ \_ () s ->
         convertExpr $ instantiateTele pure vs $ vacuous s
@@ -76,7 +76,7 @@ convertDefinition
   -> ClosureConvert (Sized.Definition Expr Void)
 convertDefinition (Sized.FunctionDef vis cl (Sized.Function tele scope)) = do
   vs <- lift $ forMTele tele $ \h () _ ->
-    forall h Unit
+    forall h () Unit
 
   es <- forMTele tele $ \_ () s ->
     convertExpr $ instantiateTele pure vs $ vacuous s
@@ -136,7 +136,7 @@ convertExpr expr = case expr of
     return $ PrimCall retDir e' es'
   Let h e bodyScope -> do
     e' <- convertExpr e
-    v <- lift $ forall h Unit
+    v <- lift $ forall h () Unit
     let bodyExpr = Util.instantiate1 (pure v) bodyScope
     bodyExpr' <- convertExpr bodyExpr
     let bodyScope' = abstract1 v bodyExpr'
@@ -164,7 +164,7 @@ knownCall
   -> ClosureConvert (Expr Meta)
 knownCall f (tele, returnTypeScope) args
   | numArgs < arity = do
-    vs <- lift $ forM (teleNames tele) $ \h -> forall h Unit
+    vs <- lift $ forM (teleNames tele) $ \h -> forall h () Unit
     target <- lift $ gets vixTarget
     let intRep, ptrRep :: Expr v
         intRep = MkType $ TypeRep.intRep target
@@ -224,7 +224,7 @@ convertBranches
 convertBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(ConBranch qc tele brScope) -> do
     vs <- lift $ forMTele tele $ \h () _ ->
-      forall h Unit
+      forall h () Unit
     es <- forMTele tele $ \_ () s ->
       convertExpr $ instantiateTele pure vs s
     let brExpr = instantiateTele pure vs brScope

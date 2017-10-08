@@ -1,0 +1,13 @@
+class ToBool t where
+  toBool : t -> Bool
+
+instance ToBool Int where
+  toBool 0 = False
+  toBool n = True
+
+instance ToBool Bool where
+  toBool b = b
+
+main = printInt case toBool 3 of
+  False -> 0
+  True -> 1

@@ -1,0 +1,23 @@
+class Summable a where
+  sum : a -> Int
+
+type List a
+  = Nil
+  | Cons a (Ptr (List a))
+
+instance Summable Int where
+  sum x = x
+
+instance forall {a}. Summable a => Summable (List a) where
+  sum Nil = 0
+  sum (Cons x xs) = addInt (sum x) (sum xs)
+
+instance forall {a}. Summable a => Summable (Ptr a) where
+  sum (Ref x) = sum x
+
+test : forall {a}. Summable a => a -> Int
+test x = sum x
+
+test2 x = sum x
+
+main = printInt (test (Ref (Cons 1 (Ref (Cons 2 (Ref (Cons 3 (Ref Nil))))))))

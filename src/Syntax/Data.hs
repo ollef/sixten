@@ -51,7 +51,7 @@ prettyDataDef
   -> Telescope Plicitness typ v
   -> DataDef typ v
   -> PrettyM Doc
-prettyDataDef name ps (DataDef cs) = "data" <+> name <+> withTeleHints ps (\ns ->
+prettyDataDef name ps (DataDef cs) = "type" <+> name <+> withTeleHints ps (\ns ->
     let inst = instantiateTele (pure . fromName) ns in
         prettyTeleVarTypes ns ps <+> "where" <$$>
           indent 2 (vcat (map (prettyM . fmap inst) cs))
@@ -63,7 +63,7 @@ data ConstrDef typ = ConstrDef
   } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 instance (IsString v, Pretty (typ v), Monad typ) => PrettyNamed (DataDef typ v) where
-  prettyNamed name (DataDef cs) = "data" <+> name <+> "where" <$$>
+  prettyNamed name (DataDef cs) = "type" <+> name <+> "where" <$$>
     indent 2 (vcat (map (prettyM . fmap (instantiate $ pure . shower)) cs))
 
 instance Pretty typ => Pretty (ConstrDef typ) where

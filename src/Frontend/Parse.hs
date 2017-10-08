@@ -4,7 +4,6 @@ module Frontend.Parse where
 import Control.Applicative((<**>), (<|>), Alternative)
 import Control.Monad.Except
 import Control.Monad.State
-import Data.Bifunctor
 import Data.Char
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
@@ -35,15 +34,18 @@ newtype Parser a = Parser {runParser :: StateT Delta Trifecta.Parser a}
     )
 
 parseString :: Parser a -> String -> Trifecta.Result a
-parseString p = Trifecta.parseString (evalStateT (runParser p) mempty <* Trifecta.eof) mempty
+parseString p
+  = Trifecta.parseString (evalStateT (runParser p) mempty <* Trifecta.eof) mempty
 
 parseFromFile :: MonadIO m => Parser a -> FilePath -> m (Maybe a)
-parseFromFile p = Trifecta.parseFromFile
-                $ evalStateT (runParser p) mempty <* Trifecta.eof
+parseFromFile p
+  = Trifecta.parseFromFile
+  $ evalStateT (runParser p) mempty <* Trifecta.eof
 
 parseFromFileEx :: MonadIO m => Parser a -> FilePath -> m (Trifecta.Result a)
-parseFromFileEx p = Trifecta.parseFromFileEx
-                  $ evalStateT (runParser p) mempty <* Trifecta.eof
+parseFromFileEx p
+  = Trifecta.parseFromFileEx
+  $ evalStateT (runParser p) mempty <* Trifecta.eof
 
 instance Trifecta.TokenParsing Parser where
   someSpace = Trifecta.skipSome (Trifecta.satisfy isSpace) *> (comments <|> pure ())
@@ -117,8 +119,8 @@ someSameCol p = Trifecta.some (sameCol >> p)
 manySameCol :: Parser a -> Parser [a]
 manySameCol p = Trifecta.many (sameCol >> p)
 
-manyIndentedSameCol :: Parser a -> Parser [a]
-manyIndentedSameCol p
+manyIndentedOrSameCol :: Parser a -> Parser [a]
+manyIndentedOrSameCol p
   = Trifecta.option []
   $ sameLineOrIndented >> dropAnchor (someSameCol p)
 
@@ -161,7 +163,7 @@ qidLetter = idLetter
   <|> Trifecta.try (Trifecta.char '.' <* LookAhead.lookAhead idLetter)
 
 reservedIds :: HashSet String
-reservedIds = HashSet.fromList ["forall", "_", "case", "of", "let", "in", "where", "abstract"]
+reservedIds = HashSet.fromList ["forall", "_", "case", "of", "let", "in", "where", "abstract", "class", "instance"]
 
 idStyle :: Trifecta.IdentifierStyle Parser
 idStyle = Trifecta.IdentifierStyle "identifier" idStart idLetter reservedIds Highlight.Identifier Highlight.ReservedIdentifier
@@ -272,7 +274,9 @@ manyTypedBindings = concat <$> manySI (Trifecta.try typedBinding <|> plicitBindi
 -------------------------------------------------------------------------------
 -- * Expressions
 locatedExpr :: Parser (Expr v) -> Parser (Expr v)
-locatedExpr p = (\(e Trifecta.:~ s) -> SourceLoc (Trifecta.render s) e) <$> Trifecta.spanned p
+locatedExpr p = go <$> Trifecta.spanned p
+  where
+    go (e Trifecta.:~ s) = SourceLoc (Trifecta.render s) e
 
 atomicExpr :: Parser (Expr QName)
 atomicExpr = locatedExpr
@@ -287,46 +291,49 @@ atomicExpr = locatedExpr
   <|> symbol "(" *>% expr <*% symbol ")"
   <?> "atomic expression"
   where
-    abstr t c = c <$ t <*>% somePatterns <*% symbol "." <*>% expr
+    abstr t c = c <$ t <*>% somePatterns <*% symbol "." <*>% exprWithoutWhere
     letExpr
       = dropAnchor
       $ mkLet <$ reserved "let" <*>% dropAnchor (someSameCol $ located def)
       <*>
-        ((sameLineOrIndented <|> sameCol) *> reserved "in" *>% expr
-        <|> sameCol *> expr
+        ((sameLineOrIndented <|> sameCol) *> reserved "in" *>% exprWithoutWhere
+        <|> sameCol *> exprWithoutWhere
         )
       where
-        mkLet xs = Let $ Vector.fromList [(loc, n, d) | (loc, (n, d)) <- xs]
+        mkLet xs = Let $ Vector.fromList xs
 
 branches :: Parser [(Pat (Type QName) QName, Expr QName)]
-branches = manyIndentedSameCol branch
+branches = manyIndentedOrSameCol branch
   where
     branch = (,) <$> pattern <*% symbol "->" <*>% expr
 
 expr :: Parser (Expr QName)
-expr
+expr = exprWithoutWhere <**>
+  (mkLet <$% reserved "where" <*>% dropAnchor (someSameCol $ located def)
+  <|> pure id
+  )
+  where
+    mkLet xs = Let $ Vector.fromList xs
+
+exprWithoutWhere :: Parser (Expr QName)
+exprWithoutWhere
   = locatedExpr
-  $ optionalWheres
-  $ Unscoped.pis <$> Trifecta.try (somePatternBindings <*% symbol "->") <*>% expr
-  <|> plicitPi Implicit <$ symbol "{" <*>% expr <*% symbol "}" <*% symbol "->" <*>% expr
-  <|> Unscoped.apps <$> atomicExpr <*> manySI argument <**> (arr <|> pure id)
+  $ Unscoped.pis <$> Trifecta.try (somePatternBindings <*% symbol "->") <*>% exprWithoutWhere
+  <|> plicitPi Implicit <$ symbol "{" <*>% expr <*% symbol "}" <*% symbol "->" <*>% exprWithoutWhere
+  <|> Unscoped.apps <$> atomicExpr <*> manySI argument <**> arr
   <?> "expression"
   where
     plicitPi p argType retType = Pi p (AnnoPat argType WildcardPat) retType
 
-    arr = flip (plicitPi Explicit) <$% symbol "->" <*>% expr
+    arr
+      = flip (plicitPi Explicit) <$% symbol "->" <*>% exprWithoutWhere
+      <|> flip (plicitPi Constraint) <$% symbol "=>" <*>% exprWithoutWhere
+      <|> pure id
 
     argument :: Parser (Plicitness, Expr QName)
     argument
       = (,) Implicit <$ symbol "{" <*>% expr <*% symbol "}"
       <|> (,) Explicit <$> atomicExpr
-
-    optionalWheres e = e <**>
-      (mkLet <$% reserved "where" <*>% dropAnchor (someSameCol $ located def)
-      <|> pure id
-      )
-      where
-        mkLet xs = Let $ Vector.fromList [(loc, n, d) | (loc, (n, d)) <- xs]
 
 -------------------------------------------------------------------------------
 -- * Extern C
@@ -365,10 +372,14 @@ literalPat
 
 -------------------------------------------------------------------------------
 -- * Definitions
-topLevel :: Parser (Name, SourceLoc, TopLevelDefinition QName)
-topLevel = (\((n, d) Trifecta.:~ s) -> (n, render s, d)) <$> Trifecta.spanned (dataDef <|> second TopLevelDefinition <$> def)
+topLevel :: Parser (SourceLoc, TopLevelDefinition QName)
+topLevel = located
+  $ dataDef
+  <|> classDef
+  <|> instanceDef
+  <|> TopLevelDefinition <$> def
 
-def :: Parser (Name, Unscoped.Definition Unscoped.Expr QName)
+def :: Parser (Unscoped.Definition Unscoped.Expr QName)
 def = do
   abstr
     <- Abstract <$ reserved "abstract" <* sameCol
@@ -383,27 +394,37 @@ def = do
     (mtyp, clauses)
       <- (,) . Just <$> typeSig <*> someSameCol namedClause
       <|> (,) Nothing <$> ((:) <$> clause <*> manySameCol namedClause)
-    return (n, Unscoped.Definition abstr (NonEmpty.fromList clauses) mtyp)
+    return (Unscoped.Definition n abstr (NonEmpty.fromList clauses) mtyp)
   where
     typeSig = symbol ":" *>% expr
     clause = Clause <$> (Vector.fromList <$> manyPatterns) <*% symbol "=" <*>% expr
 
-dataDef :: Parser (Name, TopLevelDefinition QName)
-dataDef = mkDataDef <$ reserved "type" <*>% name <*> manyTypedBindings <*>%
-  (concat <$% reserved "where" <*> manyIndentedSameCol conDef
+dataDef :: Parser (TopLevelDefinition QName)
+dataDef = TopLevelDataDefinition <$ reserved "type" <*>% name <*> manyTypedBindings <*>%
+  (concat <$% reserved "where" <*> manyIndentedOrSameCol conDef
   <|> id <$% symbol "=" <*>% sepBySI adtConDef (symbol "|"))
   where
-    mkDataDef n ps cs = (n, TopLevelDataDefinition ps cs)
     conDef = constrDefs <$> ((:) <$> constructor <*> manySI constructor)
       <*% symbol ":" <*>% expr
     constrDefs cs t = [ConstrDef c t | c <- cs]
     adtConDef = ConstrDef <$> constructor <*> (adtConType <$> manySI atomicExpr)
     adtConType es = Unscoped.pis ((\e -> (Explicit, AnnoPat e WildcardPat)) <$> es) Wildcard
 
+classDef :: Parser (TopLevelDefinition QName)
+classDef = TopLevelClassDefinition <$ reserved "class" <*>% name <*> manyTypedBindings
+  <*% reserved "where" <*> manyIndentedOrSameCol (mkMethodDef <$> located ((,) <$> name <*% symbol ":" <*>% expr))
+  where
+    mkMethodDef (loc, (n, e)) = MethodDef n (Hint loc) e
+
+
+instanceDef :: Parser (TopLevelDefinition QName)
+instanceDef = TopLevelInstanceDefinition <$ reserved "instance" <*>% exprWithoutWhere
+  <*% reserved "where" <*> manyIndentedOrSameCol (located def)
+
 -------------------------------------------------------------------------------
 -- * Module
 -- | A definition or type declaration on the top-level
-modul :: Parser (Module [(Name, SourceLoc, Unscoped.TopLevelDefinition QName)])
+modul :: Parser (Module [(SourceLoc, Unscoped.TopLevelDefinition QName)])
 modul = Trifecta.whiteSpace >> dropAnchor
   ((Module <$ reserved "module" <*>% modulName <*% reserved "exposing" <*>% exposedNames
      <|> pure (Module "Main" AllExposed))

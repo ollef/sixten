@@ -65,7 +65,7 @@ runLift (QName mname name) (Lift l)
   , liftedThings = mempty
   }
 
-type Meta = MetaVar Lifted.Expr
+type Meta = MetaVar () Lifted.Expr
 
 type LambdaLift = Lift (Sized.Function Lifted.Expr Void) VIX
 
@@ -115,7 +115,7 @@ closeLambda tele lamScope sortedFvs = do
   vs <- forTeleWithPrefixM tele $ \h () s vs -> do
     let e = instantiateTele pure vs s
     e' <- liftExpr e
-    lift $ forall h e'
+    lift $ forall h () e'
 
   let lamExpr = instantiateTele pure vs lamScope
       vs' = sortedFvs <> vs
@@ -149,7 +149,7 @@ liftLet
 liftLet ds scope = do
   vs <- forMLet ds $ \h _ t -> do
     t' <- liftExpr t
-    lift $ forall h t'
+    lift $ forall h () t'
 
   let instantiatedDs = Vector.zip vs $ instantiateLet pure vs <$> letBodies ds
       dsToLift = [(v, body) | (v, body@(SLambda.lamView -> Just _)) <- instantiatedDs]
@@ -203,7 +203,7 @@ liftBranches (ConBranches cbrs) = fmap ConBranches $
     vs <- forTeleWithPrefixM tele $ \h () s vs -> do
       let e = instantiateTele pure vs s
       e' <- liftExpr e
-      lift $ forall h e'
+      lift $ forall h () e'
     let brExpr = instantiateTele pure vs brScope
         abstr = teleAbstraction vs
         tele'' = Telescope $ (\v -> TeleArg (metaHint v) () $ abstract abstr $ metaType v) <$> vs
@@ -229,7 +229,7 @@ liftToDefinitionM (SLambda.Anno (SLambda.Lams tele bodyScope) _) = do
   vs <- forTeleWithPrefixM tele $ \h () s vs -> do
     let e = instantiateTele pure vs $ vacuous s
     e' <- liftExpr e
-    lift $ forall h e'
+    lift $ forall h () e'
   let body = instantiateTele pure vs $ vacuous bodyScope
       abstr = teleAbstraction vs
       tele' = Telescope $ (\v -> TeleArg (metaHint v) () $ abstract abstr $ metaType v) <$> vs

@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TypeFamilies, ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Inference.TypeCheck where
 
 import Control.Applicative
@@ -23,10 +23,13 @@ import Text.Trifecta.Result(Err(Err), explain)
 
 import Analysis.Simplify
 import qualified Builtin.Names as Builtin
+import Inference.Class as Class
 import Inference.Clause
 import Inference.Cycle
 import Inference.Match as Match
+import Inference.Monad
 import Inference.Normalise
+import Inference.Subtype
 import Inference.TypeOf
 import Inference.Unify
 import Meta
@@ -37,30 +40,23 @@ import qualified Syntax.Concrete.Scoped as Concrete
 import qualified TypeRep
 import Util
 import Util.TopoSort
-import Util.Tsil
 import VIX
 
-type Polytype = AbstractM
-type Rhotype = AbstractM -- No top-level foralls
-
-newtype InstBelow = InstBelow Plicitness
-  deriving (Eq, Ord)
-
 data Expected typ
-  = Infer (STRef RealWorld typ) InstBelow
+  = Infer (STRef RealWorld typ) InstUntil
   | Check typ
 
 -- | instExpected t2 t1 = e => e : t1 -> t2
-instExpected :: Expected Rhotype -> Polytype -> VIX (AbstractM -> VIX AbstractM)
-instExpected (Infer r instBelow) t = do
-  (t', f) <- instantiateForalls t instBelow
+instExpected :: Expected Rhotype -> Polytype -> Infer (AbstractM -> Infer AbstractM)
+instExpected (Infer r instUntil) t = do
+  (t', f) <- instantiateForalls t instUntil
   liftST $ writeSTRef r t'
   return f
 instExpected (Check t2) t1 = subtype t1 t2
 
 --------------------------------------------------------------------------------
 -- Polytypes
-checkPoly :: ConcreteM -> Polytype -> VIX AbstractM
+checkPoly :: ConcreteM -> Polytype -> Infer AbstractM
 checkPoly expr typ = do
   logMeta 20 "checkPoly expr" expr
   logMeta 20 "checkPoly type" typ
@@ -70,53 +66,59 @@ checkPoly expr typ = do
   logMeta 20 "checkPoly res expr" res
   return res
 
-checkPoly' :: ConcreteM -> Polytype -> VIX AbstractM
+checkPoly' :: ConcreteM -> Polytype -> Infer AbstractM
 checkPoly' expr@(Concrete.Lam Implicit _ _) polyType
   = checkRho expr polyType
 checkPoly' expr polyType = do
-  (vs, rhoType, f) <- prenexConvert polyType $ instBelowExpr expr
+  (vs, rhoType, f) <- prenexConvert polyType $ instUntilExpr expr
   e <- checkRho expr rhoType
   logShow 25 "checkPoly: prenexConvert vars" vs
   f =<< Abstract.lams
     <$> metaTelescopeM vs
     <*> abstractM (teleAbstraction $ snd <$> vs) e
 
-instBelowExpr :: Concrete.Expr v -> InstBelow
-instBelowExpr (Concrete.Lam p _ _) = InstBelow p
-instBelowExpr _ = InstBelow Explicit
+instUntilExpr :: Concrete.Expr v -> InstUntil
+instUntilExpr (Concrete.Lam p _ _) = InstUntil p
+instUntilExpr _ = InstUntil Explicit
 
--- inferPoly :: ConcreteM -> InstBelow -> VIX (AbstractM, Polytype)
--- inferPoly expr instBelow = do
+-- inferPoly :: ConcreteM -> InstUntil -> Infer (AbstractM, Polytype)
+-- inferPoly expr instUntil = do
 --   logMeta 20 "inferPoly expr" expr
 --   modifyIndent succ
---   (resExpr, resType) <- inferPoly' expr instBelow
+--   (resExpr, resType) <- inferPoly' expr instUntil
 --   modifyIndent pred
 --   logMeta 20 "inferPoly res expr" resExpr
 --   logMeta 20 "inferPoly res typ" resType
 --   return (resExpr, resType)
 
--- inferPoly' :: ConcreteM -> InstBelow -> VIX (AbstractM, Polytype)
--- inferPoly' expr instBelow = do
---   (expr', exprType) <- inferRho expr instBelow
+-- inferPoly' :: ConcreteM -> InstUntil -> Infer (AbstractM, Polytype)
+-- inferPoly' expr instUntil = do
+--   (expr', exprType) <- inferRho expr instUntil
 --   generalise expr' exprType
 
-instantiateForalls :: Polytype -> InstBelow -> VIX (Rhotype, AbstractM -> VIX AbstractM)
-instantiateForalls typ instBelow = do
+instantiateForalls
+  :: Polytype
+  -> InstUntil
+  -> Infer (Rhotype, AbstractM -> Infer AbstractM)
+instantiateForalls typ instUntil = do
   typ' <- whnf typ
-  instantiateForalls' typ' instBelow
+  instantiateForalls' typ' instUntil
 
-instantiateForalls' :: Polytype -> InstBelow -> VIX (Rhotype, AbstractM -> VIX AbstractM)
-instantiateForalls' (Abstract.Pi h p t s) (InstBelow p')
-  | p < p' = do
-    v <- exists h t
-    let typ = Util.instantiate1 (pure v) s
-    (result, f) <- instantiateForalls typ $ InstBelow p'
-    return (result, \x -> f $ betaApp x p $ pure v)
+instantiateForalls'
+  :: Polytype
+  -> InstUntil
+  -> Infer (Rhotype, AbstractM -> Infer AbstractM)
+instantiateForalls' (Abstract.Pi h p t s) instUntil
+  | shouldInst p instUntil = do
+    v <- existsVar h p t
+    let typ = Util.instantiate1 v s
+    (result, f) <- instantiateForalls typ instUntil
+    return (result, \x -> f $ betaApp x p v)
 instantiateForalls' typ _ = return (typ, pure)
 
 --------------------------------------------------------------------------------
 -- Rhotypes
-checkRho :: ConcreteM -> Rhotype -> VIX AbstractM
+checkRho :: ConcreteM -> Rhotype -> Infer AbstractM
 checkRho expr typ = do
   logMeta 20 "checkRho expr" expr
   logMeta 20 "checkRho type" typ
@@ -126,27 +128,27 @@ checkRho expr typ = do
   logMeta 20 "checkRho res expr" res
   return res
 
-checkRho' :: ConcreteM -> Rhotype -> VIX AbstractM
+checkRho' :: ConcreteM -> Rhotype -> Infer AbstractM
 checkRho' expr ty = tcRho expr (Check ty) (Just ty)
 
-inferRho :: ConcreteM -> InstBelow -> Maybe Rhotype -> VIX (AbstractM, Rhotype)
-inferRho expr instBelow expectedAppResult = do
+inferRho :: ConcreteM -> InstUntil -> Maybe Rhotype -> Infer (AbstractM, Rhotype)
+inferRho expr instUntil expectedAppResult = do
   logMeta 20 "inferRho" expr
   modifyIndent succ
-  (resExpr, resType) <- inferRho' expr instBelow expectedAppResult
+  (resExpr, resType) <- inferRho' expr instUntil expectedAppResult
   modifyIndent pred
   logMeta 20 "inferRho res expr" resExpr
   logMeta 20 "inferRho res typ" resType
   return (resExpr, resType)
 
-inferRho' :: ConcreteM -> InstBelow -> Maybe Rhotype -> VIX (AbstractM, Rhotype)
-inferRho' expr instBelow expectedAppResult = do
+inferRho' :: ConcreteM -> InstUntil -> Maybe Rhotype -> Infer (AbstractM, Rhotype)
+inferRho' expr instUntil expectedAppResult = do
   ref <- liftST $ newSTRef $ error "inferRho: empty result"
-  expr' <- tcRho expr (Infer ref instBelow) expectedAppResult
+  expr' <- tcRho expr (Infer ref instUntil) expectedAppResult
   typ <- liftST $ readSTRef ref
   return (expr', typ)
 
-tcRho :: ConcreteM -> Expected Rhotype -> Maybe Rhotype -> VIX AbstractM
+tcRho :: ConcreteM -> Expected Rhotype -> Maybe Rhotype -> Infer AbstractM
 tcRho expr expected expectedAppResult = case expr of
   Concrete.Var v -> do
     f <- instExpected expected $ metaType v
@@ -169,7 +171,7 @@ tcRho expr expected expectedAppResult = case expr of
         h = Concrete.patternHint pat
     body' <- enterLevel $ checkPoly body Builtin.Type
     f <- instExpected expected Builtin.Type
-    x <- forall h patType
+    x <- forall h p patType
     body'' <- matchSingle (pure x) pat' body' Builtin.Type
     f =<< Abstract.Pi h p patType <$> abstract1M x body''
   Concrete.Lam p pat bodyScope -> do
@@ -178,8 +180,8 @@ tcRho expr expected expectedAppResult = case expr of
       Infer {} -> do
         (pat', _, vs, argType) <- inferPat pat mempty
         let body = instantiatePattern pure vs bodyScope
-        (body', bodyType) <- enterLevel $ inferRho body (InstBelow Explicit) Nothing
-        argVar <- forall h argType
+        (body', bodyType) <- enterLevel $ inferRho body (InstUntil Explicit) Nothing
+        argVar <- forall h p argType
         body'' <- matchSingle (pure argVar) pat' body' bodyType
         bodyScope' <- abstract1M argVar body''
         bodyTypeScope <- abstract1M argVar bodyType
@@ -192,11 +194,11 @@ tcRho expr expected expectedAppResult = case expr of
         let body = instantiatePattern pure vs bodyScope
             bodyType = Util.instantiate1 patExpr bodyTypeScope
         body' <- enterLevel $ checkPoly body bodyType
-        argVar <- forall h' argType
+        argVar <- forall h' p argType
         body'' <- matchSingle (pure argVar) pat' body' bodyType
         fResult =<< Abstract.Lam h' p argType <$> abstract1M argVar body''
   Concrete.App fun p arg -> do
-    (fun', funType) <- inferRho fun (InstBelow p) expectedAppResult
+    (fun', funType) <- inferRho fun (InstUntil p) expectedAppResult
     (argType, resTypeScope, f1) <- subtypeFun funType p
     case unusedScope resTypeScope of
       Nothing -> do
@@ -214,7 +216,7 @@ tcRho expr expected expectedAppResult = case expr of
     let names = (\(_, n, _, _) -> n) <$> ds
     evars <- forM names $ \name -> do
       typ <- existsType name
-      forall name typ
+      forall name Explicit typ
     let instantiatedDs
           = (\(loc, _, def, typ) ->
               ( loc
@@ -226,19 +228,19 @@ tcRho expr expected expectedAppResult = case expr of
     let abstr = letAbstraction evars
         ds'' = LetRec
           -- TODO handle abstractness/concreteness
-          $ (\(_, (v, Definition _ e, t)) -> LetBinding (metaHint v) (abstract abstr e) t)
+          $ (\(_, (v, Definition _ _ e, t)) -> LetBinding (metaHint v) (abstract abstr e) t)
           <$> ds'
     return $ Abstract.Let ds'' $ abstract abstr body
   Concrete.Case e brs -> tcBranches e brs expected
   Concrete.ExternCode c -> do
-    c' <- mapM (\e -> fst <$> inferRho e (InstBelow Explicit) Nothing) c
+    c' <- mapM (\e -> fst <$> inferRho e (InstUntil Explicit) Nothing) c
     returnType <- existsType mempty
     f <- instExpected expected returnType
     f $ Abstract.ExternCode c' returnType
   Concrete.Wildcard -> do
     t <- existsType mempty
     f <- instExpected expected t
-    x <- existsVar mempty t
+    x <- existsVar mempty Explicit t
     f x
   Concrete.SourceLoc loc e -> located loc $ tcRho e expected expectedAppResult
 
@@ -246,9 +248,9 @@ tcBranches
   :: ConcreteM
   -> [(Concrete.Pat (PatternScope Concrete.Expr MetaA) (), PatternScope Concrete.Expr MetaA)]
   -> Expected Rhotype
-  -> VIX AbstractM
+  -> Infer AbstractM
 tcBranches expr pbrs expected = do
-  (expr', exprType) <- inferRho expr (InstBelow Explicit) Nothing
+  (expr', exprType) <- inferRho expr (InstUntil Explicit) Nothing
 
   inferredPats <- forM pbrs $ \(pat, brScope) -> do
     (pat', _, vs) <- checkPat (void pat) mempty exprType
@@ -261,12 +263,12 @@ tcBranches expr pbrs expected = do
         br' <- checkRho br resType
         return (pat, br')
       return (brs, resType)
-    Infer _ instBelow -> case inferredPats of
+    Infer _ instUntil -> case inferredPats of
       [] -> do
         resType <- existsType mempty
         return ([], resType)
       (headPat, headBr):inferredPats' -> do
-        (headBr', resType) <- inferRho headBr instBelow Nothing
+        (headBr', resType) <- inferRho headBr instUntil Nothing
         brs' <- forM inferredPats' $ \(pat, br) -> do
           br' <- checkRho br resType
           return (pat, br')
@@ -287,13 +289,13 @@ checkPat
   :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
   -> Polytype
-  -> VIX (Abstract.Pat AbstractM MetaA, AbstractM, Vector MetaA)
+  -> Infer (Abstract.Pat AbstractM MetaA, AbstractM, Vector MetaA)
 checkPat pat vs expectedType = tcPat pat vs $ CheckPat expectedType
 
 inferPat
   :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
-  -> VIX (Abstract.Pat AbstractM MetaA, AbstractM, Vector MetaA, Polytype)
+  -> Infer (Abstract.Pat AbstractM MetaA, AbstractM, Vector MetaA, Polytype)
 inferPat pat vs = do
   ref <- liftST $ newSTRef $ error "inferPat: empty result"
   (pat', patExpr, vs') <- tcPat pat vs $ InferPat ref
@@ -304,7 +306,7 @@ tcPats
   :: Vector (Concrete.Pat (PatternScope Concrete.Expr MetaA) ())
   -> Vector MetaA
   -> Telescope Plicitness Abstract.Expr MetaA
-  -> VIX (Vector (Abstract.Pat AbstractM MetaA, AbstractM, AbstractM), Vector MetaA)
+  -> Infer (Vector (Abstract.Pat AbstractM MetaA, AbstractM, AbstractM), Vector MetaA)
 tcPats pats vs tele = do
   unless (Vector.length pats == teleLength tele)
     $ throwError "tcPats length mismatch"
@@ -321,11 +323,12 @@ tcPats pats vs tele = do
           | otherwise = snd $ Vector.last results
   return (fst <$> results, vs')
 
+-- TODO take plicitness and use in foralls
 tcPat
   :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
   -> ExpectedPat
-  -> VIX (Abstract.Pat AbstractM MetaA, AbstractM, Vector MetaA)
+  -> Infer (Abstract.Pat AbstractM MetaA, AbstractM, Vector MetaA)
 tcPat pat vs expected = do
   whenVerbose 20 $ do
     shownPat <- bitraverse (showMeta . instantiatePattern pure vs) pure pat
@@ -342,7 +345,7 @@ tcPat'
   :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
   -> ExpectedPat
-  -> VIX (Abstract.Pat AbstractM MetaA, AbstractM, Vector MetaA)
+  -> Infer (Abstract.Pat AbstractM MetaA, AbstractM, Vector MetaA)
 tcPat' pat vs expected = case pat of
   Concrete.VarPat h () -> do
     expectedType <- case expected of
@@ -351,7 +354,7 @@ tcPat' pat vs expected = case pat of
         liftST $ writeSTRef ref expectedType
         return expectedType
       CheckPat expectedType -> return expectedType
-    v <- forall h expectedType
+    v <- forall h Explicit expectedType
     return (Abstract.VarPat h v, pure v, vs <> pure v)
   Concrete.WildcardPat -> do
     expectedType <- case expected of
@@ -360,7 +363,7 @@ tcPat' pat vs expected = case pat of
         liftST $ writeSTRef ref expectedType
         return expectedType
       CheckPat expectedType -> return expectedType
-    v <- forall mempty expectedType
+    v <- forall mempty Explicit expectedType
     return (Abstract.VarPat mempty v, pure v, vs)
   Concrete.LitPat lit -> do
     (p, e) <- instPatExpected
@@ -383,20 +386,21 @@ tcPat' pat vs expected = case pat of
 
     pats' <- Vector.fromList <$> exactlyEqualisePats (Vector.toList argPlics) (Vector.toList pats)
 
-    paramVars <- forTeleWithPrefixM paramsTele $ \h _ s paramVars ->
-      exists h $ instantiateTele pure paramVars s
+    paramVars <- forTeleWithPrefixM paramsTele $ \h p s paramVars ->
+      existsVar h p $ instantiateTele id paramVars s
 
-    let argTele = instantiatePrefix (pure <$> paramVars) tele
+    let argTele = instantiatePrefix paramVars tele
 
     (pats'', vs') <- tcPats (snd <$> pats') vs argTele
 
     let argExprs = snd3 <$> pats''
         argTypes = thd3 <$> pats''
         pats''' = Vector.zip3 argPlics (fst3 <$> pats'') argTypes
-        params = Vector.zip (teleAnnotations paramsTele) $ pure <$> paramVars
-        patExpr = Abstract.apps (Abstract.Con qc) $ ((\v -> (Implicit, pure v)) <$> paramVars) <> Vector.zip argPlics argExprs
+        params = Vector.zip (teleAnnotations paramsTele) paramVars
+        iparams = first implicitise <$> params
+        patExpr = Abstract.apps (Abstract.Con qc) $ iparams <> Vector.zip argPlics argExprs
 
-        retType = instantiateTele id (pure <$> paramVars <|> argExprs) retScope
+        retType = instantiateTele id (paramVars <|> argExprs) retScope
 
     (p, patExpr') <- instPatExpected expected retType (Abstract.ConPat qc params pats''') patExpr
 
@@ -415,7 +419,7 @@ instPatExpected
   -> Polytype -- ^ patType
   -> Abstract.Pat AbstractM MetaA -- ^ pat
   -> AbstractM -- ^ :: patType
-  -> VIX (Abstract.Pat AbstractM MetaA, AbstractM) -- ^ (pat :: expectedType, :: expectedType)
+  -> Infer (Abstract.Pat AbstractM MetaA, AbstractM) -- ^ (pat :: expectedType, :: expectedType)
 instPatExpected (CheckPat expectedType) patType pat patExpr = do
   f <- subtype expectedType patType
   viewPat expectedType pat patExpr f
@@ -427,10 +431,10 @@ viewPat
   :: AbstractM -- ^ expectedType
   -> Abstract.Pat AbstractM MetaA -- ^ pat
   -> AbstractM -- ^ :: patType
-  -> (AbstractM -> VIX AbstractM) -- ^ expectedType -> patType
-  -> VIX (Abstract.Pat AbstractM MetaA, AbstractM) -- ^ (expectedType, :: expectedType)
+  -> (AbstractM -> Infer AbstractM) -- ^ expectedType -> patType
+  -> Infer (Abstract.Pat AbstractM MetaA, AbstractM) -- ^ (expectedType, :: expectedType)
 viewPat expectedType pat patExpr f = do
-  x <- forall mempty expectedType
+  x <- forall mempty Explicit expectedType
   fx <- f $ pure x
   if fx == pure x then
     return (pat, patExpr)
@@ -440,7 +444,7 @@ viewPat expectedType pat patExpr f = do
 
 patToTerm
   :: Abstract.Pat AbstractM MetaA
-  -> VIX (Maybe AbstractM)
+  -> Infer (Maybe AbstractM)
 patToTerm pat = case pat of
   Abstract.VarPat _ v -> return $ Just $ Abstract.Var v
   Abstract.ConPat qc params pats -> do
@@ -456,17 +460,17 @@ patToTerm pat = case pat of
 instantiateDataType
   :: Applicative f
   => Name
-  -> VIX (AbstractM, Vector (Plicitness, f MetaA))
+  -> Infer (AbstractM, Vector (Plicitness, f MetaA))
 instantiateDataType typeName = mdo
   (_, dataTypeType) <- definition typeName
   let params = telescope dataTypeType
       inst = instantiateTele (pure . snd) paramVars
   paramVars <- forMTele params $ \h p s -> do
-    v <- exists h (inst s)
+    v <- exists h p (inst s)
     return (p, v)
   let pureParamVars = fmap pure <$> paramVars
       dataType = Abstract.apps (Abstract.Global typeName) pureParamVars
-      implicitParamVars = (\(_p, v) -> (Implicit, pure v)) <$> paramVars
+      implicitParamVars = (\(p, v) -> (implicitise, pure v)) <$> paramVars
   return (dataType, implicitParamVars)
 -}
 
@@ -475,7 +479,7 @@ instantiateDataType typeName = mdo
 resolveConstr
   :: HashSet QConstr
   -> Maybe Rhotype
-  -> VIX QConstr
+  -> Infer QConstr
 resolveConstr cs expected = do
   mExpectedTypeName <- expectedDataType
 
@@ -506,12 +510,12 @@ resolveConstr cs expected = do
       ]
   where
     expectedDataType = join <$> traverse findExpectedDataType expected
-    findExpectedDataType :: AbstractM -> VIX (Maybe QName)
+    findExpectedDataType :: AbstractM -> Infer (Maybe QName)
     findExpectedDataType typ = do
       typ' <- whnf typ
       case typ' of
-        Abstract.Pi h _ t s -> do
-          v <- forall h t
+        Abstract.Pi h p t s -> do
+          v <- forall h p t
           findExpectedDataType $ Util.instantiate1 (pure v) s
         Abstract.App t1 _ _ -> findExpectedDataType t1
         Abstract.Global v -> do
@@ -531,197 +535,17 @@ resolveConstr cs expected = do
       pcs -> "constructors" Leijen.<+> prettyHumanList "and" pcs
 
 --------------------------------------------------------------------------------
--- Prenex conversion/deep skolemisation
--- | prenexConvert t1 = (vs, t2, f) => f : t2 -> t1
-prenexConvert
-  :: Polytype
-  -> InstBelow
-  -> VIX (Vector (Plicitness, MetaA), Rhotype, AbstractM -> VIX AbstractM)
-prenexConvert typ instBelow = do
-  typ' <- whnf typ
-  prenexConvert' typ' instBelow
-
-prenexConvert'
-  :: Polytype
-  -> InstBelow
-  -> VIX (Vector (Plicitness, MetaA), Rhotype, AbstractM -> VIX AbstractM)
-prenexConvert' (Abstract.Pi h p t resScope) (InstBelow p') | p < p' = do
-  y <- forall h t
-  let resType = Util.instantiate1 (pure y) resScope
-  (vs, resType', f) <- prenexConvert resType $ InstBelow p'
-  return $ case p of
-    Implicit ->
-      ( Vector.cons (p, y) vs
-      , resType'
-      , \x -> fmap (Abstract.Lam h p t) $ abstract1M y
-        =<< f (betaApp x p $ pure y)
-      )
-    Explicit ->
-      ( vs
-      , Abstract.Pi h p t $ abstract1 y resType'
-      , \x -> fmap (Abstract.Lam h p t) . abstract1M y
-        =<< f
-        =<< Abstract.lams <$> metaTelescopeM vs
-        <*> abstractM (teleAbstraction $ snd <$> vs)
-        (betaApp (betaApps x $ second pure <$> vs) p $ pure y)
-      )
-prenexConvert' typ _ = return (mempty, typ, pure)
-
---------------------------------------------------------------------------------
--- Subtyping/subsumption
--- | subtype t1 t2 = f => f : t1 -> t2
-subtype :: Polytype -> Polytype -> VIX (AbstractM -> VIX AbstractM)
-subtype typ1 typ2 = do
-  logMeta 30 "subtype t1" typ1
-  logMeta 30 "        t2" typ2
-  modifyIndent succ
-  typ1' <- whnf typ1
-  typ2' <- whnf typ2
-  res <- subtype' typ1' typ2'
-  modifyIndent pred
-  return res
-
-subtype' :: Polytype -> Polytype -> VIX (AbstractM -> VIX AbstractM)
-subtype' (Abstract.Pi h1 p1 argType1 retScope1) (Abstract.Pi h2 p2 argType2 retScope2)
-  | p1 == p2 = do
-    let h = h1 <> h2
-    f1 <- subtype argType2 argType1
-    v2 <- forall h argType2
-    v1 <- f1 $ pure v2
-    let retType1 = Util.instantiate1 v1 retScope1
-        retType2 = Util.instantiate1 (pure v2) retScope2
-    f2 <- subtype retType1 retType2
-    return
-      $ \x -> fmap (Abstract.Lam h p2 argType2)
-      $ abstract1M v2 =<< f2 (Abstract.App x p1 v1)
-subtype' typ1 typ2 = do
-  (as, rho, f1) <- prenexConvert typ2 $ InstBelow Explicit
-  f2 <- subtypeRho typ1 rho $ InstBelow Explicit
-  return $ \x ->
-    f1 =<< Abstract.lams <$> metaTelescopeM as
-    <*> (abstractM (teleAbstraction $ snd <$> as) =<< f2 x)
-
-subtypeRho :: Polytype -> Rhotype -> InstBelow -> VIX (AbstractM -> VIX AbstractM)
-subtypeRho typ1 typ2 instBelow = do
-  logMeta 30 "subtypeRho t1" typ1
-  logMeta 30 "           t2" typ2
-  modifyIndent succ
-  typ1' <- whnf typ1
-  typ2' <- whnf typ2
-  res <- subtypeRho' typ1' typ2' instBelow
-  modifyIndent pred
-  return res
-
-subtypeRho' :: Polytype -> Rhotype -> InstBelow -> VIX (AbstractM -> VIX AbstractM)
-subtypeRho' typ1 typ2 _ | typ1 == typ2 = return pure
-subtypeRho' (Abstract.Pi h1 p1 argType1 retScope1) (Abstract.Pi h2 p2 argType2 retScope2) _
-  | p1 == p2 = do
-    let h = h1 <> h2
-    f1 <- subtype argType2 argType1
-    v2 <- forall h argType2
-    v1 <- f1 $ pure v2
-    let retType1 = Util.instantiate1 v1 retScope1
-        retType2 = Util.instantiate1 (pure v2) retScope2
-    f2 <- subtypeRho retType1 retType2 $ InstBelow Explicit
-    return
-      $ \x -> fmap (Abstract.Lam h p2 argType2)
-      $ abstract1M v2 =<< f2 (Abstract.App x p1 v1)
-subtypeRho' (Abstract.Pi h p t s) typ2 (InstBelow p') | p < p' = do
-  v <- exists h t
-  f <- subtypeRho (Util.instantiate1 (pure v) s) typ2 $ InstBelow p'
-  return $ \x -> f $ Abstract.App x p $ pure v
-subtypeRho' typ1 typ2 _ = do
-  unify [] typ1 typ2
-  return pure
-
--- | funSubtypes typ ps = (ts, retType, f) => f : (ts -> retType) -> typ
-funSubtypes
-  :: Rhotype
-  -> Vector Plicitness
-  -> VIX
-    ( Telescope Plicitness Abstract.Expr MetaA
-    , Scope TeleVar Abstract.Expr MetaA
-    , Vector (AbstractM -> VIX AbstractM)
-    )
-funSubtypes startType plics = go plics startType mempty mempty mempty
-  where
-    go ps typ vs tele fs
-      | Vector.null ps = do
-        let vars = toVector vs
-            funs = toVector fs
-            abstr = teleAbstraction vars
-        tele' <- forM (toVector tele) $ \(h, p, t) -> do
-          s <- abstractM abstr t
-          return $ TeleArg h p s
-
-        typeScope <- abstractM abstr typ
-
-        return (Telescope tele', typeScope, funs)
-      | otherwise = do
-        let p = Vector.head ps
-        (h, argType, resScope, f) <- funSubtype typ p
-        v <- forall mempty argType
-        go
-          (Vector.tail ps)
-          (Util.instantiate1 (pure v) resScope)
-          (Snoc vs v)
-          (Snoc tele (h, p, argType))
-          (Snoc fs f)
-
--- | funSubtype typ p = (typ1, typ2, f) => f : (typ1 -> typ2) -> typ
-funSubtype
-  :: Rhotype
-  -> Plicitness
-  -> VIX (NameHint, Rhotype, Scope1 Abstract.Expr MetaA, AbstractM -> VIX AbstractM)
-funSubtype typ p = do
-  typ' <- whnf typ
-  funSubtype' typ' p
-
-funSubtype'
-  :: Rhotype
-  -> Plicitness
-  -> VIX (NameHint, Rhotype, Scope1 Abstract.Expr MetaA, AbstractM -> VIX AbstractM)
-funSubtype' (Abstract.Pi h p t s) p' | p == p' = return (h, t, s, pure)
-funSubtype' typ p = do
-  argType <- existsType mempty
-  resType <- existsType mempty
-  let resScope = abstractNone resType
-  f <- subtypeRho' (Abstract.Pi mempty p argType resScope) typ $ InstBelow p
-  return (mempty, argType, resScope, f)
-
--- | subtypeFun typ p = (typ1, typ2, f) => f : typ -> (typ1 -> typ2)
-subtypeFun
-  :: Rhotype
-  -> Plicitness
-  -> VIX (Rhotype, Scope1 Abstract.Expr MetaA, AbstractM -> VIX AbstractM)
-subtypeFun typ p = do
-  typ' <- whnf typ
-  subtypeFun' typ' p
-
-subtypeFun'
-  :: Rhotype
-  -> Plicitness
-  -> VIX (Rhotype, Scope1 Abstract.Expr MetaA, AbstractM -> VIX AbstractM)
-subtypeFun' (Abstract.Pi _ p t s) p' | p == p' = return (t, s, pure)
-subtypeFun' typ p = do
-  argType <- existsType mempty
-  resType <- existsType mempty
-  let resScope = abstractNone resType
-  f <- subtype typ $ Abstract.Pi mempty p argType resScope
-  return (argType, resScope, f)
-
---------------------------------------------------------------------------------
 -- Generalisation
 {-
 generalise
   :: AbstractM
   -> AbstractM
-  -> VIX (AbstractM, AbstractM)
+  -> Infer (AbstractM, AbstractM)
 generalise expr typ = do
   -- fvs <- (<>) <$> foldMapM (:[]) typ' <*> foldMapM (:[]) expr
   fvs <- foldMapM (:[]) typ -- <*> foldMapM (:[]) expr'
   l <- level
-  let p (metaRef -> Just r) = either (> l) (const False) <$> solution r
+  let p v@MetaVar { metaRef = Just r } = either (> l) (const False) <$> solution r
       p _                   = return False
   fvs' <- HashSet.fromList <$> filterM p fvs
 
@@ -744,16 +568,16 @@ generalise expr typ = do
 -- Definitions
 checkConstrDef
   :: ConstrDef ConcreteM
-  -> VIX (ConstrDef AbstractM, AbstractM, AbstractM)
+  -> Infer (ConstrDef AbstractM, AbstractM, AbstractM)
 checkConstrDef (ConstrDef c typ) = do
   typ' <- zonk =<< checkPoly typ Builtin.Type
   (sizes, ret) <- go typ'
   let size = foldl' productType (Abstract.MkType TypeRep.UnitRep) sizes
   return (ConstrDef c typ', ret, size)
   where
-    go :: AbstractM -> VIX ([AbstractM], AbstractM)
-    go (Abstract.Pi h _ t s) = do
-      v <- forall h t
+    go :: AbstractM -> Infer ([AbstractM], AbstractM)
+    go (Abstract.Pi h p t s) = do
+      v <- forall h p t
       (sizes, ret) <- go $ instantiate1 (pure v) s
       return (t : sizes, ret)
     go ret = return ([], ret)
@@ -762,14 +586,14 @@ checkDataType
   :: MetaA
   -> DataDef Concrete.Expr MetaA
   -> AbstractM
-  -> VIX (DataDef Abstract.Expr MetaA, AbstractM, AbstractM)
+  -> Infer (Definition Abstract.Expr MetaA, AbstractM)
 checkDataType name (DataDef cs) typ = do
   typ' <- zonk typ
   logMeta 20 "checkDataType t" typ'
 
   ps' <- forTeleWithPrefixM (Abstract.telescope typ') $ \h p s ps' -> do
     let is = instantiateTele pure (snd <$> ps') s
-    v <- forall h is
+    v <- forall h p is
     return (p, v)
 
   let vs = snd <$> ps'
@@ -805,19 +629,19 @@ checkDataType name (DataDef cs) typ = do
   abstractedTypeRep <- abstractM abstr typeRep'
   logMeta 20 "checkDataType typeRep" typeRep'
 
-  return (DataDef abstractedCs, Abstract.lams params abstractedTypeRep, typ'')
+  return (DataDefinition (DataDef abstractedCs) $ Abstract.lams params abstractedTypeRep, typ'')
 
 checkClauses
   :: NonEmpty (Concrete.Clause Void Concrete.Expr MetaA)
   -> Polytype
-  -> VIX AbstractM
+  -> Infer AbstractM
 checkClauses clauses polyType = do
   forM_ clauses $ logMeta 20 "checkClauses clause"
   logMeta 20 "checkClauses typ" polyType
 
   modifyIndent succ
 
-  (vs, rhoType, f) <- prenexConvert polyType $ minimum $ instBelowClause <$> clauses
+  (vs, rhoType, f) <- prenexConvert polyType $ minimum $ instUntilClause <$> clauses
 
   ps <- piPlicitnesses rhoType
 
@@ -838,26 +662,26 @@ checkClauses clauses polyType = do
     <$> metaTelescopeM vs
     <*> abstractM (teleAbstraction $ snd <$> vs) res
   where
-    instBelowClause :: Concrete.Clause Void Concrete.Expr v -> InstBelow
-    instBelowClause (Concrete.Clause pats s)
-      | Vector.length pats > 0 = InstBelow $ fst $ Vector.head pats
-      | otherwise = instBelowExpr $ fromScope s
+    instUntilClause :: Concrete.Clause Void Concrete.Expr v -> InstUntil
+    instUntilClause (Concrete.Clause pats s)
+      | Vector.length pats > 0 = InstUntil $ fst $ Vector.head pats
+      | otherwise = instUntilExpr $ fromScope s
 
-    piPlicitnesses :: AbstractM -> VIX [Plicitness]
+    piPlicitnesses :: AbstractM -> Infer [Plicitness]
     piPlicitnesses t = do
       t' <- whnf t
       piPlicitnesses' t'
 
-    piPlicitnesses' :: AbstractM -> VIX [Plicitness]
+    piPlicitnesses' :: AbstractM -> Infer [Plicitness]
     piPlicitnesses' (Abstract.Pi h p t s) = do
-      v <- forall h t
+      v <- forall h p t
       (:) p <$> piPlicitnesses (instantiate1 (pure v) s)
     piPlicitnesses' _ = return mempty
 
 checkClausesRho
   :: NonEmpty (Concrete.Clause Void Concrete.Expr MetaA)
   -> Rhotype
-  -> VIX AbstractM
+  -> Infer AbstractM
 checkClausesRho clauses rhoType = do
   forM_ clauses $ logMeta 20 "checkClausesRho clause"
   logMeta 20 "checkClausesRho type" rhoType
@@ -885,8 +709,8 @@ checkClausesRho clauses rhoType = do
     forM_ pats $ logMeta 20 "checkClausesRho clause pat" <=< bitraverse showMeta pure
     logMeta 20 "checkClausesRho clause body" body
 
-  argVars <- forTeleWithPrefixM (addTeleNames argTele $ Concrete.patternHint <$> firstPats) $ \h _ s argVars ->
-    forall h $ instantiateTele pure argVars s
+  argVars <- forTeleWithPrefixM (addTeleNames argTele $ Concrete.patternHint <$> firstPats) $ \h p s argVars ->
+    forall h p $ instantiateTele pure argVars s
 
   let returnType = instantiateTele pure argVars returnTypeScope
 
@@ -909,38 +733,39 @@ checkClausesRho clauses rhoType = do
 checkDefType
   :: Concrete.PatDefinition (Concrete.Clause Void Concrete.Expr MetaA)
   -> AbstractM
-  -> VIX (Definition Abstract.Expr MetaA, AbstractM)
-checkDefType (Concrete.PatDefinition a clauses) typ = do
+  -> Infer (Definition Abstract.Expr MetaA, AbstractM)
+checkDefType (Concrete.PatDefinition a i clauses) typ = do
   e' <- checkClauses clauses typ
-  return (Definition a e', typ)
+  return (Definition a i e', typ)
 
 checkTopLevelDefType
   :: MetaA
   -> Concrete.TopLevelPatDefinition Concrete.Expr MetaA
   -> SourceLoc
   -> AbstractM
-  -> VIX (Definition Abstract.Expr MetaA, AbstractM)
+  -> Infer (Definition Abstract.Expr MetaA, AbstractM)
 checkTopLevelDefType v def loc typ = located (render loc) $ case def of
   Concrete.TopLevelPatDefinition def' -> checkDefType def' typ
-  Concrete.TopLevelPatDataDefinition d -> do
-    (d', rep, typ') <- checkDataType v d typ
-    return (DataDefinition d' rep, typ')
+  Concrete.TopLevelPatDataDefinition d -> checkDataType v d typ
+  -- Should be removed by Declassify:
+  Concrete.TopLevelPatClassDefinition _ -> error "checkTopLevelDefType class"
+  Concrete.TopLevelPatInstanceDefinition _ -> error "checkTopLevelDefType instance"
 
 generaliseDef
   :: Vector MetaA
   -> Definition Abstract.Expr MetaA
   -> AbstractM
-  -> VIX ( Definition Abstract.Expr MetaA
+  -> Infer ( Definition Abstract.Expr MetaA
          , AbstractM
          )
-generaliseDef vs (Definition a e) t = do
-  let ivs = (,) Implicit <$> vs
+generaliseDef vs (Definition a i e) t = do
+  let ivs = (\v -> (implicitise $ metaData v, v)) <$> vs
   ge <- abstractMs ivs Abstract.Lam e
   gt <- abstractMs ivs Abstract.Pi t
-  return (Definition a ge, gt)
+  return (Definition a i ge, gt)
 generaliseDef vs (DataDefinition (DataDef cs) rep) typ = do
   let cs' = map (fmap $ toScope . splat f g) cs
-      ivs = (,) Implicit <$> vs
+      ivs = (\v -> (implicitise $ metaData v, v)) <$> vs
   -- Abstract vs on top of typ
   grep <- abstractMs ivs Abstract.Lam rep
   gtyp <- abstractMs ivs Abstract.Pi typ
@@ -955,7 +780,7 @@ abstractMs
   => t (Plicitness, MetaA)
   -> (NameHint -> Plicitness -> AbstractM -> ScopeM () Abstract.Expr -> AbstractM)
   -> AbstractM
-  -> VIX AbstractM
+  -> Infer AbstractM
 abstractMs vs c b = foldrM
   (\(p, v)  s -> c (metaHint v) p (metaType v) <$> abstract1M v s)
   b
@@ -966,26 +791,31 @@ generaliseDefs
             , Definition Abstract.Expr MetaA
             , AbstractM
             )
-  -> VIX (Vector ( Definition Abstract.Expr MetaA
-                 , AbstractM
-                 )
-         )
+  -> Infer (Vector ( Definition Abstract.Expr MetaA
+                   , AbstractM
+                   )
+           )
 generaliseDefs xs = do
   modifyIndent succ
 
-  fvs <- asum <$> mapM (foldMapM (:[])) types
+  dfvs <- fold <$> mapM (foldMapM HashSet.singleton) defs
+  tfvs <- fold <$> mapM (foldMapM HashSet.singleton) types
+  let fvs = dfvs <> tfvs
 
   l <- level
-  let p (metaRef -> Just r) = either (> l) (const False) <$> solution r
-      p _                   = return False
-  fvs' <- HashSet.fromList <$> filterM p fvs
+  logShow 30 "level" l
+  let p MetaVar { metaRef = Just r } = either (> l) (const False) <$> solution r
+      p _ = return False
+  fvs' <- fmap HashSet.fromList $ filterM p $ HashSet.toList fvs
+  logShow 30 "fvs" fvs
+  logShow 30 "fvs'" fvs'
 
   deps <- forM (HashSet.toList fvs') $ \x -> do
     ds <- foldMapM HashSet.singleton $ metaType x
     return (x, ds)
 
   let sortedFvs = map impure $ topoSort deps
-      appl x = Abstract.apps x [(Implicit, pure fv) | fv <- sortedFvs]
+      appl x = Abstract.apps x [(implicitise $ metaData fv, pure fv) | fv <- sortedFvs]
       instVars = appl . pure <$> vars
 
   instDefs <- forM xs $ \(_, d, t) -> do
@@ -1001,10 +831,11 @@ generaliseDefs xs = do
   where
     vars  = (\(v, _, _) -> v) <$> xs
     varIndex = hashedElemIndex vars
+    defs = (\(_, d, _) -> d) <$> xs
     types = (\(_, _, t) -> t) <$> xs
     sub instVars v | Just x <- varIndex v
       = return $ fromMaybe (error "generaliseDefs") $ instVars Vector.!? x
-    sub instVars v@(metaRef -> Just r) = do
+    sub instVars v@MetaVar { metaRef = Just r } = do
       sol <- solution r
       case sol of
         Left _ -> return $ pure v
@@ -1012,6 +843,11 @@ generaliseDefs xs = do
     sub _ v = return $ pure v
     impure [a] = a
     impure _ = error "generaliseDefs"
+
+implicitise :: Plicitness -> Plicitness
+implicitise Constraint = Constraint
+implicitise Implicit = Implicit
+implicitise Explicit = Implicit
 
 checkRecursiveDefs
   :: Vector
@@ -1021,7 +857,7 @@ checkRecursiveDefs
       , ConcreteM
       )
     )
-  -> VIX
+  -> Infer
     (Vector
       ( SourceLoc
       , (MetaA, Definition Abstract.Expr MetaA
@@ -1050,7 +886,7 @@ checkTopLevelRecursiveDefs
     , Concrete.TopLevelPatDefinition Concrete.Expr Void
     , Concrete.Type Void
     )
-  -> VIX
+  -> Infer
     (Vector
       ( QName
       , Definition Abstract.Expr Void
@@ -1064,7 +900,7 @@ checkTopLevelRecursiveDefs defs = do
     evars <- forM names $ \name -> do
       let hint = fromQName name
       typ <- existsType hint
-      forall hint typ
+      forall hint Explicit typ
 
     let nameIndex = hashedElemIndex names
         expose name = case nameIndex name of
@@ -1080,7 +916,9 @@ checkTopLevelRecursiveDefs defs = do
 
     return (checkedDefs, evars)
 
-  genDefs <- generaliseDefs $ snd <$> checkedDefs
+  elabDefs <- elabRecursiveDefs checkedDefs
+
+  genDefs <- generaliseDefs $ snd <$> elabDefs
 
   let varIndex = hashedElemIndex evars
       unexpose evar = case varIndex evar of
@@ -1088,7 +926,7 @@ checkTopLevelRecursiveDefs defs = do
         Just index -> global
           $ fromMaybe (error "checkTopLevelRecursiveDefs 2")
           $ names Vector.!? index
-      vf :: MetaA -> VIX b
+      vf :: MetaA -> Infer b
       vf v = throwError $ "checkTopLevelRecursiveDefs " ++ show v
 
   forM (Vector.zip names genDefs) $ \(name, (def, typ)) -> do

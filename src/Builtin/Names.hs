@@ -13,6 +13,9 @@ import Util
 pattern BuiltinModuleName :: ModuleName
 pattern BuiltinModuleName <- ((==) "Sixten.Builtin" -> True) where BuiltinModuleName = "Sixten.Builtin"
 
+pattern UnsolvedConstraintName :: QName
+pattern UnsolvedConstraintName <- ((==) "Sixten.Builtin.UnsolvedConstraint" -> True) where UnsolvedConstraintName = "Sixten.Builtin.UnsolvedConstraint"
+
 -- TODO Remove unused stuff (e.g. addInt)
 pattern IntName :: QName
 pattern IntName <- ((==) "Sixten.Builtin.Int" -> True) where IntName = "Sixten.Builtin.Int"
@@ -48,6 +51,11 @@ pattern TypeName :: QName
 pattern TypeName <- ((==) "Sixten.Builtin.Type" -> True) where TypeName = "Sixten.Builtin.Type"
 pattern Type :: Expr t
 pattern Type = Global TypeName
+
+pattern ConstraintName :: QName
+pattern ConstraintName <- ((==) "Sixten.Builtin.Constraint" -> True) where ConstraintName = "Sixten.Builtin.Constraint"
+pattern Constraint :: Expr t
+pattern Constraint = Global ConstraintName
 
 pattern ProductTypeRepName :: QName
 pattern ProductTypeRepName <- ((==) "Sixten.Builtin.productTypeRep" -> True) where ProductTypeRepName = "Sixten.Builtin.productTypeRep"

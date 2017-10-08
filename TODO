@@ -29,7 +29,13 @@ Error messages
 Language
   Named implicit arguments (maybe names should be mandatory?)
   Laziness
-  * Type classes
+  Type classes
+    When using a class several times at the same time, make sure the inferred type only has one class constraint
+    Error for overlapping instances
+    Tests for duplicate and superfluous methods
+    Tests for multiple methods
+    Make methods desugar to separate definitions
+    Super classes
     Overloaded literals
   Row polymorphism
     r : Row : Type

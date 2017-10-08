@@ -15,14 +15,16 @@ import Util
 import VIX
 
 whnf
-  :: AbstractM
-  -> VIX AbstractM
+  :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
+  => AbstractM
+  -> m AbstractM
 whnf = whnf' False
 
 whnf'
-  :: Bool
+  :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
+  => Bool
   -> AbstractM
-  -> VIX AbstractM
+  -> m AbstractM
 whnf' expandTypeReps expr = do
   modifyIndent succ
   logMeta 40 ("whnf e " ++ show expandTypeReps) expr
@@ -36,7 +38,7 @@ whnf' expandTypeReps expr = do
       f' <- whnfInner expandTypeReps f
       case f' of
         Lam h p' t s | p == p' -> do
-          eVar <- shared h e t
+          eVar <- shared h p e t
           go (Util.instantiate1 (pure eVar) s) es'
         _ -> case apps f' es of
           Builtin.ProductTypeRep x y -> typeRepBinOp
@@ -53,15 +55,16 @@ whnf' expandTypeReps expr = do
           expr' -> return expr'
 
 whnfInner
-  :: Bool
+  :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
+  => Bool
   -> AbstractM
-  -> VIX AbstractM
+  -> m AbstractM
 whnfInner expandTypeReps expr = case expr of
   Var v -> refineVar v $ whnf' expandTypeReps
   Global g -> do
     (d, _) <- definition g
     case d of
-      Definition Concrete e -> whnf' expandTypeReps e
+      Definition Concrete _ e -> whnf' expandTypeReps e
       DataDefinition _ e | expandTypeReps -> whnf' expandTypeReps e
       _ -> return expr
   Con _ -> return expr
@@ -81,8 +84,9 @@ whnfInner expandTypeReps expr = case expr of
     <*> whnf' expandTypeReps retType
 
 normalise
-  :: AbstractM
-  -> VIX AbstractM
+  :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
+  => AbstractM
+  -> m AbstractM
 normalise expr = do
   logMeta 40 "normalise e" expr
   modifyIndent succ
@@ -91,7 +95,7 @@ normalise expr = do
     Global g -> do
       (d, _) <- definition g
       case d of
-        Definition Concrete e -> normalise e
+        Definition Concrete _ e -> normalise e
         _ -> return expr
     Con _ -> return expr
     Lit _ -> return expr
@@ -112,7 +116,7 @@ normalise expr = do
       e1' <- normalise e1
       case e1' of
         Lam h p' t s | p == p' -> do
-          e2Var <- shared h e2 t
+          e2Var <- shared h p e2 t
           normalise $ Util.instantiate1 (pure e2Var) s
         _ -> do
           e2' <- normalise e2
@@ -141,22 +145,22 @@ normalise expr = do
   return res
   where
     normaliseTelescope tele scope = do
-      avs <- forTeleWithPrefixM tele $ \h a s avs -> do
+      pvs <- forTeleWithPrefixM tele $ \h p s avs -> do
         t' <- normalise $ instantiateTele pure (snd <$> avs) s
-        v <- forall h t'
-        return (a, v)
+        v <- forall h p t'
+        return (p, v)
 
-      let vs = snd <$> avs
+      let vs = snd <$> pvs
           abstr = teleAbstraction vs
       e' <- normalise $ instantiateTele pure vs scope
       scope' <- abstractM abstr e'
-      tele' <- forM avs $ \(a, v) -> do
+      tele' <- forM pvs $ \(p, v) -> do
         s <- abstractM abstr $ metaType v
-        return $ TeleArg (metaHint v) a s
+        return $ TeleArg (metaHint v) p s
       return (Telescope tele', scope')
-    normaliseScope h _ c t s = do
+    normaliseScope h p c t s = do
       t' <- normalise t
-      x <- forall h t'
+      x <- forall h p t'
       ns <- normalise $ Util.instantiate1 (pure x) s
       c t' <$> abstract1M x ns
 
@@ -217,7 +221,11 @@ chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs) _ k =
       _ -> error "Normalise.chooseBranch"
 chooseBranch e brs retType _ = return $ Case e brs retType
 
-instantiateLetM :: LetRec Expr MetaA -> Scope LetVar Expr MetaA -> VIX AbstractM
+instantiateLetM
+  :: (MonadFix m, MonadIO m, MonadVIX m)
+  => LetRec Expr MetaA
+  -> Scope LetVar Expr MetaA
+  -> m AbstractM
 instantiateLetM ds scope = mdo
-  vs <- forMLet ds $ \h s t -> shared h (instantiateLet pure vs s) t
+  vs <- forMLet ds $ \h s t -> shared h Explicit (instantiateLet pure vs s) t
   return $ instantiateLet pure vs scope

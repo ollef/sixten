@@ -1,4 +1,4 @@
-{-# LANGUAGE MonadComprehensions, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, MonadComprehensions, OverloadedStrings #-}
 module Analysis.ReturnDirection where
 
 import Control.Monad

@@ -4,6 +4,7 @@ module Util where
 import Bound
 import Bound.Var
 import Control.Applicative
+import Control.Monad.Except
 import Control.Monad.State
 import Data.Bifoldable
 import Data.Bifunctor
@@ -112,6 +113,7 @@ imap f = fmap (uncurry f) . indexed
 ifor :: Traversable t => t a -> (Int -> a -> b) -> t b
 ifor = flip imap
 
+-- TODO use Proxy?
 data Unit a = Unit
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
@@ -150,6 +152,7 @@ forWithPrefix
   -> Vector v'
 forWithPrefix = flip mapWithPrefix
 
+-- TODO: Use MonadFix to optimise?
 mapWithPrefixM
   :: (Monad m, Foldable t)
   => (v -> Vector v' -> m v')
@@ -230,3 +233,6 @@ hashedElemIndex xs
   | otherwise = flip HashMap.lookup m
   where
     m = HashMap.fromList $ zip (Vector.toList xs) [0..]
+
+tryMaybe :: MonadError b m => m a -> m (Maybe a)
+tryMaybe m = fmap Just m `catchError` const (pure Nothing)

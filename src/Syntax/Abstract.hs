@@ -81,10 +81,10 @@ lamsViewM :: Expr v -> Maybe (Telescope Plicitness Expr v, Scope TeleVar Expr v)
 lamsViewM = bindingsViewM lamView
 
 lams :: Telescope Plicitness Expr v -> Scope TeleVar Expr v -> Expr v
-lams tele s = quantify Lam s tele
+lams = quantify Lam
 
 pis :: Telescope Plicitness Expr v -> Scope TeleVar Expr v -> Expr v
-pis tele s = quantify Pi s tele
+pis = quantify Pi
 
 arrow :: Plicitness -> Expr v -> Expr v -> Expr v
 arrow p a b = Pi mempty p a $ Scope $ pure $ F b
@@ -104,7 +104,7 @@ prettyTypedDef
   -> Definition Expr v
   -> Expr v
   -> PrettyM Doc
-prettyTypedDef name (Definition a d) _ = prettyM a <$$> name <+> "=" <+> prettyM d
+prettyTypedDef name (Definition a i d) _ = prettyM a <+> prettyM i <$$> name <+> "=" <+> prettyM d
 prettyTypedDef name (DataDefinition d e) t = prettyDataDef name (telescope t) d <+> "=" <+> prettyM e
 
 -------------------------------------------------------------------------------

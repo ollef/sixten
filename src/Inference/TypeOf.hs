@@ -11,19 +11,22 @@ import Syntax.Abstract
 import VIX
 
 typeOfM
-  :: AbstractM
-  -> VIX AbstractM
+  :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
+  => AbstractM
+  -> m AbstractM
 typeOfM = typeOfGen abstract1M
 
 typeOf
-  :: AbstractM
-  -> VIX AbstractM
+  :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
+  => AbstractM
+  -> m AbstractM
 typeOf = typeOfGen (\x e -> pure $ abstract1 x e)
 
 typeOfGen
-  :: (MetaA -> AbstractM -> VIX (Scope () Expr MetaA))
+  :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
+  => (MetaA -> AbstractM -> m (Scope () Expr MetaA))
   -> AbstractM
-  -> VIX AbstractM
+  -> m AbstractM
 typeOfGen abstr expr = do
   modifyIndent succ
   t <- case expr of
@@ -34,19 +37,19 @@ typeOfGen abstr expr = do
     Con qc -> qconstructor qc
     Lit l -> return $ typeOfLiteral l
     Pi {} -> return Builtin.Type
-    Lam h a t s -> do
-      x <- forall h t
+    Lam h p t s -> do
+      x <- forall h p t
       resType  <- typeOfGen abstr (instantiate1 (pure x) s)
       abstractedResType <- abstr x resType
-      return $ Pi h a t abstractedResType
-    App e1 a e2 -> do
+      return $ Pi h p t abstractedResType
+    App e1 p e2 -> do
       e1type <- typeOfGen abstr e1
       e1type' <- whnf e1type
       case e1type' of
-        Pi _ a' _ resType | a == a' -> return $ instantiate1 e2 resType
+        Pi _ p' _ resType | p == p' -> return $ instantiate1 e2 resType
         _ -> throwError $ "typeOfGen: expected pi type " ++ show e1type'
     Let ds s -> do
-      xs <- forMLet ds $ \h _ t -> forall h t
+      xs <- forMLet ds $ \h _ t -> forall h Explicit t
       typeOfGen abstr $ instantiateLet pure xs s
     Case _ _ retType -> return retType
     ExternCode _ retType -> return retType

@@ -24,6 +24,7 @@ import Util
 context :: Target -> HashMap QName (Definition Expr Void, Type Void)
 context target = HashMap.fromList
   [ (TypeName, dataType typeRep Type [])
+  , (ConstraintName, dataType typeRep Type [])
   , (PtrName, dataType
       (Lam mempty Explicit Type $ Scope ptrRep)
       (arrow Explicit Type Type)
