@@ -70,26 +70,23 @@ elabUnsolvedConstraint ref var = do
       -- Replace existentials in typ with universals
       (uniType, uniVarMap) <- universalise typ
       -- Try subsumption on all instances of the class until a match is found
-      mclassInstances <- gets $ HashMap.lookup className . vixClassInstances
-      case mclassInstances of
-        Nothing -> throwLocated $ "Not a class: " <> pretty className
-        Just globalClassInstances -> do
-          localInstances <- asks constraints
-          let candidates = [(Global g, vacuous t) | (g, t) <- globalClassInstances]
-                <> localInstances
-          matchingInstances <- forM candidates $ \(inst, instType) -> tryMaybe $ do
-            f <- subtype instType uniType
-            f inst
-          case catMaybes matchingInstances of
-            [] -> return $ pure var
-            _:_:_ -> throwLocated $ "Ambiguous instance for " <> pretty className -- TODO error message
-            [matchingInstance] -> do
-              -- Elaborate any constraints introduced by the matching instance
-              elabInstance <- elabExpr matchingInstance
-              -- Replace the universals from before with the original existentials
-              result <- deuniversalise uniVarMap elabInstance
-              solve ref result
-              return result
+      globalClassInstances <- gets $ HashMap.lookupDefault mempty className . vixClassInstances
+      localInstances <- asks constraints
+      let candidates = [(Global g, vacuous t) | (g, t) <- globalClassInstances]
+            <> localInstances
+      matchingInstances <- forM candidates $ \(inst, instType) -> tryMaybe $ do
+        f <- subtype instType uniType
+        f inst
+      case catMaybes matchingInstances of
+        [] -> return $ pure var
+        _:_:_ -> throwLocated $ "Ambiguous instance for " <> pretty className -- TODO error message
+        [matchingInstance] -> do
+          -- Elaborate any constraints introduced by the matching instance
+          elabInstance <- elabExpr matchingInstance
+          -- Replace the universals from before with the original existentials
+          result <- deuniversalise uniVarMap elabInstance
+          solve ref result
+          return result
     _ -> throwLocated "Malformed constraint" -- TODO error message
 
 -- | Replace existentials in typ with universals and return the mapping from
