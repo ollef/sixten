@@ -125,7 +125,7 @@ elabExpr
   :: AbstractM
   -> Infer AbstractM
 elabExpr expr = do
-  logMeta 30 "elabExpr expr" expr
+  logMeta 40 "elabExpr expr" expr
   modifyIndent succ
   result <- case expr of
     UnsolvedConstraint typ -> do
@@ -142,7 +142,7 @@ elabExpr expr = do
     Case e brs t -> Case <$> elabExpr e <*> elabBranches brs <*> elabExpr t
     ExternCode ext t -> ExternCode <$> mapM elabExpr ext <*> elabExpr t
   modifyIndent pred
-  logMeta 30 "elabExpr result" result
+  logMeta 40 "elabExpr result" result
   return result
   where
     absCase c h p t s = do
