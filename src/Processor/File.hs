@@ -50,12 +50,13 @@ type DependencySigs = HashMap QName Text
 process
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
   -> VIX [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
-process = frontend >=> backend
+process = frontend backend
 
 frontend
-  :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
-  -> VIX [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
-frontend
+  :: ([(QName, Definition Abstract.Expr Void, Abstract.Expr Void)] -> VIX [k])
+  -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
+  -> VIX [k]
+frontend k
   = scopeCheckProgram
   >>=> prettyConcreteGroup "Concrete syntax" absurd
 
@@ -70,6 +71,7 @@ frontend
   >=> prettyTypedGroup "Simplified" absurd
 
   >=> addGroupToContext
+  >=> k
 
 backend
   :: [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
