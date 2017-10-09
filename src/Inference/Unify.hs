@@ -18,6 +18,7 @@ import Inference.TypeOf
 import Meta
 import Syntax
 import Syntax.Abstract
+import Util
 import VIX
 
 occurs
@@ -75,7 +76,7 @@ unify cxt type1 type2 = do
   logMeta 30 "      t2" type2
   type1' <- zonk =<< whnf type1
   type2' <- zonk =<< whnf type2
-  unify' ((type1', type2') : cxt) type1' type2'
+  unify' ((type1', type2') : cxt) (etaReduce type1') (etaReduce type2')
 
 unify' :: [(AbstractM, AbstractM)] -> AbstractM -> AbstractM -> Infer ()
 unify' cxt type1 type2
@@ -138,3 +139,9 @@ unify' cxt type1 type2
           logMeta 30 ("solving " <> show (metaId v)) t'
           solve r t'
         Right c -> recurse cxt (apps c $ map (second pure) pvs) t
+
+etaReduce :: Expr v -> Expr v
+etaReduce (Lam _ p _ (Scope (App e1scope p' (Var (B ())))))
+  | p == p', Just e1' <- unusedScope $ Scope e1scope
+  = e1'
+etaReduce e = e
