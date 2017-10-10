@@ -70,6 +70,7 @@ whnfInner expandTypeReps expr = case expr of
   Con _ -> return expr
   Lit _ -> return expr
   Pi {} -> return expr
+  (etaReduce -> Just expr') -> whnf' expandTypeReps expr'
   Lam {} -> return expr
   App {} -> return expr
   Let ds scope -> do
@@ -100,6 +101,7 @@ normalise expr = do
     Con _ -> return expr
     Lit _ -> return expr
     Pi n p a s -> normaliseScope n p (Pi n p) a s
+    (etaReduce -> Just expr') -> normalise expr'
     Lam n p a s -> normaliseScope n p (Lam n p) a s
     Builtin.ProductTypeRep x y -> typeRepBinOp
       (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
@@ -229,3 +231,8 @@ instantiateLetM
 instantiateLetM ds scope = mdo
   vs <- forMLet ds $ \h s t -> shared h Explicit (instantiateLet pure vs s) t
   return $ instantiateLet pure vs scope
+
+etaReduce :: Expr v -> Maybe (Expr v)
+etaReduce (Lam _ p _ (Scope (App e1scope p' (Var (B ())))))
+  | p == p', Just e1' <- unusedScope $ Scope e1scope = Just e1'
+etaReduce _ = Nothing
