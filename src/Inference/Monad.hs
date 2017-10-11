@@ -1,10 +1,12 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, PatternSynonyms #-}
 module Inference.Monad where
 
-import qualified Builtin.Names as Builtin
 import Control.Monad.Reader
+
+import qualified Builtin.Names as Builtin
 import Meta
 import Syntax
+import Syntax.Abstract
 import VIX
 
 type Polytype = AbstractM
@@ -37,3 +39,16 @@ existsType
   => NameHint
   -> m (e MetaA)
 existsType n = pure <$> exists n Explicit Builtin.Type
+
+pattern UnsolvedConstraint :: Expr v -> Expr v
+pattern UnsolvedConstraint typ = App (Global Builtin.UnsolvedConstraintName) Explicit typ
+
+existsVar
+  :: (MonadVIX m, MonadIO m)
+  => NameHint
+  -> Plicitness
+  -> AbstractM
+  -> m AbstractM
+existsVar _ Constraint typ = return $ UnsolvedConstraint typ
+existsVar h Implicit typ = pure <$> exists h Implicit typ
+existsVar h Explicit typ = pure <$> exists h Explicit typ

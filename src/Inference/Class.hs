@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings, PatternSynonyms, ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings, ViewPatterns #-}
 module Inference.Class where
 
 import Control.Monad.Except
@@ -16,7 +16,6 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 
-import qualified Builtin.Names as Builtin
 import Inference.Monad
 import Inference.Subtype
 import Meta
@@ -24,19 +23,6 @@ import Syntax
 import Syntax.Abstract
 import Util
 import VIX
-
-pattern UnsolvedConstraint :: Expr v -> Expr v
-pattern UnsolvedConstraint typ = App (Global Builtin.UnsolvedConstraintName) Explicit typ
-
-existsVar
-  :: (MonadVIX m, MonadIO m)
-  => NameHint
-  -> Plicitness
-  -> AbstractM
-  -> m AbstractM
-existsVar _ Constraint typ = return $ UnsolvedConstraint typ
-existsVar h Implicit typ = pure <$> exists h Implicit typ
-existsVar h Explicit typ = pure <$> exists h Explicit typ
 
 isConstraintVar :: MetaA -> Bool
 isConstraintVar v = case metaData v of
