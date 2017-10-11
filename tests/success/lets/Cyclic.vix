@@ -1,0 +1,8 @@
+even =
+  let
+    odd 0 = False
+    odd n = even (subInt n 1)
+  \n. case n of
+    0 -> True
+    n -> odd (subInt n 1)
+

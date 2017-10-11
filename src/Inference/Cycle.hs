@@ -1,6 +1,7 @@
-{-# LANGUAGE MonadComprehensions, OverloadedStrings #-}
+{-# LANGUAGE MonadComprehensions, OverloadedStrings, ViewPatterns #-}
 module Inference.Cycle where
 
+import Control.Applicative
 import Control.Monad.Except
 import Data.Bitraversable
 import Data.Foldable as Foldable
@@ -80,5 +81,11 @@ detectDefCycles defs = do
 unguardedOccurrences
   :: Expr v
   -> [v]
+unguardedOccurrences (Let (LetRec ds) (fromScope -> Lam _ _ typ _))
+  = concat ((\(LetBinding _ s t) -> freeVars (unguardedOccurrences $ fromScope s) <|> toList t) <$> Vector.toList ds)
+  <|> freeVars typ
+  where
+    freeVars :: Foldable f => f (Var b v) -> [v]
+    freeVars = foldMap $ foldMap pure
 unguardedOccurrences (Lam _ _ t _) = toList t
 unguardedOccurrences e = toList e
