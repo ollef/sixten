@@ -212,7 +212,7 @@ tcRho expr expected expectedAppResult = case expr of
         arg' <- checkPoly arg argType
         fun'' <- f1 fun'
         f2 $ Abstract.App fun'' p arg'
-  Concrete.Let ds scope -> do
+  Concrete.Let ds scope -> enterLevel $ do
     let names = (\(_, n, _, _) -> n) <$> ds
     evars <- forM names $ \name -> do
       typ <- existsType name
@@ -223,13 +223,17 @@ tcRho expr expected expectedAppResult = case expr of
               , Concrete.TopLevelPatDefinition $ Concrete.instantiateLetClause pure evars <$> def
               , instantiateLet pure evars typ
               )) <$> ds
-    ds' <- checkRecursiveDefs (Vector.zip evars instantiatedDs)
-    body <- tcRho (instantiateLet pure evars scope) expected expectedAppResult
-    let abstr = letAbstraction evars
+    ds' <- checkRecursiveDefs False (Vector.zip evars instantiatedDs)
+    let eabstr = letAbstraction evars
         ds'' = LetRec
           -- TODO handle abstractness/concreteness
-          $ (\(_, (v, Definition _ _ e, t)) -> LetBinding (metaHint v) (abstract abstr e) t)
+          $ (\(v, Definition _ _ e, t) -> LetBinding (metaHint v) (abstract eabstr e) t)
           <$> ds'
+
+    vars <- forM (Vector.zip names ds') $ \(n, (_, _, t)) ->
+      forall n Explicit t
+    let abstr = letAbstraction vars
+    body <- tcRho (instantiateLet pure vars scope) expected expectedAppResult
     return $ Abstract.Let ds'' $ abstract abstr body
   Concrete.Case e brs -> tcBranches e brs expected
   Concrete.ExternCode c -> do
@@ -545,7 +549,7 @@ generalise expr typ = do
   -- fvs <- (<>) <$> foldMapM (:[]) typ' <*> foldMapM (:[]) expr
   fvs <- foldMapM (:[]) typ -- <*> foldMapM (:[]) expr'
   l <- level
-  let p v@MetaVar { metaRef = Just r } = either (> l) (const False) <$> solution r
+  let p v@MetaVar { metaRef = Just r } = either (>= l) (const False) <$> solution r
       p _                   = return False
   fvs' <- HashSet.fromList <$> filterM p fvs
 
@@ -656,7 +660,8 @@ checkClauses clauses polyType = do
   res <- checkClausesRho equalisedClauses rhoType
 
   modifyIndent pred
-  logMeta 20 "checkClauses res" res
+  l <- level
+  logMeta 20 ("checkClauses res " <> show l) res
 
   f =<< Abstract.lams
     <$> metaTelescopeM vs
@@ -787,16 +792,25 @@ abstractMs vs c b = foldrM
   vs
 
 generaliseDefs
-  :: Vector ( MetaA
-            , Definition Abstract.Expr MetaA
-            , AbstractM
-            )
-  -> Infer (Vector ( Definition Abstract.Expr MetaA
-                   , AbstractM
-                   )
-           )
+  :: Vector
+    ( MetaA
+    , Definition Abstract.Expr MetaA
+    , AbstractM
+    )
+  -> Infer
+    ( Vector
+      ( MetaA
+      , Definition Abstract.Expr MetaA
+      , AbstractM
+      )
+    )
 generaliseDefs xs = do
   modifyIndent succ
+
+  let vars  = (\(v, _, _) -> v) <$> xs
+      varIndex = hashedElemIndex vars
+      defs = (\(_, d, _) -> d) <$> xs
+      types = (\(_, _, t) -> t) <$> xs
 
   dfvs <- fold <$> mapM (foldMapM HashSet.singleton) defs
   tfvs <- fold <$> mapM (foldMapM HashSet.singleton) types
@@ -806,7 +820,7 @@ generaliseDefs xs = do
 
   l <- level
   logShow 30 "level" l
-  let p MetaVar { metaRef = Just r } = either (> l) (const False) <$> solution r
+  let p MetaVar { metaRef = Just r } = either (>= l) (const False) <$> solution r
       p _ = return False
   fvs' <- fmap HashSet.fromList $ filterM p $ HashSet.toList fvs
 
@@ -815,32 +829,24 @@ generaliseDefs xs = do
     return (x, ds)
 
   let sortedFvs = map impure $ topoSort deps
+      sortedFvsVec = Vector.fromList sortedFvs
       appl x = Abstract.apps x [(implicitise $ metaData fv, pure fv) | fv <- sortedFvs]
       instVars = appl . pure <$> vars
+      sub v = fromMaybe (pure v) $ (instVars Vector.!?) =<< varIndex v
 
-  instDefs <- forM xs $ \(_, d, t) -> do
-    d' <- boundJoin <$> traverse (sub instVars) d
-    t' <- join <$> traverse (sub instVars) t
-    return (d', t')
+  instDefs <- forM xs $ \(v, d, t) -> do
+    d' <- boundM (return . sub) d
+    t' <- bindM (return . sub) t
+    return (v, d', t')
 
-  genDefs <- mapM (uncurry $ generaliseDef $ Vector.fromList sortedFvs) instDefs
+  genDefs <- forM instDefs $ \(v, d, t) -> do
+    (d', t') <- generaliseDef sortedFvsVec d t
+    return (v, d', t')
 
   modifyIndent pred
 
   return genDefs
   where
-    vars  = (\(v, _, _) -> v) <$> xs
-    varIndex = hashedElemIndex vars
-    defs = (\(_, d, _) -> d) <$> xs
-    types = (\(_, _, t) -> t) <$> xs
-    sub instVars v | Just x <- varIndex v
-      = return $ fromMaybe (error "generaliseDefs") $ instVars Vector.!? x
-    sub instVars v@MetaVar { metaRef = Just r } = do
-      sol <- solution r
-      case sol of
-        Left _ -> return $ pure v
-        Right s -> join <$> traverse (sub instVars) s
-    sub _ v = return $ pure v
     impure [a] = a
     impure _ = error "generaliseDefs"
 
@@ -850,7 +856,8 @@ implicitise Implicit = Implicit
 implicitise Explicit = Implicit
 
 checkRecursiveDefs
-  :: Vector
+  :: Bool
+  -> Vector
     ( MetaA
     , ( SourceLoc
       , Concrete.TopLevelPatDefinition Concrete.Expr MetaA
@@ -859,25 +866,52 @@ checkRecursiveDefs
     )
   -> Infer
     (Vector
-      ( SourceLoc
-      , (MetaA, Definition Abstract.Expr MetaA
-        , AbstractM
-        )
+      ( MetaA
+      , Definition Abstract.Expr MetaA
+      , AbstractM
       )
     )
-checkRecursiveDefs defs = do
-  checkedDefs <- forM defs $ \(evar, (loc, def, typ)) -> do
-    typ' <- checkPoly typ Builtin.Type
-    unify [] (metaType evar) typ'
-    (def', typ'') <- checkTopLevelDefType evar def loc typ'
-    logMeta 20 ("checkRecursiveDefs res " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) def'
-    logMeta 20 ("checkRecursiveDefs res t " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) typ''
-    return (loc, (evar, def', typ''))
+checkRecursiveDefs forceGeneralisation defs = do
+  let localInstances
+        = flip Vector.mapMaybe defs
+        $ \(v, (_, def, _)) -> case def of
+          Concrete.TopLevelPatDefinition (Concrete.PatDefinition _ IsInstance _) -> Just v { metaData = Constraint }
+          _ -> Nothing
+  withVars localInstances $ do
+    checkedDefs <- forM defs $ \(evar, (loc, def, typ)) -> do
+      typ' <- checkPoly typ Builtin.Type
+      unify [] (metaType evar) typ'
+      (def', typ'') <- checkTopLevelDefType evar def loc typ'
+      logMeta 20 ("checkRecursiveDefs res " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) def'
+      logMeta 20 ("checkRecursiveDefs res t " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) typ''
+      return (loc, (evar, def', typ''))
 
-  detectTypeRepCycles checkedDefs
-  detectDefCycles checkedDefs
+    detectTypeRepCycles checkedDefs
+    detectDefCycles checkedDefs
 
-  return checkedDefs
+    elabDefs <- elabRecursiveDefs $ snd <$> checkedDefs
+
+    shouldGen <- if forceGeneralisation then return True else shouldGeneralise elabDefs
+    if shouldGen then
+      generaliseDefs elabDefs
+    else
+      return elabDefs
+
+shouldGeneralise
+  :: Vector
+    ( MetaA
+    , Definition Abstract.Expr MetaA
+    , AbstractM
+    )
+  -> Infer Bool
+shouldGeneralise defs
+  = and
+  <$> mapM (\(_, def, _) -> shouldGeneraliseDef def) defs
+  where
+    shouldGeneraliseDef (Definition _ _ e) = startsWithLambda <$> semiZonk e
+    shouldGeneraliseDef DataDefinition {} = return True
+    startsWithLambda Abstract.Lam {} = True
+    startsWithLambda _ = False
 
 checkTopLevelRecursiveDefs
   :: Vector
@@ -912,13 +946,9 @@ checkTopLevelRecursiveDefs defs = do
     let exposedDefs = flip fmap defs $ \(_, loc, def, typ) ->
           (loc, bound absurd expose def, bind absurd expose typ)
 
-    checkedDefs <- checkRecursiveDefs (Vector.zip evars exposedDefs)
+    checkedDefs <- checkRecursiveDefs True (Vector.zip evars exposedDefs)
 
     return (checkedDefs, evars)
-
-  elabDefs <- elabRecursiveDefs checkedDefs
-
-  genDefs <- generaliseDefs $ snd <$> elabDefs
 
   let varIndex = hashedElemIndex evars
       unexpose evar = case varIndex evar of
@@ -929,9 +959,9 @@ checkTopLevelRecursiveDefs defs = do
       vf :: MetaA -> Infer b
       vf v = throwError $ "checkTopLevelRecursiveDefs " ++ show v
 
-  forM (Vector.zip names genDefs) $ \(name, (def, typ)) -> do
-    let unexposedDef = bound unexpose global def
-        unexposedTyp = bind unexpose global typ
+  forM (Vector.zip names checkedDefs) $ \(name, (_, def, typ)) -> do
+    unexposedDef <- boundM (pure . unexpose) def
+    unexposedTyp <- bindM (pure . unexpose) typ
     logMeta 20 ("checkTopLevelRecursiveDefs unexposedDef " ++ show (pretty name)) unexposedDef
     logMeta 20 ("checkTopLevelRecursiveDefs unexposedTyp " ++ show (pretty name)) unexposedTyp
     unexposedDef' <- traverse vf unexposedDef

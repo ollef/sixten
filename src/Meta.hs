@@ -189,15 +189,33 @@ abstractM f e = do
 
 bindM
   :: (Monad e, Traversable e, MonadIO m)
-  => (MetaVar d e -> m (e v))
+  => (MetaVar d e -> m (e (MetaVar d e)))
   -> e (MetaVar d e)
-  -> m (e v)
+  -> m (e (MetaVar d e))
 bindM f = fmap join . traverse go
   where
     go v@MetaVar { metaRef = Just r } = do
       sol <- solution r
       case sol of
-        Left _ -> f v
+        Left _ -> do
+          typ' <- bindM f $ metaType v
+          f v { metaType = typ' }
+        Right x -> bindM f x
+    go v = f v
+
+boundM
+  :: (GlobalBound b, GlobalBind e, Traversable e, Traversable (b e), MonadIO m)
+  => (MetaVar d e -> m (e (MetaVar d e)))
+  -> b e (MetaVar d e)
+  -> m (b e (MetaVar d e))
+boundM f = fmap boundJoin . traverse go
+  where
+    go v@MetaVar { metaRef = Just r } = do
+      sol <- solution r
+      case sol of
+        Left _ -> do
+          typ' <- bindM f $ metaType v
+          f v { metaType = typ' }
         Right x -> bindM f x
     go v = f v
 
@@ -237,6 +255,20 @@ zonkBound
   => t e (MetaVar d e)
   -> m (t e (MetaVar d e))
 zonkBound = fmap (>>>= id) . traverse zonkVar
+
+semiZonk
+  :: MonadIO m
+  => AbstractM
+  -> m AbstractM
+semiZonk e@(Abstract.Var MetaVar { metaRef = Just r }) = do
+  sol <- solution r
+  case sol of
+    Left _ -> return e
+    Right e' -> do
+      e'' <- semiZonk e'
+      solve r e''
+      return e''
+semiZonk e = return e
 
 metaTelescope
   :: Monad e

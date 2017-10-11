@@ -72,6 +72,8 @@ elabUnsolvedConstraint ref var = do
           -- Replace the universals from before with the original existentials
           result <- deuniversalise uniVarMap elabInstance
           solve ref result
+          logMeta 25 "Matching instance" result
+          logMeta 25 "Matching instance typ" typ
           return result
     _ -> throwLocated "Malformed constraint" -- TODO error message
 
@@ -202,19 +204,14 @@ elabDef (DataDefinition (DataDef constrs) rep) typ = do
   return $ DataDefinition (DataDef constrs') rep'
 
 elabRecursiveDefs
-  :: Vector (sourceLoc, (MetaA, Definition Expr MetaA, AbstractM))
-  -> Infer (Vector (sourceLoc, (MetaA, Definition Expr MetaA, AbstractM)))
-elabRecursiveDefs defs = enterLevel $ do
-  let localInstances
-        = flip Vector.mapMaybe defs
-        $ \(_, (v, def, _)) -> case def of
-          DataDefinition {} -> Nothing
-          Definition _ IsOrdinaryDefinition _ -> Nothing
-          Definition _ IsInstance _ -> Just v { metaData = Constraint }
-  withVars localInstances $ forM defs $ \(loc, (v, def, typ)) -> do
+  :: Vector (MetaA, Definition Expr MetaA, AbstractM)
+  -> Infer (Vector (MetaA, Definition Expr MetaA, AbstractM))
+elabRecursiveDefs defs
+  = enterLevel
+  $ forM defs $ \(v, def, typ) -> do
     typ' <- elabExpr typ
     def' <- elabDef def typ'
-    return (loc, (v, def', typ'))
+    return (v, def', typ')
 
 mergeConstraintVars
   :: HashSet MetaA

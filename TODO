@@ -64,6 +64,7 @@ Optimisations
   Tagged pointers
     Reorder data to enable more?
   Join point let bindings
+  Let specialisation (if a function let binding is always called with the same argument)
 Runtime
   Do real GC with LLVM gcroots etc
     Alternative: Bartlett's mostly copying
