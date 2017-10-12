@@ -1,0 +1,7 @@
+g : Unit -> Int
+g _ = f
+
+f : Int
+f = g MkUnit
+
+main = printInt f

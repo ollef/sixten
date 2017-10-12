@@ -1,0 +1,10 @@
+f x = case c of
+  MkMyType c _ -> addInt x c
+
+type MyType = MkMyType Int (Int -> Int)
+
+c =
+  let g x = f x
+  MkMyType 42 g
+
+main = printInt (f 1)
