@@ -163,5 +163,5 @@ importedAliases modules (Import modName asName exposed) =
 moduleDependencyOrder
   :: (Foldable t, Functor t)
   => t (Module contents)
-  -> [[Module contents]]
+  -> [SCC (Module contents)]
 moduleDependencyOrder = topoSortWith moduleName $ fmap importModule . moduleImports

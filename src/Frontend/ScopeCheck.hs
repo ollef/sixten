@@ -96,7 +96,7 @@ scopeCheckModule modul = do
 
   let resolvedDefsMap = HashMap.fromList resolvedDefs
       -- TODO use topoSortWith
-      sortedDeps = topoSort resolvedDefDeps
+      sortedDeps = flattenSCC <$> topoSort resolvedDefDeps
   return $ for sortedDeps $ \ns -> for ns $ \n -> do
     let (loc, def, typ) = resolvedDefsMap HashMap.! n
     (n, loc, def, typ)
@@ -205,7 +205,7 @@ scopeCheckExpr expr = case expr of
             ((\(loc, (name, (def, typ))) -> (loc, fromName name, Scoped.abstractClause abstr <$> def, abstract abstr typ)) <$> ds')
             (abstract abstr e)
 
-    return $ foldr go body' sortedDefs
+    return $ foldr go body' $ flattenSCC <$> sortedDefs
   Unscoped.Case e pats -> Scoped.Case
     <$> scopeCheckExpr e
     <*> mapM (uncurry scopeCheckBranch) pats

@@ -135,12 +135,12 @@ topoSortVars
   -> Vector Meta
 topoSortVars vs
   = Vector.fromList
-  $ fmap impure
+  $ fmap acyclic
   $ topoSortWith id (toHashSet . metaType)
   $ HashSet.toList vs
   where
-    impure [a] = a
-    impure _ = error "topoSortVars"
+    acyclic (AcyclicSCC a) = a
+    acyclic (CyclicSCC _) = error "topoSortVars"
 
 liftLet
   :: LetRec SLambda.Expr Meta
@@ -191,7 +191,7 @@ liftLet ds scope = do
 
   letBody <- liftExpr (subBind $ instantiateLet pure vs scope)
 
-  let sortedDs = topoSortWith fst (toHashSet . snd) (Vector.zip vs liftedDs)
+  let sortedDs = flattenSCC <$> topoSortWith fst (toHashSet . snd) (Vector.zip vs liftedDs)
 
   return $ lets sortedDs letBody
 

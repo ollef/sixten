@@ -40,7 +40,7 @@ dependencyOrder
   :: (GlobalBind expr, Foldable expr)
   => [(QName, Definition expr Void)]
   -> [[(QName, Definition expr Void)]]
-dependencyOrder = topoSortWith fst (bound absurd pure . snd)
+dependencyOrder = fmap flattenSCC . topoSortWith fst (bound absurd pure . snd)
 
 -------------------------------------------------------------------------------
 -- Instances

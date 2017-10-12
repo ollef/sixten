@@ -828,7 +828,7 @@ generaliseDefs xs = do
     ds <- foldMapM HashSet.singleton $ metaType x
     return (x, ds)
 
-  let sortedFvs = map impure $ topoSort deps
+  let sortedFvs = map acyclic $ topoSort deps
       sortedFvsVec = Vector.fromList sortedFvs
       appl x = Abstract.apps x [(implicitise $ metaData fv, pure fv) | fv <- sortedFvs]
       instVars = appl . pure <$> vars
@@ -847,8 +847,8 @@ generaliseDefs xs = do
 
   return genDefs
   where
-    impure [a] = a
-    impure _ = error "generaliseDefs"
+    acyclic (AcyclicSCC a) = a
+    acyclic (CyclicSCC _) = error "generaliseDefs"
 
 implicitise :: Plicitness -> Plicitness
 implicitise Constraint = Constraint

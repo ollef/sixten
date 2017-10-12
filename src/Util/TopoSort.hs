@@ -1,37 +1,34 @@
-module Util.TopoSort where
+module Util.TopoSort
+  ( topoSortWith
+  , topoSort
+  , cycles
+  , SCC(..)
+  , flattenSCC
+  ) where
 
 import Data.Foldable
 import Data.Graph
-import Data.Hashable
-import qualified Data.HashMap.Lazy as HashMap
 
--- TODO: Check that this handles duplicates correctly
 topoSortWith
-  :: (Foldable t, Functor t, Foldable t', Hashable name, Ord name)
+  :: (Foldable t, Foldable t', Ord name)
   => (a -> name)
   -> (a -> t' name)
   -> t a
-  -> [[a]]
-topoSortWith name deps as = fmap (>>= (nameMap HashMap.!)) $ topoSort $ (\a -> (name a, deps a)) <$> as
-  where
-    nameMap = foldl' (\m dat -> HashMap.insertWith (++) (name dat) [dat] m) mempty as
+  -> [SCC a]
+topoSortWith name deps as
+  = stronglyConnComp [(a, name a, toList $ deps a) | a <- toList as]
 
 topoSort
   :: (Foldable t, Foldable t', Ord a)
   => t (a, t' a)
-  -> [[a]]
-topoSort
-  = map flattenSCC
-  . stronglyConnComp
-  . fmap (\(k, xs) -> (k, k, toList xs))
-  . toList
+  -> [SCC a]
+topoSort xs = stronglyConnComp [(k, k, toList ys) | (k, ys) <- toList xs]
 
 cycles
   :: (Foldable t, Foldable t', Ord a)
   => t (a, t' a)
   -> [[a]]
-cycles xs = selfCycles ++ concatMap cyclicGroup (topoSort xs)
+cycles xs = concatMap cyclicGroup (topoSort xs)
   where
-    selfCycles = (\(a, _) -> [a]) <$> filter (uncurry elem) (toList xs)
-    cyclicGroup ys@(_:_:_) = [ys]
-    cyclicGroup _ = []
+    cyclicGroup (CyclicSCC ys) = [ys]
+    cyclicGroup (AcyclicSCC _) = []

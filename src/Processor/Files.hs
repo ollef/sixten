@@ -23,6 +23,7 @@ import Processor.Result
 import Syntax
 import qualified Syntax.Concrete.Unscoped as Unscoped
 import qualified Syntax.Sized.Extracted as Extracted
+import Util.TopoSort
 import VIX
 
 data Arguments = Arguments
@@ -72,9 +73,9 @@ processModules args (builtins1 : builtins2 : modules) = do
       let builtinModule = Module "Sixten.Builtin" AllExposed mempty builtins
       let orderedModules = moduleDependencyOrder modules
       results <- forM orderedModules $ \moduleGroup -> case moduleGroup of
-        [modul] -> traverse (const $ File.process modul) modul
-        _ -> throwError -- TODO: Could be allowed?
-          $ "Circular modules: " ++ intercalate ", " (fromModuleName . moduleName <$> moduleGroup)
+        AcyclicSCC modul -> traverse (const $ File.process modul) modul
+        CyclicSCC ms -> throwError -- TODO: Could be allowed?
+          $ "Circular modules: " ++ intercalate ", " (fromModuleName . moduleName <$> ms)
       return $ builtinModule : results
 processModules _ _ = error "processModules"
 
