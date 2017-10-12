@@ -1,0 +1,26 @@
+class Functor f where
+  map : forall {a}{b}. (a -> b) -> f a -> f b
+
+type List a
+  = Nil
+  | Cons a (Ptr (List a))
+
+instance Functor List where
+  map _ Nil = Nil
+  map f (Cons x (Ref xs)) = Cons (f x) (Ref (map f xs))
+
+type Maybe a
+  = Nothing
+  | Just a
+
+instance Functor Maybe where
+  map _ Nothing = Nothing
+  map f (Just x) = Just (f x)
+
+main = map (map printInt)
+  (Cons (Just 1) (Ref
+  (Cons Nothing (Ref
+  (Cons (Just 2) (Ref
+  (Cons (Just 3) (Ref
+  (Cons Nothing (Ref
+  Nil))))))))))
