@@ -166,7 +166,7 @@ tcRho expr expected expectedAppResult = case expr of
     f <- instExpected expected typ
     f $ Abstract.Con qc
   Concrete.Pi p pat bodyScope -> do
-    (pat', _, vs, patType) <- inferPat pat mempty
+    (pat', _, vs, patType) <- inferPat p pat mempty
     let body = instantiatePattern pure vs bodyScope
         h = Concrete.patternHint pat
     body' <- enterLevel $ checkPoly body Builtin.Type
@@ -178,7 +178,7 @@ tcRho expr expected expectedAppResult = case expr of
     let h = Concrete.patternHint pat
     case expected of
       Infer {} -> do
-        (pat', _, vs, argType) <- inferPat pat mempty
+        (pat', _, vs, argType) <- inferPat p pat mempty
         let body = instantiatePattern pure vs bodyScope
         (body', bodyType) <- enterLevel $ inferRho body (InstUntil Explicit) Nothing
         argVar <- forall h p argType
@@ -190,7 +190,7 @@ tcRho expr expected expectedAppResult = case expr of
       Check expectedType -> do
         (typeh, argType, bodyTypeScope, fResult) <- funSubtype expectedType p
         let h' = h <> typeh
-        (pat', patExpr, vs) <- checkPat pat mempty argType
+        (pat', patExpr, vs) <- checkPat p pat mempty argType
         let body = instantiatePattern pure vs bodyScope
             bodyType = Util.instantiate1 patExpr bodyTypeScope
         body' <- enterLevel $ checkPoly body bodyType
@@ -257,7 +257,7 @@ tcBranches expr pbrs expected = do
   (expr', exprType) <- inferRho expr (InstUntil Explicit) Nothing
 
   inferredPats <- forM pbrs $ \(pat, brScope) -> do
-    (pat', _, vs) <- checkPat (void pat) mempty exprType
+    (pat', _, vs) <- checkPat Explicit (void pat) mempty exprType
     let br = instantiatePattern pure vs brScope
     return (pat', br)
 
@@ -290,24 +290,26 @@ data ExpectedPat
   | CheckPat AbstractM
 
 checkPat
-  :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
+  :: Plicitness
+  -> Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
   -> Polytype
   -> Infer (Abstract.Pat AbstractM MetaA, AbstractM, Vector MetaA)
-checkPat pat vs expectedType = tcPat pat vs $ CheckPat expectedType
+checkPat p pat vs expectedType = tcPat p pat vs $ CheckPat expectedType
 
 inferPat
-  :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
+  :: Plicitness
+  -> Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
   -> Infer (Abstract.Pat AbstractM MetaA, AbstractM, Vector MetaA, Polytype)
-inferPat pat vs = do
+inferPat p pat vs = do
   ref <- liftST $ newSTRef $ error "inferPat: empty result"
-  (pat', patExpr, vs') <- tcPat pat vs $ InferPat ref
+  (pat', patExpr, vs') <- tcPat p pat vs $ InferPat ref
   t <- liftST $ readSTRef ref
   return (pat', patExpr, vs', t)
 
 tcPats
-  :: Vector (Concrete.Pat (PatternScope Concrete.Expr MetaA) ())
+  :: Vector (Plicitness, Concrete.Pat (PatternScope Concrete.Expr MetaA) ())
   -> Vector MetaA
   -> Telescope Plicitness Abstract.Expr MetaA
   -> Infer (Vector (Abstract.Pat AbstractM MetaA, AbstractM, AbstractM), Vector MetaA)
@@ -319,38 +321,39 @@ tcPats pats vs tele = do
         vs' | Vector.null prefix = vs
             | otherwise = snd $ Vector.last prefix
         expectedType = instantiateTele id argExprs s
-        pat = pats Vector.! i
-    (pat', patExpr, vs'') <- checkPat pat vs' expectedType
+        (p, pat) = pats Vector.! i
+    (pat', patExpr, vs'') <- checkPat p pat vs' expectedType
     return ((pat', patExpr, expectedType), vs'')
 
   let vs' | Vector.null results = vs
           | otherwise = snd $ Vector.last results
   return (fst <$> results, vs')
 
--- TODO take plicitness and use in foralls
 tcPat
-  :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
+  :: Plicitness
+  -> Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
   -> ExpectedPat
   -> Infer (Abstract.Pat AbstractM MetaA, AbstractM, Vector MetaA)
-tcPat pat vs expected = do
+tcPat p pat vs expected = do
   whenVerbose 20 $ do
     shownPat <- bitraverse (showMeta . instantiatePattern pure vs) pure pat
     logPretty 20 "tcPat" shownPat
   logMeta 30 "tcPat vs" vs
   modifyIndent succ
-  (pat', patExpr, vs') <- tcPat' pat vs expected
+  (pat', patExpr, vs') <- tcPat' p pat vs expected
   modifyIndent pred
   logMeta 20 "tcPat res" =<< bitraverse showMeta pure pat'
   logMeta 30 "tcPat vs res" vs'
   return (pat', patExpr, vs')
 
 tcPat'
-  :: Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
+  :: Plicitness
+  -> Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
   -> ExpectedPat
   -> Infer (Abstract.Pat AbstractM MetaA, AbstractM, Vector MetaA)
-tcPat' pat vs expected = case pat of
+tcPat' p pat vs expected = case pat of
   Concrete.VarPat h () -> do
     expectedType <- case expected of
       InferPat ref -> do
@@ -358,7 +361,7 @@ tcPat' pat vs expected = case pat of
         liftST $ writeSTRef ref expectedType
         return expectedType
       CheckPat expectedType -> return expectedType
-    v <- forall h Explicit expectedType
+    v <- forall h p expectedType
     return (Abstract.VarPat h v, pure v, vs <> pure v)
   Concrete.WildcardPat -> do
     expectedType <- case expected of
@@ -367,15 +370,15 @@ tcPat' pat vs expected = case pat of
         liftST $ writeSTRef ref expectedType
         return expectedType
       CheckPat expectedType -> return expectedType
-    v <- forall mempty Explicit expectedType
+    v <- forall mempty p expectedType
     return (Abstract.VarPat mempty v, pure v, vs)
   Concrete.LitPat lit -> do
-    (p, e) <- instPatExpected
+    (pat', expr) <- instPatExpected
       expected
       (typeOfLiteral lit)
       (LitPat lit)
       (Abstract.Lit lit)
-    return (p, e, vs)
+    return (pat', expr, vs)
   Concrete.ConPat cons pats -> do
     qc@(QConstr typeName _) <- resolveConstr cons $ case expected of
       CheckPat expectedType -> Just expectedType
@@ -390,12 +393,12 @@ tcPat' pat vs expected = case pat of
 
     pats' <- Vector.fromList <$> exactlyEqualisePats (Vector.toList argPlics) (Vector.toList pats)
 
-    paramVars <- forTeleWithPrefixM paramsTele $ \h p s paramVars ->
-      existsVar h p $ instantiateTele id paramVars s
+    paramVars <- forTeleWithPrefixM paramsTele $ \h p' s paramVars ->
+      existsVar h p' $ instantiateTele id paramVars s
 
     let argTele = instantiatePrefix paramVars tele
 
-    (pats'', vs') <- tcPats (snd <$> pats') vs argTele
+    (pats'', vs') <- tcPats pats' vs argTele
 
     let argExprs = snd3 <$> pats''
         argTypes = thd3 <$> pats''
@@ -406,17 +409,17 @@ tcPat' pat vs expected = case pat of
 
         retType = instantiateTele id (paramVars <|> argExprs) retScope
 
-    (p, patExpr') <- instPatExpected expected retType (Abstract.ConPat qc params pats''') patExpr
+    (pat', patExpr') <- instPatExpected expected retType (Abstract.ConPat qc params pats''') patExpr
 
-    return (p, patExpr', vs')
-  Concrete.AnnoPat s p -> do
+    return (pat', patExpr', vs')
+  Concrete.AnnoPat s pat' -> do
     let patType = instantiatePattern pure vs s
     patType' <- checkPoly patType Builtin.Type
-    (p', patExpr, vs') <- checkPat p vs patType'
-    (p'', patExpr') <- instPatExpected expected patType' p' patExpr
-    return (p'', patExpr', vs')
+    (pat'', patExpr, vs') <- checkPat p pat' vs patType'
+    (pat''', patExpr') <- instPatExpected expected patType' pat'' patExpr
+    return (pat''', patExpr', vs')
   Concrete.ViewPat _ _ -> throwError "tcPat ViewPat undefined TODO"
-  Concrete.PatLoc loc p -> located loc $ tcPat' p vs expected
+  Concrete.PatLoc loc pat' -> located loc $ tcPat' p pat' vs expected
 
 instPatExpected
   :: ExpectedPat
@@ -701,7 +704,7 @@ checkClausesRho clauses rhoType = do
   clauses' <- forM clauses $ \clause -> do
     let pats = Concrete.clausePatterns' clause
         bodyScope = Concrete.clauseScope' clause
-    (pats', patVars) <- tcPats (snd <$> pats) mempty argTele
+    (pats', patVars) <- tcPats pats mempty argTele
     let body = instantiatePattern pure patVars bodyScope
         argExprs = snd3 <$> pats'
         returnType = instantiateTele id argExprs returnTypeScope
