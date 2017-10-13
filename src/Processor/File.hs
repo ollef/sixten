@@ -312,8 +312,9 @@ writeModule modul llOutputFile externOutputFiles = do
         externCode -> withFile outFile WriteMode $ \handle -> do
           -- TODO this is C specific
           Text.hPutStrLn handle "#include <stdint.h>"
-          Text.hPutStrLn handle "#include <stdlib.h>"
           Text.hPutStrLn handle "#include <stdio.h>"
+          Text.hPutStrLn handle "#include <stdlib.h>"
+          Text.hPutStrLn handle "#include <string.h>"
           forM_ externCode $ \code -> do
             Text.hPutStrLn handle ""
             Text.hPutStrLn handle code

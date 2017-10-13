@@ -1,0 +1,22 @@
+type Lazy a = MkLazy (Ptr (LazyValue a))
+
+type LazyValue a
+  = Thunk (Unit -> a)
+  | Done a
+
+force : forall {a}. Lazy a -> a
+force {a} (MkLazy l) = case l of
+  Ref (Thunk f) ->
+    let result = f MkUnit
+    (C|
+      memcpy((void*)$l, $(Done result), $(sizeOf (LazyValue a)));
+      memcpy(return_, $result, $(sizeOf a));
+    |)
+  Ref (Done a) -> a
+
+thunk : forall {a}. (Unit -> a) -> Lazy a
+thunk f = MkLazy (Ref (Thunk f))
+
+x = thunk (\MkUnit. printInt 41)
+
+main = printInt (addInt (force x) (force x))
