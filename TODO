@@ -32,8 +32,6 @@ Language
   Laziness
   Type classes
     Error for overlapping instances
-    Tests for duplicate and superfluous methods
-    Tests for multiple methods
     Make methods desugar to separate definitions
     Super classes
     Overloaded literals

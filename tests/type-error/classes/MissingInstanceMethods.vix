@@ -1,0 +1,6 @@
+class Test a where
+  f : a
+  g : a
+
+instance Test Int where
+  f = 1
