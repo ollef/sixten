@@ -881,10 +881,12 @@ checkRecursiveDefs forceGeneralisation defs = do
           Concrete.TopLevelPatDefinition (Concrete.PatDefinition _ IsInstance _) -> Just v { metaData = Constraint }
           _ -> Nothing
   withVars localInstances $ do
-    checkedDefs <- forM defs $ \(evar, (loc, def, typ)) -> do
+    forM_ defs $ \(evar, (_, _, typ)) -> do
       typ' <- checkPoly typ Builtin.Type
       unify [] (metaType evar) typ'
-      (def', typ'') <- checkTopLevelDefType evar def loc typ'
+
+    checkedDefs <- forM defs $ \(evar, (loc, def, _)) -> do
+      (def', typ'') <- checkTopLevelDefType evar def loc $ metaType evar
       logMeta 20 ("checkRecursiveDefs res " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) def'
       logMeta 20 ("checkRecursiveDefs res t " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) typ''
       return (loc, (evar, def', typ''))
