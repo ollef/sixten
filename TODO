@@ -27,6 +27,7 @@ Error messages
   Make error message footnotes contain metavars
   Use prettyprinter library
 Language
+  * Syntax: Implicits only with forall, implicit application with @?
   Named implicit arguments (maybe names should be mandatory?)
   Laziness
   Type classes
