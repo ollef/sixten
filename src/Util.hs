@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, Rank2Types, TemplateHaskell #-}
 module Util where
 
 import Bound
@@ -9,7 +8,6 @@ import Control.Monad.State
 import Data.Bifoldable
 import Data.Bifunctor
 import Data.Bits
-import Data.Deriving
 import Data.Foldable
 import Data.Hashable
 import Data.HashMap.Lazy(HashMap)
@@ -112,22 +110,6 @@ imap f = fmap (uncurry f) . indexed
 
 ifor :: Traversable t => t a -> (Int -> a -> b) -> t b
 ifor = flip imap
-
--- TODO use Proxy?
-data Unit a = Unit
-  deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
-
-deriveEq1 ''Unit
-deriveOrd1 ''Unit
-deriveShow1 ''Unit
-
-instance Applicative Unit where
-  pure _ = Unit
-  _ <*> _ = Unit
-
-instance Monad Unit where
-  return _ = Unit
-  _ >>= _ = Unit
 
 fst3 :: (a, b, c) -> a
 fst3 (a, _, _) = a

@@ -21,12 +21,14 @@ module Pretty
   , withName, withHint
   , withNameHint, withNameHints
   ) where
+
 import Bound
 import Control.Monad.Reader
 import qualified Data.Foldable as Foldable
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Monoid
+import Data.Proxy
 import Data.String
 import Data.Text(Text)
 import qualified Data.Text as Text
@@ -44,7 +46,6 @@ import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 
 import Syntax.Hint
 import Syntax.Name
-import Util
 
 infixr 6 <+>
 
@@ -235,5 +236,5 @@ instance (Pretty a, Pretty b, Pretty c) => Pretty (a, b, c) where
                                      <*> prettyM c
     where f x y z = tupled [x, y, z]
 
-instance Pretty (Unit a) where
-  prettyM Unit = "Unit"
+instance Pretty (Proxy a) where
+  prettyM Proxy = "Proxy"
