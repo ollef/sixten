@@ -82,7 +82,7 @@ elabUnsolvedConstraint ref var = do
 universalise :: AbstractM -> Infer (AbstractM, HashMap MetaA MetaA)
 universalise typ = second snd <$> runStateT (bindM go typ) mempty
   where
-    go v@MetaVar { metaRef = Just _ } = do
+    go v@MetaVar { metaRef = Exists _ } = do
       (ltr, rtl) <- get
       case HashMap.lookup v ltr of
         Nothing -> do
@@ -90,7 +90,8 @@ universalise typ = second snd <$> runStateT (bindM go typ) mempty
           put (HashMap.insert v v' ltr, HashMap.insert v' v rtl)
           return $ pure v'
         Just v' -> return $ pure v'
-    go v = return $ pure v
+    go v@MetaVar { metaRef = Forall } = return $ pure v
+    go v@MetaVar { metaRef = LetRef {} } = return $ pure v
 
 deuniversalise :: HashMap MetaA MetaA -> AbstractM -> Infer AbstractM
 deuniversalise rtl = bindM go
@@ -100,14 +101,15 @@ deuniversalise rtl = bindM go
 elabVar
   :: MetaA
   -> Infer AbstractM
-elabVar var@MetaVar { metaRef = Just ref } = do
+elabVar var@MetaVar { metaRef = Exists ref } = do
   sol <- solution ref
   case (sol, metaData var) of
     (Left _, Constraint) -> elabUnsolvedConstraint ref var
     (Left _, Implicit) -> return $ pure var
     (Left _, Explicit) -> return $ pure var
     (Right expr, _) -> elabExpr expr
-elabVar var = return $ pure var
+elabVar var@MetaVar { metaRef = Forall } = return $ pure var
+elabVar var@MetaVar { metaRef = LetRef {} } = return $ pure var
 
 elabExpr
   :: AbstractM
@@ -218,14 +220,14 @@ mergeConstraintVars
   -> Infer ()
 mergeConstraintVars = void . foldlM go mempty
   where
-    go varTypes v@MetaVar { metaRef = Just r, metaData = Constraint } = do
+    go varTypes v@MetaVar { metaRef = Exists r, metaData = Constraint } = do
       sol <- solution r
       case sol of
         Right _ -> return varTypes
         Left l -> do
           typ <- zonk $ metaType v
           case Map.lookup typ varTypes of
-            Just v'@MetaVar { metaRef = Just r' } -> do
+            Just v'@MetaVar { metaRef = Exists r' } -> do
               sol' <- solution r'
               case sol' of
                 Right _ -> return $ Map.insert typ v varTypes

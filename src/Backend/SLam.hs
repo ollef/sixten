@@ -23,12 +23,13 @@ slam expr = do
   logMeta 20 "slam expr" expr
   modifyIndent succ
   res <- case expr of
-    Abstract.Var v@MetaVar { metaRef = Just r } -> do
+    Abstract.Var v@MetaVar { metaRef = Exists r } -> do
       sol <- solution r
       case sol of
         Left _ -> return $ SLambda.Var v
         Right expr' -> slam expr'
-    Abstract.Var v -> return $ SLambda.Var v
+    Abstract.Var v@MetaVar { metaRef = Forall } -> return $ SLambda.Var v
+    Abstract.Var v@MetaVar { metaRef = LetRef {} } -> return $ SLambda.Var v
     Abstract.Global g -> return $ SLambda.Global g
     Abstract.Lit l -> return $ SLambda.Lit l
     Abstract.Pi {} -> do

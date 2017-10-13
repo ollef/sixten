@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings, RecursiveDo #-}
 module Inference.TypeCheck where
 
 import Control.Applicative
@@ -225,16 +225,19 @@ tcRho expr expected expectedAppResult = case expr of
               )) <$> ds
     ds' <- checkRecursiveDefs False (Vector.zip evars instantiatedDs)
     let eabstr = letAbstraction evars
-        ds'' = LetRec
-          -- TODO handle abstractness/concreteness
-          $ (\(v, Definition _ _ e, t) -> LetBinding (metaHint v) (abstract eabstr e) t)
-          <$> ds'
-
-    vars <- forM (Vector.zip names ds') $ \(n, (_, _, t)) ->
-      forall n Explicit t
-    let abstr = letAbstraction vars
-    body <- tcRho (instantiateLet pure vars scope) expected expectedAppResult
-    return $ Abstract.Let ds'' $ abstract abstr body
+    ds'' <- LetRec
+      <$> forM ds'
+        (\(v, Definition _ _ e, t) -> LetBinding (metaHint v) <$> abstractM eabstr e <*> pure t)
+    mdo
+      let inst = instantiateLet pure vars
+      vars <- iforMLet ds'' $ \i h s t -> do
+        let (_, Definition a _ _, _) = ds' Vector.! i
+        case a of
+          Abstract -> forall h Explicit t
+          Concrete -> Meta.let_ h Explicit (inst s) t
+      let abstr = letAbstraction vars
+      body <- tcRho (instantiateLet pure vars scope) expected expectedAppResult
+      Abstract.Let ds'' <$> abstractM abstr body
   Concrete.Case e brs -> tcBranches e brs expected
   Concrete.ExternCode c -> do
     c' <- mapM (\e -> fst <$> inferRho e (InstUntil Explicit) Nothing) c
@@ -823,8 +826,9 @@ generaliseDefs xs = do
 
   l <- level
   logShow 30 "level" l
-  let p MetaVar { metaRef = Just r } = either (>= l) (const False) <$> solution r
-      p _ = return False
+  let p MetaVar { metaRef = Exists r } = either (>= l) (const False) <$> solution r
+      p MetaVar { metaRef = Forall } = return False
+      p MetaVar { metaRef = LetRef {} } = return False
   fvs' <- fmap HashSet.fromList $ filterM p $ HashSet.toList fvs
 
   deps <- forM (HashSet.toList fvs') $ \x -> do

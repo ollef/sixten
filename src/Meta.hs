@@ -8,6 +8,7 @@ import Data.Foldable
 import Data.Function
 import Data.Functor.Classes
 import Data.Hashable
+import qualified Data.HashMap.Lazy as HashMap
 import Data.Maybe
 import Data.Monoid
 import qualified Data.Set as Set
@@ -23,11 +24,16 @@ import VIX
 
 type Exists d e = STRef RealWorld (Either Level (e (MetaVar d e)))
 
+data MetaRef d e
+  = Forall
+  | Exists (Exists d e)
+  | LetRef (STRef RealWorld (e (MetaVar d e)))
+
 data MetaVar d e = MetaVar
   { metaId  :: !Int
   , metaType :: e (MetaVar d e)
   , metaHint :: !NameHint
-  , metaRef :: !(Maybe (Exists d e))
+  , metaRef :: !(MetaRef d e)
   , metaData :: !d
   }
 
@@ -59,8 +65,20 @@ refineVar
   => MetaVar d e
   -> (e (MetaVar d e) -> m (e (MetaVar d e)))
   -> m (e (MetaVar d e))
-refineVar v@MetaVar { metaRef = Nothing } _ = return $ pure v
-refineVar v@MetaVar { metaRef = Just r } f = refineIfSolved r (pure v) f
+refineVar v@MetaVar { metaRef = Forall } _ = return $ pure v
+refineVar v@MetaVar { metaRef = Exists r } f = do
+  sol <- solution r
+  case sol of
+    Left _  -> return $ pure v
+    Right e -> do
+      e' <- f e
+      solve r e'
+      return e'
+refineVar MetaVar { metaRef = LetRef r } f = do
+  e <- liftST $ readSTRef r
+  e' <- f e
+  liftST $ writeSTRef r e'
+  return e'
 
 forall
   :: (MonadVIX m, MonadIO m)
@@ -71,7 +89,7 @@ forall
 forall hint d typ = do
   i <- fresh
   logVerbose 20 $ "forall: " <> fromString (show i)
-  return $ MetaVar i typ hint Nothing d
+  return $ MetaVar i typ hint Forall d
 
 existsAtLevel
   :: (MonadVIX m, MonadIO m)
@@ -84,7 +102,7 @@ existsAtLevel hint d typ l = do
   i <- fresh
   ref <- liftST $ newSTRef $ Left l
   logVerbose 20 $ "exists: " <> fromString (show i)
-  return $ MetaVar i typ hint (Just ref) d
+  return $ MetaVar i typ hint (Exists ref) d
 
 exists
   :: (MonadVIX m, MonadIO m)
@@ -104,8 +122,21 @@ shared
 shared hint d expr typ = do
   i <- fresh
   ref <- liftST $ newSTRef $ Right expr
-  logVerbose 20 $ "let: " <> fromString (show i)
-  return $ MetaVar i typ hint (Just ref) d
+  logVerbose 20 $ "shared: " <> fromString (show i)
+  return $ MetaVar i typ hint (Exists ref) d
+
+let_
+  :: (MonadVIX m, MonadIO m)
+  => NameHint
+  -> d
+  -> e (MetaVar d e)
+  -> e (MetaVar d e)
+  -> m (MetaVar d e)
+let_ hint d expr typ = do
+  i <- fresh
+  ref <- liftST $ newSTRef expr
+  logVerbose 20 $ "shared: " <> fromString (show i)
+  return $ MetaVar i typ hint (LetRef ref) d
 
 solution
   :: MonadIO m
@@ -120,36 +151,31 @@ solve
   -> m ()
 solve r x = liftST $ writeSTRef r $ Right x
 
-refineIfSolved
-  :: MonadIO m
-  => Exists d e
-  -> e (MetaVar d e)
-  -> (e (MetaVar d e) -> m (e (MetaVar d e)))
-  -> m (e (MetaVar d e))
-refineIfSolved r d f = do
-  sol <- solution r
-  case sol of
-    Left _  -> return d
-    Right e -> do
-      e' <- f e
-      solve r e'
-      return e'
-
 foldMapM
   :: (Foldable e, Foldable f, Monoid a, MonadIO m)
   => (MetaVar d e -> a)
   -> f (MetaVar d e)
   -> m a
-foldMapM f = foldrM go mempty
+foldMapM f = flip evalStateT mempty . foldrM go mempty
   where
-    go v m = (<> m) . (<> f v) <$>
-      case metaRef v of
-        Just r -> do
-          sol <- solution r
-          case sol of
-            Left _  -> foldMapM f $ metaType v
-            Right c -> foldMapM f c
-        Nothing -> return mempty
+    go v m = do
+      visited <- gets $ HashMap.lookup v
+      case visited of
+        Just a -> return $ a <> m
+        Nothing -> do
+          modify $ HashMap.insert v mempty
+          result <- case metaRef v of
+            Exists ref -> do
+              sol <- lift $ solution ref
+              case sol of
+                Left _ -> return $ f v <> m
+                Right c -> do
+                  r <- foldrM go mempty c
+                  return $ f v <> r <> m
+            Forall -> return $ f v <> m
+            LetRef _ -> return $ f v <> m
+          modify $ HashMap.insert v result
+          return result
 
 abstractM
   :: (Monad e, Traversable e, Show1 e, MonadError String m, MonadIO m)
@@ -157,24 +183,22 @@ abstractM
   -> e (MetaVar d e)
   -> m (Scope b e (MetaVar d e))
 abstractM f e = do
-  e' <- zonk e
   changed <- liftST $ newSTRef False
-  Scope . join <$> traverse (go changed) e'
+  Scope . join <$> traverse (go changed) e
   where
-    -- go :: STRef s Bool -> MetaVar s
-    --    -> VIX (Expr (Var () (Expr (MetaVar s))))
     go changed (f -> Just b) = do
       liftST $ writeSTRef changed True
       return $ pure $ B b
-    go changed v'@MetaVar { metaRef = Just r } = do
-      tfvs <- foldMapM Set.singleton $ metaType v'
-      let mftfvs = Set.filter (isJust . f) tfvs
-      unless (Set.null mftfvs)
-        $ throwError $ "cannot abstract, " ++ show mftfvs ++ " would escape from the type of "
-        ++ show v'
+    go changed v'@MetaVar { metaRef = Exists r } = do
       sol <- solution r
       case sol of
-        Left _  -> free v'
+        Left _ -> do
+          tfvs <- foldMapM Set.singleton $ metaType v'
+          let mftfvs = Set.filter (isJust . f) tfvs
+          unless (Set.null mftfvs)
+            $ throwError $ "cannot abstract, " ++ show mftfvs ++ " would escape from the type of "
+            ++ show v'
+          free v'
         Right c -> do
           changed' <- liftST $ newSTRef False
           c' <- traverse (go changed') c
@@ -184,7 +208,8 @@ abstractM f e = do
             return $ join c'
           else
             free v'
-    go _ v' = free v'
+    go _ v'@MetaVar { metaRef = Forall } = free v'
+    go _ v'@MetaVar { metaRef = LetRef _ } = free v'
     free = pure . pure . pure . pure
 
 bindM
@@ -194,7 +219,7 @@ bindM
   -> m (e (MetaVar d e))
 bindM f = fmap join . traverse go
   where
-    go v@MetaVar { metaRef = Just r } = do
+    go v@MetaVar { metaRef = Exists r } = do
       sol <- solution r
       case sol of
         Left _ -> do
@@ -210,7 +235,7 @@ boundM
   -> m (b e (MetaVar d e))
 boundM f = fmap boundJoin . traverse go
   where
-    go v@MetaVar { metaRef = Just r } = do
+    go v@MetaVar { metaRef = Exists r } = do
       sol <- solution r
       case sol of
         Left _ -> do
@@ -232,7 +257,7 @@ zonkVar
   :: (Monad e, Traversable e, MonadIO m)
   => MetaVar d e
   -> m (e (MetaVar d e))
-zonkVar v@MetaVar { metaRef = Just r } = do
+zonkVar v@MetaVar { metaRef = Exists r } = do
   sol <- solution r
   case sol of
     Left _ -> do
@@ -260,7 +285,7 @@ semiZonk
   :: MonadIO m
   => AbstractM
   -> m AbstractM
-semiZonk e@(Abstract.Var MetaVar { metaRef = Just r }) = do
+semiZonk e@(Abstract.Var MetaVar { metaRef = Exists r }) = do
   sol <- solution r
   case sol of
     Left _ -> return e
@@ -298,11 +323,11 @@ showMeta
   -> m Doc
 showMeta x = do
   vs <- foldMapM Set.singleton x
-  let p MetaVar { metaRef = Just r } = solution r
+  let p MetaVar { metaRef = Exists r } = solution r
       p _ = return $ Left $ Level (-1)
   let vsl = Set.toList vs
   pvs <- mapM p vsl
-  let sv v = "$" ++ fromMaybe "" (fromName <$> unNameHint (metaHint v)) ++ (if isJust $ metaRef v then "∃" else "")
+  let sv v = "$" ++ fromMaybe "" (fromName <$> unNameHint (metaHint v)) ++ refType (metaRef v)
           ++ show (metaId v)
   let solutions = [(sv v, pretty $ sv <$> metaType v, pretty $ fmap sv <$> msol) | (v, msol) <- zip vsl pvs]
   return
@@ -310,6 +335,10 @@ showMeta x = do
     <> if null solutions
       then mempty
       else text ", metavars: " <> pretty solutions
+  where
+    refType (Exists _) = "∃"
+    refType Forall = ""
+    refType LetRef {} = ""
 
 logMeta
   :: (Functor e, Foldable e, Functor f, Foldable f, Pretty (f String), Pretty (e String), MonadIO m, MonadVIX m)

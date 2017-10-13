@@ -62,8 +62,9 @@ occurs cxt l tv expr = traverse_ go expr
       | otherwise = do
         occurs cxt l tv typ
         case mr of
-          Nothing -> return ()
-          Just r -> do
+          Forall -> return ()
+          LetRef _ -> return ()
+          Exists r -> do
             sol <- solution r
             case sol of
               Left l' -> liftST $ writeSTRef r $ Left $ min l l'
@@ -84,8 +85,8 @@ unify' cxt type1 type2
     -- If we have 'unify (f xs) t', where 'f' is an existential, and 'xs' are
     -- distinct universally quantified variables, then 'f = \xs. t' is a most
     -- general solution (see Miller, Dale (1991) "A Logic programming...")
-    (appsView -> (Var v@MetaVar { metaRef = Just r }, distinctForalls -> Just pvs), _) -> solveVar unify r v pvs type2
-    (_, appsView -> (Var v@MetaVar {metaRef = Just r }, distinctForalls -> Just pvs)) -> solveVar (flip . unify) r v pvs type1
+    (appsView -> (Var v@MetaVar { metaRef = Exists r }, distinctForalls -> Just pvs), _) -> solveVar unify r v pvs type2
+    (_, appsView -> (Var v@MetaVar {metaRef = Exists r }, distinctForalls -> Just pvs)) -> solveVar (flip . unify) r v pvs type1
     (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
     (Lam h1 p1 t1 s1, Lam h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
     -- Since we've already tried reducing the application, we can only hope to
@@ -121,7 +122,8 @@ unify' cxt type1 type2
     distinctForalls pes = case traverse isForall pes of
       Just pes' | distinct pes' -> Just pes'
       _ -> Nothing
-    isForall (p, Var v@MetaVar { metaRef = Nothing }) = Just (p, v)
+    isForall (p, Var v@MetaVar { metaRef = Forall }) = Just (p, v)
+    isForall (p, Var v@MetaVar { metaRef = LetRef {} }) = Just (p, v)
     isForall _ = Nothing
     distinct pes = Set.size (Set.fromList es) == length es where es = map snd pes
     solveVar recurse r v pvs t = do
