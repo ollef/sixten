@@ -129,7 +129,7 @@ deinstance
   -> PatInstanceDef Expr Void
   -> Type Void
   -> VIX (QName, SourceLoc, TopLevelPatDefinition Expr Void, Type Void)
-deinstance name loc (PatInstanceDef methods) typ = do
+deinstance name loc (PatInstanceDef methods) typ = located loc $ do
   className <- getClass typ
   mnames <- gets $ HashMap.lookup className . vixClassMethods
   case mnames of
@@ -141,7 +141,11 @@ deinstance name loc (PatInstanceDef methods) typ = do
             $ Vector.toList methods
           names' = getName <$> methods'
       if names /= names' then
-        throwMethodProblem className (diff names names') (diff names' names)
+        throwMethodProblem
+          className
+          (diff names names')
+          (diff names' names)
+          (duplicates names')
       else
         return
           ( name
@@ -161,6 +165,11 @@ deinstance name loc (PatInstanceDef methods) typ = do
           )
   where
     diff xs ys = HashSet.toList $ HashSet.difference (toHashSet xs) (toHashSet ys)
+    duplicates xs = map head $ filter p $ group $ Vector.toList xs
+      where
+        p [] = False
+        p [_] = False
+        p _ = True
     getName = fst3
 
 getClass
@@ -184,16 +193,17 @@ throwInvalidInstance = do
     mempty
     mempty
 
-throwMethodProblem :: QName -> [Name] -> [Name] -> VIX a
-throwMethodProblem className missingMethods extraMethods = do
+throwMethodProblem :: QName -> [Name] -> [Name] -> [Name] -> VIX a
+throwMethodProblem className missingMethods extraMethods duplicates = do
   loc <- currentLocation
   throwError
     $ show
     $ explain loc
     $ Err (Just "Invalid instance")
     (concat $
-      [ if null missingMethods then [] else ["No implementation for:" Leijen.<+> Leijen.red (prettyHumanList "and" missingMethods) Leijen.<+> "."]
-      , if null extraMethods then [] else ["The '" <> shower className <> "' class does not define:" Leijen.<+> Leijen.red (prettyHumanList "and" extraMethods) Leijen.<+> "."]
+      [ if null missingMethods then [] else ["The instance is missing an implementation for:" Leijen.<+> prettyHumanList "and" (Leijen.red . pretty <$> missingMethods) <> "."]
+      , if null extraMethods then [] else ["The" Leijen.<+> Leijen.dullgreen (pretty className) Leijen.<+> "class does not define:" Leijen.<+> prettyHumanList "and" (Leijen.red . pretty <$> extraMethods) <> "."]
+      , if null duplicates then [] else ["Duplicate implementations for:" Leijen.<+> prettyHumanList "and" (Leijen.red . pretty <$> duplicates) <> "."]
       ])
     mempty
     mempty
