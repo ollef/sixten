@@ -94,7 +94,7 @@ executable sixten
                        Util.Tsil
   build-depends:
                        ansi-wl-pprint,
-                       base >=4.8 && <4.10,
+                       base >=4.8 && <4.11,
                        bifunctors,
                        bound,
                        bytestring,
