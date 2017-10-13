@@ -28,6 +28,7 @@ Error messages
   Use prettyprinter library
 Language
   * Syntax: Implicits only with forall, implicit application with @?
+  * Syntax: Adopt the Swift convention for constructors: DataType.Con or .Con
   Named implicit arguments (maybe names should be mandatory?)
   Laziness
   Type classes
@@ -50,7 +51,7 @@ Language
         Nil : Vector 0 A
         Cons : forall {n}. A -> Vector n A -> Vector (S n) a
   FFI
-    Make quasi quotes call back to Sixten and pass free vars as args
+    * Make quasi quotes call back to Sixten and pass free vars as args
     Top-level extern declarations
     Use `opt -internalize-public-api-list` to internalize extern C decls
     Extern LLVM
