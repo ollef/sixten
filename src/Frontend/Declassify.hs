@@ -188,7 +188,7 @@ throwInvalidInstance = do
     $ explain loc
     $ Err (Just "Invalid instance")
     [ "Instance types must return a class"
-    , Leijen.bold "Expected:" Leijen.<+> "an instance of the form" Leijen.<+> Leijen.dullgreen "instance ... => C as where ..." Leijen.<+> ", where 'C' is a class."
+    , Leijen.bold "Expected:" Leijen.<+> "an instance of the form" Leijen.<+> Leijen.dullgreen "instance ... => C as where ..." <> ", where" Leijen.<+> Leijen.dullgreen "C" Leijen.<+> "is a class."
     ]
     mempty
     mempty
