@@ -200,10 +200,13 @@ multiMapMaybe
   -> MultiHashMap k v
   -> MultiHashMap k v'
 multiMapMaybe p
-  = fmap
-  $ HashSet.fromList
+  = HashMap.mapMaybe
+  $ nothingWhenEmpty
   . mapMaybe p
   . HashSet.toList
+  where
+    nothingWhenEmpty [] = Nothing
+    nothingWhenEmpty xs = Just $ HashSet.fromList xs
 
 nonEmptySome :: Alternative f => f a -> f (NonEmpty a)
 nonEmptySome p = (NonEmpty.:|) <$> p <*> many p
