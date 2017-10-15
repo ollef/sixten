@@ -4,3 +4,4 @@
 *.o
 a.out
 obj/
+dist/
