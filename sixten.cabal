@@ -90,6 +90,7 @@ executable sixten
                        TypeRep
                        VIX
                        Util
+                       Util.MultiHashMap
                        Util.TopoSort
                        Util.Tsil
   build-depends:

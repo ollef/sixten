@@ -1,10 +1,8 @@
 {-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveGeneric, DeriveTraversable, GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module Syntax.Module where
 
-import Data.Bifunctor
 import Data.Foldable(toList)
 import Data.Hashable
-import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.List(intersperse, intercalate)
@@ -18,6 +16,8 @@ import GHC.Generics(Generic)
 import Pretty
 import Syntax.Name
 import Util
+import Util.MultiHashMap(MultiHashMap)
+import qualified Util.MultiHashMap as MultiHashMap
 import Util.TopoSort
 
 data QName = QName !ModuleName !Name
@@ -135,30 +135,24 @@ importedAliases
   :: MultiHashMap ModuleName (Either QConstr QName)
   -> Import
   -> MultiHashMap QName (Either QConstr QName)
-importedAliases modules (Import modName asName exposed) =
-  as unqualified expNames `multiUnion` as (QName asName) modContents
+importedAliases modules (Import modName asName exposed)
+  = MultiHashMap.mapKeys unqualified expNames
+  `MultiHashMap.union`
+  MultiHashMap.mapKeys (QName asName) modContents
   where
     modContents :: MultiHashMap Name (Either QConstr QName)
-    modContents = multiFromList
+    modContents = MultiHashMap.fromList
       $ either
         (\c -> (fromConstr $ qconstrConstr c, Left c))
         (\d -> (qnameName d, Right d))
       <$> HashSet.toList names
       where
-        -- TODO error if import missing
-        names = HashMap.lookupDefault (error $ "Can't find " <> show modName) modName modules
+        names = MultiHashMap.lookupDefault (error $ "Can't find " <> show modName) modName modules
 
     expNames :: MultiHashMap Name (Either QConstr QName)
     expNames = case exposed of
       AllExposed -> modContents
-      Exposed names -> HashMap.intersection modContents (HashSet.toMap names)
-
-    as
-      :: (Eq b, Hashable b)
-      => (a -> b)
-      -> MultiHashMap a (Either QConstr QName)
-      -> MultiHashMap b (Either QConstr QName)
-    as f = HashMap.fromList .  fmap (first f) . HashMap.toList
+      Exposed names -> MultiHashMap.setIntersection modContents names
 
 moduleDependencyOrder
   :: (Foldable t, Functor t)

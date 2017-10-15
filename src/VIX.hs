@@ -23,7 +23,8 @@ import Backend.Target
 import Syntax
 import Syntax.Abstract
 import qualified Syntax.Sized.Lifted as Lifted
-import Util
+import Util.MultiHashMap(MultiHashMap)
+import qualified Util.MultiHashMap as MultiHashMap
 
 newtype Level = Level Int
   deriving (Eq, Num, Ord, Show)
@@ -193,7 +194,7 @@ addModule
   -> HashSet (Either QConstr QName)
   -> m ()
 addModule m names = modify $ \s -> s
-  { vixModuleNames = multiUnion (HashMap.singleton m names) $ vixModuleNames s
+  { vixModuleNames = MultiHashMap.inserts m names $ vixModuleNames s
   }
 
 qconstructor :: (MonadVIX m, MonadError String m) => QConstr -> m (Type v)

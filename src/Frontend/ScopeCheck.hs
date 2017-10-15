@@ -18,6 +18,7 @@ import Syntax.Concrete.Pattern
 import qualified Syntax.Concrete.Scoped as Scoped
 import qualified Syntax.Concrete.Unscoped as Unscoped
 import Util
+import qualified Util.MultiHashMap as MultiHashMap
 import Util.TopoSort
 import VIX
 
@@ -39,15 +40,15 @@ scopeCheckModule modul = do
   otherNames <- gets vixModuleNames
 
   let env = ScopeEnv lookupConstr
-      lookupConstr c = multiLookup c constrs
-      constrs = multiFromList
+      lookupConstr c = MultiHashMap.lookup c constrs
+      constrs = MultiHashMap.fromList
         [ (QName mempty $ fromConstr c, QConstr n c)
         | (n, (_, Unscoped.TopLevelDataDefinition _ _ d)) <- HashMap.toList $ moduleContents modul
         , c <- constrName <$> d
-        ] `multiUnion`
+        ] `MultiHashMap.union`
         importedConstrAliases
       imports = Import Builtin.BuiltinModuleName Builtin.BuiltinModuleName AllExposed : moduleImports modul
-      importAliases = multiUnions $ importedAliases otherNames <$> imports
+      importAliases = MultiHashMap.unions $ importedAliases otherNames <$> imports
 
       checkedDefDeps = for (HashMap.toList $ moduleContents modul) $ \(n, (loc, def)) -> do
         let ((def', typ'), deps) = runScopeCheck (scopeCheckTopLevelDefinition def) env
@@ -56,34 +57,34 @@ scopeCheckModule modul = do
       defDeps = for checkedDefDeps $ \(n, _, deps) -> (n, deps)
       checkedDefs = for checkedDefDeps $ \(n, def, _) -> (n, def)
 
-      importedNameAliases = multiMapMaybe (either (const Nothing) Just) importAliases
-      importedConstrAliases = multiMapMaybe (either Just $ const Nothing) importAliases
+      importedNameAliases = MultiHashMap.mapMaybe (either (const Nothing) Just) importAliases
+      importedConstrAliases = MultiHashMap.mapMaybe (either Just $ const Nothing) importAliases
 
       localNames = HashMap.keys $ moduleContents modul
-      localAliases = multiFromList
+      localAliases = MultiHashMap.fromList
         [ (unqualified $ qnameName qn, qn)
         | qn <- localNames
-        ] `multiUnion` localMethods
-      localMethods = multiFromList
+        ] `MultiHashMap.union` localMethods
+      localMethods = MultiHashMap.fromList
         [ (QName mempty m, QName modName m)
         | (m, QName modName _) <- methodClasses
         ]
 
-      aliases = localAliases `multiUnion` importedNameAliases
+      aliases = localAliases `MultiHashMap.union` importedNameAliases
       lookupAlias qname
         | HashSet.size candidates == 1 = return $ head $ HashSet.toList candidates
         | otherwise = throwError $ "scopeCheckModule ambiguous " ++ show candidates
         where
-          candidates = HashMap.lookupDefault (HashSet.singleton qname) qname aliases
+          candidates = MultiHashMap.lookupDefault (HashSet.singleton qname) qname aliases
 
       methodClasses =
         [ (m, n)
         | (n, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList $ moduleContents modul
         , m <- methodName <$> ms
         ]
-      methodDeps = multiFromList [(QName mempty m, n) | (m, n) <- methodClasses]
-      depAliases = aliases `multiUnion` methodDeps
-      lookupAliasDep qname = HashMap.lookupDefault (HashSet.singleton qname) qname depAliases
+      methodDeps = MultiHashMap.fromList [(QName mempty m, n) | (m, n) <- methodClasses]
+      depAliases = aliases `MultiHashMap.union` methodDeps
+      lookupAliasDep qname = MultiHashMap.lookupDefault (HashSet.singleton qname) qname depAliases
 
   resolvedDefs <- forM checkedDefs $ \(n, (loc, def, typ)) -> do
     def' <- traverse lookupAlias def

@@ -10,13 +10,11 @@ import Data.Bifunctor
 import Data.Bits
 import Data.Foldable
 import Data.Hashable
-import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
-import Data.Maybe
 import Data.Set(Set)
 import qualified Data.Set as Set
 import Data.String
@@ -149,64 +147,6 @@ forWithPrefixM
   -> (v -> Vector v' -> m v')
   -> m (Vector v')
 forWithPrefixM = flip mapWithPrefixM
-
--- TODO make proper module
-type MultiHashMap k v = HashMap k (HashSet v)
-
-multiInsert
-  :: (Eq k, Hashable k, Eq v, Hashable v)
-  => k
-  -> v
-  -> MultiHashMap k v
-  -> MultiHashMap k v
-multiInsert k v = HashMap.insertWith HashSet.union k $ HashSet.singleton v
-
-multiLookup
-  :: (Eq k, Hashable k, Eq v, Hashable v)
-  => k
-  -> MultiHashMap k v
-  -> HashSet v
-multiLookup = HashMap.lookupDefault mempty
-
-multiUnion
-  :: (Eq k, Hashable k, Eq v, Hashable v)
-  => MultiHashMap k v
-  -> MultiHashMap k v
-  -> MultiHashMap k v
-multiUnion = HashMap.unionWith HashSet.union
-
-multiUnions
-  :: (Eq k, Hashable k, Eq v, Hashable v)
-  => [MultiHashMap k v]
-  -> MultiHashMap k v
-multiUnions = foldl' multiUnion mempty
-
-multiFromList
-  :: (Eq k, Hashable k, Eq v, Hashable v)
-  => [(k, v)]
-  -> MultiHashMap k v
-multiFromList = foldr (uncurry multiInsert) mempty
-
-multiMap
-  :: (Eq k, Hashable k, Eq v, Hashable v, Eq v', Hashable v')
-  => (v -> v')
-  -> MultiHashMap k v
-  -> MultiHashMap k v'
-multiMap = fmap . HashSet.map
-
-multiMapMaybe
-  :: (Eq k, Hashable k, Eq v, Hashable v, Eq v', Hashable v')
-  => (v -> Maybe v')
-  -> MultiHashMap k v
-  -> MultiHashMap k v'
-multiMapMaybe p
-  = HashMap.mapMaybe
-  $ nothingWhenEmpty
-  . mapMaybe p
-  . HashSet.toList
-  where
-    nothingWhenEmpty [] = Nothing
-    nothingWhenEmpty xs = Just $ HashSet.fromList xs
 
 nonEmptySome :: Alternative f => f a -> f (NonEmpty a)
 nonEmptySome p = (NonEmpty.:|) <$> p <*> many p
