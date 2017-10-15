@@ -1,4 +1,4 @@
-{-# LANGUAGE ConstraintKinds, FlexibleContexts, FlexibleInstances, GeneralizedNewtypeDeriving, Rank2Types, TypeFamilies, OverloadedStrings #-}
+{-# LANGUAGE ConstraintKinds, FlexibleContexts, GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module VIX where
 
 import Control.Monad.Except
