@@ -39,7 +39,7 @@ scopeCheckModule modul = do
   otherNames <- gets vixModuleNames
 
   let env = ScopeEnv lookupConstr
-      lookupConstr c = HashMap.lookupDefault mempty c constrs
+      lookupConstr c = multiLookup c constrs
       constrs = multiFromList
         [ (QName mempty $ fromConstr c, QConstr n c)
         | (n, (_, Unscoped.TopLevelDataDefinition _ _ d)) <- HashMap.toList $ moduleContents modul

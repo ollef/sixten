@@ -161,6 +161,13 @@ multiInsert
   -> MultiHashMap k v
 multiInsert k v = HashMap.insertWith HashSet.union k $ HashSet.singleton v
 
+multiLookup
+  :: (Eq k, Hashable k, Eq v, Hashable v)
+  => k
+  -> MultiHashMap k v
+  -> HashSet v
+multiLookup = HashMap.lookupDefault mempty
+
 multiUnion
   :: (Eq k, Hashable k, Eq v, Hashable v)
   => MultiHashMap k v
