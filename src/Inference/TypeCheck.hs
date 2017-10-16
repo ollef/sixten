@@ -755,9 +755,9 @@ generaliseDefs xs = do
       defs = (\(_, d, _) -> d) <$> xs
       types = (\(_, _, t) -> t) <$> xs
 
-  dfvs <- fold <$> mapM (foldMapM HashSet.singleton) defs
-  tfvs <- fold <$> mapM (foldMapM HashSet.singleton) types
   let fvs = dfvs <> tfvs
+  dfvs <- foldMapM (foldMapMetas HashSet.singleton) defs
+  tfvs <- foldMapM (foldMapMetas HashSet.singleton) types
 
   mergeConstraintVars fvs
 
@@ -769,7 +769,7 @@ generaliseDefs xs = do
   fvs' <- fmap HashSet.fromList $ filterM p $ HashSet.toList fvs
 
   deps <- forM (HashSet.toList fvs') $ \x -> do
-    ds <- foldMapM HashSet.singleton $ metaType x
+    ds <- foldMapMetas HashSet.singleton $ metaType x
     return (x, ds)
 
   let sortedFvs = map acyclic $ topoSort deps

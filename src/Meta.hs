@@ -151,12 +151,12 @@ solve
   -> m ()
 solve r x = liftST $ writeSTRef r $ Right x
 
-foldMapM
+foldMapMetas
   :: (Foldable e, Foldable f, Monoid a, MonadIO m)
   => (MetaVar d e -> a)
   -> f (MetaVar d e)
   -> m a
-foldMapM f = flip evalStateT mempty . foldrM go mempty
+foldMapMetas f = flip evalStateT mempty . foldrM go mempty
   where
     go v m = do
       visited <- gets $ HashMap.lookup v
@@ -193,7 +193,7 @@ abstractM f e = do
       sol <- solution r
       case sol of
         Left _ -> do
-          tfvs <- foldMapM Set.singleton $ metaType v'
+          tfvs <- foldMapMetas Set.singleton $ metaType v'
           let mftfvs = Set.filter (isJust . f) tfvs
           unless (Set.null mftfvs)
             $ throwError $ "cannot abstract, " ++ show mftfvs ++ " would escape from the type of "
@@ -322,7 +322,7 @@ showMeta
   => f (MetaVar d e)
   -> m Doc
 showMeta x = do
-  vs <- foldMapM Set.singleton x
+  vs <- foldMapMetas Set.singleton x
   let p MetaVar { metaRef = Exists r } = solution r
       p _ = return $ Left $ Level (-1)
   let vsl = Set.toList vs
