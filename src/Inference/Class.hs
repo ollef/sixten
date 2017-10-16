@@ -65,8 +65,7 @@ elabUnsolvedConstraint ref var = do
         f inst
       case catMaybes matchingInstances of
         [] -> return $ pure var
-        _:_:_ -> throwLocated $ "Ambiguous instance for " <> pretty className -- TODO error message
-        [matchingInstance] -> do
+        matchingInstance:_ -> do
           -- Elaborate any constraints introduced by the matching instance
           elabInstance <- elabExpr matchingInstance
           -- Replace the universals from before with the original existentials
