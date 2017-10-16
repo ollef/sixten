@@ -755,9 +755,11 @@ generaliseDefs xs = do
       defs = (\(_, d, _) -> d) <$> xs
       types = (\(_, _, t) -> t) <$> xs
 
-  let fvs = dfvs <> tfvs
   dfvs <- foldMapM (foldMapMetas HashSet.singleton) defs
   tfvs <- foldMapM (foldMapMetas HashSet.singleton) types
+  let fvs = HashSet.filter isConstraint dfvs <> tfvs
+      isConstraint MetaVar { metaData = Constraint } = True
+      isConstraint _ = False
 
   mergeConstraintVars fvs
 
