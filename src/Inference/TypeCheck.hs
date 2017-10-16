@@ -81,21 +81,6 @@ instUntilExpr :: Concrete.Expr v -> InstUntil
 instUntilExpr (Concrete.Lam p _ _) = InstUntil p
 instUntilExpr _ = InstUntil Explicit
 
--- inferPoly :: ConcreteM -> InstUntil -> Infer (AbstractM, Polytype)
--- inferPoly expr instUntil = do
---   logMeta 20 "inferPoly expr" expr
---   modifyIndent succ
---   (resExpr, resType) <- inferPoly' expr instUntil
---   modifyIndent pred
---   logMeta 20 "inferPoly res expr" resExpr
---   logMeta 20 "inferPoly res typ" resType
---   return (resExpr, resType)
-
--- inferPoly' :: ConcreteM -> InstUntil -> Infer (AbstractM, Polytype)
--- inferPoly' expr instUntil = do
---   (expr', exprType) <- inferRho expr instUntil
---   generalise expr' exprType
-
 instantiateForalls
   :: Polytype
   -> InstUntil
@@ -466,24 +451,6 @@ patToTerm pat = case pat of
   Abstract.LitPat l -> return $ Just $ Abstract.Lit l
   Abstract.ViewPat{} -> return Nothing
 
-{-
-instantiateDataType
-  :: Applicative f
-  => Name
-  -> Infer (AbstractM, Vector (Plicitness, f MetaA))
-instantiateDataType typeName = mdo
-  (_, dataTypeType) <- definition typeName
-  let params = telescope dataTypeType
-      inst = instantiateTele (pure . snd) paramVars
-  paramVars <- forMTele params $ \h p s -> do
-    v <- exists h p (inst s)
-    return (p, v)
-  let pureParamVars = fmap pure <$> paramVars
-      dataType = Abstract.apps (Abstract.Global typeName) pureParamVars
-      implicitParamVars = (\(p, v) -> (implicitise, pure v)) <$> paramVars
-  return (dataType, implicitParamVars)
--}
-
 --------------------------------------------------------------------------------
 -- Constrs
 resolveConstr
@@ -543,36 +510,6 @@ resolveConstr cs expected = do
     constrDoc = case (Leijen.red . pretty) <$> HashSet.toList cs of
       [pc] -> "constructor" Leijen.<+> pc
       pcs -> "constructors" Leijen.<+> prettyHumanList "and" pcs
-
---------------------------------------------------------------------------------
--- Generalisation
-{-
-generalise
-  :: AbstractM
-  -> AbstractM
-  -> Infer (AbstractM, AbstractM)
-generalise expr typ = do
-  -- fvs <- (<>) <$> foldMapM (:[]) typ' <*> foldMapM (:[]) expr
-  fvs <- foldMapM (:[]) typ -- <*> foldMapM (:[]) expr'
-  l <- level
-  let p v@MetaVar { metaRef = Just r } = either (>= l) (const False) <$> solution r
-      p _                   = return False
-  fvs' <- HashSet.fromList <$> filterM p fvs
-
-  deps <- forM (HashSet.toList fvs') $ \x -> do
-    ds <- foldMapM HashSet.singleton $ metaType x
-    return (x, ds)
-
-  let sorted = map go $ topoSort deps
-      isorted = (,) Implicit <$> sorted
-  genexpr <- abstractMs isorted Abstract.Lam expr
-  gentype <- abstractMs isorted Abstract.Pi typ
-
-  return (genexpr, gentype)
-  where
-    go [v] = v
-    go _ = error "Generalise"
-    -}
 
 --------------------------------------------------------------------------------
 -- Definitions
