@@ -195,7 +195,8 @@ declassifyGroup xs = do
   results <- forM xs $
     \(name, loc, def, typ) -> Declassify.declassify name loc def typ
   let (preResults, postResults) = unzip results
-  return $ preResults : [concat postResults]
+      postResults' = concat postResults
+  return $ preResults : [postResults' | not $ null postResults']
 
 typeCheckGroup
   :: [(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Concrete.Expr Void)]
