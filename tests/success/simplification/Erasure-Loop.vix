@@ -1,4 +1,4 @@
 type Void where
 
-loop : {A : Type} -> A -> Void
+loop : forall (A : Type). A -> Void
 loop x = loop x

@@ -6,7 +6,7 @@ Vector' : Nat -> Type -> Type
 Vector' Zero _ = Unit'
 Vector' (Succ n) a = Tuple a (Vector' n a)
 
-sumVec : forall n. Vector' n Int -> Int
+sumVec : (n : _) -> Vector' n Int -> Int
 sumVec Zero unit = 0
 sumVec (Succ n) (tuple x xs) = addInt x (sumVec n xs)
 

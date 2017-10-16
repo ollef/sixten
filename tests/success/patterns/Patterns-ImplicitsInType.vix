@@ -1,18 +1,18 @@
 type A = A1 | A2
 type B = B1 | B2
 
-test1 : {b : B} -> A -> A
+test1 : @(b : B) -> A -> A
 test1 A1 = A2
 test1 A2 = A1
 
-test2 : {a : B} -> A -> {b : B} -> A
+test2 : @(a : B) -> A -> @(b : B) -> A
 test2 A1 = A2
 test2 A2 = A1
 
-test3 : {a1 a2 : B} -> A -> {b1 b2 : B} -> A
+test3 : @(a1 a2 : B) -> A -> @(b1 b2 : B) -> A
 test3 A1 = A2
 test3 A2 = A1
 
-test4 : A -> {a1 a2 : B} -> A -> {b1 b2 : B} -> A
+test4 : A -> @(a1 a2 : B) -> A -> @(b1 b2 : B) -> A
 test4 A1 A1 = A2
 test4 _ A2 = A1

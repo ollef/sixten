@@ -10,11 +10,11 @@ Vector' : Nat -> Type -> Type
 Vector' Zero _ = Unit'
 Vector' (Succ n) a = Tuple a (Vector' n a)
 
-sum : forall n. Vector' n Int -> Int
+sum : (n : _) -> Vector' n Int -> Int
 sum Zero unit = 0
 sum (Succ n) (tuple x xs) = addInt x (sum n xs)
 
-append : forall a m n. Vector' m a -> Vector' n a -> Vector' (addNat m n) a
+append : (a m n : _) -> Vector' m a -> Vector' n a -> Vector' (addNat m n) a
 append _ Zero n unit ys = ys
 append a (Succ m) n (tuple x xs) ys = tuple x (append a m n xs ys)
 

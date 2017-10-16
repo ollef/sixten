@@ -9,8 +9,8 @@ fun3p = \(tuple i1 i2) (tuple i3 i4). addInt i1 i2
 fun4 = \((tuple i1 i2) : Tuple _ _). addInt i1 i2
 fun4p = \((tuple i1 i2) (tuple i3 i4) : Tuple _ _). addInt i1 (addInt i2 (addInt i3 i4))
 
-fun5 = \{(tuple i1 i2) : Tuple _ _}. addInt i1 i2
-fun5p = \{(tuple i1 i2) (tuple i3 i4) : Tuple _ _}. addInt i1 (addInt i2 (addInt i3 i4))
+fun5 = \@((tuple i1 i2) : Tuple _ _). addInt i1 i2
+fun5p = \@((tuple i1 i2) (tuple i3 i4) : Tuple _ _). addInt i1 (addInt i2 (addInt i3 i4))
 
-fun6 = \{(tuple i1 i2) : Tuple _ _}. addInt i1 i2
-fun6p = \{(tuple i1 i2) (tuple i3 i4) : Tuple _ _}. addInt i1 (addInt i2 (addInt i3 i4))
+fun6 = \@((tuple i1 i2) : Tuple _ _). addInt i1 i2
+fun6p = \@((tuple i1 i2) (tuple i3 i4) : Tuple _ _). addInt i1 (addInt i2 (addInt i3 i4))

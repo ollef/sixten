@@ -221,7 +221,7 @@ pattern = locatedPat $
   ) <?> "pattern"
 
 plicitPattern :: Parser (Plicitness, Pat (Type QName) QName)
-plicitPattern = (,) Implicit <$ symbol "{" <*>% pattern <*% symbol "}"
+plicitPattern = (,) Implicit <$ symbol "@" <*>% atomicPattern
   <|> (,) Explicit <$> atomicPattern
   <?> "explicit or implicit pattern"
 
@@ -233,26 +233,40 @@ atomicPattern = locatedPat
   <|> literalPat
   <?> "atomic pattern"
 
-patternBinding :: Parser [(Plicitness, Pat (Type QName) QName)]
-patternBinding
-  = go Implicit <$ symbol "{" <*> someSI atomicPattern <*% symbol ":" <*>% expr <*% symbol "}"
+plicitPatternBinding :: Parser [(Plicitness, Pat (Type QName) QName)]
+plicitPatternBinding
+  = go Implicit <$ symbol "@" <*% symbol "(" <*> someSI atomicPattern <*% symbol ":" <*>% expr <*% symbol ")"
   <|> go Explicit <$ symbol "(" <*> someSI atomicPattern <*% symbol ":" <*>% expr <*% symbol ")"
   <?> "typed pattern"
   where
     go p pats t = [(p, AnnoPat t pat) | pat <- pats]
 
-somePatternBindings :: Parser [(Plicitness, Pat (Type QName) QName)]
-somePatternBindings = concat <$> someSI patternBinding
+patternBinding :: Parser [(Pat (Type QName) QName)]
+patternBinding
+  = go <$ symbol "(" <*> someSI atomicPattern <*% symbol ":" <*>% expr <*% symbol ")"
+  <?> "typed pattern"
+  where
+    go pats t = [AnnoPat t pat | pat <- pats]
 
-somePatterns :: Parser [(Plicitness, Pat (Type QName) QName)]
-somePatterns = concat <$> someSI (Trifecta.try patternBinding <|> pure <$> plicitPattern)
+somePlicitPatternBindings :: Parser [(Plicitness, Pat (Type QName) QName)]
+somePlicitPatternBindings
+  = concat <$> someSI plicitPatternBinding
 
-manyPatterns :: Parser [(Plicitness, Pat (Type QName) QName)]
-manyPatterns = concat <$> manySI (Trifecta.try patternBinding <|> pure <$> plicitPattern)
+somePlicitPatterns :: Parser [(Plicitness, Pat (Type QName) QName)]
+somePlicitPatterns
+  = concat <$> someSI (Trifecta.try plicitPatternBinding <|> pure <$> plicitPattern)
+
+somePatterns :: Parser [(Pat (Type QName) QName)]
+somePatterns
+  = concat <$> someSI (Trifecta.try patternBinding <|> pure <$> atomicPattern)
+
+manyPlicitPatterns :: Parser [(Plicitness, Pat (Type QName) QName)]
+manyPlicitPatterns
+  = concat <$> manySI (Trifecta.try plicitPatternBinding <|> pure <$> plicitPattern)
 
 plicitBinding :: Parser (Plicitness, Name)
 plicitBinding
-  = (,) Implicit <$ symbol "{" <*>% name <*% symbol "}"
+  = (,) Implicit <$ symbol "@" <*>% name
   <|> (,) Explicit <$> name
   <?> "variable binding"
 
@@ -262,7 +276,7 @@ plicitBinding'
 
 typedBinding :: Parser [(Plicitness, Name, Type QName)]
 typedBinding = fmap flatten
-  $ (,,) Implicit <$ symbol "{" <*> someSI name <*% symbol ":" <*>% expr <*% symbol "}"
+  $ (,,) Implicit <$ symbol "@" <*% symbol "(" <*> someSI name <*% symbol ":" <*>% expr <*% symbol ")"
   <|> (,,) Explicit <$ symbol "(" <*> someSI name <*% symbol ":" <*>% expr <*% symbol ")"
   <?> "typed variable binding"
   where
@@ -283,15 +297,14 @@ atomicExpr = locatedExpr
   $ literal
   <|> Wildcard <$ wildcard
   <|> Var <$> qname
-  <|> abstr (reserved "forall") Unscoped.pis
-  <|> abstr (symbol "\\") Unscoped.lams
+  <|> Unscoped.pis <$ reserved "forall" <*>% (fmap ((,) Implicit) <$> somePatterns) <*% symbol "." <*>% exprWithoutWhere
+  <|> Unscoped.lams <$ symbol "\\" <*>% somePlicitPatterns <*% symbol "." <*>% exprWithoutWhere
   <|> Case <$ reserved "case" <*>% expr <*% reserved "of" <*> branches
   <|> letExpr
   <|> ExternCode <$> externCExpr
   <|> symbol "(" *>% expr <*% symbol ")"
   <?> "atomic expression"
   where
-    abstr t c = c <$ t <*>% somePatterns <*% symbol "." <*>% exprWithoutWhere
     letExpr
       = dropAnchor
       $ mkLet <$ reserved "let" <*>% dropAnchor (someSameCol $ located def)
@@ -318,9 +331,9 @@ expr = exprWithoutWhere <**>
 exprWithoutWhere :: Parser (Expr QName)
 exprWithoutWhere
   = locatedExpr
-  $ Unscoped.pis <$> Trifecta.try (somePatternBindings <*% symbol "->") <*>% exprWithoutWhere
-  <|> plicitPi Implicit <$ symbol "{" <*>% expr <*% symbol "}" <*% symbol "->" <*>% exprWithoutWhere
+  $ Unscoped.pis <$> Trifecta.try (somePlicitPatternBindings <*% symbol "->") <*>% exprWithoutWhere
   <|> Unscoped.apps <$> atomicExpr <*> manySI argument <**> arr
+  <|> plicitPi Implicit <$ symbol "@" <*>% atomicExpr <*% symbol "->" <*>% exprWithoutWhere
   <?> "expression"
   where
     plicitPi p argType retType = Pi p (AnnoPat argType WildcardPat) retType
@@ -332,7 +345,7 @@ exprWithoutWhere
 
     argument :: Parser (Plicitness, Expr QName)
     argument
-      = (,) Implicit <$ symbol "{" <*>% expr <*% symbol "}"
+      = (,) Implicit <$ symbol "@" <*>% atomicExpr
       <|> (,) Explicit <$> atomicExpr
 
 -------------------------------------------------------------------------------
@@ -397,7 +410,7 @@ def = do
     return (Unscoped.Definition n abstr (NonEmpty.fromList clauses) mtyp)
   where
     typeSig = symbol ":" *>% expr
-    clause = Clause <$> (Vector.fromList <$> manyPatterns) <*% symbol "=" <*>% expr
+    clause = Clause <$> (Vector.fromList <$> manyPlicitPatterns) <*% symbol "=" <*>% expr
 
 dataDef :: Parser (TopLevelDefinition QName)
 dataDef = TopLevelDataDefinition <$ reserved "type" <*>% name <*> manyTypedBindings <*>%

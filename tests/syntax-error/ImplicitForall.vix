@@ -1,0 +1,2 @@
+test : forall @n. Int
+test = 0

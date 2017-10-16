@@ -1,5 +1,5 @@
 main =
-  let id : {A : Type} -> A -> A
+  let id : forall (A : Type). A -> A
       id x = x
   let unused = id True
   printInt (id 41)

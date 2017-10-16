@@ -1,6 +1,6 @@
 type Impl where
-  impl1 : forall {A : Type}. Ptr A -> Impl
-  impl2 : forall {A : Type}{B : Type}. Ptr A -> Ptr B -> Impl
+  impl1 : forall (A : Type). Ptr A -> Impl
+  impl2 : forall (A : Type)(B : Type). Ptr A -> Ptr B -> Impl
 
-test (impl1 {A}{n} ptr) = 2
-test (impl2 {n}{A}{B} ptr1 ptr2) = 3
+test (impl1 @A @n ptr) = 2
+test (impl2 @n @A @B ptr1 ptr2) = 3

@@ -1,4 +1,4 @@
-deref : forall {t}. Ptr t -> t
+deref : forall t. Ptr t -> t
 deref p = case p of Ref t -> t
 
 type List a = Nil | Cons a (Ptr (List a))

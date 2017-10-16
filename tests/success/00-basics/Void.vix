@@ -3,7 +3,7 @@ type Unit' where
 
 type Void where
 
-absurd : {A : Type} -> Void -> A
+absurd : @(A : Type) -> Void -> A
 absurd x = case x of
 
 loop : Unit' -> Void

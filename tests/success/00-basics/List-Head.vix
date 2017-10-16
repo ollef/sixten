@@ -1,4 +1,4 @@
-deref : forall {t}. Ptr t -> t
+deref : forall t. Ptr t -> t
 deref p = case p of Ref t -> t
 
 type List A where
@@ -8,7 +8,7 @@ type List A where
 test : Ptr (List Int)
 test = Ref (Cons 2 (Ref (Cons 3 (Ref (Cons 5 (Ref Nil))))))
 
-head : {A : Type} -> Ptr (List A) -> A
+head : @(A : Type) -> Ptr (List A) -> A
 head (Ref (Cons x _)) = x
 head x = head x
 

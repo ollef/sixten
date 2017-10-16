@@ -1,5 +1,5 @@
 Bool' : Type
-Bool' = {a : Type} -> a -> a -> a
+Bool' = forall (a : Type). a -> a -> a
 
 True' : Bool'
 True' x y = x
@@ -7,7 +7,7 @@ True' x y = x
 False' : Bool'
 False' x y = y
 
-if : {a : Type} -> Bool' -> a -> a -> a
+if : forall (a : Type). Bool' -> a -> a -> a
 if b = b
 
 and : Bool' -> Bool' -> Bool'

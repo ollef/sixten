@@ -1,4 +1,4 @@
-const : {a b : Type} -> a -> b -> a
+const : forall (a b : Type). a -> b -> a
 const x y = x
 
 X : const Int X

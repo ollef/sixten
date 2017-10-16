@@ -1,4 +1,4 @@
-deref : {a : Type} -> Ptr a -> a
+deref : @(a : Type) -> Ptr a -> a
 deref ptr = case ptr of
   Ref a -> a
 
@@ -8,12 +8,12 @@ type List a where
 
 error 0 = error 0
 
-head : {a : Type} -> Ptr (List a) -> a
+head : @(a : Type) -> Ptr (List a) -> a
 head xs = case deref xs of
   Cons a _ -> a
   Nil -> error 0
 
-tail : {a : Type} -> Ptr (List a) -> List a
+tail : @(a : Type) -> Ptr (List a) -> List a
 tail xs = case deref xs of
   Cons _ xs -> deref xs
   Nil -> error 0

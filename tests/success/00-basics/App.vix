@@ -1,10 +1,10 @@
-APP : forall {T}{F}. ((x : T) -> F x) -> (y : T) -> F y
+APP : forall T F. ((x : T) -> F x) -> (y : T) -> F y
 APP f x = f x
 
-APP2 : forall {S}{G}. ((z : S) -> G z) -> (w : S) -> G w
+APP2 : forall S G. ((z : S) -> G z) -> (w : S) -> G w
 APP2 f x = APP f x
 
-app : forall {a}{b}. (a -> b) -> a -> b
+app : forall a b. (a -> b) -> a -> b
 app = APP
 
 app2 f x = APP f x

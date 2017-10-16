@@ -8,14 +8,14 @@ type List a
 instance Summable Int where
   sum x = x
 
-instance forall {a}. Summable a => Summable (List a) where
+instance forall a. Summable a => Summable (List a) where
   sum Nil = 0
   sum (Cons x xs) = addInt (sum x) (sum xs)
 
-instance forall {a}. Summable a => Summable (Ptr a) where
+instance forall a. Summable a => Summable (Ptr a) where
   sum (Ref x) = sum x
 
-test : forall {a}. Summable a => a -> Int
+test : forall a. Summable a => a -> Int
 test x = sum x
 
 test2 x = addInt (sum x) (sum x)

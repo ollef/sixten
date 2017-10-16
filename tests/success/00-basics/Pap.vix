@@ -1,4 +1,4 @@
-ap1 : forall {A B : Type}. (A -> B) -> A -> B
+ap1 : forall (A B : Type). (A -> B) -> A -> B
 ap1 f x = f x
 
 add3 : Int -> Int -> Int -> Int

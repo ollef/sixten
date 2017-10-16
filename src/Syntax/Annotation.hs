@@ -21,10 +21,10 @@ instance Show Plicitness where
 
 instance PrettyAnnotation Plicitness where
   prettyAnnotation Constraint = brackets
-  prettyAnnotation Implicit = braces
+  prettyAnnotation Implicit = prettyTightApp "@"
   prettyAnnotation Explicit = id
   prettyAnnotationParens Constraint = brackets
-  prettyAnnotationParens Implicit = braces
+  prettyAnnotationParens Implicit = prettyTightApp "@" . parens
   prettyAnnotationParens Explicit = parens
 
 data Visibility = Private | Public

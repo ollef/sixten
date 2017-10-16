@@ -1,0 +1,26 @@
+nonDep : Int -> Int
+nonDep _ = 0
+
+dep : (n : Int) -> Int
+dep _ = 0
+
+multi : (m n : Int) -> Int
+multi m n = 0
+
+multi2 : (m : Int)(n : Unit) -> Int
+multi2 m n = 0
+
+pat : (MkUnit : Unit) -> Int
+pat MkUnit = 0
+
+implicit : @(m n : Int) -> Int
+implicit @m @n = 0
+
+type Maybe a = Nothing | Just a
+
+typedForall : forall (m n : Int)(u : Unit). Int
+typedForall @m @n @u = 0
+
+untypedForall : forall a b. Maybe a -> Maybe b -> Maybe a
+untypedForall Nothing _ = Nothing
+untypedForall (Just a) _ = Just a

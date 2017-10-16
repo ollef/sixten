@@ -4,8 +4,8 @@ type LazyValue a
   = Thunk (Unit -> a)
   | Done a
 
-force : forall {a}. Lazy a -> a
-force {a} (MkLazy l) = case l of
+force : forall a. Lazy a -> a
+force @a (MkLazy l) = case l of
   Ref (Thunk f) ->
     let result = f MkUnit
     (C|
@@ -14,7 +14,7 @@ force {a} (MkLazy l) = case l of
     |)
   Ref (Done a) -> a
 
-thunk : forall {a}. (Unit -> a) -> Lazy a
+thunk : forall a. (Unit -> a) -> Lazy a
 thunk f = MkLazy (Ref (Thunk f))
 
 x = thunk (\MkUnit. printInt 41)

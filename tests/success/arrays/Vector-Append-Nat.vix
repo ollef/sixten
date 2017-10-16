@@ -12,11 +12,11 @@ Vector' : Ptr Nat' -> Type -> Type
 Vector' (Ref Z) _ = Unit'
 Vector' (Ref (S n)) a = Tuple a (Vector' n a)
 
-sum : forall n. Vector' n Int -> Int
+sum : (n : _) -> Vector' n Int -> Int
 sum (Ref Z) unit = 0
 sum (Ref (S n)) (tuple x xs) = addInt x (sum n xs)
 
-append : forall a m n. Vector' m a -> Vector' n a -> Vector' (addNat m n) a
+append : (a m n : _) -> Vector' m a -> Vector' n a -> Vector' (addNat m n) a
 append _ (Ref Z) n unit ys = ys
 append a (Ref (S m)) n (tuple x xs) ys = tuple x (append a m n xs ys)
 

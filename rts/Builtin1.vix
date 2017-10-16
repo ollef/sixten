@@ -3,7 +3,7 @@ module Sixten.Builtin exposing (..)
 type Bool = False | True
 
 abstract
-UnsolvedConstraint : forall T. T
+UnsolvedConstraint : (T : Type) -> T
 UnsolvedConstraint T = UnsolvedConstraint T
 
 abstract

@@ -1,4 +1,4 @@
-deref : forall {A}. Ptr A -> A
+deref : forall A. Ptr A -> A
 deref p = case p of Ref a -> a
 
 type Unit' where
@@ -11,7 +11,7 @@ type Nat' where
   Zero : Nat'
   Succ : Ptr Nat' -> Nat'
 
-ntuple : forall (n : Ptr Nat'). Type
+ntuple : (n : Ptr Nat') -> Type
 ntuple n = case deref n of
   Zero -> Unit'
   Succ n' -> Tuple Int (ntuple n')

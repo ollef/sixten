@@ -1,4 +1,4 @@
-id : forall {a}. a -> a
+id : forall a. a -> a
 id x = x
 
 id' x = x
@@ -6,22 +6,22 @@ id' x = x
 idT : Type -> Type
 idT t = t
 
-idf : forall {f}{a}. f a -> f a
+idf : forall f a. f a -> f a
 idf x = x
 
-const : forall {a}{b}. a -> b -> a
+const : forall a b. a -> b -> a
 const x y = x
 
-idConst1 : forall {f}{a}. f a -> f a
+idConst1 : forall f a. f a -> f a
 idConst1 x = const x (\(x : Int). x)
 
-useConst : forall {a}{b}. ((a -> a -> a) -> b) -> b
+useConst : forall a b. ((a -> a -> a) -> b) -> b
 useConst f = f const
 
 fun : Type -> Type
 fun a = a -> a
 
-fa : forall {a}. a
+fa : forall a. a
 fa = fa
 
 main1 = printInt (const 10 20)

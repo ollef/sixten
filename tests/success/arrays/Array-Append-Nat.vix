@@ -12,16 +12,16 @@ Vector' : Ptr Nat' -> Type -> Type
 Vector' (Ref Z) _ = Unit'
 Vector' (Ref (S n)) a = Tuple a (Vector' n a)
 
-sumVec : forall n. Vector' n Int -> Int
+sumVec : (n : _) -> Vector' n Int -> Int
 sumVec (Ref Z) unit = 0
 sumVec (Ref (S n)) (tuple x xs) = addInt x (sumVec n xs)
 
-appendVec : forall {a} m n. Vector' m a -> Vector' n a -> Vector' (addNat m n) a
+appendVec : forall a. (m n : _) -> Vector' m a -> Vector' n a -> Vector' (addNat m n) a
 appendVec (Ref Z) n unit ys = ys
-appendVec {a} (Ref (S m)) n (tuple x xs) ys = tuple x (appendVec {a} m n xs ys)
+appendVec @a (Ref (S m)) n (tuple x xs) ys = tuple x (appendVec @a m n xs ys)
 
 type Array' A where
-  array : forall n. Ptr (Vector' n A) -> Array' A
+  array : (n : _) -> Ptr (Vector' n A) -> Array' A
 
 zero = Ref Z
 one = Ref (S zero)
@@ -34,14 +34,14 @@ test = array two (Ref (tuple (tuple 1 2) (tuple (tuple 3 4) unit)))
 test2 : Array' (Tuple Int Int)
 test2 = array three (Ref (tuple (tuple 12 13) (tuple (tuple 14 15) (tuple (tuple 16 17) unit))))
 
-mapVec : forall {A}{B} n. (A -> B) -> Vector' n A -> Vector' n B
+mapVec : forall A B. (n : _) -> (A -> B) -> Vector' n A -> Vector' n B
 mapVec (Ref Z) f unit = unit
 mapVec (Ref (S n)) f (tuple a xs) = tuple (f a) (mapVec n f xs)
 
-appendArr : forall {A}. Array' A -> Array' A -> Array' A
-appendArr {A} (array m (Ref xs)) (array n (Ref ys)) = array (addNat m n) (Ref (appendVec {A} m n xs ys))
+appendArr : forall A. Array' A -> Array' A -> Array' A
+appendArr @A (array m (Ref xs)) (array n (Ref ys)) = array (addNat m n) (Ref (appendVec @A m n xs ys))
 
-mapArr : forall {A}{B}. (A -> B) -> Array' A -> Array' B
+mapArr : forall A B. (A -> B) -> Array' A -> Array' B
 mapArr f (array m (Ref xs)) = array m (Ref (mapVec m f xs))
 
 test3 = mapArr printInt (mapArr (\(tuple x y). addInt x y) (appendArr test test2))

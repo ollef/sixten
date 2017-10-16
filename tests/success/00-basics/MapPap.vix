@@ -1,4 +1,4 @@
-deref : forall {t : Type}. Ptr t -> t
+deref : forall (t : Type). Ptr t -> t
 deref p = case p of Ref t -> t
 
 the : (A : Type) -> A -> A
@@ -12,7 +12,7 @@ type List2 (A : Type) where
   Nil2 : List2 A
   Cons2 : A -> Ptr (List2 A) -> List2 A
 
-tail : forall {A : Type}. Ptr (List A) -> Ptr (List A)
+tail : forall (A : Type). Ptr (List A) -> Ptr (List A)
 tail xs = case deref xs of
   Cons x xs' -> xs'
   Nil -> xs
@@ -21,12 +21,12 @@ tail2 xs = case deref xs of
   Cons x xs' -> xs'
   Nil -> xs
 
-tail3 : forall {A}. Ptr (List A) -> Ptr (List A)
+tail3 : forall A. Ptr (List A) -> Ptr (List A)
 tail3 xs = case deref xs of
   Cons x xs' -> xs'
   Nil -> xs
 
-map : forall {a b : Type}. (a -> b) -> Ptr (List a) -> Ptr (List b)
+map : forall (a b : Type). (a -> b) -> Ptr (List a) -> Ptr (List b)
 map f xs = Ref (case deref xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (map f xs'))
