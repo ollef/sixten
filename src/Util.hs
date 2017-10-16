@@ -1,9 +1,11 @@
+{-# LANGUAGE BangPatterns #-}
 module Util where
 
 import Bound
 import Bound.Var
 import Control.Applicative
 import Control.Monad.Except
+import Control.Monad.ST
 import Control.Monad.State
 import Data.Bifoldable
 import Data.Bifunctor
@@ -22,6 +24,9 @@ import Data.Text(Text)
 import qualified Data.Text as Text
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
+import qualified Data.Vector.Generic as GVector
+import qualified Data.Vector.Generic.Base as BVector
+import qualified Data.Vector.Generic.Mutable as MVector
 
 type Scope1 = Scope ()
 
@@ -132,18 +137,36 @@ forWithPrefix
   -> Vector v'
 forWithPrefix = flip mapWithPrefix
 
--- TODO: Use MonadFix to optimise?
 mapWithPrefixM
-  :: (Monad m, Foldable t)
+  :: Monad m
   => (v -> Vector v' -> m v')
-  -> t v
+  -> Vector v
   -> m (Vector v')
-mapWithPrefixM f
-  = foldlM (\vs' v -> Vector.snoc vs' <$> f v vs') mempty
+mapWithPrefixM f vs
+  = constructNM (Vector.length vs)
+  $ \vs' -> f (vs Vector.! Vector.length vs') vs'
+
+constructNM
+  :: (BVector.Vector v a, Monad m)
+  => Int
+  -> (v a -> m a)
+  -> m (v a)
+{-# INLINE constructNM #-}
+constructNM len f = fill 0 $ runST $ do
+  v <- MVector.new len
+  GVector.unsafeFreeze v
+  where
+    fill i !v | i < len = do
+      x <- f $ GVector.unsafeTake i v
+      BVector.elemseq v x $ fill (i + 1) $ runST $ do
+        v' <- GVector.unsafeThaw v
+        MVector.unsafeWrite v' i x
+        GVector.unsafeFreeze v'
+    fill _ v = return v
 
 forWithPrefixM
-  :: (Monad m, Foldable t)
-  => t v
+  :: Monad m
+  => Vector v
   -> (v -> Vector v' -> m v')
   -> m (Vector v')
 forWithPrefixM = flip mapWithPrefixM
