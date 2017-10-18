@@ -9,7 +9,6 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
 import Data.List as List
-import Data.Maybe
 import Data.Monoid
 import Data.String
 import Data.Text(Text)
@@ -152,19 +151,18 @@ addContext :: MonadVIX m => HashMap QName (Definition Expr Void, Type Void) -> m
 addContext prog = modify $ \s -> s
   { vixContext = prog <> vixContext s
   , vixClassInstances = HashMap.unionWith (<>) instances $ vixClassInstances s
-  }
-  where
+  } where
+    unions = foldl' (HashMap.unionWith (<>)) mempty
     instances
-      = HashMap.fromList
-      $ catMaybes
+      = unions
       $ flip map (HashMap.toList prog) $ \(defName, (def, typ)) -> case def of
-        DataDefinition {} -> Nothing
-        Definition _ IsOrdinaryDefinition _ -> Nothing
+        DataDefinition {} -> mempty
+        Definition _ IsOrdinaryDefinition _ -> mempty
         Definition _ IsInstance _ -> do
           let (_, s) = pisView typ
           case appsView $ fromScope s of
-            (Global className, _) -> Just (className, [(defName, typ)])
-            _ -> Nothing
+            (Global className, _) -> HashMap.singleton className [(defName, typ)]
+            _ -> mempty
 
 
 throwLocated
