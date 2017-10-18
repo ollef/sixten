@@ -13,11 +13,13 @@ import Data.Maybe
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
+import qualified Frontend.Declassify as Declassify
 import Syntax
 import Syntax.Concrete.Pattern
 import qualified Syntax.Concrete.Scoped as Scoped
 import qualified Syntax.Concrete.Unscoped as Unscoped
 import Util
+import Util.MultiHashMap(MultiHashMap)
 import qualified Util.MultiHashMap as MultiHashMap
 import Util.TopoSort
 import VIX
@@ -33,6 +35,8 @@ runScopeCheck m env = (a, s)
   where
     (a, s, ~()) = runRWS m env mempty
 
+-- TODO split into several functions
+-- TODO use plain Name for unresolved names
 scopeCheckModule
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
   -> VIX [[(QName, SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void, Scoped.Type void)]]
@@ -73,6 +77,7 @@ scopeCheckModule modul = do
       aliases = localAliases `MultiHashMap.union` importedNameAliases
       lookupAlias qname
         | HashSet.size candidates == 1 = return $ head $ HashSet.toList candidates
+        -- TODO: Error message, duplicate checking, tests
         | otherwise = throwError $ "scopeCheckModule ambiguous " ++ show candidates
         where
           candidates = MultiHashMap.lookupDefault (HashSet.singleton qname) qname aliases
@@ -91,9 +96,19 @@ scopeCheckModule modul = do
     typ' <- traverse lookupAlias typ
     return (n, (loc, bound global global def', bind global global typ'))
 
+
+  -- Each _usage_ of a class (potentially) depends on all its instances.
+  -- But the class itself doesn't (necessarily).
+  --
+  -- So, create an extraDeps table: For each definition that's an instance i of
+  -- class c, add a vertex c -> i, and map the extraDeps table over all _dependencies_.
+  extraDeps <- instances resolvedDefs
+  let addInstanceDeps dep = HashSet.insert dep $ MultiHashMap.lookup dep extraDeps
+
   let resolvedDefDeps = for defDeps $ \(n, deps) -> do
         let deps' = lookupAliasDep <$> HashSet.toList deps
-        (n, HashSet.unions deps')
+            deps'' = addInstanceDeps <$> HashSet.toList (HashSet.unions deps')
+        (n, HashSet.unions deps'')
 
   let resolvedDefsMap = HashMap.fromList resolvedDefs
       -- TODO use topoSortWith
@@ -104,6 +119,15 @@ scopeCheckModule modul = do
 
   where
     for = flip map
+
+instances
+  :: [(QName, (SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void, Scoped.Expr void))]
+  -> VIX (MultiHashMap QName QName)
+instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, (_, def, typ)) -> case def of
+  Scoped.TopLevelPatInstanceDefinition _ -> do
+    c <- Declassify.getClass typ
+    return [(c, name)]
+  _ -> return mempty
 
 scopeCheckTopLevelDefinition
   :: Unscoped.TopLevelDefinition QName
