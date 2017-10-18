@@ -1,0 +1,10 @@
+class Delay where
+
+instance Delay where
+
+ifThenElse : forall a. Bool -> (Delay => a) -> (Delay => a) -> a
+ifThenElse True t _ = t
+ifThenElse False _ f = f
+
+main : Int
+main = ifThenElse True (printInt 1) (printInt 0)
