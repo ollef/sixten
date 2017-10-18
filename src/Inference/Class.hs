@@ -64,7 +64,10 @@ elabUnsolvedConstraint ref var = do
         f <- subtype instType uniType
         f inst
       case catMaybes matchingInstances of
-        [] -> return $ pure var
+        [] -> do
+          let result = pure var
+          logMeta 25 "No matching instance" result
+          return result
         matchingInstance:_ -> do
           -- Elaborate any constraints introduced by the matching instance
           elabInstance <- elabExpr matchingInstance

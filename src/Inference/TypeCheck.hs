@@ -839,6 +839,10 @@ checkRecursiveDefs forceGeneralisation defs = do
 
     elabDefs <- elabRecursiveDefs $ snd <$> checkedDefs
 
+    forM_ elabDefs $ \(evar, def, typ) -> do
+      logMeta 20 ("checkRecursiveDefs elab res " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) def
+      logMeta 20 ("checkRecursiveDefs elab res t " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) typ
+
     shouldGen <- if forceGeneralisation then return True else shouldGeneralise elabDefs
     if shouldGen then
       generaliseDefs elabDefs

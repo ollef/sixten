@@ -65,10 +65,10 @@ frontend k
   >>=> prettyConcreteGroup "Declassified" absurd
   >=> typeCheckGroup
 
-  >=> prettyTypedGroup "Abstract syntax" absurd
+  >=> prettyTypedGroup 9 "Abstract syntax" absurd
 
   >=> simplifyGroup
-  >=> prettyTypedGroup "Simplified" absurd
+  >=> prettyTypedGroup 8 "Simplified" absurd
 
   >=> addGroupToContext
   >=> k
@@ -137,12 +137,13 @@ prettyConcreteGroup str f defs = do
   return defs
 
 prettyTypedGroup
-  :: Text
+  :: Int
+  -> Text
   -> (v -> QName)
   -> [(QName, Definition Abstract.Expr v, Abstract.Expr v)]
   -> VIX [(QName, Definition Abstract.Expr v, Abstract.Expr v)]
-prettyTypedGroup str f defs = do
-  whenVerbose 10 $ do
+prettyTypedGroup v str f defs = do
+  whenVerbose v $ do
     VIX.log $ "----- " <> str <> " -----"
     forM_ defs $ \(n, d, t) -> do
       let t' = f <$> t
