@@ -130,7 +130,9 @@ sum : (n : Nat) -> Vector n Int -> Int
 Sixten's type inference is based on
 [Practical type inference for arbitrary-rank types](https://www.microsoft.com/en-us/research/publication/practical-type-inference-for-arbitrary-rank-types/).
 
-### Type classes
+### Classes
+
+These are similar to Haskell's type classes.
 
 As an example, here's how to define a `Functor` class:
 
