@@ -1,15 +1,11 @@
 # Sixten
 
-----
-
 ```
      o
  ,---.-. ,-|- ,--.--.
  `---|  |  |  |--'  |
  `---'-' `-'--`--'  `-'
 ```
-
-----
 
 Sixten is an experimental functional programming language where all data is
 unboxed by default. Functional programming with fewer indirections!
