@@ -42,7 +42,7 @@ declassify name loc def typ = case def of
   ==>
 
   type C a = MkC T
-  f : forall {a}. C a => T
+  f : forall a. C a => T
   f (MkC f') = f'
 -}
 declass
