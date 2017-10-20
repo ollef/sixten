@@ -1,4 +1,4 @@
-vec3 : {a : Type} -> a -> a -> a -> Vector (intToNat 3) a
+vec3 : forall a. a -> a -> a -> Vector (intToNat 3) a
 vec3 a b c = tuple a (tuple b (tuple c unit))
 
 test : Vector (intToNat 3) Int -> Int
