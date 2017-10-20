@@ -135,7 +135,7 @@ let_
 let_ hint d expr typ = do
   i <- fresh
   ref <- liftST $ newSTRef expr
-  logVerbose 20 $ "shared: " <> fromString (show i)
+  logVerbose 20 $ "let: " <> fromString (show i)
   return $ MetaVar i typ hint (LetRef ref) d
 
 solution
