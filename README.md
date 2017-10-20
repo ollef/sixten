@@ -237,8 +237,8 @@ following C++-like code:
 template<typename A>
 class List
 {
- A element;
- List<A>* next;
+  A element;
+  List<A>* next;
 }
 ```
 
