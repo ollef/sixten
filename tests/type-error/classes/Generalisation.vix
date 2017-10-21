@@ -1,0 +1,5 @@
+class Functor f where
+  map : forall a b. (a -> b) -> f a -> f b
+
+test : forall (f : Type -> Type) a. f a -> f Int
+test = map (\_. 610)
