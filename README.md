@@ -94,7 +94,7 @@ Pattern matching can be done in clauses and case expressions:
 
 ```haskell
 fromMaybe : forall a. a -> Maybe a -> a
-fromMaybe def Nothing = x
+fromMaybe def Nothing = def
 fromMaybe _ (Just x) = x
 ```
 
