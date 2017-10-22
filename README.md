@@ -292,3 +292,7 @@ meaning that we can choose to use monomorphisation when we want to.
 
 Does this sound interesting to you? Get involved and help shape the Sixten
 language! Contributions are always welcome.
+
+## Authors
+
+[Olle Fredriksson](https://github.com/ollef)
