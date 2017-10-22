@@ -287,3 +287,8 @@ layout than systems using uniform representations, meaning better cache
 behaviour. Also note that type representation polymorphism does not preclude
 creating specialised versions of functions known to be performance-critical,
 meaning that we can choose to use monomorphisation when we want to.
+
+## Contributions
+
+Does this sound interesting to you? Get involved and help shape the Sixten
+language! Contributions are always welcome.
