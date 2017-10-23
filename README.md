@@ -105,6 +105,13 @@ fromMaybe' def mx = case mx of
   Just x -> x
 ```
 
+In memory, algebraic data types are represented by an integer tag next to a
+chunk of memory big enough to hold the contents of any of the constructors.
+If the type has fewer than two constructors it's represented without a tag.
+
+This means that `type Unit = MkUnit` has size zero, and `Maybe A` has size
+`tagSize + sizeOf A`.
+
 ### Implicit parameters
 
 The `forall` keyword introduces implicit parameters in a type:
@@ -198,7 +205,7 @@ templates, fall into one of the following two categories:
     is generated statically whenever a polymorphic function is used at a new
     type.
 
-Neither of these approaches are perfect: With the uniform representation
+Neither of these approaches is perfect: With the uniform representation
 approach we lose control over how our data is laid out in memory, and with the
 template instantiation approach we lose modularity and polymorphic recursion:
 
