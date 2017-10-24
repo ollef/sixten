@@ -24,7 +24,7 @@ We can then use the constructor `MkPair` to construct a pair. As an example,
 `MkPair 610 "Sixten"` has type `Pair Int String`.
 
 The size in memory of `Pair a b` is the size of `a` plus the size of `b`, and
-it's passed in registers or on the stack when used in a function.
+the pair is passed in registers or on the stack when used in a function.
 
 On a 64-bit machine, `sizeOf Int = 8` and `sizeOf (Pair Int Int) = 16`.
 
