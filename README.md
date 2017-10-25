@@ -303,3 +303,4 @@ language! Contributions are always welcome.
 ## Authors
 
 [Olle Fredriksson](https://github.com/ollef)
+[Victor Borja](https://github.com/vic)
