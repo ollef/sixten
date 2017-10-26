@@ -118,17 +118,18 @@ prettyConcreteGroup
   :: (Pretty (e QName), Monad e, Traversable e)
   => Text
   -> (v -> QName)
-  -> [(QName, SourceLoc, Concrete.TopLevelPatDefinition e v, e v)]
-  -> VIX [(QName, SourceLoc, Concrete.TopLevelPatDefinition e v, e v)]
+  -> [(QName, SourceLoc, Concrete.TopLevelPatDefinition e v, Maybe (e v))]
+  -> VIX [(QName, SourceLoc, Concrete.TopLevelPatDefinition e v, Maybe (e v))]
 prettyConcreteGroup str f defs = do
   whenVerbose 10 $ do
     VIX.log $ "----- " <> str <> " -----"
-    forM_ defs $ \(n, _, d, t) -> do
-      let t' = f <$> t
-      VIX.log
-        $ showWide
-        $ runPrettyM
-        $ prettyM n <+> ":" <+> prettyM t'
+    forM_ defs $ \(n, _, d, mt) -> do
+      forM_ mt $ \t -> do
+        let t' = f <$> t
+        VIX.log
+          $ showWide
+          $ runPrettyM
+          $ prettyM n <+> ":" <+> prettyM t'
       VIX.log
         $ showWide
         $ runPrettyM
@@ -177,7 +178,7 @@ prettyGroup str f defs = do
 
 scopeCheckProgram
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
-  -> VIX [[(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Concrete.Type Void)]]
+  -> VIX [[(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Maybe (Concrete.Type Void))]]
 scopeCheckProgram m = do
   res <- ScopeCheck.scopeCheckModule m
   let defnames = HashSet.fromMap $ void $ moduleContents m
@@ -190,17 +191,17 @@ scopeCheckProgram m = do
   return res
 
 declassifyGroup
-  :: [(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Concrete.Type Void)]
-  -> VIX [[(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Concrete.Type Void)]]
+  :: [(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Maybe (Concrete.Type Void))]
+  -> VIX [[(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Maybe (Concrete.Type Void))]]
 declassifyGroup xs = do
   results <- forM xs $
-    \(name, loc, def, typ) -> Declassify.declassify name loc def typ
+    \(name, loc, def, mtyp) -> Declassify.declassify name loc def mtyp
   let (preResults, postResults) = unzip results
       postResults' = concat postResults
   return $ preResults : [postResults' | not $ null postResults']
 
 typeCheckGroup
-  :: [(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Concrete.Expr Void)]
+  :: [(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Maybe (Concrete.Expr Void))]
   -> VIX [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
 typeCheckGroup
   = fmap Vector.toList . TypeCheck.runInfer . TypeCheck.checkTopLevelRecursiveDefs . Vector.fromList

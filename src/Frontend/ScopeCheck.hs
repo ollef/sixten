@@ -9,7 +9,6 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
-import Data.Maybe
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
@@ -39,7 +38,7 @@ runScopeCheck m env = (a, s)
 -- TODO use plain Name for unresolved names
 scopeCheckModule
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
-  -> VIX [[(QName, SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void, Scoped.Type void)]]
+  -> VIX [[(QName, SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void, Maybe (Scoped.Type void))]]
 scopeCheckModule modul = do
   otherNames <- gets vixModuleNames
 
@@ -55,8 +54,8 @@ scopeCheckModule modul = do
       importAliases = MultiHashMap.unions $ importedAliases otherNames <$> imports
 
       checkedDefDeps = for (HashMap.toList $ moduleContents modul) $ \(n, (loc, def)) -> do
-        let ((def', typ'), deps) = runScopeCheck (scopeCheckTopLevelDefinition def) env
-        (n, (loc, def', typ'), toHashSet def' <> toHashSet typ' <> deps)
+        let ((def', mtyp'), deps) = runScopeCheck (scopeCheckTopLevelDefinition def) env
+        (n, (loc, def', mtyp'), toHashSet def' <> foldMap toHashSet mtyp' <> deps)
 
       defDeps = for checkedDefDeps $ \(n, _, deps) -> (n, deps)
       checkedDefs = for checkedDefDeps $ \(n, def, _) -> (n, def)
@@ -91,10 +90,10 @@ scopeCheckModule modul = do
       depAliases = aliases `MultiHashMap.union` methodDeps
       lookupAliasDep qname = MultiHashMap.lookupDefault (HashSet.singleton qname) qname depAliases
 
-  resolvedDefs <- forM checkedDefs $ \(n, (loc, def, typ)) -> do
+  resolvedDefs <- forM checkedDefs $ \(n, (loc, def, mtyp)) -> do
     def' <- traverse lookupAlias def
-    typ' <- traverse lookupAlias typ
-    return (n, (loc, bound global global def', bind global global typ'))
+    mtyp' <- traverse (traverse lookupAlias) mtyp
+    return (n, (loc, bound global global def', bind global global <$> mtyp'))
 
 
   -- Each _usage_ of a class (potentially) depends on all its instances.
@@ -121,29 +120,29 @@ scopeCheckModule modul = do
     for = flip map
 
 instances
-  :: [(QName, (SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void, Scoped.Expr void))]
+  :: [(QName, (SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void, Maybe (Scoped.Expr void)))]
   -> VIX (MultiHashMap QName QName)
-instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, (_, def, typ)) -> case def of
-  Scoped.TopLevelPatInstanceDefinition _ -> do
+instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, (_, def, mtyp)) -> case (def, mtyp) of
+  (Scoped.TopLevelPatInstanceDefinition _, Just typ) -> do
     c <- Declassify.getClass typ
     return [(c, name)]
   _ -> return mempty
 
 scopeCheckTopLevelDefinition
   :: Unscoped.TopLevelDefinition QName
-  -> ScopeCheck (Scoped.TopLevelPatDefinition Scoped.Expr QName, Scoped.Type QName)
+  -> ScopeCheck (Scoped.TopLevelPatDefinition Scoped.Expr QName, Maybe (Scoped.Type QName))
 scopeCheckTopLevelDefinition (Unscoped.TopLevelDefinition d) =
   first Scoped.TopLevelPatDefinition . snd <$> scopeCheckDefinition d
 scopeCheckTopLevelDefinition (Unscoped.TopLevelDataDefinition _name params cs) = do
   (typ, abstr) <- scopeCheckParamsType params $ pure Builtin.TypeName
   cs' <- mapM (mapM (fmap abstr . scopeCheckExpr)) cs
   let res = Scoped.TopLevelPatDataDefinition $ DataDef cs'
-  return (res, typ)
+  return (res, Just typ)
 scopeCheckTopLevelDefinition (Unscoped.TopLevelClassDefinition _name params ms) = do
   (typ, abstr) <- scopeCheckParamsType params $ pure Builtin.TypeName -- TODO: Should this be a constraint?
   ms' <- mapM (mapM (fmap abstr . scopeCheckExpr)) ms
   let res = Scoped.TopLevelPatClassDefinition $ ClassDef ms'
-  return (res, typ)
+  return (res, Just typ)
 scopeCheckTopLevelDefinition (Unscoped.TopLevelInstanceDefinition typ ms) = do
   typ' <- scopeCheckExpr typ
   ms' <- mapM (\(loc, m) -> (,) loc <$> scopeCheckDefinition m) ms
@@ -152,7 +151,7 @@ scopeCheckTopLevelDefinition (Unscoped.TopLevelInstanceDefinition typ ms) = do
         $ Vector.fromList
         $ (\(loc, (n, (d, _typ))) -> (n, loc, d)) -- TODO use the type
         <$> ms'
-  return (res, typ')
+  return (res, Just typ')
 
 scopeCheckParamsType
   :: Monad f
@@ -170,11 +169,11 @@ scopeCheckParamsType params kind = do
 
 scopeCheckDefinition
   :: Unscoped.Definition Unscoped.Expr QName
-  -> ScopeCheck (Name, (Scoped.PatDefinition (Scoped.Clause void Scoped.Expr QName), Scoped.Type QName))
+  -> ScopeCheck (Name, (Scoped.PatDefinition (Scoped.Clause void Scoped.Expr QName), Maybe (Scoped.Type QName)))
 scopeCheckDefinition (Unscoped.Definition name a clauses mtyp) = do
   res <- Scoped.PatDefinition a IsOrdinaryDefinition <$> mapM scopeCheckClause clauses
-  typ <- scopeCheckExpr $ fromMaybe Unscoped.Wildcard mtyp
-  return (name, (res, typ))
+  mtyp' <- forM mtyp scopeCheckExpr
+  return (name, (res, mtyp'))
 
 scopeCheckClause
   :: Unscoped.Clause Unscoped.Expr QName
@@ -220,14 +219,14 @@ scopeCheckExpr expr = case expr of
     body' <- scopeCheckExpr body
     let sortedDefs = topoSortWith
           (\(_, (name, _)) -> fromName name)
-          (\(_, (_, (d, t))) -> foldMap toHashSet d <> toHashSet t)
+          (\(_, (_, (d, mt))) -> foldMap toHashSet d <> foldMap toHashSet mt)
           defs'
 
         go ds e = do
           let ds' = Vector.fromList ds
               abstr = letAbstraction $ fromName . fst . snd <$> ds'
           Scoped.Let
-            ((\(loc, (name, (def, typ))) -> (loc, fromName name, Scoped.abstractClause abstr <$> def, abstract abstr typ)) <$> ds')
+            ((\(loc, (name, (def, mtyp))) -> (loc, fromName name, Scoped.abstractClause abstr <$> def, abstract abstr <$> mtyp)) <$> ds')
             (abstract abstr e)
 
     return $ foldr go body' $ flattenSCC <$> sortedDefs

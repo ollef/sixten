@@ -91,6 +91,10 @@ instance (Pretty (expr v), Monad expr, IsString v, void ~ Void)
   prettyM = prettyNamed "_"
 
 instance (Pretty (expr v), Monad expr, IsString v)
+  => Pretty (TopLevelPatDefinition expr v) where
+  prettyM = prettyNamed "_"
+
+instance (Pretty (expr v), Monad expr, IsString v)
   => PrettyNamed (TopLevelPatDefinition expr v) where
   prettyNamed name (TopLevelPatDefinition d) = prettyNamed name d
   prettyNamed name (TopLevelPatDataDefinition dataDef) = prettyNamed name dataDef

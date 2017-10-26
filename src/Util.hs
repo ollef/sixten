@@ -17,6 +17,7 @@ import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
+import Data.Maybe
 import Data.Set(Set)
 import qualified Data.Set as Set
 import Data.String
@@ -192,5 +193,48 @@ hashedElemIndex xs
   where
     m = HashMap.fromList $ zip (Vector.toList xs) [0..]
 
+hashedLookup
+  :: (Eq a, Hashable a)
+  => Vector (a, b)
+  -> a
+  -> Maybe b
+hashedLookup xs
+  -- Just guessing the cutoff here
+  | Vector.length xs <= 16 = \a -> snd <$> Vector.find ((== a) . fst) xs
+  | otherwise = flip HashMap.lookup m
+  where
+    m = HashMap.fromList $ toList xs
+
 tryMaybe :: MonadError b m => m a -> m (Maybe a)
 tryMaybe m = fmap Just m `catchError` const (pure Nothing)
+
+unpermute
+  :: (Eq a, Hashable a)
+  => Vector (a, a)
+  -> Vector b
+  -> Vector b
+unpermute p xs = Vector.backpermute xs indices
+  where
+    indices
+      = fromMaybe (error "unpermute")
+        . hashedElemIndex (snd <$> p)
+        . fst
+      <$> p
+
+fixPoint
+  :: Eq a
+  => (a -> a)
+  -> a
+  -> a
+fixPoint f a
+  | a == a' = a
+  | otherwise = fixPoint f a'
+  where
+    a' = f a
+
+saturate
+  :: (Eq a, Hashable a)
+  => (a -> HashSet a)
+  -> HashSet a
+  -> HashSet a
+saturate f = fixPoint $ \s -> HashSet.unions $ s : map f (HashSet.toList s)
