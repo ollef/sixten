@@ -3,6 +3,7 @@ module Frontend.Declassify where
 
 import Control.Monad.Except
 import Control.Monad.State
+import Data.Bifunctor
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.List
@@ -24,18 +25,18 @@ declassify
   -> TopLevelPatDefinition Expr Void
   -> Maybe (Type Void)
   -> VIX
-    ( (QName, SourceLoc, TopLevelPatDefinition Expr Void, Maybe (Type Void))
+    ( [(QName, SourceLoc, TopLevelPatDefinition Expr Void, Maybe (Type Void))]
     , [(QName, SourceLoc, TopLevelPatDefinition Expr Void, Maybe (Type Void))]
     )
 declassify name loc def mtyp = case (def, mtyp) of
   (TopLevelPatDefinition _, _) -> doNothing
   (TopLevelPatDataDefinition _, _) -> doNothing
-  (TopLevelPatClassDefinition methods, Just typ) -> declass name loc methods typ
+  (TopLevelPatClassDefinition methods, Just typ) -> first pure <$> declass name loc methods typ
   (TopLevelPatClassDefinition _, Nothing) -> error "declassify impossible 1"
   (TopLevelPatInstanceDefinition methods, Just typ) -> flip (,) mempty <$> deinstance name loc methods typ
   (TopLevelPatInstanceDefinition _, Nothing) -> error "declassify impossible 2"
   where
-    doNothing = return ((name, loc, def, mtyp), mempty)
+    doNothing = return (pure (name, loc, def, mtyp), mempty)
 
 {-
   class C a where
@@ -122,16 +123,18 @@ extractParams = bindingsView $ \expr -> case expr of
 
   ==>
 
+  instanceName-f = fbody
+
   instanceName : C a => C [a]
-  instanceName = MkC fbody
+  instanceName = MkC instanceName-f
 -}
 deinstance
   :: QName
   -> SourceLoc
   -> PatInstanceDef Expr Void
   -> Type Void
-  -> VIX (QName, SourceLoc, TopLevelPatDefinition Expr Void, Maybe (Type Void))
-deinstance name loc (PatInstanceDef methods) typ = located loc $ do
+  -> VIX [(QName, SourceLoc, TopLevelPatDefinition Expr Void, Maybe (Type Void))]
+deinstance qname@(QName modName name) loc (PatInstanceDef methods) typ = located loc $ do
   className <- getClass typ
   mnames <- gets $ HashMap.lookup className . vixClassMethods
   case mnames of
@@ -148,9 +151,10 @@ deinstance name loc (PatInstanceDef methods) typ = located loc $ do
           (diff names names')
           (diff names' names)
           (duplicates names')
-      else
-        return
-          ( name
+      else do
+        let mname n = QName modName $ name <> "-" <> n
+        return $
+          ( qname
           , loc
           , TopLevelPatDefinition
             $ PatDefinition
@@ -159,12 +163,14 @@ deinstance name loc (PatInstanceDef methods) typ = located loc $ do
               $ pure
               $ Clause mempty
               $ abstractNone
-              $ Let ((\(n, loc', def) -> (loc', fromName n, instantiateClause absurd <$> def, Nothing)) <$> methods')
-              $ toScope
               $ apps (Con $ HashSet.singleton $ classConstr className)
-              $ (\i -> (Explicit, pure $ B i)) <$> Vector.enumFromN 0 (Vector.length methods')
+              $ (\(n, _, _) -> (Explicit, global $ mname n)) <$> methods'
           , Just typ
           )
+          :
+          [ (mname n, loc', TopLevelPatDefinition def, Nothing)
+          | (n, loc', def) <- Vector.toList methods'
+          ]
   where
     diff xs ys = HashSet.toList $ HashSet.difference (toHashSet xs) (toHashSet ys)
     duplicates xs = map head $ filter p $ group $ Vector.toList xs

@@ -198,7 +198,8 @@ declassifyGroup xs = do
     \(name, loc, def, mtyp) -> Declassify.declassify name loc def mtyp
   let (preResults, postResults) = unzip results
       postResults' = concat postResults
-  return $ preResults : [postResults' | not $ null postResults']
+      preResults' = concat preResults
+  return $ preResults' : [postResults' | not $ null postResults']
 
 typeCheckGroup
   :: [(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Maybe (Concrete.Expr Void))]
