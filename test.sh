@@ -3,7 +3,7 @@
 set -e
 set -u
 
-stack ${STACK_FLAGS} install
+stack ${STACK_FLAGS-} install
 
 for file in $(find ./tests/success -name "*.vix" | sort)
 do
