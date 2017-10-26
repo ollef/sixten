@@ -57,6 +57,7 @@ elabUnsolvedConstraint ref var = do
       (uniType, uniVarMap) <- universalise typ
       -- Try subsumption on all instances of the class until a match is found
       globalClassInstances <- gets $ HashMap.lookupDefault mempty className . vixClassInstances
+      -- TODO universalise localInstances
       localInstances <- asks constraints
       let candidates = [(Global g, vacuous t) | (g, t) <- globalClassInstances]
             <> localInstances
