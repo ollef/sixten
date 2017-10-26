@@ -1,4 +1,4 @@
-# Sixten [![Build Status](https://travis-ci.org/ollef/sixten.svg?branch=master)](https://travis-ci.org/ollef/sixten)
+# Sixten [![Build Status](https://travis-ci.org/ollef/sixten.svg?branch=master)](https://travis-ci.org/ollef/sixten) [![Gitter chat](https://badges.gitter.im/ollef/sixten.png)](https://gitter.im/sixten-lang)
 
 ```
      o
