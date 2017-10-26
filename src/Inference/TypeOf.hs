@@ -47,7 +47,7 @@ typeOfGen abstr expr = do
       e1type' <- whnf e1type
       case e1type' of
         Pi _ p' _ resType | p == p' -> return $ instantiate1 e2 resType
-        _ -> throwError $ "typeOfGen: expected pi type " ++ show e1type'
+        _ -> throwError $ "typeOfGen: expected " ++ show p ++ " pi type " ++ show e1type'
     Let ds s -> do
       xs <- forMLet ds $ \h _ t -> forall h Explicit t
       typeOfGen abstr $ instantiateLet pure xs s
