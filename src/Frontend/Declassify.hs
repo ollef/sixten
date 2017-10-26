@@ -22,18 +22,20 @@ declassify
   :: QName
   -> SourceLoc
   -> TopLevelPatDefinition Expr Void
-  -> Type Void
+  -> Maybe (Type Void)
   -> VIX
-    ( (QName, SourceLoc, TopLevelPatDefinition Expr Void, Type Void)
-    , [(QName, SourceLoc, TopLevelPatDefinition Expr Void, Type Void)]
+    ( (QName, SourceLoc, TopLevelPatDefinition Expr Void, Maybe (Type Void))
+    , [(QName, SourceLoc, TopLevelPatDefinition Expr Void, Maybe (Type Void))]
     )
-declassify name loc def typ = case def of
-  TopLevelPatDefinition _ -> doNothing
-  TopLevelPatDataDefinition _ -> doNothing
-  TopLevelPatClassDefinition methods -> declass name loc methods typ
-  TopLevelPatInstanceDefinition methods -> flip (,) mempty <$> deinstance name loc methods typ
+declassify name loc def mtyp = case (def, mtyp) of
+  (TopLevelPatDefinition _, _) -> doNothing
+  (TopLevelPatDataDefinition _, _) -> doNothing
+  (TopLevelPatClassDefinition methods, Just typ) -> declass name loc methods typ
+  (TopLevelPatClassDefinition _, Nothing) -> error "declassify impossible 1"
+  (TopLevelPatInstanceDefinition methods, Just typ) -> flip (,) mempty <$> deinstance name loc methods typ
+  (TopLevelPatInstanceDefinition _, Nothing) -> error "declassify impossible 2"
   where
-    doNothing = return ((name, loc, def, typ), mempty)
+    doNothing = return ((name, loc, def, mtyp), mempty)
 
 {-
   class C a where
@@ -51,8 +53,8 @@ declass
   -> ClassDef Expr Void
   -> Type Void
   -> VIX
-    ( (QName, SourceLoc, TopLevelPatDefinition Expr Void, Type Void)
-    , [(QName, SourceLoc, TopLevelPatDefinition Expr Void, Type Void)]
+    ( (QName, SourceLoc, TopLevelPatDefinition Expr Void, Maybe (Type Void))
+    , [(QName, SourceLoc, TopLevelPatDefinition Expr Void, Maybe (Type Void))]
     )
 declass qname loc classDef typ = do
   modify $ \s -> s
@@ -82,7 +84,7 @@ declass qname loc classDef typ = do
             . abstractNone)
           classType
         $ classMethods classDef
-      , typ
+      , Just typ
       )
     , [ ( QName (qnameModule qname) mname
         , mloc
@@ -95,7 +97,7 @@ declass qname loc classDef typ = do
               (pure (Constraint, ConPat (HashSet.singleton classConstrName) pats))
               $ toScope $ pure $ B $ B 0
           )
-        , implicitPiParams $ toScope $ classParam $ fromScope mtyp
+        , Just $ implicitPiParams $ toScope $ classParam $ fromScope mtyp
         )
       | (i, MethodDef mname (Hint mloc) mtyp) <- zip [0..] $ classMethods classDef
       , let prePats = Vector.replicate i WildcardPat
@@ -128,7 +130,7 @@ deinstance
   -> SourceLoc
   -> PatInstanceDef Expr Void
   -> Type Void
-  -> VIX (QName, SourceLoc, TopLevelPatDefinition Expr Void, Type Void)
+  -> VIX (QName, SourceLoc, TopLevelPatDefinition Expr Void, Maybe (Type Void))
 deinstance name loc (PatInstanceDef methods) typ = located loc $ do
   className <- getClass typ
   mnames <- gets $ HashMap.lookup className . vixClassMethods
@@ -157,11 +159,11 @@ deinstance name loc (PatInstanceDef methods) typ = located loc $ do
               $ pure
               $ Clause mempty
               $ abstractNone
-              $ Let ((\(n, loc', def) -> (loc', fromName n, instantiateClause absurd <$> def, Scope Wildcard)) <$> methods')
+              $ Let ((\(n, loc', def) -> (loc', fromName n, instantiateClause absurd <$> def, Nothing)) <$> methods')
               $ toScope
               $ apps (Con $ HashSet.singleton $ classConstr className)
               $ (\i -> (Explicit, pure $ B i)) <$> Vector.enumFromN 0 (Vector.length methods')
-          , typ
+          , Just typ
           )
   where
     diff xs ys = HashSet.toList $ HashSet.difference (toHashSet xs) (toHashSet ys)

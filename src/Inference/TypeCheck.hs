@@ -8,6 +8,7 @@ import Control.Monad.State
 import Data.Bifunctor
 import Data.Bitraversable
 import Data.Foldable as Foldable
+import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.HashSet(HashSet)
 import Data.List.NonEmpty(NonEmpty)
@@ -203,13 +204,14 @@ tcRho expr expected expectedAppResult = case expr of
       typ <- existsType name
       forall name Explicit typ
     let instantiatedDs
-          = (\(loc, _, def, typ) ->
+          = (\(loc, _, def, mtyp) ->
               ( loc
               , Concrete.TopLevelPatDefinition $ Concrete.instantiateLetClause pure evars <$> def
-              , instantiateLet pure evars typ
+              , instantiateLet pure evars <$> mtyp
               )) <$> ds
     ds' <- checkRecursiveDefs False (Vector.zip evars instantiatedDs)
-    let eabstr = letAbstraction evars
+    let evars' = (\(v, _, _) -> v) <$> ds'
+        eabstr = letAbstraction evars'
     ds'' <- LetRec
       <$> forM ds'
         (\(v, Definition _ _ e, t) -> LetBinding (metaHint v) <$> abstractM eabstr e <*> pure t)
@@ -700,26 +702,23 @@ checkTopLevelDefType v def loc typ = located (render loc) $ case def of
   Concrete.TopLevelPatInstanceDefinition _ -> error "checkTopLevelDefType instance"
 
 generaliseDef
-  :: Vector MetaA
+  :: Foldable t
+  => t (Plicitness, MetaA)
   -> Definition Abstract.Expr MetaA
   -> AbstractM
-  -> Infer ( Definition Abstract.Expr MetaA
-         , AbstractM
-         )
+  -> Infer (Definition Abstract.Expr MetaA, AbstractM)
 generaliseDef vs (Definition a i e) t = do
-  let ivs = (\v -> (implicitise $ metaData v, v)) <$> vs
-  ge <- abstractMs ivs Abstract.Lam e
-  gt <- abstractMs ivs Abstract.Pi t
+  ge <- abstractMs vs Abstract.Lam e
+  gt <- abstractMs vs Abstract.Pi t
   return (Definition a i ge, gt)
 generaliseDef vs (DataDefinition (DataDef cs) rep) typ = do
   let cs' = map (fmap $ toScope . splat f g) cs
-      ivs = (\v -> (implicitise $ metaData v, v)) <$> vs
   -- Abstract vs on top of typ
-  grep <- abstractMs ivs Abstract.Lam rep
-  gtyp <- abstractMs ivs Abstract.Pi typ
+  grep <- abstractMs vs Abstract.Lam rep
+  gtyp <- abstractMs vs Abstract.Pi typ
   return (DataDefinition (DataDef cs') grep, gtyp)
   where
-    varIndex = hashedElemIndex vs
+    varIndex = hashedElemIndex $ snd <$> toVector vs
     f v = pure $ maybe (F v) (B . TeleVar) (varIndex v)
     g = pure . B . (+ TeleVar (length vs))
 
@@ -734,8 +733,14 @@ abstractMs vs c b = foldrM
   b
   vs
 
+data GeneraliseDefsMode
+  = GeneraliseType
+  | GeneraliseAll
+  deriving (Eq, Show)
+
 generaliseDefs
-  :: Vector
+  :: GeneraliseDefsMode
+  -> Vector
     ( MetaA
     , Definition Abstract.Expr MetaA
     , AbstractM
@@ -746,52 +751,84 @@ generaliseDefs
       , Definition Abstract.Expr MetaA
       , AbstractM
       )
+    , MetaA -> MetaA
     )
-generaliseDefs xs = do
+generaliseDefs mode defs = do
+  -- After type-checking we may actually be in a situation where a dependency
+  -- we thought existed doesn't actually exist because of class instances being
+  -- resolved (unresolved class instances are assumed to depend on all
+  -- instances), so we can't be sure that we have a single cycle. Therefore we
+  -- separately compute dependencies for each definition.
   modifyIndent succ
 
-  let vars  = (\(v, _, _) -> v) <$> xs
-      varIndex = hashedElemIndex vars
-      defs = (\(_, d, _) -> d) <$> xs
-      types = (\(_, _, t) -> t) <$> xs
+  let vars = (\(v, _, _) -> v) <$> defs
 
-  dfvs <- foldMapM (foldMapMetas HashSet.singleton) defs
-  tfvs <- foldMapM (foldMapMetas HashSet.singleton) types
-  let fvs = HashSet.filter isConstraint dfvs <> tfvs
-      isConstraint MetaVar { metaData = Constraint } = True
-      isConstraint _ = False
+  defFreeVars <- case mode of
+    GeneraliseType -> forM defs $ \_ -> return mempty
+    GeneraliseAll -> forM defs $ \(_, def, _) ->
+      foldMapMetas HashSet.singleton def
 
-  mergeConstraintVars fvs
+  typeFreeVars <- forM defs $ \(_, _, t) ->
+    foldMapMetas HashSet.singleton t
+
+  mergeConstraintVars $ HashSet.unions $ toList $ defFreeVars <> typeFreeVars
 
   l <- level
-  logShow 30 "level" l
-  let p MetaVar { metaRef = Exists r } = either (>= l) (const False) <$> solution r
-      p MetaVar { metaRef = Forall } = return False
-      p MetaVar { metaRef = LetRef {} } = return False
-  fvs' <- fmap HashSet.fromList $ filterM p $ HashSet.toList fvs
 
-  deps <- forM (HashSet.toList fvs') $ \x -> do
-    ds <- foldMapMetas HashSet.singleton $ metaType x
-    return (x, ds)
+  let sat p freeVars = do
+        let freeVarsMap = HashMap.fromList $ toList $ Vector.zip vars freeVars
+        forM freeVars $ \fvs -> do
+          let fvs' = saturate (\v -> HashMap.lookupDefault (HashSet.singleton v) v freeVarsMap) fvs
+          fmap HashSet.fromList $ filterM p $ HashSet.toList fvs'
 
-  let sortedFvs = map acyclic $ topoSort deps
-      sortedFvsVec = Vector.fromList sortedFvs
-      appl x = Abstract.apps x [(implicitise $ metaData fv, pure fv) | fv <- sortedFvs]
-      instVars = appl . pure <$> vars
-      sub v = fromMaybe (pure v) $ (instVars Vector.!?) =<< varIndex v
+      isLocalConstraint v@MetaVar { metaData = Constraint } = isLocalExists v
+      isLocalConstraint _ = return False
 
-  instDefs <- forM xs $ \(v, d, t) -> do
+      isLocalExists MetaVar { metaRef = Exists r } = either (>= l) (const False) <$> solution r
+      isLocalExists MetaVar { metaRef = Forall } = return False
+      isLocalExists MetaVar { metaRef = LetRef {} } = return False
+
+  satDefFreeVars <- sat isLocalConstraint defFreeVars
+  satTypeFreeVars <- sat isLocalExists typeFreeVars
+
+  let freeVars = Vector.zipWith (<>) satDefFreeVars satTypeFreeVars
+
+  sortedFreeVars <- forM freeVars $ \fvs -> do
+
+    deps <- forM (HashSet.toList fvs) $ \v -> do
+      ds <- foldMapMetas HashSet.singleton $ metaType v
+      return (v, ds)
+
+    let sortedFvs = acyclic <$> topoSort deps
+
+    return [(implicitise $ metaData fv, fv) | fv <- sortedFvs]
+
+  let lookupFreeVars = hashedLookup $ Vector.zip vars sortedFreeVars
+      sub v = maybe (pure v) (Abstract.apps (pure v) . fmap (second pure)) $ lookupFreeVars v
+
+  instDefs <- forM defs $ \(v, d, t) -> do
     d' <- boundM (return . sub) d
     t' <- bindM (return . sub) t
     return (v, d', t')
 
-  genDefs <- forM instDefs $ \(v, d, t) -> do
-    (d', t') <- generaliseDef sortedFvsVec d t
+  genDefs <- forM (Vector.zip sortedFreeVars instDefs) $ \(fvs, (v, d, t)) -> do
+    (d', t') <- generaliseDef fvs d t
+    return (v, d', t')
+
+  newVars <- forM genDefs $ \(v, _, t) ->
+    forall (metaHint v) (metaData v) t
+
+  let lookupNewVar = hashedLookup $ Vector.zip vars newVars
+      newVarSub v = fromMaybe v $ lookupNewVar v
+
+  newVarDefs <- forM (Vector.zip newVars genDefs) $ \(v, (_, d, t)) -> do
+    d' <- boundM (return . pure . newVarSub) d
+    t' <- bindM (return . pure . newVarSub) t
     return (v, d', t')
 
   modifyIndent pred
 
-  return genDefs
+  return (newVarDefs, newVarSub)
   where
     acyclic (AcyclicSCC a) = a
     acyclic (CyclicSCC _) = error "generaliseDefs"
@@ -807,7 +844,7 @@ checkRecursiveDefs
     ( MetaA
     , ( SourceLoc
       , Concrete.TopLevelPatDefinition Concrete.Expr MetaA
-      , ConcreteM
+      , Maybe ConcreteM
       )
     )
   -> Infer
@@ -824,53 +861,117 @@ checkRecursiveDefs forceGeneralisation defs = do
           Concrete.TopLevelPatDefinition (Concrete.PatDefinition _ IsInstance _) -> Just v { metaData = Constraint }
           _ -> Nothing
   withVars localInstances $ do
-    forM_ defs $ \(evar, (_, _, typ)) -> do
+    -- Divide the definitions into ones with and without type signature.
+    let (noSigDefs, sigDefs) = divide defs
+
+    -- Assume that the specified type signatures are correct.
+    sigDefs' <- forM sigDefs $ \(evar, (loc, def, typ)) -> do
       typ' <- checkPoly typ Builtin.Type
       unify [] (metaType evar) typ'
+      return (evar, (loc, def))
 
-    checkedDefs <- forM defs $ \(evar, (loc, def, _)) -> do
-      (def', typ'') <- checkTopLevelDefType evar def loc $ metaType evar
-      logMeta 20 ("checkRecursiveDefs res " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) def'
-      logMeta 20 ("checkRecursiveDefs res t " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) typ''
-      return (loc, (evar, def', typ''))
+    -- The definitions without type signature are checked and generalised,
+    -- assuming the type signatures of the others.
+    noSigResult <- checkAndElabDefs noSigDefs
 
-    detectTypeRepCycles checkedDefs
-    detectDefCycles checkedDefs
+    result <- if forceGeneralisation || shouldGeneralise defs then do
 
-    elabDefs <- elabRecursiveDefs $ snd <$> checkedDefs
+      -- Generalise the definitions without signature
+      (genNoSigResult, noSigSub) <- generaliseDefs GeneraliseAll noSigResult
 
-    forM_ elabDefs $ \(evar, def, typ) -> do
-      logMeta 20 ("checkRecursiveDefs elab res " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) def
-      logMeta 20 ("checkRecursiveDefs elab res t " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) typ
+      subbedSigDefs <- forM sigDefs' $ \(v, (loc, def)) -> do
+        let def' = bound (pure . noSigSub) global def
+        return (v, (loc, def'))
 
-    shouldGen <- if forceGeneralisation then return True else shouldGeneralise elabDefs
-    if shouldGen then
-      generaliseDefs elabDefs
-    else
-      return elabDefs
+      sigResult <- checkAndElabDefs subbedSigDefs
+
+      -- Generalise the definitions with signature
+      if Vector.null sigResult then
+          -- No need to generalise again if there are actually no definitions
+          -- with signatures
+          return genNoSigResult
+        else do
+          (genResult, _) <- generaliseDefs GeneraliseType $ genNoSigResult <> sigResult
+          return genResult
+    else do
+      sigResult <- checkAndElabDefs sigDefs'
+      return $ noSigResult <> sigResult
+
+    let locs = (\(_, (loc, _)) -> loc) <$> noSigDefs
+          <|> (\(_, (loc, _)) -> loc) <$> sigDefs'
+
+    unless (Vector.length locs == Vector.length result) $
+      throwError $ "checkRecursiveDefs unmatched length" ++ (show $ Vector.length locs) ++ (show $ Vector.length result)
+
+    let locResult = Vector.zip locs result
+
+    detectTypeRepCycles locResult
+    detectDefCycles locResult
+
+    let permutation = Vector.zip (fst <$> defs) (fst <$> noSigDefs <|> fst <$> sigDefs)
+    return $ unpermute permutation result
+    where
+      divide = bimap Vector.fromList Vector.fromList . foldMap go
+        where
+          go (v, (loc, def, Nothing)) = ([(v, (loc, def))], [])
+          go (v, (loc, def, Just t)) = ([], [(v, (loc, def, t))])
+
+checkAndElabDefs
+  :: Vector
+    ( MetaA
+    , ( SourceLoc
+      , Concrete.TopLevelPatDefinition Concrete.Expr MetaA
+      )
+    )
+  -> Infer
+    (Vector
+      ( MetaA
+      , Definition Abstract.Expr MetaA
+      , AbstractM
+      )
+    )
+checkAndElabDefs defs = do
+  forM_ defs $ \(evar, (_, def)) ->
+    logMeta 20 ("checkAndElabDefs " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) def
+
+  modifyIndent succ
+
+  checkedDefs <- forM defs $ \(evar, (loc, def)) -> do
+    (def', typ'') <- checkTopLevelDefType evar def loc $ metaType evar
+    return (loc, (evar, def', typ''))
+
+  elabDefs <- elabRecursiveDefs $ snd <$> checkedDefs
+
+  modifyIndent pred
+
+  forM_ elabDefs $ \(evar, def, typ) -> do
+    logMeta 20 ("checkAndElabDefs res " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) def
+    logMeta 20 ("checkAndElabDefs res t " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) typ
+
+  return elabDefs
 
 shouldGeneralise
   :: Vector
     ( MetaA
-    , Definition Abstract.Expr MetaA
-    , AbstractM
+    , ( SourceLoc
+      , Concrete.TopLevelPatDefinition Concrete.Expr MetaA
+      , Maybe ConcreteM
+      )
     )
-  -> Infer Bool
-shouldGeneralise defs
-  = and
-  <$> mapM (\(_, def, _) -> shouldGeneraliseDef def) defs
+  -> Bool
+shouldGeneralise = all (\(_, (_, def, _)) -> shouldGeneraliseDef def)
   where
-    shouldGeneraliseDef (Definition _ _ e) = startsWithLambda <$> semiZonk e
-    shouldGeneraliseDef DataDefinition {} = return True
-    startsWithLambda Abstract.Lam {} = True
-    startsWithLambda _ = False
+    shouldGeneraliseDef (Concrete.TopLevelPatDefinition (Concrete.PatDefinition _ _ (Concrete.Clause ps _ NonEmpty.:| _))) = Vector.length ps > 0
+    shouldGeneraliseDef Concrete.TopLevelPatDataDefinition {} = True
+    shouldGeneraliseDef Concrete.TopLevelPatClassDefinition {} = True
+    shouldGeneraliseDef Concrete.TopLevelPatInstanceDefinition {} = True
 
 checkTopLevelRecursiveDefs
   :: Vector
     ( QName
     , SourceLoc
     , Concrete.TopLevelPatDefinition Concrete.Expr Void
-    , Concrete.Type Void
+    , Maybe (Concrete.Type Void)
     )
   -> Infer
     (Vector
@@ -882,7 +983,7 @@ checkTopLevelRecursiveDefs
 checkTopLevelRecursiveDefs defs = do
   let names = (\(v, _, _, _) -> v) <$> defs
 
-  (checkedDefs, evars) <- enterLevel $ do
+  checkedDefs <- enterLevel $ do
     evars <- forM names $ \name -> do
       let hint = fromQName name
       typ <- existsType hint
@@ -895,19 +996,15 @@ checkTopLevelRecursiveDefs defs = do
             $ fromMaybe (error "checkTopLevelRecursiveDefs 1")
             $ evars Vector.!? index
 
-    let exposedDefs = flip fmap defs $ \(_, loc, def, typ) ->
-          (loc, bound absurd expose def, bind absurd expose typ)
+    let exposedDefs = flip fmap defs $ \(_, loc, def, mtyp) ->
+          (loc, bound absurd expose def, bind absurd expose <$> mtyp)
 
-    checkedDefs <- checkRecursiveDefs True (Vector.zip evars exposedDefs)
+    checkRecursiveDefs True (Vector.zip evars exposedDefs)
 
-    return (checkedDefs, evars)
+  let evars' = (\(v, _, _) -> v) <$> checkedDefs
 
-  let varIndex = hashedElemIndex evars
-      unexpose evar = case varIndex evar of
-        Nothing -> pure evar
-        Just index -> global
-          $ fromMaybe (error "checkTopLevelRecursiveDefs 2")
-          $ names Vector.!? index
+  let varIndex = hashedElemIndex evars'
+      unexpose v = fromMaybe (pure v) $ (fmap global . (names Vector.!?)) =<< varIndex v
       vf :: MetaA -> Infer b
       vf v = throwError $ "checkTopLevelRecursiveDefs " ++ show v
 
