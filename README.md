@@ -300,6 +300,8 @@ meaning that we can choose to use monomorphisation when we want to.
 Does this sound interesting to you? Get involved and help shape the Sixten
 language! Contributions are always welcome.
 
+If want to get in touch, create a Github issue or join the [Gitter chat](https://gitter.im/sixten-lang).
+
 ## Authors
 
 [Olle Fredriksson](https://github.com/ollef)
