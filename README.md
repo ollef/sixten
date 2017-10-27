@@ -295,6 +295,15 @@ behaviour. Also note that type representation polymorphism does not preclude
 creating specialised versions of functions known to be performance-critical,
 meaning that we can choose to use monomorphisation when we want to.
 
+Sixten's type representation polymorphism is closely related to research on
+_intensional polymorphism_. What sets Sixten apart is the way type
+representations are used in the compiled code. Sixten doesn't need to use type
+representations to perform code selection, but rather compiles polymorphic
+functions to _single_ implementations that leverage the information in the
+type representation to be general enough to work for all types.
+Type representations are also not structural in Sixten, but consist simply
+of the size of the type.
+
 ## Contributions
 
 Does this sound interesting to you? Get involved and help shape the Sixten
