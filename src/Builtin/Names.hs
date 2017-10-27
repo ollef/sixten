@@ -16,7 +16,6 @@ pattern BuiltinModuleName <- ((==) "Sixten.Builtin" -> True) where BuiltinModule
 pattern UnsolvedConstraintName :: QName
 pattern UnsolvedConstraintName <- ((==) "Sixten.Builtin.UnsolvedConstraint" -> True) where UnsolvedConstraintName = "Sixten.Builtin.UnsolvedConstraint"
 
--- TODO Remove unused stuff (e.g. addInt)
 pattern IntName :: QName
 pattern IntName <- ((==) "Sixten.Builtin.Int" -> True) where IntName = "Sixten.Builtin.Int"
 pattern IntType :: Expr t
@@ -42,20 +41,10 @@ pattern MaxIntName <- ((==) "Sixten.Builtin.maxInt" -> True) where MaxIntName = 
 pattern MaxInt :: Expr t -> Expr t -> Expr t
 pattern MaxInt e1 e2 = App (App (Global MaxIntName) Explicit e1) Explicit e2
 
-pattern PrintIntName :: QName
-pattern PrintIntName <- ((==) "Sixten.Builtin.printInt" -> True) where PrintIntName = "Sixten.Builtin.printInt"
-pattern PrintInt :: Expr t -> Expr t
-pattern PrintInt e1 = App (Global PrintIntName) Explicit e1
-
 pattern TypeName :: QName
 pattern TypeName <- ((==) "Sixten.Builtin.Type" -> True) where TypeName = "Sixten.Builtin.Type"
 pattern Type :: Expr t
 pattern Type = Global TypeName
-
-pattern ConstraintName :: QName
-pattern ConstraintName <- ((==) "Sixten.Builtin.Constraint" -> True) where ConstraintName = "Sixten.Builtin.Constraint"
-pattern Constraint :: Expr t
-pattern Constraint = Global ConstraintName
 
 pattern ProductTypeRepName :: QName
 pattern ProductTypeRepName <- ((==) "Sixten.Builtin.productTypeRep" -> True) where ProductTypeRepName = "Sixten.Builtin.productTypeRep"
