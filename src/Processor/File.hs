@@ -10,6 +10,7 @@ import qualified Data.HashSet as HashSet
 import Data.Maybe
 import Data.Monoid
 import Data.Text(Text)
+import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import qualified Data.Vector as Vector
 import Data.Void
@@ -343,10 +344,10 @@ dupCheck m = forM m $ flip evalStateT (0 :: Int) . foldM go mempty
         Unscoped.TopLevelDefinition d -> return $ Unscoped.definitionName d
         Unscoped.TopLevelDataDefinition n _ _ -> return n
         Unscoped.TopLevelClassDefinition n _ _ -> return n
-        Unscoped.TopLevelInstanceDefinition {} -> do
+        Unscoped.TopLevelInstanceDefinition typ _ -> do
           i <- get
           put $! i + 1
-          return $ "instance-" <> shower i -- TODO: Make up better names for instances
+          return $ "instance-" <> shower i <> "-" <> replaceSpaces (shower $ pretty typ)
       let qname = QName (moduleName m) name
       if HashMap.member qname defs then do
         let (prevLoc, _) = defs HashMap.! qname
@@ -358,6 +359,10 @@ dupCheck m = forM m $ flip evalStateT (0 :: Int) . foldM go mempty
           , Leijen.pretty prevLoc
           ]
       else return $ HashMap.insert qname (loc, def) defs
+      where
+        replaceSpaces (Name n) = Name $ Text.map replaceSpace n
+        replaceSpace ' ' = '-'
+        replaceSpace c = c
 
     err :: SourceLoc -> Doc -> [Doc] -> Text
     err loc heading docs
