@@ -139,7 +139,7 @@ scopeCheckTopLevelDefinition (Unscoped.TopLevelDataDefinition _name params cs) =
   let res = Scoped.TopLevelPatDataDefinition $ DataDef cs'
   return (res, Just typ)
 scopeCheckTopLevelDefinition (Unscoped.TopLevelClassDefinition _name params ms) = do
-  (typ, abstr) <- scopeCheckParamsType params $ pure Builtin.TypeName -- TODO: Should this be a constraint?
+  (typ, abstr) <- scopeCheckParamsType params $ pure Builtin.TypeName
   ms' <- mapM (mapM (fmap abstr . scopeCheckExpr)) ms
   let res = Scoped.TopLevelPatClassDefinition $ ClassDef ms'
   return (res, Just typ)
