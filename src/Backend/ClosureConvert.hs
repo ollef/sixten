@@ -212,7 +212,7 @@ knownCall f (tele, returnTypeScope) args
     clArgs' = (\(TeleArg h _ s) -> TeleArg h () $ vacuous s) <$> clArgs
     fArgs1 = Vector.zipWith Anno
       (Var . B <$> Vector.enumFromN 2 numArgs)
-      ((\(TeleArg _ _ s) -> unvar F absurd <$> fromScope s) <$> clArgs)
+      ((\(TeleArg _ _ s) -> fromScope s) <$> clArgs')
     fArgs2 = Vector.zipWith Anno
       (Var . F <$> Vector.enumFromN (fromIntegral $ 1 + numXs) numXs)
       (Var . F <$> Vector.enumFromN 1 numXs)
