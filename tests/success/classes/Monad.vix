@@ -1,0 +1,45 @@
+class Monad m where
+  return : forall a. a -> m a
+  bind : forall a b. m a -> (a -> m b) -> m b
+
+type Maybe a
+  = Nothing
+  | Just a
+
+instance Monad Maybe where
+  return = Just
+  bind Nothing _ = Nothing
+  bind (Just a) f = f a
+
+type List a
+  = Nil
+  | Cons a (Ptr (List a))
+
+append : forall a. List a -> List a -> List a
+append Nil ys = ys
+append (Cons x (Ref xs)) ys = Cons x (Ref (append xs ys))
+
+instance Monad List where
+  return a = Cons a (Ref Nil)
+  bind Nil f = Nil
+  bind (Cons x (Ref xs)) f = append (f x) (bind xs f)
+
+mapM
+  : forall a b m
+  . Monad m
+  => (a -> m b)
+  -> List a
+  -> m (List b)
+mapM f Nil = return Nil
+mapM f (Cons x (Ref xs)) = bind (f x) (\y. bind (mapM f xs) (\ys. return (Cons y (Ref ys))))
+
+xs =
+  Cons 1 (Ref
+  (Cons 2 (Ref
+  (Cons 3 (Ref
+  Nil)))))
+
+main
+  = Cons (mapM (\x. Cons (printInt x) (Ref Nil)) xs) (Ref case mapM Just xs of
+  Just _ -> (\x. Nil) (printInt 610)
+  Nothing -> (\x. Nil) (printInt 666))
