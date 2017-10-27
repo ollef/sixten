@@ -180,19 +180,20 @@ knownCall f (tele, returnTypeScope) args
           $ Vector.cons (TeleArg "x_this" () $ Scope ptrRep)
           $ (\h -> TeleArg h () $ Scope intRep) <$> xs
           <|> (\(n, h) -> TeleArg h () $ Scope $ pure $ B $ 1 + TeleVar n) <$> Vector.indexed xs
-    fNumArgs <- liftThing $ Sized.Function tele'
-          $ toScope
-          $ fmap B
-          $ Case (Builtin.deref target $ Var 0)
-          $ ConBranches
-          $ pure
-          $ ConBranch
-            Builtin.Closure
-            (Telescope $ Vector.cons (TeleArg mempty () $ Scope intRep)
-                       $ Vector.cons (TeleArg mempty () $ Scope intRep) clArgs')
-            (toScope
-            $ Sized (go <$> returnType)
-            $ Call (global f) fArgs)
+    fNumArgs <- liftThing
+      $ Sized.Function tele'
+      $ toScope
+      $ fmap B
+      $ Case (Builtin.deref target $ Var 0)
+      $ ConBranches
+      $ pure
+      $ ConBranch
+        Builtin.Closure
+        (Telescope $ Vector.cons (TeleArg mempty () $ Scope ptrRep)
+                   $ Vector.cons (TeleArg mempty () $ Scope intRep) clArgs')
+        (toScope
+        $ Sized (go <$> returnType)
+        $ Call (global f) fArgs)
     return
       $ Con Builtin.Ref
       $ pure
