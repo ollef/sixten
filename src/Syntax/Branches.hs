@@ -33,42 +33,6 @@ data ConBranch c a expr v = ConBranch c (Telescope a expr v) (Scope TeleVar expr
 data LitBranch expr v = LitBranch Literal (expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-bimapAnnotatedBranches
-  :: Bifunctor expr
-  => (a -> a')
-  -> (v -> v')
-  -> Branches c a (expr a) v
-  -> Branches c a' (expr a') v'
-bimapAnnotatedBranches f g (ConBranches cbrs)
-  = ConBranches [ConBranch c (bimapAnnotatedTelescope f g tele) (bimapScope f g s) | ConBranch c tele s <- cbrs]
-bimapAnnotatedBranches f g (LitBranches lbrs def)
-  = LitBranches [LitBranch l (bimap f g br) | LitBranch l br <- lbrs] $ bimap f g def
-
-bifoldMapAnnotatedBranches
-  :: (Bifoldable expr, Monoid m)
-  => (a -> m)
-  -> (v -> m)
-  -> Branches c a (expr a) v
-  -> m
-bifoldMapAnnotatedBranches f g (ConBranches cbrs)
-  = mconcat [bifoldMapAnnotatedTelescope f g tele Monoid.<> bifoldMapScope f g s | ConBranch _ tele s <- cbrs]
-bifoldMapAnnotatedBranches f g (LitBranches lbrs def)
-  = mconcat (NonEmpty.toList [bifoldMap f g br | LitBranch _ br <- lbrs]) Monoid.<> bifoldMap f g def
-
-bitraverseAnnotatedBranches
-  :: (Bitraversable expr, Applicative f)
-  => (a -> f a')
-  -> (v -> f v')
-  -> Branches c a (expr a) v
-  -> f (Branches c a' (expr a') v')
-bitraverseAnnotatedBranches f g (ConBranches cbrs)
-  = ConBranches
-  <$> traverse
-    (\(ConBranch c tele br) -> ConBranch c <$> bitraverseAnnotatedTelescope f g tele <*> bitraverseScope f g br)
-    cbrs
-bitraverseAnnotatedBranches f g (LitBranches lbrs def)
-  = LitBranches <$> traverse (\(LitBranch l br) -> LitBranch l <$> bitraverse f g br) lbrs <*> bitraverse f g def
-
 bimapBranches
   :: Bifunctor expr
   => (a -> a')

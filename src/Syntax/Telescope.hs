@@ -56,33 +56,6 @@ unTelescope (Telescope xs) = xs
 mapAnnotations :: (a -> a') -> Telescope a e v -> Telescope a' e v
 mapAnnotations f (Telescope xs) = Telescope $ (\(TeleArg h a s) -> (TeleArg h (f a) s)) <$> xs
 
-bimapAnnotatedTelescope
-  :: Bifunctor e
-  => (a -> a')
-  -> (v -> v')
-  -> Telescope a (e a) v
-  -> Telescope a' (e a') v'
-bimapAnnotatedTelescope f g (Telescope xs)
-  = Telescope $ (\(TeleArg h a s) -> TeleArg h (f a) $ bimapScope f g s) <$> xs
-
-bifoldMapAnnotatedTelescope
-  :: (Bifoldable e, Monoid m)
-  => (a -> m)
-  -> (v -> m)
-  -> Telescope a (e a) v
-  -> m
-bifoldMapAnnotatedTelescope f g (Telescope xs)
-  = Foldable.fold $ (\(TeleArg _ a s) -> f a <> bifoldMapScope f g s) <$> xs
-
-bitraverseAnnotatedTelescope
-  :: (Bitraversable e, Applicative f)
-  => (a -> f a')
-  -> (v -> f v')
-  -> Telescope a (e a) v
-  -> f (Telescope a' (e a') v')
-bitraverseAnnotatedTelescope f g (Telescope xs)
-  = Telescope <$> traverse (\(TeleArg h a s) -> TeleArg h <$> f a <*> bitraverseScope f g s) xs
-
 bimapTelescope
   :: Bifunctor e
   => (a -> a')
