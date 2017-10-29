@@ -118,7 +118,7 @@ infer expr = case expr of
   Lit _ -> return (expr, MOutParam)
   Con c es -> do
     es' <- mapM infer es
-    return (Con c $ fst <$> es', MOutParam)  -- TODO: Can be improved.
+    return (Con c $ fst <$> es', MOutParam)
   Call f es -> do
     (f', (retDir, argDirs)) <- inferFunction f
     inferCall Call retDir argDirs f' es
