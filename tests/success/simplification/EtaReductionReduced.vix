@@ -1,2 +1,2 @@
-loop (n : Int) = loop n
-test (x : Int) = loop 1 x
+loop (n : int) = loop n
+test (x : int) = loop 1 x

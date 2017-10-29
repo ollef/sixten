@@ -1,4 +1,4 @@
-intEquals : Int -> Int -> Bool
+intEquals : int -> int -> bool
 intEquals x y = (C|
   return $x == $y ? $True : $False;
 |)

@@ -1,4 +1,4 @@
-type Tuple (A B : Type) where
+type Tuple (A B : type) where
   Tup : A -> B -> Tuple A B
 
 fst : forall a b. Tuple a b -> a
@@ -9,8 +9,8 @@ snd : forall a b. Tuple a b -> b
 snd x = case x of
   Tup a b -> b
 
-complex : Tuple Int Int
+complex : Tuple int int
 complex = Tup 10 20
 
-test : Int
+test : int
 test = printInt (addInt (fst complex) (snd complex))

@@ -1,24 +1,24 @@
-nonDep : Int -> Int
+nonDep : int -> int
 nonDep _ = 0
 
-dep : (n : Int) -> Int
+dep : (n : int) -> int
 dep _ = 0
 
-multi : (m n : Int) -> Int
+multi : (m n : int) -> int
 multi m n = 0
 
-multi2 : (m : Int)(n : Unit) -> Int
+multi2 : (m : int)(n : Unit) -> int
 multi2 m n = 0
 
-pat : (MkUnit : Unit) -> Int
+pat : (MkUnit : Unit) -> int
 pat MkUnit = 0
 
-implicit : @(m n : Int) -> Int
+implicit : @(m n : int) -> int
 implicit @m @n = 0
 
 type Maybe a = Nothing | Just a
 
-typedForall : forall (m n : Int)(u : Unit). Int
+typedForall : forall (m n : int)(u : Unit). int
 typedForall @m @n @u = 0
 
 untypedForall : forall a b. Maybe a -> Maybe b -> Maybe a

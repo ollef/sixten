@@ -1,2 +1,2 @@
-test : Int
+test : int
 test x = x

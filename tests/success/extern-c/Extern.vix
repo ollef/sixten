@@ -1,6 +1,6 @@
-add3 : Int -> Int -> Int -> Int
+add3 : int -> int -> int -> int
 add3 x y z = (C|
-  $type:Int result = $x + $y + $z;
+  $type:int result = $x + $y + $z;
   return result;
 |)
 

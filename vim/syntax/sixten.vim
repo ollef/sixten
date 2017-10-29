@@ -12,6 +12,7 @@ highlight def link sixtenModuleKeyword Keyword
 highlight def link sixtenClassKeyword Keyword
 highlight def link sixtenModifierKeyword Keyword
 highlight def link sixtenTypeKeyword Keyword
+highlight def link sixtenWhereKeyword Keyword
 highlight def link sixtenLetKeyword Keyword
 highlight def link sixtenCaseKeyword Conditional
 highlight def link sixtenForall Keyword
@@ -31,10 +32,11 @@ syn match sixtenIdentifier "[_a-z][a-zA-Z0-9_']*" contained
 syn match sixtenType "\<[A-Z][a-zA-Z0-9_']*\>"
 syn match sixtenDefinition "^\s*\([_a-zA-Z][a-zA-Z0-9_']*\_s*\)\+:"
 syn match sixtenNumber "\<[0-9]\+\>"
+syn match sixtenTypeKeyword "^\s*type"
 syn keyword sixtenModuleKeyword import module as exposing
 syn keyword sixtenClassKeyword instance class
 syn keyword sixtenModifierKeyword abstract
-syn keyword sixtenTypeKeyword type where
+syn keyword sixtenWhereKeyword where
 syn keyword sixtenCaseKeyword case of
 syn keyword sixtenLetKeyword let in
 syn keyword sixtenForall forall

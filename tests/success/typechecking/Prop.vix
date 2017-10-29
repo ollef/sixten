@@ -1,2 +1,2 @@
-map : forall (b : Type). b -> Int
+map : forall (b : type). b -> int
 map xs = map xs

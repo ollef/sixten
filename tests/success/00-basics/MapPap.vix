@@ -1,18 +1,18 @@
-deref : forall (t : Type). Ptr t -> t
-deref p = case p of Ref t -> t
+deref : forall (t : type). ptr t -> t
+deref p = case p of Ptr t -> t
 
-the : (A : Type) -> A -> A
+the : (A : type) -> A -> A
 the _ a = a
 
-type List (A : Type) where
-  Nil : List A
-  Cons : A -> Ptr (List A) -> List A
+type list (A : type) where
+  Nil : list A
+  Cons : A -> ptr (list A) -> list A
 
-type List2 (A : Type) where
-  Nil2 : List2 A
-  Cons2 : A -> Ptr (List2 A) -> List2 A
+type list2 (A : type) where
+  Nil2 : list2 A
+  Cons2 : A -> ptr (list2 A) -> list2 A
 
-tail : forall (A : Type). Ptr (List A) -> Ptr (List A)
+tail : forall (A : type). ptr (list A) -> ptr (list A)
 tail xs = case deref xs of
   Cons x xs' -> xs'
   Nil -> xs
@@ -21,17 +21,17 @@ tail2 xs = case deref xs of
   Cons x xs' -> xs'
   Nil -> xs
 
-tail3 : forall A. Ptr (List A) -> Ptr (List A)
+tail3 : forall A. ptr (list A) -> ptr (list A)
 tail3 xs = case deref xs of
   Cons x xs' -> xs'
   Nil -> xs
 
-map : forall (a b : Type). (a -> b) -> Ptr (List a) -> Ptr (List b)
-map f xs = Ref (case deref xs of
+map : forall (a b : type). (a -> b) -> ptr (list a) -> ptr (list b)
+map f xs = Ptr (case deref xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (map f xs'))
 
-map2 f xs = Ref (case deref xs of
+map2 f xs = Ptr (case deref xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (map2 f xs'))
 
@@ -40,20 +40,20 @@ dumbId xs = case xs of
   Cons x xs' -> Cons x xs'
 
 map3 f xs = case deref xs of
-  Cons x xs' -> Ref (Cons (f x) (map3 f xs'))
-  Nil -> Ref (the (List _) Nil)
+  Cons x xs' -> Ptr (Cons (f x) (map3 f xs'))
+  Nil -> Ptr (the (list _) Nil)
 
 map4 f xs = case deref xs of
-  Cons x xs' -> Ref (Cons (f x) (map4 f xs'))
-  Nil -> Ref Nil
+  Cons x xs' -> Ptr (Cons (f x) (map4 f xs'))
+  Nil -> Ptr Nil
 
-testList : Ptr (List Int)
-testList = Ref (Cons 1 (Ref (Cons 2 (Ref (Cons 3 (Ref Nil))))))
+testList : ptr (list int)
+testList = Ptr (Cons 1 (Ptr (Cons 2 (Ptr (Cons 3 (Ptr Nil))))))
 
-add3 : Int -> Int -> Int -> Int
+add3 : int -> int -> int -> int
 add3 a b c = addInt (addInt a b) c
 
-sum : Ptr (List Int) -> Int
+sum : ptr (list int) -> int
 sum xs = case deref xs of
   Nil -> 0
   Cons x xs' -> addInt x (sum xs')

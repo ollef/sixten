@@ -1,15 +1,15 @@
-deref : forall t. Ptr t -> t
-deref p = case p of Ref t -> t
+deref : forall t. ptr t -> t
+deref p = case p of Ptr t -> t
 
-type List A where
-  Nil : List A
-  Cons : A -> Ptr (List A) -> List A
+type list A where
+  Nil : list A
+  Cons : A -> ptr (list A) -> list A
 
-test : Ptr (List Int)
-test = Ref (Cons 2 (Ref (Cons 3 (Ref (Cons 5 (Ref Nil))))))
+test : ptr (list int)
+test = Ptr (Cons 2 (Ptr (Cons 3 (Ptr (Cons 5 (Ptr Nil))))))
 
-head : @(A : Type) -> Ptr (List A) -> A
-head (Ref (Cons x _)) = x
+head : @(A : type) -> ptr (list A) -> A
+head (Ptr (Cons x _)) = x
 head x = head x
 
 x = printInt (head test)

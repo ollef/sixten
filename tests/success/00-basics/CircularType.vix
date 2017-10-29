@@ -1,5 +1,5 @@
-const : forall (a b : Type). a -> b -> a
+const : forall (a b : type). a -> b -> a
 const x y = x
 
-X : const Int X
+X : const int X
 X = printInt 12

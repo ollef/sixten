@@ -1,30 +1,30 @@
-the : (A : Type) -> A -> A
+the : (A : type) -> A -> A
 the A a = a
 
-type Bool2 where
-  True : Bool2
-  False : Bool2
+type bool2 where
+  True : bool2
+  False : bool2
 
-tt : Bool2
+tt : bool2
 tt = True
 nil = Nil
-list : boolList
-list = Cons (the Bool False) (Ref (Cons (the Bool True) (Ref Nil)))
-boolList = List Bool
+myList : boolList
+myList = Cons (the bool False) (Ptr (Cons (the bool True) (Ptr Nil)))
+boolList = list bool
 
-test (b : Bool) = case b of
+test (b : bool) = case b of
   False -> 0
   True -> 1
 
-type List a where
-  Nil : List a
-  Cons : a -> Ptr (List a) -> List a
+type list a where
+  Nil : list a
+  Cons : a -> ptr (list a) -> list a
 
-type Maybe a where
-  Nothing : Maybe a
-  Just : a -> Maybe a
+type maybe a where
+  Nothing : maybe a
+  Just : a -> maybe a
 
-tail : forall a. List a -> List a
+tail : forall a. list a -> list a
 tail xs = case xs of
   Nil -> Nil
   Cons x xs' -> deref xs'
@@ -33,21 +33,21 @@ tail' xs = case xs of
   Nil -> Nil
   Cons x xs' -> deref xs'
 
-deref : forall t. Ptr t -> t
-deref p = case p of Ref t -> t
+deref : forall t. ptr t -> t
+deref p = case p of Ptr t -> t
 
-map : forall (a b : Type). (a -> b) -> List a -> List b
+map : forall (a b : type). (a -> b) -> list a -> list b
 map f xs = case xs of
   Nil -> Nil
-  Cons x xs' -> Cons (f x) (Ref (map f (deref xs')))
+  Cons x xs' -> Cons (f x) (Ptr (map f (deref xs')))
 
 mapp f xs = case xs of
   Nil -> Nil
-  Cons x xs' -> Cons (f x) (Ref (mapp f (deref xs')))
+  Cons x xs' -> Cons (f x) (Ptr (mapp f (deref xs')))
 
 id x = x
 
-propagationTest : Bool
+propagationTest : bool
 propagationTest = id (id True)
 
 lift f x = f x (\y. y)

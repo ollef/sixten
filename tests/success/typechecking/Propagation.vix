@@ -6,12 +6,12 @@ type List2 a where
   Nil : List2 a
   Cons : a -> Ptr (List2 a) -> List2 a
 
-the : (A : Type) -> A -> A
+the : (A : type) -> A -> A
 the _ a = a
 
-test = the (_ -> _ -> List _) Cons 1 (Ref Nil)
+test = the (_ -> _ -> List _) Cons 1 (Ptr Nil)
 
-test2 = the (List2 Int) (Cons 1 (Ref Nil))
+test2 = the (List2 int) (Cons 1 (Ptr Nil))
 
-test3 : List2 Int
-test3 = Cons 1 (Ref Nil)
+test3 : List2 int
+test3 = Cons 1 (Ptr Nil)

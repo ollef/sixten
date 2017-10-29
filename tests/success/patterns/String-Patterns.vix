@@ -1,4 +1,4 @@
-test : String -> Int
+test : String -> int
 test "alpha" = 1
 test "alphu" = 2
 test "beta" = 3
@@ -10,7 +10,7 @@ test _ = -1
 type List A = Nil | Cons A (Ptr (List A))
 
 map : forall A B. (A -> B) -> Ptr (List A) -> Ptr (List B)
-map f (Ref Nil) = Ref Nil
-map f (Ref (Cons x xs)) = Ref (Cons (f x) (map f xs))
+map f (Ptr Nil) = Ptr Nil
+map f (Ptr (Cons x xs)) = Ptr (Cons (f x) (map f xs))
 
-main' = map (\s. printInt (test s)) (Ref (Cons "alpha" (Ref (Cons "alphu" (Ref (Cons "beta" (Ref (Cons "gamma" (Ref (Cons "delta" (Ref (Cons "" (Ref (Cons "other" (Ref Nil)))))))))))))))
+main' = map (\s. printInt (test s)) (Ptr (Cons "alpha" (Ptr (Cons "alphu" (Ptr (Cons "beta" (Ptr (Cons "gamma" (Ptr (Cons "delta" (Ptr (Cons "" (Ptr (Cons "other" (Ptr Nil)))))))))))))))

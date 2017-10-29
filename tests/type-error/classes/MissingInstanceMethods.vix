@@ -2,5 +2,5 @@ class Test a where
   f : a
   g : a
 
-instance Test Int where
+instance Test int where
   f = 1

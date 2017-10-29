@@ -9,11 +9,11 @@ app = APP
 
 app2 f x = APP f x
 
-type List a = Nil | Cons a (Ptr (List a))
+type list a = Nil | Cons a (ptr (list a))
 
-map f (Ref Nil) = Ref Nil
-map f (Ref (Cons x xs)) = Ref (Cons (f x) (map f xs))
+map f (Ptr Nil) = Ptr Nil
+map f (Ptr (Cons x xs)) = Ptr (Cons (f x) (map f xs))
 
-list = Ref (Cons (APP (addInt 1) 2) (Ref (Cons (app (addInt 2) 3) (Ref (Cons (APP2 (addInt 3) 4) (Ref (Cons (app2 (addInt 4) 5) (Ref Nil))))))))
+myList = Ptr (Cons (APP (addInt 1) 2) (Ptr (Cons (app (addInt 2) 3) (Ptr (Cons (APP2 (addInt 3) 4) (Ptr (Cons (app2 (addInt 4) 5) (Ptr Nil))))))))
 
-result = map printInt list
+result = map printInt myList

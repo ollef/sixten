@@ -1,2 +1,2 @@
-f : Int
+f : int
 f = (\x. f) 1

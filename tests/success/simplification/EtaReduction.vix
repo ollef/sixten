@@ -4,15 +4,15 @@ loop unit = loop unit
 
 test1 = \x y z. x y z
 test2 = \x y z. (loop unit) x y z
-test3 = \(x : Int -> Int -> Int) (y z : Int). x y z
-test4 = \(x y z : Int). (loop unit) x y z
+test3 = \(x : int -> int -> int) (y z : int). x y z
+test4 = \(x y z : int). (loop unit) x y z
 
-test5 : Int -> Int -> Int -> Int
-test5 = \(x y z : Int). (loop unit) x y z
+test5 : int -> int -> int -> int
+test5 = \(x y z : int). (loop unit) x y z
 
 type List a = Nil | Cons a (Ptr (List a))
 
-map f (Ref Nil) = Ref Nil
-map f (Ref (Cons x xs)) = Ref (Cons (f x) (map f xs))
+map f (Ptr Nil) = Ptr Nil
+map f (Ptr (Cons x xs)) = Ptr (Cons (f x) (map f xs))
 
-main1 = map printInt (Ref (Cons (test1 (\x y. 3) 0 1) (Ref (Cons (test3 (\x y. 4) 0 1) (Ref Nil)))))
+main1 = map printInt (Ptr (Cons (test1 (\x y. 3) 0 1) (Ptr (Cons (test3 (\x y. 4) 0 1) (Ptr Nil)))))

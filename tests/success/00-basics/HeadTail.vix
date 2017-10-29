@@ -1,24 +1,24 @@
-deref : @(a : Type) -> Ptr a -> a
+deref : @(a : type) -> ptr a -> a
 deref ptr = case ptr of
-  Ref a -> a
+  Ptr a -> a
 
-type List a where
-  Nil : List a
-  Cons : a -> Ptr (List a) -> List a
+type list a where
+  Nil : list a
+  Cons : a -> ptr (list a) -> list a
 
 error 0 = error 0
 
-head : @(a : Type) -> Ptr (List a) -> a
+head : @(a : type) -> ptr (list a) -> a
 head xs = case deref xs of
   Cons a _ -> a
   Nil -> error 0
 
-tail : @(a : Type) -> Ptr (List a) -> List a
+tail : @(a : type) -> ptr (list a) -> list a
 tail xs = case deref xs of
   Cons _ xs -> deref xs
   Nil -> error 0
 
-aList = Ref (Cons 1 (Ref (Cons 2 (Ref Nil))))
+aList = Ptr (Cons 1 (Ptr (Cons 2 (Ptr Nil))))
 
 val1 = printInt (head aList)
-val2 = printInt (head (Ref (tail aList)))
+val2 = printInt (head (Ptr (tail aList)))

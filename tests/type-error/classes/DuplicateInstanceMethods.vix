@@ -2,7 +2,7 @@ class Test a where
   f : a
   g : a
 
-instance Test Int where
+instance Test int where
   f = 1
   g = 2
   f = 3

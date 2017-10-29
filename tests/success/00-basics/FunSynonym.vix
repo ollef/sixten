@@ -1,8 +1,7 @@
-
-test : Int -> Int
+test : int -> int
 test x = addInt 1 x
 
-test2 : Int -> Int
+test2 : int -> int
 test2 = test
 
 test3 = printInt (test2 2)

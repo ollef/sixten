@@ -1,4 +1,4 @@
-type Bool where
-  False True : Bool
+type bool where
+  False True : bool
 
-Bool : Type
+bool : type

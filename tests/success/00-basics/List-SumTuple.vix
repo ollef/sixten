@@ -1,9 +1,9 @@
-type List a = Nil | Cons a (Ptr (List a))
-type Tuple a b = MkTuple a b
+type list a = Nil | Cons a (ptr (list a))
+type tuple a b = Tuple a b
 
-list = Ref (Cons (MkTuple 1 2) (Ref (Cons (MkTuple 3 4) (Ref (Cons (MkTuple 5 6) (Ref Nil))))))
+myList = Ptr (Cons (Tuple 1 2) (Ptr (Cons (Tuple 3 4) (Ptr (Cons (Tuple 5 6) (Ptr Nil))))))
 
-map f (Ref Nil) = Ref Nil
-map f (Ref (Cons x xs)) = Ref (Cons (f x) (map f xs))
+map f (Ptr Nil) = Ptr Nil
+map f (Ptr (Cons x xs)) = Ptr (Cons (f x) (map f xs))
 
-test = map (\(MkTuple a b). MkTuple (printInt a) (printInt b)) list
+test = map (\(Tuple a b). Tuple (printInt a) (printInt b)) myList

@@ -1,13 +1,13 @@
 import A
 
-type MainType = Con
+type mainType = Con
 
 acon = A.Con
 
-acon' : A.AType
+acon' : A.aType
 acon' = acon
 
 maincon = Con
 
-maincon' : MainType
+maincon' : mainType
 maincon' = Con

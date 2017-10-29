@@ -1,4 +1,4 @@
-f : Int
+f : int
 f =
   let g _ = f
   g MkUnit

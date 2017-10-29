@@ -1,3 +1,3 @@
-test : Int
+test : int
 test = 123
-test : Int
+test : int

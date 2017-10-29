@@ -1,44 +1,44 @@
-type Unit' = unit
+type unit' = Unit'
 
-type Tuple A B = tuple A B
+type tuple A B = Tuple A B
 
-addNat : Nat -> Nat -> Nat
+addNat : nat -> nat -> nat
 addNat Zero n = n
 addNat (Succ m) n = Succ (addNat m n)
 
-Vector' : Nat -> Type -> Type
-Vector' Zero _ = Unit'
-Vector' (Succ n) a = Tuple a (Vector' n a)
+vector' : nat -> type -> type
+vector' Zero _ = unit'
+vector' (Succ n) a = tuple a (vector' n a)
 
-sumVec : (n : _) -> Vector' n Int -> Int
-sumVec Zero unit = 0
-sumVec (Succ n) (tuple x xs) = addInt x (sumVec n xs)
+sumVec : (n : _) -> vector' n int -> int
+sumVec Zero Unit' = 0
+sumVec (Succ n) (Tuple x xs) = addInt x (sumVec n xs)
 
-appendVec : forall a. (m n : _) -> Vector' m a -> Vector' n a -> Vector' (addNat m n) a
-appendVec Zero n unit ys = ys
-appendVec @a (Succ m) n (tuple x xs) ys = tuple x (appendVec @a m n xs ys)
+appendVec : forall a. (m n : _) -> vector' m a -> vector' n a -> vector' (addNat m n) a
+appendVec Zero n Unit' ys = ys
+appendVec @a (Succ m) n (Tuple x xs) ys = Tuple x (appendVec @a m n xs ys)
 
-type Array' A where
-  array : (n : _) -> Ptr (Vector' n A) -> Array' A
+type array' A where
+  array : (n : _) -> ptr (vector' n A) -> array' A
 
 one = Succ Zero
 two = Succ one
 three = Succ two
 
-test : Array' (Tuple Int Int)
-test = array two (Ref (tuple (tuple 1 2) (tuple (tuple 3 4) unit)))
+test : array' (tuple int int)
+test = array two (Ptr (Tuple (Tuple 1 2) (Tuple (Tuple 3 4) Unit')))
 
-test2 : Array' (Tuple Int Int)
-test2 = array three (Ref (tuple (tuple 12 13) (tuple (tuple 14 15) (tuple (tuple 16 17) unit))))
+test2 : array' (tuple int int)
+test2 = array three (Ptr (Tuple (Tuple 12 13) (Tuple (Tuple 14 15) (Tuple (Tuple 16 17) Unit'))))
 
-mapVec : forall A B. (n : _) -> (A -> B) -> Vector' n A -> Vector' n B
-mapVec Zero f unit = unit
-mapVec (Succ n) f (tuple a xs) = tuple (f a) (mapVec n f xs)
+mapVec : forall A B. (n : _) -> (A -> B) -> vector' n A -> vector' n B
+mapVec Zero f Unit' = Unit'
+mapVec (Succ n) f (Tuple a xs) = Tuple (f a) (mapVec n f xs)
 
-appendArr : forall A. Array' A -> Array' A -> Array' A
-appendArr @A (array m (Ref xs)) (array n (Ref ys)) = array (addNat m n) (Ref (appendVec @A m n xs ys))
+appendArr : forall A. array' A -> array' A -> array' A
+appendArr @A (array m (Ptr xs)) (array n (Ptr ys)) = array (addNat m n) (Ptr (appendVec @A m n xs ys))
 
-mapArr : forall A B. (A -> B) -> Array' A -> Array' B
-mapArr f (array m (Ref xs)) = array m (Ref (mapVec m f xs))
+mapArr : forall A B. (A -> B) -> array' A -> array' B
+mapArr f (array m (Ptr xs)) = array m (Ptr (mapVec m f xs))
 
-test3 = mapArr printInt (mapArr (\(tuple x y). addInt x y) (appendArr test test2))
+test3 = mapArr printInt (mapArr (\(Tuple x y). addInt x y) (appendArr test test2))

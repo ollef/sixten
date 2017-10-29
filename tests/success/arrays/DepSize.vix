@@ -1,5 +1,5 @@
 deref : forall A. Ptr A -> A
-deref p = case p of Ref a -> a
+deref p = case p of Ptr a -> a
 
 type Unit' where
   unit : Unit'
@@ -11,12 +11,12 @@ type Nat' where
   Zero : Nat'
   Succ : Ptr Nat' -> Nat'
 
-ntuple : (n : Ptr Nat') -> Type
+ntuple : (n : ptr nat') -> type
 ntuple n = case deref n of
   Zero -> Unit'
-  Succ n' -> Tuple Int (ntuple n')
+  Succ n' -> Tuple int (ntuple n')
 
-test : ntuple (Ref (Succ (Ref (Succ (Ref Zero)))))
+test : ntuple (Ptr (Succ (Ptr (Succ (Ptr Zero)))))
 test = tuple 0 (tuple 1 unit)
 
 lol = printInt case test of

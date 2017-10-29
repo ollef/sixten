@@ -1,11 +1,11 @@
 class ToBool t where
-  toBool : t -> Bool
+  tobool : t -> bool
 
-instance ToBool Int where
+instance ToBool int where
   toBool 0 = False
   toBool n = True
 
-instance ToBool Bool where
+instance Tobool bool where
   toBool b = b
 
 main = printInt case toBool 3 of

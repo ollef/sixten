@@ -3,7 +3,7 @@ id x = x
 
 id' x = x
 
-idT : Type -> Type
+idT : type -> type
 idT t = t
 
 idf : forall f a. f a -> f a
@@ -13,12 +13,12 @@ const : forall a b. a -> b -> a
 const x y = x
 
 idConst1 : forall f a. f a -> f a
-idConst1 x = const x (\(x : Int). x)
+idConst1 x = const x (\(x : int). x)
 
 useConst : forall a b. ((a -> a -> a) -> b) -> b
 useConst f = f const
 
-fun : Type -> Type
+fun : type -> type
 fun a = a -> a
 
 fa : forall a. a

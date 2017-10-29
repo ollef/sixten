@@ -2,4 +2,4 @@ prime' x = x
 
 hej = printInt (prime' 123)
 
-prime2' = Int
+prime2' = int

@@ -1,4 +1,4 @@
-test : Int
+test : int
 test = printInt (C|
   char c = '\t';
   return c == 9 ? 123 : 321;

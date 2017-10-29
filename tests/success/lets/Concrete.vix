@@ -1,5 +1,5 @@
 main =
-  let T = Int
+  let T = int
       f : T -> T
       f x = addInt 3 x
   printInt (f 120)

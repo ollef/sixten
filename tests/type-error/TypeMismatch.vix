@@ -1,8 +1,8 @@
-type Bool where
-  False : Bool
-  True : Bool
+type bool where
+  False : bool
+  True : bool
 
-the : (a : Type) -> a -> a
+the : (a : type) -> a -> a
 the _ x = x
 
-test = addInt (the Bool True) 1
+test = addInt (the bool True) 1

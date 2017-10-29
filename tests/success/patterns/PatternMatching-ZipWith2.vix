@@ -1,16 +1,16 @@
 type List A = Nil | Cons A (Ptr (List A))
 
-zipWith f (Ref Nil) (Ref Nil) = Ref Nil
-zipWith f (Ref Nil) (Ref Nil) = Ref Nil
-zipWith f (Ref (Cons _ _)) (Ref Nil) = Ref Nil
-zipWith f (Ref Nil) (Ref (Cons _ _)) = Ref Nil
-zipWith f (Ref (Cons x xs)) (Ref (Cons y ys)) = Ref (Cons (f x y) (zipWith f xs ys))
+zipWith f (Ptr Nil) (Ptr Nil) = Ptr Nil
+zipWith f (Ptr Nil) (Ptr Nil) = Ptr Nil
+zipWith f (Ptr (Cons _ _)) (Ptr Nil) = Ptr Nil
+zipWith f (Ptr Nil) (Ptr (Cons _ _)) = Ptr Nil
+zipWith f (Ptr (Cons x xs)) (Ptr (Cons y ys)) = Ptr (Cons (f x y) (zipWith f xs ys))
 
-test : Ptr (List Int)
-test = Ref (Cons 2 (Ref (Cons 3 (Ref (Cons 5 (Ref Nil))))))
+test : Ptr (List int)
+test = Ptr (Cons 2 (Ptr (Cons 3 (Ptr (Cons 5 (Ptr Nil))))))
 
 deref : forall t. Ptr t -> t
-deref p = case p of Ref t -> t
+deref p = case p of Ptr t -> t
 
 sum xs = case deref xs of
   Nil -> 0

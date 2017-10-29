@@ -1,8 +1,8 @@
 type List a = Nil | Cons a (Ptr (List a))
 
-oneTwos = Ref (Cons 1 twoOnes)
-twoOnes = Ref (Cons 2 oneTwos)
+oneTwos = Ptr (Cons 1 twoOnes)
+twoOnes = Ptr (Cons 2 oneTwos)
 
 test = case oneTwos of
-  Ref (Cons 1 (Ref (Cons 2 (Ref (Cons 1 (Ref (Cons 2 _))))))) -> 111
+  Ptr (Cons 1 (Ptr (Cons 2 (Ptr (Cons 1 (Ptr (Cons 2 _))))))) -> 111
   _ -> 222

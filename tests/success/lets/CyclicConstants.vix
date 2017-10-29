@@ -1,10 +1,10 @@
 f x = case c of
-  MkMyType c _ -> addInt x c
+  MyType c _ -> addInt x c
 
-type MyType = MkMyType Int (Int -> Int)
+type myType = MyType int (int -> int)
 
 c =
   let g x = f x
-  MkMyType 42 g
+  MyType 42 g
 
 main = printInt (f 1)

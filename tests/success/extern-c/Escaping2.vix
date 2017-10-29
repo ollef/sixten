@@ -1,4 +1,4 @@
-test : Int
+test : int
 test = printInt (C|
   const char* s = "\|)\$";
   return (s[0] == '|') + (s[1] == ')') + (s[2] == '\$');

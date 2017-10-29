@@ -6,16 +6,16 @@ type LazyValue a
 
 force : forall a. Lazy a -> a
 force @a (MkLazy l) = case l of
-  Ref (Thunk f) ->
+  Ptr (Thunk f) ->
     let result = f MkUnit
     (C|
       memcpy((void*)$l, $(Done result), $(sizeOf (LazyValue a)));
       memcpy(return_, $result, $(sizeOf a));
     |)
-  Ref (Done a) -> a
+  Ptr (Done a) -> a
 
 thunk : forall a. (Unit -> a) -> Lazy a
-thunk f = MkLazy (Ref (Thunk f))
+thunk f = MkLazy (Ptr (Thunk f))
 
 x = thunk (\MkUnit. printInt 41)
 

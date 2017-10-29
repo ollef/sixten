@@ -1,7 +1,7 @@
-g : Unit -> Int
+g : Unit -> int
 g _ = f
 
-f : Int
+f : int
 f = g MkUnit
 
 main = printInt f

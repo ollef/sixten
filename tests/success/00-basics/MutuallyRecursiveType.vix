@@ -1,2 +1,2 @@
-type A = A1 | A2 B
-type B = B1 | B2 (Ptr A)
+type a = A1 | A2 b
+type b = B1 | B2 (ptr a)

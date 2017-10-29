@@ -1,20 +1,20 @@
-type Nat' where
-  Zero : Nat'
-  Succ : Ptr Nat' -> Nat'
+type nat' where
+  Zero : nat'
+  Succ : ptr nat' -> nat'
 
 deref p = case p of
-  Ref x -> x
+  Ptr x -> x
 
 not b = case b of
   False -> True
   True -> False
 
-odd : Ptr Nat' -> Bool
+odd : ptr nat' -> bool
 odd x = case deref x of
   Zero -> False
   Succ n -> even n
 
-even : Ptr Nat' -> Bool
+even : ptr nat' -> bool
 even x = case deref x of
   Zero -> True
   Succ n -> odd n
@@ -23,22 +23,22 @@ boolToInt b = case b of
   False -> 0
   True -> 1
 
-zero : Ptr Nat'
-zero = Ref Zero
-one : Ptr Nat'
-one = Ref (Succ zero)
-two : Ptr Nat'
-two = Ref (Succ one)
-three : Ptr Nat'
-three = Ref (Succ two)
+zero : ptr nat'
+zero = Ptr Zero
+one : ptr nat'
+one = Ptr (Succ zero)
+two : ptr nat'
+two = Ptr (Succ one)
+three : ptr nat'
+three = Ptr (Succ two)
 
-type List a where
-  Nil : List a
-  Cons : a -> Ptr (List a) -> List a
+type list a where
+  Nil : list a
+  Cons : a -> ptr (list a) -> list a
 
-numbers = Ref (Cons zero (Ref (Cons one (Ref (Cons two (Ref (Cons three (Ref Nil))))))))
+numbers = Ptr (Cons zero (Ptr (Cons one (Ptr (Cons two (Ptr (Cons three (Ptr Nil))))))))
 
-map f xs = Ref case deref xs of
+map f xs = Ptr case deref xs of
   Nil -> Nil
   Cons x xs' -> Cons (f x) (map f xs')
 

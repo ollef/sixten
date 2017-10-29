@@ -1,2 +1,2 @@
-type A = A1 Int | A2 Int Int | A3 Int Int B Int Int | A4 Int Int Int Int
-type B = B1 Int | B2 Int Int | B3 Int Int A Int Int | B4 Int Int Int Int
+type A = A1 int | A2 int int | A3 int int B int int | A4 int int int int
+type B = B1 int | B2 int int | B3 int int A int int | B4 int int int int

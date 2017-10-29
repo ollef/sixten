@@ -1,5 +1,5 @@
 import A exposing (..)
 
-type MainType = Con
+type mainType = Con
 
 acon = Con

@@ -1,19 +1,19 @@
-Bool' : Type
-Bool' = @(a : Type) -> a -> a -> a
+bool' : type
+bool' = @(a : type) -> a -> a -> a
 
-True' : Bool'
+True' : bool'
 True' x y = x
 
-False' : Bool'
+False' : bool'
 False' x y = y
 
-if : forall a. Bool' -> a -> a -> a
+if : forall a. bool' -> a -> a -> a
 if b = b
 
-and : Bool' -> Bool' -> Bool'
+and : bool' -> bool' -> bool'
 and b1 b2 = if b1 b2 False'
 
-or : Bool' -> Bool' -> Bool'
+or : bool' -> bool' -> bool'
 or b1 b2 = if b1 True' b2
 
 main2 = printInt (if (or (and True' False') True') 12 13)

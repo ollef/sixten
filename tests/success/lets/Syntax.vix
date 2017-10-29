@@ -19,30 +19,30 @@ letArg =
   f let x = 3 in x
 
 letTypeSig =
-  let i : Int
+  let i : int
       i = 23
-      j : Int
+      j : int
       j = 100
   addInt i j
 
 wheres = addInt i j
   where
-    i : Int
+    i : int
     i = 23
-    j : Int
+    j : int
     j = 100
 
 type List a = Nil | Cons a (Ptr (List a))
 
-map f (Ref Nil) = Ref Nil
-map f (Ref (Cons x xs)) = Ref (Cons (f x) (map f xs))
+map f (Ptr Nil) = Ptr Nil
+map f (Ptr (Cons x xs)) = Ptr (Cons (f x) (map f xs))
 
 main = map printInt
-  (Ref (Cons letIn1
-  (Ref (Cons letIn2
-  (Ref (Cons letNoIn
-  (Ref (Cons mutualLets
-  (Ref (Cons letArg
-  (Ref (Cons letTypeSig
-  (Ref (Cons wheres
-  (Ref Nil)))))))))))))))
+  (Ptr (Cons letIn1
+  (Ptr (Cons letIn2
+  (Ptr (Cons letNoIn
+  (Ptr (Cons mutualLets
+  (Ptr (Cons letArg
+  (Ptr (Cons letTypeSig
+  (Ptr (Cons wheres
+  (Ptr Nil)))))))))))))))

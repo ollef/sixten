@@ -1,11 +1,11 @@
 class Summable a where
-  sum : a -> Int
+  sum : a -> int
 
 type List a
   = Nil
   | Cons a (Ptr (List a))
 
-instance Summable Int where
+instance Summable int where
   sum x = x
 
 instance forall a. Summable a => Summable (List a) where
@@ -13,11 +13,11 @@ instance forall a. Summable a => Summable (List a) where
   sum (Cons x xs) = addInt (sum x) (sum xs)
 
 instance forall a. Summable a => Summable (Ptr a) where
-  sum (Ref x) = sum x
+  sum (Ptr x) = sum x
 
-test : forall a. Summable a => a -> Int
+test : forall a. Summable a => a -> int
 test x = sum x
 
 test2 x = addInt (sum x) (sum x)
 
-main = printInt (test (Ref (Cons 1 (Ref (Cons 2 (Ref (Cons 3 (Ref Nil))))))))
+main = printInt (test (Ptr (Cons 1 (Ptr (Cons 2 (Ptr (Cons 3 (Ptr Nil))))))))

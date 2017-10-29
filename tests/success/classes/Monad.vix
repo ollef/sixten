@@ -17,12 +17,12 @@ type List a
 
 append : forall a. List a -> List a -> List a
 append Nil ys = ys
-append (Cons x (Ref xs)) ys = Cons x (Ref (append xs ys))
+append (Cons x (Ptr xs)) ys = Cons x (Ptr (append xs ys))
 
 instance Monad List where
-  return a = Cons a (Ref Nil)
+  return a = Cons a (Ptr Nil)
   bind Nil f = Nil
-  bind (Cons x (Ref xs)) f = append (f x) (bind xs f)
+  bind (Cons x (Ptr xs)) f = append (f x) (bind xs f)
 
 mapM
   : forall a b m
@@ -31,15 +31,15 @@ mapM
   -> List a
   -> m (List b)
 mapM f Nil = return Nil
-mapM f (Cons x (Ref xs)) = bind (f x) (\y. bind (mapM f xs) (\ys. return (Cons y (Ref ys))))
+mapM f (Cons x (Ptr xs)) = bind (f x) (\y. bind (mapM f xs) (\ys. return (Cons y (Ptr ys))))
 
 xs =
-  Cons 1 (Ref
-  (Cons 2 (Ref
-  (Cons 3 (Ref
+  Cons 1 (Ptr
+  (Cons 2 (Ptr
+  (Cons 3 (Ptr
   Nil)))))
 
 main
-  = Cons (mapM (\x. Cons (printInt x) (Ref Nil)) xs) (Ref case mapM Just xs of
+  = Cons (mapM (\x. Cons (printInt x) (Ptr Nil)) xs) (Ptr case mapM Just xs of
   Just _ -> (\x. Nil) (printInt 610)
   Nothing -> (\x. Nil) (printInt 666))

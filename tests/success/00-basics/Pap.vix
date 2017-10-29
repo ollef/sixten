@@ -1,7 +1,7 @@
-ap1 : forall (A B : Type). (A -> B) -> A -> B
+ap1 : forall (A B : type). (A -> B) -> A -> B
 ap1 f x = f x
 
-add3 : Int -> Int -> Int -> Int
+add3 : int -> int -> int -> int
 add3 a b c = addInt (addInt a b) c
 
 test = printInt (ap1 addInt 1 2)

@@ -6,11 +6,11 @@ addNat : Nat -> Nat -> Nat
 addNat Zero n = n
 addNat (Succ m) n = Succ (addNat m n)
 
-Vector' : Nat -> Type -> Type
+Vector' : nat -> type -> type
 Vector' Zero _ = Unit'
 Vector' (Succ n) a = Tuple a (Vector' n a)
 
-sum : (n : _) -> Vector' n Int -> Int
+sum : (n : _) -> Vector' n int -> int
 sum Zero unit = 0
 sum (Succ n) (tuple x xs) = addInt x (sum n xs)
 
@@ -21,4 +21,4 @@ append a (Succ m) n (tuple x xs) ys = tuple x (append a m n xs ys)
 two = Succ (Succ Zero)
 three = Succ (Succ (Succ Zero))
 
-test = printInt (sum (addNat three two) (append Int three two (tuple 1 (tuple 2 (tuple 3 unit))) (tuple 12 (tuple 13 unit))))
+test = printint (sum (addNat three two) (append int three two (tuple 1 (tuple 2 (tuple 3 unit))) (tuple 12 (tuple 13 unit))))

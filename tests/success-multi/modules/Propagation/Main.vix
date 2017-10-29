@@ -1,9 +1,9 @@
 import A exposing (..)
 
-type MainType = Con
+type mainType = Con
 
-acon : AType
+acon : aType
 acon = Con
 
-maincon : MainType
+maincon : mainType
 maincon = Con

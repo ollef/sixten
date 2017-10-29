@@ -1,60 +1,60 @@
 module Sixten.Builtin exposing (..)
 
-type Bool = False | True
+type bool = False | True
 
 abstract
-UnsolvedConstraint : (T : Type) -> T
-UnsolvedConstraint T = UnsolvedConstraint T
+unsolvedConstraint : (t : type) -> t
+unsolvedConstraint t = unsolvedConstraint t
 
 abstract
-eqInt : Int -> Int -> Bool
+eqInt : int -> int -> bool
 eqInt x y = (C|
   return $x == $y ? $True : $False;
 |)
 
 abstract
-addInt : Int -> Int -> Int
+addInt : int -> int -> int
 addInt x y = (C|
   return $x + $y;
 |)
 
 abstract
-subInt : Int -> Int -> Int
+subInt : int -> int -> int
 subInt x y = (C|
   return $x - $y;
 |)
 
 abstract
-maxInt : Int -> Int -> Int
+maxInt : int -> int -> int
 maxInt x y = (C|
   return $x > $y ? $x : $y;
 |)
 
 abstract
-printInt : Int -> Int
+printInt : int -> int
 printInt x = (C|
   printf("%zd\n", $x);
   return 0;
 |)
 
 abstract
-fail : (T : Type) -> T
+fail : (t : type) -> t
 fail _ = (C|
   exit(1);
 |)
 
 abstract
-sizeOf : Type -> Int
-sizeOf T = (C| return $T; |)
+sizeOf : type -> int
+sizeOf t = (C| return $t; |)
 
 abstract
-MkType : Int -> Type
-MkType i = (C| return $i; |)
+mkType : int -> type
+mkType i = (C| return $i; |)
 
 abstract
-productTypeRep : Type -> Type -> Type
-productTypeRep S T = MkType (addInt (sizeOf S) (sizeOf T))
+productTypeRep : type -> type -> type
+productTypeRep s t = mkType (addInt (sizeOf s) (sizeOf t))
 
 abstract
-sumTypeRep : Type -> Type -> Type
-sumTypeRep S T = MkType (maxInt (sizeOf S) (sizeOf T))
+sumTypeRep : type -> type -> type
+sumTypeRep s t = mkType (maxInt (sizeOf s) (sizeOf t))

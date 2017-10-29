@@ -1,20 +1,20 @@
 module Sixten.Builtin exposing (..)
 
-type Unit = MkUnit
-type Pair A B = MkPair A B
+type unit = Unit
+type pair a b = Pair a b
 
-Vector : Nat -> Type -> Type
-Vector Zero _ = Unit
-Vector (Succ n) A = Pair A (Vector n A)
+vector : nat -> type -> type
+vector Zero _ = unit
+vector (Succ n) a = pair a (vector n a)
 
-type Array A where
-  MkArray : (n : Nat) -> Ptr (Vector n A) -> Array A
+type array a where
+  Array : (n : nat) -> ptr (vector n a) -> array a
 
-Byte : Type
-Byte = MkType 1
+byte : type
+byte = mkType 1
 
-type String = MkString (Array Byte)
+type string = String (array byte)
 
-intToNat : Int -> Nat
+intToNat : int -> nat
 intToNat 0 = Zero
 intToNat n = Succ (intToNat (subInt n 1))

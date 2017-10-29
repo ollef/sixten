@@ -1,7 +1,7 @@
-test : (A : Type) -> A -> A
+test : (A : type) -> A -> A
 test A a = a
 
-test2 : Type -> Type
-test2 t = test Type t
+test2 : type -> type
+test2 t = test type t
 
 test3 = printInt 123

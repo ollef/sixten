@@ -1,5 +1,5 @@
-type List (A : Type) where
-  Nil : List A
-  Cons : A -> Ptr (List A) -> List A
+type list (A : type) where
+  Nil : list A
+  Cons : A -> ptr (list A) -> list A
 
-sizeOfList = printInt (sizeOf (List (List Int)))
+sizeOfList = printInt (sizeOf (list (list int)))

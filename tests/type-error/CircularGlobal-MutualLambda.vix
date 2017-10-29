@@ -1,5 +1,5 @@
-f : Int
+f : int
 f = (\x. g) 1
 
-g : Int
+g : int
 g = (\x. f) 1
