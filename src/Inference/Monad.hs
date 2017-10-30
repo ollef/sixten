@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, PatternSynonyms #-}
+{-# LANGUAGE PatternSynonyms #-}
 module Inference.Monad where
 
 import Control.Monad.Reader
@@ -23,32 +23,46 @@ shouldInst _ _ = True
 
 type Witness = AbstractM
 
--- TODO move level and location from VIX to this
-newtype InferEnv = InferEnv
+data InferEnv = InferEnv
   { constraints :: [(Witness, AbstractM)]
+  , inferLevel :: !Level
   }
 
 type Infer = ReaderT InferEnv VIX
 
 runInfer :: Infer a -> VIX a
-runInfer i = runReaderT i InferEnv { constraints = mempty }
+runInfer i = runReaderT i InferEnv
+  { constraints = mempty
+  , inferLevel = 1
+  }
+
+level :: Infer Level
+level = asks inferLevel
+
+enterLevel :: Infer a -> Infer a
+enterLevel = local $ \e -> e { inferLevel = inferLevel e + 1 }
+
+exists
+  :: NameHint
+  -> d
+  -> e (MetaVar d e)
+  -> Infer (MetaVar d e)
+exists hint d typ = existsAtLevel hint d typ =<< level
 
 existsType
-  :: (MonadVIX m, MonadIO m)
-  => Applicative e
+  :: Applicative e
   => NameHint
-  -> m (e MetaA)
+  -> Infer (e MetaA)
 existsType n = pure <$> exists n Explicit Builtin.Type
 
-pattern UnsolvedConstraint :: Expr v -> Expr v
-pattern UnsolvedConstraint typ = App (Global Builtin.UnsolvedConstraintName) Explicit typ
-
 existsVar
-  :: (MonadVIX m, MonadIO m)
-  => NameHint
+  :: NameHint
   -> Plicitness
   -> AbstractM
-  -> m AbstractM
+  -> Infer AbstractM
 existsVar _ Constraint typ = return $ UnsolvedConstraint typ
 existsVar h Implicit typ = pure <$> exists h Implicit typ
 existsVar h Explicit typ = pure <$> exists h Explicit typ
+
+pattern UnsolvedConstraint :: Expr v -> Expr v
+pattern UnsolvedConstraint typ = App (Global Builtin.UnsolvedConstraintName) Explicit typ

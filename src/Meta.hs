@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, ViewPatterns, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, GeneralizedNewtypeDeriving, ViewPatterns, OverloadedStrings #-}
 module Meta where
 
 import Control.Monad.Except
@@ -21,6 +21,12 @@ import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
 import qualified Syntax.Sized.SLambda as SLambda
 import VIX
+
+newtype Level = Level Int
+  deriving (Eq, Num, Ord, Show)
+
+instance Pretty Level where
+  pretty (Level i) = pretty i
 
 type Exists d e = STRef RealWorld (Either Level (e (MetaVar d e)))
 
@@ -103,14 +109,6 @@ existsAtLevel hint d typ l = do
   ref <- liftST $ newSTRef $ Left l
   logVerbose 20 $ "exists: " <> fromString (show i)
   return $ MetaVar i typ hint (Exists ref) d
-
-exists
-  :: (MonadVIX m, MonadIO m)
-  => NameHint
-  -> d
-  -> e (MetaVar d e)
-  -> m (MetaVar d e)
-exists hint d typ = existsAtLevel hint d typ =<< level
 
 shared
   :: (MonadVIX m, MonadIO m)
