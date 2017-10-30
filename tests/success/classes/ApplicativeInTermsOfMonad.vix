@@ -1,0 +1,23 @@
+class Monad m where
+  return : forall a. a -> m a
+  bind : forall a b. m a -> (a -> m b) -> m b
+
+monadAp : forall m a b. Monad m => m (a -> b) -> m a -> m b
+monadAp mab ma = bind mab (\ab. bind ma (\a. return (ab a)))
+
+class Applicative f where
+  pure : forall a. a -> f a
+  ap : forall a b. f (a -> b) -> f a -> f b
+
+type Maybe a = Nothing | Just a
+
+instance Monad Maybe where
+  return = Just
+  bind Nothing _ = Nothing
+  bind (Just a) f = f a
+
+instance Applicative Maybe where
+  pure = return
+  ap = monadAp
+
+main = bind (ap (Just (\x. addInt x 2)) (Just 608)) (\x. Just (printInt x))
