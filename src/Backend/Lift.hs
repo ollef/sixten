@@ -12,7 +12,7 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 
-import Meta
+import TypedFreeVar
 import Syntax
 import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Lifted as Lifted
@@ -65,13 +65,13 @@ runLift (QName mname name) (Lift l)
   , liftedThings = mempty
   }
 
-type Meta = MetaVar () Lifted.Expr
+type FV = FreeVar Lifted.Expr
 
 type LambdaLift = Lift (Sized.Function Lifted.Expr Void) VIX
 
 liftExpr
-  :: SLambda.Expr Meta
-  -> LambdaLift (Lifted.Expr Meta)
+  :: SLambda.Expr FV
+  -> LambdaLift (Lifted.Expr FV)
 liftExpr expr = case expr of
   SLambda.Var v -> return $ Lifted.Var v
   SLambda.Global g -> return $ Lifted.Global g
@@ -86,41 +86,41 @@ liftExpr expr = case expr of
   SLambda.ExternCode c -> Lifted.ExternCode <$> mapM liftExpr c
 
 liftLambda
-  :: Telescope () SLambda.Expr Meta
-  -> Scope TeleVar SLambda.Expr Meta
-  -> LambdaLift (Lifted.Expr Meta)
+  :: Telescope () SLambda.Expr FV
+  -> Scope TeleVar SLambda.Expr FV
+  -> LambdaLift (Lifted.Expr FV)
 liftLambda tele lamScope = do
-  lift $ logMeta 20 "liftLambda" $ Sized.Function tele lamScope
+  lift $ logFreeVar 20 "liftLambda" $ Sized.Function tele lamScope
 
   let sortedFvs = topoSortVars $ toHashSet tele <> toHashSet lamScope
 
   (closedTele, closedLamScope) <- closeLambda tele lamScope sortedFvs
 
-  let args = (\v -> Lifted.Anno (pure v) (metaType v)) <$> sortedFvs
+  let args = (\v -> Lifted.Anno (pure v) (varType v)) <$> sortedFvs
       addArgs | null args = id
               | otherwise = (`Lifted.Call` args)
 
-  lift $ logMeta 20 "liftLambda result" $ Sized.Function (vacuous closedTele :: Telescope () Lifted.Expr Meta) (vacuous closedLamScope)
+  lift $ logFreeVar 20 "liftLambda result" $ Sized.Function (vacuous closedTele :: Telescope () Lifted.Expr FV) (vacuous closedLamScope)
 
   g <- liftThing $ Sized.Function closedTele closedLamScope
 
   return $ addArgs $ global g
 
 closeLambda
-  :: Telescope () SLambda.Expr Meta
-  -> Scope TeleVar SLambda.Expr Meta
-  -> Vector Meta
+  :: Telescope () SLambda.Expr FV
+  -> Scope TeleVar SLambda.Expr FV
+  -> Vector FV
   -> LambdaLift (Telescope () Lifted.Expr Void, Scope TeleVar Lifted.Expr Void)
 closeLambda tele lamScope sortedFvs = do
   vs <- forTeleWithPrefixM tele $ \h () s vs -> do
     let e = instantiateTele pure vs s
     e' <- liftExpr e
-    lift $ forall h () e'
+    lift $ freeVar h e'
 
   let lamExpr = instantiateTele pure vs lamScope
       vs' = sortedFvs <> vs
       abstr = teleAbstraction vs'
-      tele'' = Telescope $ (\v -> TeleArg (metaHint v) () $ abstract abstr $ metaType v) <$> vs'
+      tele'' = Telescope $ (\v -> TeleArg (varHint v) () $ abstract abstr $ varType v) <$> vs'
 
   lamExpr' <- liftExpr lamExpr
   let lamScope' = abstract abstr lamExpr'
@@ -131,37 +131,37 @@ closeLambda tele lamScope sortedFvs = do
   return (voidedTele, voidedLamScope)
 
 topoSortVars
-  :: HashSet Meta
-  -> Vector Meta
+  :: HashSet FV
+  -> Vector FV
 topoSortVars vs
   = Vector.fromList
   $ fmap acyclic
-  $ topoSortWith id (toHashSet . metaType)
+  $ topoSortWith id (toHashSet . varType)
   $ HashSet.toList vs
   where
     acyclic (AcyclicSCC a) = a
     acyclic (CyclicSCC _) = error "topoSortVars"
 
 liftLet
-  :: LetRec SLambda.Expr Meta
-  -> Scope LetVar SLambda.Expr Meta
-  -> LambdaLift (Lifted.Expr Meta)
+  :: LetRec SLambda.Expr FV
+  -> Scope LetVar SLambda.Expr FV
+  -> LambdaLift (Lifted.Expr FV)
 liftLet ds scope = do
   vs <- forMLet ds $ \h _ t -> do
     t' <- liftExpr t
-    lift $ forall h () t'
+    lift $ freeVar h t'
 
   let instantiatedDs = Vector.zip vs $ instantiateLet pure vs <$> letBodies ds
       dsToLift = [(v, body) | (v, body@(SLambda.lamView -> Just _)) <- instantiatedDs]
       liftedVars = toHashSet $ fst <$> dsToLift
       fvs = fold (toHashSet . snd <$> dsToLift) `HashSet.difference` liftedVars
       sortedFvs = topoSortVars fvs
-      args = (\v -> Lifted.Anno (pure v) (metaType v)) <$> sortedFvs
+      args = (\v -> Lifted.Anno (pure v) (varType v)) <$> sortedFvs
       addArgs | null args = id
               | otherwise = (`Lifted.Call` args)
 
   subVec <- forM dsToLift $ \(v, _) -> do
-    g <- freshNameWithHint $ fold $ unNameHint $ metaHint v
+    g <- freshNameWithHint $ fold $ unNameHint $ varHint v
     return (v, g)
 
   lift $ logShow 20 "subVec" subVec
@@ -196,17 +196,17 @@ liftLet ds scope = do
   return $ lets sortedDs letBody
 
 liftBranches
-  :: Branches QConstr () SLambda.Expr Meta
-  -> LambdaLift (Branches QConstr () Lifted.Expr Meta)
+  :: Branches QConstr () SLambda.Expr FV
+  -> LambdaLift (Branches QConstr () Lifted.Expr FV)
 liftBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(ConBranch qc tele brScope) -> do
     vs <- forTeleWithPrefixM tele $ \h () s vs -> do
       let e = instantiateTele pure vs s
       e' <- liftExpr e
-      lift $ forall h () e'
+      lift $ freeVar h e'
     let brExpr = instantiateTele pure vs brScope
         abstr = teleAbstraction vs
-        tele'' = Telescope $ (\v -> TeleArg (metaHint v) () $ abstract abstr $ metaType v) <$> vs
+        tele'' = Telescope $ (\v -> TeleArg (varHint v) () $ abstract abstr $ varType v) <$> vs
     brExpr' <- liftExpr brExpr
     let brScope' = abstract abstr brExpr'
     return $ ConBranch qc tele'' brScope'
@@ -214,12 +214,12 @@ liftBranches (LitBranches lbrs def) = LitBranches
   <$> mapM (\(LitBranch l e) -> LitBranch l <$> liftExpr e) lbrs <*> liftExpr def
 
 lets
-  :: [[(Meta, Lifted.Expr Meta)]]
-  -> Lifted.Expr Meta
-  -> Lifted.Expr Meta
+  :: [[(FV, Lifted.Expr FV)]]
+  -> Lifted.Expr FV
+  -> Lifted.Expr FV
 lets = flip $ foldr go
   where
-    go [(v, e)] = Lifted.Let (metaHint v) e . abstract1 v
+    go [(v, e)] = Lifted.Let (varHint v) e . abstract1 v
     go _ = error "Circular Lift lets"
 
 liftToDefinitionM
@@ -229,16 +229,16 @@ liftToDefinitionM (SLambda.Anno (SLambda.Lams tele bodyScope) _) = do
   vs <- forTeleWithPrefixM tele $ \h () s vs -> do
     let e = instantiateTele pure vs $ vacuous s
     e' <- liftExpr e
-    lift $ forall h () e'
+    lift $ freeVar h e'
   let body = instantiateTele pure vs $ vacuous bodyScope
       abstr = teleAbstraction vs
-      tele' = Telescope $ (\v -> TeleArg (metaHint v) () $ abstract abstr $ metaType v) <$> vs
+      tele' = Telescope $ (\v -> TeleArg (varHint v) () $ abstract abstr $ varType v) <$> vs
   body' <- liftExpr body
   let bodyScope' = abstract abstr body'
   return $ Sized.FunctionDef Public Sized.NonClosure $ (\_ -> error "liftToDefinitionM") <$> Sized.Function tele' bodyScope'
 liftToDefinitionM sexpr = do
   sexpr' <- liftExpr $ vacuous sexpr
-  lift $ logMeta 20 "liftToDefinitionM sexpr'" sexpr'
+  lift $ logFreeVar 20 "liftToDefinitionM sexpr'" sexpr'
   return $ Sized.ConstantDef Public $ Sized.Constant $ (\_ -> error "liftToDefinitionM 2") <$> sexpr'
 
 liftToDefinition
