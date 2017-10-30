@@ -5,8 +5,6 @@ import Control.Monad
 import Control.Monad.Except
 import Control.Monad.ST
 import Data.Bitraversable
-import Data.Function
-import Data.Hashable
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Maybe
 import Data.STRef
@@ -14,6 +12,7 @@ import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 import Data.Void
 
+import FreeVar
 import Syntax hiding (Definition, bitraverseDefinition)
 import Syntax.Sized.Definition
 import Syntax.Sized.Lifted
@@ -90,30 +89,21 @@ unifyMetaReturnIndirect' m1 m2 = throwError $ "unifyMetaReturnIndirect " ++ show
 
 type Location = MetaReturnIndirect
 
-data MetaVar = MetaVar
-  { metaHint :: !NameHint
-  , metaId :: !Int
-  , metaLocation :: !Location
+data MetaData = MetaData
+  { metaLocation :: !Location
   , metaFunSig :: Maybe (RetDirM, Vector Direction)
-  }
+  } deriving Show
+
+type MetaVar = FreeVar MetaData
 
 exists :: NameHint -> Location -> Maybe (RetDirM, Vector Direction) -> VIX MetaVar
-exists h loc call = MetaVar h <$> fresh <*> pure loc <*> pure call
-
-instance Eq MetaVar where
-  (==) = (==) `on` metaId
-
-instance Show MetaVar where
-  show mv = "$" ++ show (metaId mv) ++ maybe "" fromName (unNameHint $ metaHint mv)
-
-instance Hashable MetaVar where
-  hashWithSalt s = hashWithSalt s . metaId
+exists h loc call = freeVar h $ MetaData loc call
 
 infer
   :: Expr MetaVar
   -> VIX (Expr MetaVar, Location)
 infer expr = case expr of
-  Var v -> return (expr, metaLocation v)
+  Var v -> return (expr, metaLocation $ varData v)
   Global _ -> return (expr, MProjection)
   Lit _ -> return (expr, MOutParam)
   Con c es -> do
@@ -181,7 +171,7 @@ inferBranches loc (ConBranches cbrs) = do
       (sz', _szLoc)  <- infer sz
       return sz'
     tele' <- forM (Vector.zip vs sizes) $ \(v, sz) ->
-      return $ TeleArg (metaHint v) () $ abstr sz
+      return $ TeleArg (varHint v) () $ abstr sz
     (br', brLoc) <- infer br
     let brScope' = abstr br'
     return (ConBranch c (Telescope tele') brScope', brLoc)
@@ -201,7 +191,7 @@ inferFunction
   :: Expr MetaVar
   -> VIX (Expr MetaVar, (RetDirM, Vector Direction))
 inferFunction expr = case expr of
-  Var v -> return (expr, fromMaybe def $ metaFunSig v)
+  Var v -> return (expr, fromMaybe def $ metaFunSig $ varData v)
   Global g -> go g
   _ -> return def
   where
@@ -217,7 +207,7 @@ inferDefinition
   :: MetaVar
   -> Definition Expr MetaVar
   -> VIX (Definition Expr MetaVar, Signature MetaReturnIndirect)
-inferDefinition MetaVar {metaFunSig = Just (retDir, argDirs)} (FunctionDef vis cl (Function args s)) = do
+inferDefinition FreeVar {varData = MetaData {metaFunSig = Just (retDir, argDirs)}} (FunctionDef vis cl (Function args s)) = do
   vs <- forMTele args $ \h _ _ -> exists h MProjection Nothing
   let abstr = teleAbstraction vs
   args' <- forMTele args $ \h d szScope -> do

@@ -40,6 +40,7 @@ executable sixten
                        Command.Compile.Options
                        Command.Run
                        Command.Test
+                       FreeVar
                        Frontend.Declassify
                        Frontend.Parse
                        Frontend.ScopeCheck
@@ -88,6 +89,7 @@ executable sixten
                        Syntax.SourceLoc
                        Syntax.Telescope
                        TypeRep
+                       TypedFreeVar
                        VIX
                        Util
                        Util.MultiHashMap

@@ -9,9 +9,9 @@ import Data.Function
 import Data.Functor.Classes
 import Data.Hashable
 import qualified Data.HashMap.Lazy as HashMap
+import qualified Data.HashSet as HashSet
 import Data.Maybe
 import Data.Monoid
-import qualified Data.Set as Set
 import Data.STRef
 import Data.String
 import Data.Vector(Vector)
@@ -193,9 +193,9 @@ abstractM f e = do
       sol <- solution r
       case sol of
         Left _ -> do
-          tfvs <- foldMapMetas Set.singleton $ metaType v'
-          let mftfvs = Set.filter (isJust . f) tfvs
-          unless (Set.null mftfvs)
+          tfvs <- foldMapMetas HashSet.singleton $ metaType v'
+          let mftfvs = HashSet.filter (isJust . f) tfvs
+          unless (HashSet.null mftfvs)
             $ throwError $ "cannot abstract, " ++ show mftfvs ++ " would escape from the type of "
             ++ show v'
           free v'
@@ -322,10 +322,10 @@ showMeta
   => f (MetaVar d e)
   -> m Doc
 showMeta x = do
-  vs <- foldMapMetas Set.singleton x
+  vs <- foldMapMetas HashSet.singleton x
   let p MetaVar { metaRef = Exists r } = solution r
       p _ = return $ Left $ Level (-1)
-  let vsl = Set.toList vs
+  let vsl = HashSet.toList vs
   pvs <- mapM p vsl
   let sv v = "$" ++ fromMaybe "" (fromName <$> unNameHint (metaHint v)) ++ refType (metaRef v)
           ++ show (metaId v)

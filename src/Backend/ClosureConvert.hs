@@ -8,7 +8,6 @@ import Data.Bifunctor
 import qualified Data.HashMap.Lazy as HashMap
 import Data.Maybe
 import Data.Monoid
-import Data.Proxy
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
@@ -16,7 +15,7 @@ import Data.Void
 import Backend.Lift(runLift, liftThing, Lift)
 import qualified Builtin
 import qualified Builtin.Names as Builtin
-import Meta
+import FreeVar
 import Syntax
 import qualified Syntax.Sized.Definition as Sized
 import Syntax.Sized.Lifted
@@ -24,7 +23,7 @@ import qualified TypeRep
 import Util
 import VIX
 
-type Meta = MetaVar () Proxy
+type FV = FreeVar ()
 type ClosureConvert = Lift (Sized.Function Expr Void) VIX
 
 convertDefinitions
@@ -44,7 +43,7 @@ convertDefinitionsM defs = do
   funSigs <- forM defs $ \(name, def) -> case def of
     Sized.FunctionDef _ _ (Sized.Function tele scope) -> do
       vs <- lift $ forMTele tele $ \h () _ ->
-        forall h () Proxy
+        freeVar h ()
 
       es <- forMTele tele $ \_ () s ->
         convertExpr $ instantiateTele pure vs $ vacuous s
@@ -57,7 +56,7 @@ convertDefinitionsM defs = do
 
       let abstr = teleAbstraction vs
           tele' = error "convertDefinitions"
-            <$> Telescope (Vector.zipWith (\v e -> TeleArg (metaHint v) () (abstract abstr e)) vs es)
+            <$> Telescope (Vector.zipWith (\v e -> TeleArg (varHint v) () (abstract abstr e)) vs es)
           typeScope = error "convertDefinitions"
             <$> abstract abstr convertedType
       return $ Just (name, (tele', typeScope))
@@ -77,14 +76,14 @@ convertDefinition
   -> ClosureConvert (Sized.Definition Expr Void)
 convertDefinition (Sized.FunctionDef vis cl (Sized.Function tele scope)) = do
   vs <- lift $ forMTele tele $ \h () _ ->
-    forall h () Proxy
+    freeVar h ()
 
   es <- forMTele tele $ \_ () s ->
     convertExpr $ instantiateTele pure vs $ vacuous s
 
   let expr = instantiateTele pure vs $ vacuous scope
       abstr = teleAbstraction vs
-      tele'' = error "convertFunction" <$> Telescope (Vector.zipWith (\v e -> TeleArg (metaHint v) () (abstract abstr e)) vs es)
+      tele'' = error "convertFunction" <$> Telescope (Vector.zipWith (\v e -> TeleArg (varHint v) () (abstract abstr e)) vs es)
   expr' <- convertExpr expr
   let scope' = abstract abstr expr'
   return
@@ -110,7 +109,7 @@ convertDefinition (Sized.ConstantDef vis (Sized.Constant expr)) = do
     $ error "convertDefinition Constant" <$> expr'
 convertDefinition Sized.AliasDef = return Sized.AliasDef
 
-convertExpr :: Expr Meta -> ClosureConvert (Expr Meta)
+convertExpr :: Expr FV -> ClosureConvert (Expr FV)
 convertExpr expr = case expr of
   Var v -> return $ Var v
   Global g -> do
@@ -137,7 +136,7 @@ convertExpr expr = case expr of
     return $ PrimCall retDir e' es'
   Let h e bodyScope -> do
     e' <- convertExpr e
-    v <- lift $ forall h () Proxy
+    v <- lift $ freeVar h ()
     let bodyExpr = Util.instantiate1 (pure v) bodyScope
     bodyExpr' <- convertExpr bodyExpr
     let bodyScope' = abstract1 v bodyExpr'
@@ -147,9 +146,9 @@ convertExpr expr = case expr of
   Anno e t -> Anno <$> convertExpr e <*> convertExpr t
 
 unknownCall
-  :: Expr Meta
-  -> Vector (Expr Meta)
-  -> ClosureConvert (Expr Meta)
+  :: Expr FV
+  -> Vector (Expr FV)
+  -> ClosureConvert (Expr FV)
 unknownCall e es = do
   ptrRep <- lift $ gets (MkType . TypeRep.ptrRep . vixTarget)
   intRep <- lift $ gets (MkType . TypeRep.intRep . vixTarget)
@@ -161,11 +160,11 @@ unknownCall e es = do
 knownCall
   :: QName
   -> FunSignature
-  -> Vector (Expr Meta)
-  -> ClosureConvert (Expr Meta)
+  -> Vector (Expr FV)
+  -> ClosureConvert (Expr FV)
 knownCall f (tele, returnTypeScope) args
   | numArgs < arity = do
-    vs <- lift $ forM (teleNames tele) $ \h -> forall h () Proxy
+    vs <- lift $ forM (teleNames tele) $ \h -> freeVar h ()
     target <- lift $ gets vixTarget
     let intRep, ptrRep :: Expr v
         intRep = MkType $ TypeRep.intRep target
@@ -221,17 +220,17 @@ knownCall f (tele, returnTypeScope) args
     fArgs = fArgs1 <> fArgs2
 
 convertBranches
-  :: Branches QConstr () Expr Meta
-  -> ClosureConvert (Branches QConstr () Expr Meta)
+  :: Branches QConstr () Expr FV
+  -> ClosureConvert (Branches QConstr () Expr FV)
 convertBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(ConBranch qc tele brScope) -> do
     vs <- lift $ forMTele tele $ \h () _ ->
-      forall h () Proxy
+      freeVar h ()
     es <- forMTele tele $ \_ () s ->
       convertExpr $ instantiateTele pure vs s
     let brExpr = instantiateTele pure vs brScope
         abstr = teleAbstraction vs
-        tele'' = Telescope $ Vector.zipWith (\v e -> TeleArg (metaHint v) () $ abstract abstr e) vs es
+        tele'' = Telescope $ Vector.zipWith (\v e -> TeleArg (varHint v) () $ abstract abstr e) vs es
     brExpr' <- convertExpr brExpr
     let brScope' = abstract abstr brExpr'
     return $ ConBranch qc tele'' brScope'
