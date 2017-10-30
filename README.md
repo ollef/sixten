@@ -258,7 +258,7 @@ since it generates multiple versions of the same function.
 
 What is gained is the ability to more finely express how our data is laid
 out in memory, which for instance means that we can write code that is
-cache-aware and which uses fewer memory allocation.
+cache-aware and which uses fewer memory allocations.
 
 Sixten gives us both: it allows us to control the memory layout of our data
 all the while retaining modularity.
