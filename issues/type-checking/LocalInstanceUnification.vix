@@ -1,0 +1,5 @@
+class Functor f where
+  map : forall a b. (a -> b) -> f a -> f b
+
+test : forall f a b. Functor _ => (a -> b) -> f a -> f b
+test f x = map f x
