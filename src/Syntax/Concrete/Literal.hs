@@ -13,13 +13,13 @@ import Syntax.Concrete.Unscoped as Unscoped
 
 import qualified Builtin.Names as Builtin
 
-string :: Text -> Expr QName
+string :: Text -> Expr
 string
   = App (Var $ QName "Sixten.Builtin" $ fromConstr Builtin.MkStringName) Explicit
   . byteArray
   . Encoding.encodeUtf8
 
-byteArray :: ByteString -> Expr QName
+byteArray :: ByteString -> Expr
 byteArray bs
   = Unscoped.apps (Var $ unqualified $ constrToName Builtin.MkArrayName)
   [ (Explicit, nat $ ByteString.length bs)
@@ -32,7 +32,7 @@ byteArray bs
     )
   ]
 
-nat :: (Eq a, Num a) => a -> Expr QName
+nat :: (Eq a, Num a) => a -> Expr
 nat 0 = Var $ unqualified $ constrToName Builtin.ZeroName
 nat n = App (Var $ unqualified $ constrToName Builtin.SuccName) Explicit (nat (n - 1))
 

@@ -58,7 +58,7 @@ processFiles args = do
 
 processModules
   :: Arguments
-  -> [Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))]
+  -> [Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))]
   -> IO (Result [Module [Extracted.Submodule (Generate.Generated (Text, File.DependencySigs))]])
 processModules args (builtins1 : builtins2 : modules) = do
   result <- runVIX go tgt (logHandle args) (verbosity args)
@@ -81,8 +81,8 @@ processModules _ _ = error "processModules"
 
 processBuiltins
   :: Target
-  -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
-  -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
+  -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
+  -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [Extracted.Submodule (Generate.Generated (Text, File.DependencySigs))]
 processBuiltins tgt builtins1 builtins2 = do
   let builtinDefNames = HashSet.fromMap $ void context

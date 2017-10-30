@@ -211,7 +211,7 @@ located p = (\(e Trifecta.:~ s) -> (Trifecta.render s, e)) <$> Trifecta.spanned 
 locatedPat :: Parser (Pat typ v) -> Parser (Pat typ v)
 locatedPat p = uncurry PatLoc <$> located p
 
-pattern :: Parser (Pat (Type QName) QName)
+pattern :: Parser (Pat Type QName)
 pattern = locatedPat $
   ( Trifecta.try (ConPat <$> (HashSet.singleton <$> qconstructor) <*> (Vector.fromList <$> someSI plicitPattern))
     <|> atomicPattern
@@ -220,12 +220,12 @@ pattern = locatedPat $
     <|> pure id
   ) <?> "pattern"
 
-plicitPattern :: Parser (Plicitness, Pat (Type QName) QName)
+plicitPattern :: Parser (Plicitness, Pat Type QName)
 plicitPattern = (,) Implicit <$ symbol "@" <*>% atomicPattern
   <|> (,) Explicit <$> atomicPattern
   <?> "explicit or implicit pattern"
 
-atomicPattern :: Parser (Pat (Type QName) QName)
+atomicPattern :: Parser (Pat Type QName)
 atomicPattern = locatedPat
   $ symbol "(" *>% pattern <*% symbol ")"
   <|> (\v -> VarPat (fromQName v) v) <$> qname
@@ -233,7 +233,7 @@ atomicPattern = locatedPat
   <|> literalPat
   <?> "atomic pattern"
 
-plicitPatternBinding :: Parser [(Plicitness, Pat (Type QName) QName)]
+plicitPatternBinding :: Parser [(Plicitness, Pat Type QName)]
 plicitPatternBinding
   = go Implicit <$ symbol "@" <*% symbol "(" <*> someSI atomicPattern <*% symbol ":" <*>% expr <*% symbol ")"
   <|> go Explicit <$ symbol "(" <*> someSI atomicPattern <*% symbol ":" <*>% expr <*% symbol ")"
@@ -241,26 +241,26 @@ plicitPatternBinding
   where
     go p pats t = [(p, AnnoPat t pat) | pat <- pats]
 
-patternBinding :: Parser [(Pat (Type QName) QName)]
+patternBinding :: Parser [(Pat Type QName)]
 patternBinding
   = go <$ symbol "(" <*> someSI atomicPattern <*% symbol ":" <*>% expr <*% symbol ")"
   <?> "typed pattern"
   where
     go pats t = [AnnoPat t pat | pat <- pats]
 
-somePlicitPatternBindings :: Parser [(Plicitness, Pat (Type QName) QName)]
+somePlicitPatternBindings :: Parser [(Plicitness, Pat Type QName)]
 somePlicitPatternBindings
   = concat <$> someSI plicitPatternBinding
 
-somePlicitPatterns :: Parser [(Plicitness, Pat (Type QName) QName)]
+somePlicitPatterns :: Parser [(Plicitness, Pat Type QName)]
 somePlicitPatterns
   = concat <$> someSI (Trifecta.try plicitPatternBinding <|> pure <$> plicitPattern)
 
-somePatterns :: Parser [(Pat (Type QName) QName)]
+somePatterns :: Parser [(Pat Type QName)]
 somePatterns
   = concat <$> someSI (Trifecta.try patternBinding <|> pure <$> atomicPattern)
 
-manyPlicitPatterns :: Parser [(Plicitness, Pat (Type QName) QName)]
+manyPlicitPatterns :: Parser [(Plicitness, Pat Type QName)]
 manyPlicitPatterns
   = concat <$> manySI (Trifecta.try plicitPatternBinding <|> pure <$> plicitPattern)
 
@@ -270,11 +270,11 @@ plicitBinding
   <|> (,) Explicit <$> name
   <?> "variable binding"
 
-plicitBinding' :: Parser [(Plicitness, Name, Type v)]
+plicitBinding' :: Parser [(Plicitness, Name, Type)]
 plicitBinding'
   = (\(p, n) -> [(p, n, Wildcard)]) <$> plicitBinding
 
-typedBinding :: Parser [(Plicitness, Name, Type QName)]
+typedBinding :: Parser [(Plicitness, Name, Type)]
 typedBinding = fmap flatten
   $ (,,) Implicit <$ symbol "@" <*% symbol "(" <*> someSI name <*% symbol ":" <*>% expr <*% symbol ")"
   <|> (,,) Explicit <$ symbol "(" <*> someSI name <*% symbol ":" <*>% expr <*% symbol ")"
@@ -282,17 +282,17 @@ typedBinding = fmap flatten
   where
     flatten (p, names, t) = [(p, n, t) | n <- names]
 
-manyTypedBindings :: Parser [(Plicitness, Name, Type QName)]
+manyTypedBindings :: Parser [(Plicitness, Name, Type)]
 manyTypedBindings = concat <$> manySI (Trifecta.try typedBinding <|> plicitBinding')
 
 -------------------------------------------------------------------------------
 -- * Expressions
-locatedExpr :: Parser (Expr v) -> Parser (Expr v)
+locatedExpr :: Parser Expr -> Parser Expr
 locatedExpr p = go <$> Trifecta.spanned p
   where
     go (e Trifecta.:~ s) = SourceLoc (Trifecta.render s) e
 
-atomicExpr :: Parser (Expr QName)
+atomicExpr :: Parser Expr
 atomicExpr = locatedExpr
   $ literal
   <|> Wildcard <$ wildcard
@@ -315,12 +315,12 @@ atomicExpr = locatedExpr
       where
         mkLet xs = Let $ Vector.fromList xs
 
-branches :: Parser [(Pat (Type QName) QName, Expr QName)]
+branches :: Parser [(Pat Type QName, Expr)]
 branches = manyIndentedOrSameCol branch
   where
     branch = (,) <$> pattern <*% symbol "->" <*>% expr
 
-expr :: Parser (Expr QName)
+expr :: Parser Expr
 expr = exprWithoutWhere <**>
   (mkLet <$% reserved "where" <*>% dropAnchor (someSameCol $ located def)
   <|> pure id
@@ -328,7 +328,7 @@ expr = exprWithoutWhere <**>
   where
     mkLet xs = Let $ Vector.fromList xs
 
-exprWithoutWhere :: Parser (Expr QName)
+exprWithoutWhere :: Parser Expr
 exprWithoutWhere
   = locatedExpr
   $ Unscoped.pis <$> Trifecta.try (somePlicitPatternBindings <*% symbol "->") <*>% exprWithoutWhere
@@ -343,14 +343,14 @@ exprWithoutWhere
       <|> flip (plicitPi Constraint) <$% symbol "=>" <*>% exprWithoutWhere
       <|> pure id
 
-    argument :: Parser (Plicitness, Expr QName)
+    argument :: Parser (Plicitness, Expr)
     argument
       = (,) Implicit <$ symbol "@" <*>% atomicExpr
       <|> (,) Explicit <$> atomicExpr
 
 -------------------------------------------------------------------------------
 -- * Extern C
-externCExpr :: Parser (Extern (Expr QName))
+externCExpr :: Parser (Extern Expr)
 externCExpr
   = Extern C . fmap (either id $ ExternPart . Text.pack) <$ Trifecta.string "(C|" <*> go
   <?> "Extern C expression"
@@ -373,7 +373,7 @@ externCExpr
 
 -------------------------------------------------------------------------------
 -- * Literals
-literal :: Parser (Expr QName)
+literal :: Parser Expr
 literal
   = Lit . Integer <$> integer
   <|> string <$> Trifecta.stringLiteral
@@ -385,14 +385,14 @@ literalPat
 
 -------------------------------------------------------------------------------
 -- * Definitions
-topLevel :: Parser (SourceLoc, TopLevelDefinition QName)
+topLevel :: Parser (SourceLoc, TopLevelDefinition)
 topLevel = located
   $ dataDef
   <|> classDef
   <|> instanceDef
   <|> TopLevelDefinition <$> def
 
-def :: Parser (Unscoped.Definition Unscoped.Expr QName)
+def :: Parser (Unscoped.Definition Unscoped.Expr)
 def = do
   abstr
     <- Abstract <$ reserved "abstract" <* sameCol
@@ -412,7 +412,7 @@ def = do
     typeSig = symbol ":" *>% expr
     clause = Clause <$> (Vector.fromList <$> manyPlicitPatterns) <*% symbol "=" <*>% expr
 
-dataDef :: Parser (TopLevelDefinition QName)
+dataDef :: Parser TopLevelDefinition
 dataDef = TopLevelDataDefinition <$ reserved "type" <*>% name <*> manyTypedBindings <*>%
   (concat <$% reserved "where" <*> manyIndentedOrSameCol conDef
   <|> id <$% symbol "=" <*>% sepBySI adtConDef (symbol "|"))
@@ -423,21 +423,21 @@ dataDef = TopLevelDataDefinition <$ reserved "type" <*>% name <*> manyTypedBindi
     adtConDef = ConstrDef <$> constructor <*> (adtConType <$> manySI atomicExpr)
     adtConType es = Unscoped.pis ((\e -> (Explicit, AnnoPat e WildcardPat)) <$> es) Wildcard
 
-classDef :: Parser (TopLevelDefinition QName)
+classDef :: Parser TopLevelDefinition
 classDef = TopLevelClassDefinition <$ reserved "class" <*>% name <*> manyTypedBindings
   <*% reserved "where" <*> manyIndentedOrSameCol (mkMethodDef <$> located ((,) <$> name <*% symbol ":" <*>% expr))
   where
     mkMethodDef (loc, (n, e)) = MethodDef n (Hint loc) e
 
 
-instanceDef :: Parser (TopLevelDefinition QName)
+instanceDef :: Parser TopLevelDefinition
 instanceDef = TopLevelInstanceDefinition <$ reserved "instance" <*>% exprWithoutWhere
   <*% reserved "where" <*> manyIndentedOrSameCol (located def)
 
 -------------------------------------------------------------------------------
 -- * Module
 -- | A definition or type declaration on the top-level
-modul :: Parser (Module [(SourceLoc, Unscoped.TopLevelDefinition QName)])
+modul :: Parser (Module [(SourceLoc, Unscoped.TopLevelDefinition)])
 modul = Trifecta.whiteSpace >> dropAnchor
   ((Module <$ reserved "module" <*>% modulName <*% reserved "exposing" <*>% exposedNames
      <|> pure (Module "Main" AllExposed))

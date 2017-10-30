@@ -49,13 +49,13 @@ import VIX
 type DependencySigs = HashMap QName Text
 
 process
-  :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
+  :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
 process = frontend backend
 
 frontend
   :: ([(QName, Definition Abstract.Expr Void, Abstract.Expr Void)] -> VIX [k])
-  -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
+  -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [k]
 frontend k
   = scopeCheckProgram
@@ -178,7 +178,7 @@ prettyGroup str f defs = do
   return defs
 
 scopeCheckProgram
-  :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
+  :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [[(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Maybe (Concrete.Type Void))]]
 scopeCheckProgram m = do
   res <- ScopeCheck.scopeCheckModule m
@@ -327,7 +327,7 @@ writeModule modul llOutputFile externOutputFiles = do
 
 parse
   :: FilePath
-  -> IO (Result (Module [(SourceLoc, Unscoped.TopLevelDefinition QName)]))
+  -> IO (Result (Module [(SourceLoc, Unscoped.TopLevelDefinition)]))
 parse file = do
   parseResult <- Parse.parseFromFileEx Parse.modul file
   case parseResult of
@@ -335,8 +335,8 @@ parse file = do
     Trifecta.Success res -> return $ Success res
 
 dupCheck
-  :: Module [(SourceLoc, Unscoped.TopLevelDefinition QName)]
-  -> Result (Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName)))
+  :: Module [(SourceLoc, Unscoped.TopLevelDefinition)]
+  -> Result (Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)))
 dupCheck m = forM m $ flip evalStateT (0 :: Int) . foldM go mempty
   where
     go defs (loc, def) = do
