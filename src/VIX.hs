@@ -25,12 +25,6 @@ import qualified Syntax.Sized.Lifted as Lifted
 import Util.MultiHashMap(MultiHashMap)
 import qualified Util.MultiHashMap as MultiHashMap
 
-newtype Level = Level Int
-  deriving (Eq, Num, Ord, Show)
-
-instance Pretty Level where
-  pretty (Level i) = pretty i
-
 data VIXState = VIXState
   { vixLocation :: SourceLoc
   , vixContext :: HashMap QName (Definition Expr Void, Type Void)
@@ -41,7 +35,6 @@ data VIXState = VIXState
   , vixClassInstances :: HashMap QName [(QName, Type Void)]
   , vixIndent :: !Int
   , vixFresh :: !Int
-  , vixLevel :: !Level
   , vixLogHandle :: !Handle
   , vixVerbosity :: !Int
   , vixTarget :: Target
@@ -60,7 +53,6 @@ emptyVIXState target handle verbosity = VIXState
   , vixClassInstances = mempty
   , vixIndent = 0
   , vixFresh = 0
-  , vixLevel = Level 1
   , vixLogHandle = handle
   , vixVerbosity = verbosity
   , vixTarget = target
@@ -94,17 +86,6 @@ fresh = do
   i <- gets vixFresh
   modify $ \s -> s {vixFresh = i + 1}
   return i
-
-level :: MonadVIX m => m Level
-level = gets vixLevel
-
-enterLevel :: MonadVIX m => m a -> m a
-enterLevel x = do
-  l <- level
-  modify $ \s -> s {vixLevel = l + 1}
-  r <- x
-  modify $ \s -> s {vixLevel = l}
-  return r
 
 located :: MonadVIX m => SourceLoc -> m a -> m a
 located loc m = do
