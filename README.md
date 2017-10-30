@@ -305,4 +305,5 @@ If want to get in touch, create a Github issue or join the [Gitter chat](https:/
 ## Authors
 
 [Olle Fredriksson](https://github.com/ollef)
+
 [Victor Borja](https://github.com/vic)
