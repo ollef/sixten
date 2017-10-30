@@ -37,7 +37,7 @@ runScopeCheck m env = (a, s)
 -- TODO split into several functions
 -- TODO use plain Name for unresolved names
 scopeCheckModule
-  :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition QName))
+  :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [[(QName, SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void, Maybe (Scoped.Type void))]]
 scopeCheckModule modul = do
   otherNames <- gets vixModuleNames
@@ -129,17 +129,17 @@ instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, (_,
   _ -> return mempty
 
 scopeCheckTopLevelDefinition
-  :: Unscoped.TopLevelDefinition QName
+  :: Unscoped.TopLevelDefinition
   -> ScopeCheck (Scoped.TopLevelPatDefinition Scoped.Expr QName, Maybe (Scoped.Type QName))
 scopeCheckTopLevelDefinition (Unscoped.TopLevelDefinition d) =
   first Scoped.TopLevelPatDefinition . snd <$> scopeCheckDefinition d
 scopeCheckTopLevelDefinition (Unscoped.TopLevelDataDefinition _name params cs) = do
-  (typ, abstr) <- scopeCheckParamsType params $ pure Builtin.TypeName
+  (typ, abstr) <- scopeCheckParamsType params $ Unscoped.Var Builtin.TypeName
   cs' <- mapM (mapM (fmap abstr . scopeCheckExpr)) cs
   let res = Scoped.TopLevelPatDataDefinition $ DataDef cs'
   return (res, Just typ)
 scopeCheckTopLevelDefinition (Unscoped.TopLevelClassDefinition _name params ms) = do
-  (typ, abstr) <- scopeCheckParamsType params $ pure Builtin.TypeName
+  (typ, abstr) <- scopeCheckParamsType params $ Unscoped.Var Builtin.TypeName
   ms' <- mapM (mapM (fmap abstr . scopeCheckExpr)) ms
   let res = Scoped.TopLevelPatClassDefinition $ ClassDef ms'
   return (res, Just typ)
@@ -155,8 +155,8 @@ scopeCheckTopLevelDefinition (Unscoped.TopLevelInstanceDefinition typ ms) = do
 
 scopeCheckParamsType
   :: Monad f
-  => [(Plicitness, Name, Unscoped.Type QName)]
-  -> Unscoped.Expr QName
+  => [(Plicitness, Name, Unscoped.Type)]
+  -> Unscoped.Expr
   -> ScopeCheck (Scoped.Expr QName, f QName -> Scope TeleVar f QName)
 scopeCheckParamsType params kind = do
   typ' <- scopeCheckExpr typ
@@ -168,7 +168,7 @@ scopeCheckParamsType params kind = do
     abstr = abstract $ teleAbstraction $ Vector.fromList paramNames
 
 scopeCheckDefinition
-  :: Unscoped.Definition Unscoped.Expr QName
+  :: Unscoped.Definition Unscoped.Expr
   -> ScopeCheck (Name, (Scoped.PatDefinition (Scoped.Clause void Scoped.Expr QName), Maybe (Scoped.Type QName)))
 scopeCheckDefinition (Unscoped.Definition name a clauses mtyp) = do
   res <- Scoped.PatDefinition a IsOrdinaryDefinition <$> mapM scopeCheckClause clauses
@@ -176,7 +176,7 @@ scopeCheckDefinition (Unscoped.Definition name a clauses mtyp) = do
   return (name, (res, mtyp'))
 
 scopeCheckClause
-  :: Unscoped.Clause Unscoped.Expr QName
+  :: Unscoped.Clause Unscoped.Expr
   -> ScopeCheck (Scoped.Clause void Scoped.Expr QName)
 scopeCheckClause (Unscoped.Clause plicitPats e) = do
   plicitPats' <- traverse (traverse scopeCheckPat) plicitPats
@@ -188,7 +188,7 @@ scopeCheckClause (Unscoped.Clause plicitPats e) = do
   Scoped.Clause typedPats'' . abstract (fmap B . patternAbstraction vars) <$> scopeCheckExpr e
 
 scopeCheckExpr
-  :: Unscoped.Expr QName
+  :: Unscoped.Expr
   -> ScopeCheck (Scoped.Expr QName)
 scopeCheckExpr expr = case expr of
   Unscoped.Var v -> do
@@ -238,8 +238,8 @@ scopeCheckExpr expr = case expr of
   Unscoped.SourceLoc loc e -> Scoped.SourceLoc loc <$> scopeCheckExpr e
 
 scopeCheckBranch
-  :: Pat (Unscoped.Expr QName) QName
-  -> Unscoped.Expr QName
+  :: Pat Unscoped.Expr QName
+  -> Unscoped.Expr
   -> ScopeCheck (Pat (PatternScope Scoped.Expr QName) (), PatternScope Scoped.Expr QName)
 scopeCheckBranch pat e = do
   pat' <- scopeCheckPat pat
@@ -247,7 +247,7 @@ scopeCheckBranch pat e = do
   (,) (void $ abstractPatternTypes vs pat') . abstract (patternAbstraction vs) <$> scopeCheckExpr e
 
 scopeCheckPat
-  :: Pat (Unscoped.Expr QName) QName
+  :: Pat Unscoped.Expr QName
   -> ScopeCheck (Pat (Scoped.Expr QName) QName)
 scopeCheckPat pat = case pat of
   VarPat h v -> do
