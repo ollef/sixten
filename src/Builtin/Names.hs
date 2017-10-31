@@ -15,6 +15,8 @@ pattern BuiltinModuleName <- ((==) "Sixten.Builtin" -> True) where BuiltinModule
 
 pattern UnsolvedConstraintName :: QName
 pattern UnsolvedConstraintName <- ((==) "Sixten.Builtin.UnsolvedConstraint" -> True) where UnsolvedConstraintName = "Sixten.Builtin.UnsolvedConstraint"
+pattern UnsolvedConstraint :: Expr v -> Expr v
+pattern UnsolvedConstraint typ = App (Global UnsolvedConstraintName) Explicit typ
 
 pattern IntName :: QName
 pattern IntName <- ((==) "Sixten.Builtin.Int" -> True) where IntName = "Sixten.Builtin.Int"

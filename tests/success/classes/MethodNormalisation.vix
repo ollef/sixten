@@ -1,0 +1,9 @@
+class Test a where
+  test : a -> Type
+
+instance Test Nat where
+  test Zero = Unit
+  test (Succ n) = Pair Unit (test n)
+
+f : test (Succ (Succ Zero))
+f = MkPair MkUnit (MkPair MkUnit MkUnit)

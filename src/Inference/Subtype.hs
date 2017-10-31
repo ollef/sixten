@@ -7,8 +7,8 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import Analysis.Simplify
+import {-# SOURCE #-} Inference.Class
 import Inference.Monad
-import Inference.Normalise
 import Inference.Unify
 import Meta
 import Syntax

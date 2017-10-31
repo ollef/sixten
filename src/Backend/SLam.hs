@@ -16,7 +16,7 @@ import qualified Syntax.Sized.SLambda as SLambda
 import VIX
 
 slamSized :: AbstractM -> VIX LambdaM
-slamSized e = SLambda.Anno <$> slam e <*> (slam =<< whnf' True =<< typeOf e)
+slamSized e = SLambda.Anno <$> slam e <*> (slam =<< whnfExpandingTypeReps =<< typeOf e)
 
 slam :: AbstractM -> VIX LambdaM
 slam expr = do
@@ -33,10 +33,10 @@ slam expr = do
     Abstract.Global g -> return $ SLambda.Global g
     Abstract.Lit l -> return $ SLambda.Lit l
     Abstract.Pi {} -> do
-      t <- whnf' True $ Abstract.Global Builtin.PiTypeName
+      t <- whnfExpandingTypeReps $ Abstract.Global Builtin.PiTypeName
       slam t
     Abstract.Lam h p t s -> do
-      t' <- whnf' True t
+      t' <- whnfExpandingTypeReps t
       v <- forall h p t'
       e <- slamSized $ instantiate1 (pure v) s
       rep <- slam t'
@@ -74,7 +74,7 @@ slam expr = do
       let scope' = abstract abstr body
       return $ SLambda.Let ds' scope'
     Abstract.ExternCode c retType -> do
-        retType' <- slam =<< whnf' True retType
+        retType' <- slam =<< whnfExpandingTypeReps retType
         c' <- slamExtern c
         return $ SLambda.Anno (SLambda.ExternCode c') retType'
   modifyIndent pred
@@ -93,7 +93,7 @@ slamBranches (ConBranches cbrs) = do
       let vs = fst <$> tele'
           abstr = teleAbstraction vs
           t = instantiateTele pure vs s
-      trep <- slam =<< whnf' True t
+      trep <- slam =<< whnfExpandingTypeReps t
       v <- forall h p t
       return (v, TeleArg h p $ abstract abstr trep)
     let vs = fst <$> tele'
@@ -118,7 +118,7 @@ slamExtern (Extern lang parts)
   = fmap (Extern lang) $ forM parts $ \part -> case part of
     ExternPart str -> return $ ExternPart str
     ExprMacroPart e -> ExprMacroPart <$> slamSized e
-    TypeMacroPart t -> TypeMacroPart <$> (slam =<< whnf' True t)
+    TypeMacroPart t -> TypeMacroPart <$> (slam =<< whnfExpandingTypeReps t)
     TargetMacroPart m -> return $ TargetMacroPart m
 
 slamDef

@@ -158,7 +158,7 @@ deinstance qname@(QName modName name) loc (PatInstanceDef methods) typ = located
           , loc
           , TopLevelPatDefinition
             $ PatDefinition
-              Abstract
+              Concrete
               IsInstance
               $ pure
               $ Clause mempty
