@@ -477,14 +477,14 @@ resolveConstr cs expected = do
     ([], Just expectedTypeName) ->
       err "Undefined constructor"
         [ Leijen.dullgreen (pretty expectedTypeName)
-        Leijen.<+> "doesn't define the"
+        Leijen.<+> "doesn't define the constructor"
         Leijen.<+> constrDoc <> "."
         ]
     ([x], _) -> return x
     (xs, _) -> err "Ambiguous constructor"
-      [ "Unable to infer the type for the" Leijen.<+> constrDoc <> "."
-      , "Possible data types:"
-      Leijen.<+> prettyHumanList "or" (Leijen.dullgreen . pretty <$> xs)
+      [ "Unable to determine which constructor" Leijen.<+> constrDoc Leijen.<+> "refers to."
+      , "Possible candidates:"
+      Leijen.<+> prettyHumanList "and" (Leijen.dullgreen . pretty <$> xs)
       <> "."
       ]
   where
@@ -509,9 +509,9 @@ resolveConstr cs expected = do
         $ show
         $ explain loc
         $ Err (Just heading) docs mempty mempty
-    constrDoc = case (Leijen.red . pretty) <$> HashSet.toList cs of
-      [pc] -> "constructor" Leijen.<+> pc
-      pcs -> "constructors" Leijen.<+> prettyHumanList "and" pcs
+    constrDoc = case HashSet.toList cs of
+      (QConstr _ cname:_) -> Leijen.red (pretty cname)
+      _ -> error "resolveConstr no constrs"
 
 --------------------------------------------------------------------------------
 -- Definitions
