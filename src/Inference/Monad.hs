@@ -1,4 +1,3 @@
-{-# LANGUAGE PatternSynonyms #-}
 module Inference.Monad where
 
 import Control.Monad.Reader
@@ -6,7 +5,6 @@ import Control.Monad.Reader
 import qualified Builtin.Names as Builtin
 import Meta
 import Syntax
-import Syntax.Abstract
 import VIX
 
 type Polytype = AbstractM
@@ -60,9 +58,6 @@ existsVar
   -> Plicitness
   -> AbstractM
   -> Infer AbstractM
-existsVar _ Constraint typ = return $ UnsolvedConstraint typ
+existsVar _ Constraint typ = return $ Builtin.UnsolvedConstraint typ
 existsVar h Implicit typ = pure <$> exists h Implicit typ
 existsVar h Explicit typ = pure <$> exists h Explicit typ
-
-pattern UnsolvedConstraint :: Expr v -> Expr v
-pattern UnsolvedConstraint typ = App (Global Builtin.UnsolvedConstraintName) Explicit typ

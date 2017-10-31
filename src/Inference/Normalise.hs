@@ -18,24 +18,41 @@ whnf
   :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
   => AbstractM
   -> m AbstractM
-whnf = whnf' False
+whnf = whnf' WhnfArgs
+  { expandTypeReps = False
+  , handleUnsolvedConstraint = const $ return Nothing
+  }
+
+whnfExpandingTypeReps
+  :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
+  => AbstractM
+  -> m AbstractM
+whnfExpandingTypeReps = whnf' WhnfArgs
+  { expandTypeReps = True
+  , handleUnsolvedConstraint = const $ return Nothing
+  }
+
+data WhnfArgs m = WhnfArgs
+  { expandTypeReps :: !Bool
+  , handleUnsolvedConstraint :: !(AbstractM -> m (Maybe AbstractM))
+  }
 
 whnf'
   :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
-  => Bool
+  => WhnfArgs m
   -> AbstractM
   -> m AbstractM
-whnf' expandTypeReps expr = do
+whnf' args expr = do
   modifyIndent succ
-  logMeta 40 ("whnf e " ++ show expandTypeReps) expr
+  logMeta 40 "whnf e" expr
   res <- uncurry go $ appsView expr
-  logMeta 40 ("whnf res " ++ show expandTypeReps) res
+  logMeta 40 "whnf res" res
   modifyIndent pred
   return res
   where
-    go f [] = whnfInner expandTypeReps f
+    go f [] = whnfInner args f
     go f es@((p, e):es') = do
-      f' <- whnfInner expandTypeReps f
+      f' <- whnfInner args f
       case f' of
         Lam h p' t s | p == p' -> do
           eVar <- shared h p e t
@@ -44,45 +61,50 @@ whnf' expandTypeReps expr = do
           Builtin.ProductTypeRep x y -> typeRepBinOp
             (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
             TypeRep.product Builtin.ProductTypeRep
-            (whnf' expandTypeReps) x y
+            (whnf' args) x y
           Builtin.SumTypeRep x y -> typeRepBinOp
             (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
             TypeRep.sum Builtin.SumTypeRep
-            (whnf' expandTypeReps) x y
-          Builtin.SubInt x y -> binOp Nothing (Just 0) (-) Builtin.SubInt (whnf' expandTypeReps) x y
-          Builtin.AddInt x y -> binOp (Just 0) (Just 0) (+) Builtin.AddInt (whnf' expandTypeReps) x y
-          Builtin.MaxInt x y -> binOp (Just 0) (Just 0) max Builtin.MaxInt (whnf' expandTypeReps) x y
+            (whnf' args) x y
+          Builtin.SubInt x y -> binOp Nothing (Just 0) (-) Builtin.SubInt (whnf' args) x y
+          Builtin.AddInt x y -> binOp (Just 0) (Just 0) (+) Builtin.AddInt (whnf' args) x y
+          Builtin.MaxInt x y -> binOp (Just 0) (Just 0) max Builtin.MaxInt (whnf' args) x y
+          expr'@(Builtin.UnsolvedConstraint typ) -> do
+            msolution <- handleUnsolvedConstraint args typ
+            case msolution of
+              Nothing -> return expr'
+              Just sol -> whnf' args sol
           expr' -> return expr'
 
 whnfInner
   :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
-  => Bool
+  => WhnfArgs m
   -> AbstractM
   -> m AbstractM
-whnfInner expandTypeReps expr = case expr of
-  Var v -> refineVar v $ whnf' expandTypeReps
+whnfInner args expr = case expr of
+  Var v -> refineVar v $ whnf' args
   Global g -> do
     (d, _) <- definition g
     case d of
-      Definition Concrete _ e -> whnf' expandTypeReps e
-      DataDefinition _ e | expandTypeReps -> whnf' expandTypeReps e
+      Definition Concrete _ e -> whnf' args e
+      DataDefinition _ e | expandTypeReps args -> whnf' args e
       _ -> return expr
   Con _ -> return expr
   Lit _ -> return expr
   Pi {} -> return expr
-  (etaReduce -> Just expr') -> whnf' expandTypeReps expr'
+  (etaReduce -> Just expr') -> whnf' args expr'
   Lam {} -> return expr
   App {} -> return expr
   Let ds scope -> do
     e <- instantiateLetM ds scope
-    whnf' expandTypeReps e
+    whnf' args e
   Case e brs retType -> do
-    e' <- whnf' expandTypeReps e
-    retType' <- whnf' expandTypeReps retType
-    chooseBranch e' brs retType' $ whnf' expandTypeReps
+    e' <- whnf' args e
+    retType' <- whnf' args retType
+    chooseBranch e' brs retType' $ whnf' args
   ExternCode c retType -> ExternCode
-    <$> mapM (whnf' expandTypeReps) c
-    <*> whnf' expandTypeReps retType
+    <$> mapM (whnf' args) c
+    <*> whnf' args retType
 
 normalise
   :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)

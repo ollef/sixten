@@ -29,7 +29,6 @@ import Inference.Clause
 import Inference.Cycle
 import Inference.Match as Match
 import Inference.Monad
-import Inference.Normalise
 import Inference.Subtype
 import Inference.TypeOf
 import Inference.Unify
@@ -574,7 +573,7 @@ checkDataType name (DataDef cs) typ = do
   params <- metaTelescopeM ps'
   let typ'' = Abstract.pis params $ Scope Builtin.Type
 
-  typeRep' <- whnf' True typeRep
+  typeRep' <- whnfExpandingTypeReps typeRep
   abstractedTypeRep <- abstractM abstr typeRep'
   logMeta 20 "checkDataType typeRep" typeRep'
 

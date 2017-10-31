@@ -1,0 +1,14 @@
+class Test a where
+  test : a -> Type
+
+type Maybe a = Nothing | Just a
+
+instance forall a. Test a => Test (Maybe a) where
+  test Nothing = Int
+  test (Just a) = test a
+
+the : (a : Type) -> a -> a
+the _ a = a
+
+f : forall a. Test a => test (the (Maybe a) Nothing)
+f = 123
