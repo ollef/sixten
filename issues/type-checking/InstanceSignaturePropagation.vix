@@ -1,0 +1,13 @@
+type Maybe a
+  = Nothing
+  | Just a
+
+type Maybe2 a
+  = Nothing
+  | Just a
+
+class Pointed f where
+  point : forall a. a -> f a
+
+instance Pointed Maybe where
+  point = Just
