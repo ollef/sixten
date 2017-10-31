@@ -149,7 +149,7 @@ scopeCheckTopLevelDefinition (Unscoped.TopLevelInstanceDefinition typ ms) = do
   let res = Scoped.TopLevelPatInstanceDefinition
         $ Scoped.PatInstanceDef
         $ Vector.fromList
-        $ (\(loc, (n, (d, _typ))) -> (n, loc, d)) -- TODO use the type
+        $ (\(loc, (n, (d, mtyp))) -> (n, loc, d, mtyp))
         <$> ms'
   return (res, Just typ')
 
