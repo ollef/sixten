@@ -29,7 +29,7 @@ data PatDefinition clause
   = PatDefinition Abstract IsInstance (NonEmpty clause)
   deriving (Foldable, Functor, Show, Traversable)
 
-newtype PatInstanceDef expr v = PatInstanceDef (Vector (Name, SourceLoc, PatDefinition (Clause Void expr v)))
+data PatInstanceDef expr v = PatInstanceDef (Vector (Name, SourceLoc, PatDefinition (Clause Void expr v), Maybe (expr v)))
   deriving (Foldable, Functor, Show, Traversable)
 
 data Clause b expr v = Clause
@@ -70,7 +70,7 @@ instance GlobalBound TopLevelPatDefinition where
   bound f g (TopLevelPatInstanceDefinition instanceDef) = TopLevelPatInstanceDefinition $ bound f g instanceDef
 
 instance GlobalBound PatInstanceDef where
-  bound f g (PatInstanceDef ms) = PatInstanceDef $ second (bound f g <$>) <$> ms
+  bound f g (PatInstanceDef ms) = PatInstanceDef $ (\(name, loc, def, mtyp) -> (name, loc, bound f g <$> def, bind f g <$> mtyp)) <$> ms
 
 instance GlobalBound (Clause b) where
   bound f g (Clause pats s) = Clause (fmap (first (bound f g)) <$> pats) (bound f g s)
@@ -107,9 +107,10 @@ instance PrettyNamed clause => PrettyNamed (PatDefinition clause) where
 deriveEq1 ''PatDefinition
 
 instance (Pretty (expr v), Monad expr, IsString v) => PrettyNamed (PatInstanceDef expr v) where
-  prettyNamed name (PatInstanceDef ms)
-    = name <+> "=" <+> "instance" <+> "where" <$$>
-    indent 2 (vcat $ (\(n, _, m) -> prettyNamed (prettyM n) m) <$> ms)
+  prettyNamed name (PatInstanceDef ms) = name <+> "=" <+> "instance" <+> "where" <$$> do
+    let go (n, _, m, Nothing) = prettyNamed (prettyM n) m
+        go (n, _, m, Just typ) = prettyM n <+> ":" <+> prettyM typ <$$> prettyNamed (prettyM n) m
+    indent 2 (vcat $ go <$> ms)
 
 instantiateClause
   :: Monad expr

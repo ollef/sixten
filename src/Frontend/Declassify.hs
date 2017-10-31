@@ -164,12 +164,12 @@ deinstance qname@(QName modName name) loc (PatInstanceDef methods) typ = located
               $ Clause mempty
               $ abstractNone
               $ apps (Con $ HashSet.singleton $ classConstr className)
-              $ (\(n, _, _) -> (Explicit, global $ mname n)) <$> methods'
+              $ (\(n, _, _, _) -> (Explicit, global $ mname n)) <$> methods'
           , Just typ
           )
           :
-          [ (mname n, loc', TopLevelPatDefinition def, Nothing)
-          | (n, loc', def) <- Vector.toList methods'
+          [ (mname n, loc', TopLevelPatDefinition def, mtyp)
+          | (n, loc', def, mtyp) <- Vector.toList methods'
           ]
   where
     diff xs ys = HashSet.toList $ HashSet.difference (toHashSet xs) (toHashSet ys)
@@ -178,7 +178,7 @@ deinstance qname@(QName modName name) loc (PatInstanceDef methods) typ = located
         p [] = False
         p [_] = False
         p _ = True
-    getName = fst3
+    getName (n, _, _, _) = n
 
 getClass
   :: Expr v
