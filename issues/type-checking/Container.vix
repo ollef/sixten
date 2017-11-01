@@ -1,0 +1,22 @@
+the : (a : Type) -> a -> a
+the _ a = a
+
+class ContainerElement c where
+  Element : forall proxy. proxy c -> Type
+
+class Container c where
+  map
+    : ContainerElement c
+    => (Element (the (Maybe c) Nothing) -> Element (the (Maybe c) Nothing))
+    -> c
+    -> c
+
+type Maybe a = Nothing | Just a
+
+instance forall a. ContainerElement (Maybe a) where
+  Element : forall a proxy. proxy (Maybe a) -> Type
+  Element @a _ = a
+
+instance forall a. Container (Maybe a) where
+  map f Nothing = Nothing
+  map f (Just a) = Just (f a)
