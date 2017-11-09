@@ -24,7 +24,7 @@ optionsParser = Options
   <$> Compile.optionsParser
   <*> many
     (strArgument
-    $ metavar "ARGS.."
+    $ metavar "ARGS..."
     <> help "Command-line options passed to the Sixten program"
     )
 
