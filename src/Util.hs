@@ -176,7 +176,7 @@ forWithPrefixM
 forWithPrefixM = flip mapWithPrefixM
 
 nonEmptySome :: Alternative f => f a -> f (NonEmpty a)
-nonEmptySome p = (NonEmpty.:|) <$> p <*> many p
+nonEmptySome p = (\(x:xs) -> x NonEmpty.:| xs) <$> some p
 
 logBase2 :: FiniteBits b => b -> Int
 logBase2 x = finiteBitSize x - 1 - countLeadingZeros x
