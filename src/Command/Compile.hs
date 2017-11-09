@@ -115,12 +115,15 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
     withAssemblyDir (Just dir) k = do
       createDirectoryIfMissing True dir
       k dir
+
     withOutputFile Nothing k
       = withTempFile firstInputDir firstFileName $ \outputFile outputFileHandle -> do
         hClose outputFileHandle
         k outputFile
+    withOutputFile (Just o) k = do
+      o' <- makeAbsolute o
+      k o'
 
-    withOutputFile (Just o) k = k o
     withLogHandle Nothing k = k stdout
     withLogHandle (Just file) k = withFile file WriteMode k
 
