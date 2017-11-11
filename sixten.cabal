@@ -140,5 +140,6 @@ Test-suite test-sixten
                        process,
                        sixten,
                        tasty,
-                       tasty-golden
+                       tasty-golden,
+                       tasty-program
   default-language:    Haskell2010
