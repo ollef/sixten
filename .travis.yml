@@ -16,7 +16,7 @@ before_install:
 - stack ${STACK_FLAGS} setup
 
 script:
-- bash test.sh
+- stack test
 
 cache:
   directories:
