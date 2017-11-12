@@ -136,6 +136,7 @@ Test-suite test-sixten
   main-is:             Main.hs
   build-depends:       base >= 4.8 && < 4.11,
                        bytestring,
+                       directory,
                        filepath,
                        process,
                        sixten,
