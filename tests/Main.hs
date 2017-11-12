@@ -1,8 +1,5 @@
-import Control.Applicative   (liftA)
-import Control.Monad         (join, filterM)
-import Data.List        (isInfixOf, isSuffixOf)
 import Data.Proxy       (Proxy (..))
-import System.Directory (doesDirectoryExist, listDirectory, doesFileExist)
+import System.Directory (doesFileExist)
 import System.FilePath  (takeDirectory, FilePath, (</>))
 import Test.Tasty
 import Test.Tasty.Golden  (findByExtension)
@@ -37,40 +34,31 @@ groupByKey f (x : xs) = (kx, x : xlike) : groupByKey f rest
   where kx = f x
         (xlike, rest) = span ((==) kx . f) xs
 
-extraFlags :: FilePath -> [FilePath] -> Maybe FilePath -> [String]
-extraFlags dir input expected = input ++ (f dir) ++ (g expected)
-  where
-    f d
-      | "type-error"   `isInfixOf` d = ["--expect-type-error"]
-      | "syntax-error" `isInfixOf` d = ["--expect-syntax-error"]
-      | "success"      `isInfixOf` d = []
-      | otherwise                    = undefined
-    g Nothing  = []
-    g (Just e) = ["--expected", e]
-
 testInput :: IO [(String, [String], Maybe String)]
 testInput = do
-  ds <- join . liftA (filterM doesDirectoryExist) $
-    fmap (testRootDir </>) <$> listDirectory testRootDir
-  liftA concat $ mapM getInfo ds
+  fmap concat $ sequence
+    [ single "success" []
+    , single "type-error" ["--expect-type-error"]
+    , single "syntax-error" ["--expect-syntax-error"]
+    , multi "success-multi" []
+    , multi "type-error-multi" ["--expect-type-error"]
+    ]
     where
-      getInfo dir
-        | "-multi" `isSuffixOf` dir = multi dir
-        | otherwise = single dir
-      single dir = findByExtension [".vix"] dir >>= mapM g
+      single dir flags = getVix dir >>= mapM g
         where
           g v = let e = v ++ "-expected" in do
             b <- doesFileExist e
-            return $ f (v, extraFlags dir [v] $ pick e b)
-      multi dir = do
-        vs <- groupByKey takeDirectory <$> findByExtension [".vix"] dir
+            return $ f (v, flags ++ (v : pick e b))
+      multi dir flags = do
+        vs <- groupByKey takeDirectory <$> getVix dir
         mapM g vs
           where
             g (d, v) = let e = d </> "Main.hs-expected" in do
               b <- doesFileExist e
-              return $ f (d, extraFlags d v $ pick e b)
+              return $ f (d, flags ++ v ++ pick e b)
+      getVix dir = findByExtension [".vix"] $ testRootDir </> dir
       f (path, x) = (testName path, x, Nothing)
-      pick e b = if b then Just e else Nothing
+      pick e b = if b then ["--expected", e] else []
 
 mkTestGrp :: Args -> [(TestName, [String], Maybe FilePath)] -> TestTree
 mkTestGrp (A a) = testGroup "End to end tests" . fmap mkTest
