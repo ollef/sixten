@@ -28,13 +28,13 @@ testRootDir = "tests"
 testName :: FilePath -> FilePath
 testName = drop (length testRootDir + 1)
 
-groupByKey :: Ord b => (a -> b) -> [a] -> [(b, [a])]
+groupByKey :: Eq b => (a -> b) -> [a] -> [(b, [a])]
 groupByKey _  [] = []
 groupByKey f (x : xs) = (kx, x : xlike) : groupByKey f rest
   where kx = f x
         (xlike, rest) = span ((==) kx . f) xs
 
-testInput :: IO [(String, [String], Maybe String)]
+testInput :: IO [(String, [String])]
 testInput = do
   fmap concat $ sequence
     [ single "success" []
@@ -57,11 +57,11 @@ testInput = do
               b <- doesFileExist e
               return $ f (d, flags ++ v ++ pick e b)
       getVix dir = findByExtension [".vix"] $ testRootDir </> dir
-      f (path, x) = (testName path, x, Nothing)
+      f (path, x) = (testName path, x)
       pick e b = if b then ["--expected", e] else []
 
-mkTestGrp :: Args -> [(TestName, [String], Maybe FilePath)] -> TestTree
+mkTestGrp :: Args -> [(TestName, [String])] -> TestTree
 mkTestGrp (A a) = testGroup "End to end tests" . fmap mkTest
   where
-    mkTest (name, xs, stdin) =
-      testProgram name "sixten" ("test" : (words a ++ xs)) stdin
+    mkTest (name, xs) =
+      testProgram name "sixten" ("test" : (words a ++ xs)) Nothing
