@@ -313,7 +313,7 @@ If want to get in touch, create a Github issue or join the [Gitter chat](https:/
 
 Please read the [code of conduct](CODE_OF_CONDUCT.md).
 
-## Authors
+## Contributors
 
 [Olle Fredriksson](https://github.com/ollef)
 
