@@ -1,4 +1,6 @@
+import Data.List
 import Data.Proxy       (Proxy (..))
+import Data.Traversable
 import System.Directory (doesFileExist)
 import System.FilePath  (takeDirectory, FilePath, (</>))
 import Test.Tasty
@@ -35,30 +37,31 @@ groupByKey f (x : xs) = (kx, x : xlike) : groupByKey f rest
         (xlike, rest) = span ((==) kx . f) xs
 
 testInput :: IO [(String, [String])]
-testInput = do
-  fmap concat $ sequence
-    [ single "success" []
-    , single "type-error" ["--expect-type-error"]
-    , single "syntax-error" ["--expect-syntax-error"]
-    , multi "success-multi" []
-    , multi "type-error-multi" ["--expect-type-error"]
-    ]
-    where
-      single dir flags = getVix dir >>= mapM g
-        where
-          g v = let e = v ++ "-expected" in do
-            b <- doesFileExist e
-            return $ f (v, flags ++ (v : pick e b))
-      multi dir flags = do
-        vs <- groupByKey takeDirectory <$> getVix dir
-        mapM g vs
-          where
-            g (d, v) = let e = d </> "Main.hs-expected" in do
-              b <- doesFileExist e
-              return $ f (d, flags ++ v ++ pick e b)
-      getVix dir = findByExtension [".vix"] $ testRootDir </> dir
-      f (path, x) = (testName path, x)
-      pick e b = if b then ["--expected", e] else []
+testInput = concat <$> sequence
+  [ single "success" []
+  , single "type-error" ["--expect-type-error"]
+  , single "syntax-error" ["--expect-syntax-error"]
+  , multi "success-multi" []
+  , multi "type-error-multi" ["--expect-type-error"]
+  ]
+  where
+    single dir flags = do
+      vixFiles <- findVixFiles dir
+      forM vixFiles $ \file -> do
+        let expFile = file ++ "-expected"
+        expExists <- doesFileExist expFile
+        return (testName file, flags ++ file : expectedFlag expFile expExists)
+
+    multi dir flags = do
+      vixDirs <- groupByKey takeDirectory <$> findVixFiles dir
+      forM vixDirs $ \(dir, files) -> do
+        let expFile = dir </> "Main.hs-expected"
+        expExists <- doesFileExist expFile
+        return (testName dir, flags ++ files ++ expectedFlag expFile expExists)
+
+    findVixFiles dir = sort <$> findByExtension [".vix"] (testRootDir </> dir)
+
+    expectedFlag file exists = if exists then ["--expected", file] else []
 
 mkTestGrp :: Args -> [(TestName, [String])] -> TestTree
 mkTestGrp (A a) = testGroup "End to end tests" . fmap mkTest
