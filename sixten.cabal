@@ -18,8 +18,6 @@ data-files:
 
 executable sixten
   ghc-options:         -Wall
-                       -fwarn-tabs
-                       -fwarn-incomplete-record-updates
                        -funbox-strict-fields
   main-is:             Main.hs
   other-modules:
@@ -106,7 +104,12 @@ executable sixten
                        directory,
                        filepath,
                        hashable,
+                       lifted-base,
+                       llvm-hs-pure,
+                       irbuilder,
+                       llvm-hs-pretty,
                        mmorph,
+                       monad-control,
                        mtl,
                        multiset,
                        optparse-applicative,
@@ -117,6 +120,7 @@ executable sixten
                        temporary,
                        text,
                        transformers,
+                       transformers-base,
                        trifecta,
                        unordered-containers,
                        vector,

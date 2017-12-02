@@ -177,10 +177,3 @@ extractDef (QName mname name) def tgt = case def of
           else "_extern_" <> shower n <> "__" <> name
       | n <- [(0 :: Int)..]
       ]
-
-moduleExterns :: Language -> [Extracted.Submodule innards] -> [Text]
-moduleExterns lang modules = do
-  modul <- modules
-  (lang', code) <- Extracted.submoduleExterns modul
-  guard $ lang == lang'
-  return code

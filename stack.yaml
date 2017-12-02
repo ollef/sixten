@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: nightly-2017-10-13
+resolver: nightly-2017-11-14
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -37,9 +37,17 @@ resolver: nightly-2017-10-13
 # will not be run. This is useful for tweaking upstream packages.
 packages:
 - '.'
+- location:
+    git: https://github.com/llvm-hs/llvm-irbuilder.git
+    commit: 8770ae889d67cc8a04193f26ff82af32575daf70
+  extra-dep: true
+- location:
+    git: https://github.com/llvm-hs/llvm-hs-pretty.git
+    commit: 2a9425fb07ce7df1a450a87d579e7b19cdfa3fdb
+  extra-dep: true
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
-extra-deps: []
+extra-deps: [irbuilder-0.1.0.0, llvm-pretty-0.7.1.1, monadLib-3.7.3]
 
 # Override default flag values for local packages and extra-deps
 flags: {}

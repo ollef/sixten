@@ -50,7 +50,7 @@ type DependencySigs = HashMap QName Text
 
 process
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
-  -> VIX [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
+  -> VIX [Generate.GeneratedSubmodule]
 process = frontend backend
 
 frontend
@@ -76,7 +76,7 @@ frontend k
 
 backend
   :: [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
-  -> VIX [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
+  -> VIX [Generate.GeneratedSubmodule]
 backend
   = slamGroup
   >=> prettyGroup "SLammed" vac
@@ -97,7 +97,7 @@ backend
 
 processConvertedGroup
   :: [(QName, Sized.Definition Lifted.Expr Void)]
-  -> VIX [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
+  -> VIX [Generate.GeneratedSubmodule]
 processConvertedGroup
   = inferGroupDirections
   >=> addSignaturesToContext
@@ -274,17 +274,10 @@ extractExternGroup defs = do
 
 generateGroup
   :: [(QName, Extracted.Submodule (Sized.Definition Extracted.Expr Void))]
-  -> VIX [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
-generateGroup defs = do
-  target <- gets vixTarget
-  qcindex <- qconstructorIndex
-  sigs <- gets vixSignatures
-  let env = Generate.GenEnv qcindex (`HashMap.lookup` sigs)
-
-  return
-    [ Generate.generateModule env target x $ vacuous <$> m
-    | (x, m) <- defs
-    ]
+  -> VIX [Generate.GeneratedSubmodule]
+generateGroup defs =
+  forM defs $ \(x, m) ->
+    Generate.generateSubmodule x $ vacuous <$> m
 
 data ProcessFileArgs = ProcessFileArgs
   { procFile :: FilePath
@@ -295,26 +288,22 @@ data ProcessFileArgs = ProcessFileArgs
   } deriving (Eq, Show)
 
 writeModule
-  :: Module [Extracted.Submodule (Generate.Generated (Text, DependencySigs))]
+  :: Module [Generate.GeneratedSubmodule]
   -> FilePath
   -> [(Language, FilePath)]
-  -> IO [(Language, FilePath)]
+  -> VIX [(Language, FilePath)]
 writeModule modul llOutputFile externOutputFiles = do
   let subModules = moduleContents modul
-  withFile llOutputFile WriteMode $ do
-    let decls
-          = mconcat
-          $ snd . Generate.generated . Extracted.submoduleContents <$> subModules
+  Util.withFile llOutputFile WriteMode $
     Generate.writeLlvmModule
       (moduleName modul)
       (moduleImports modul)
-      (fmap fst . Extracted.submoduleContents <$> subModules)
-      decls
-  fmap catMaybes $
+      subModules
+  liftIO $ fmap catMaybes $
     forM externOutputFiles $ \(lang, outFile) ->
-      case ExtractExtern.moduleExterns lang (fmap (fmap fst) <$> subModules) of
+      case fmap snd $ filter ((== lang) . fst) $ concatMap Generate.externs $ moduleContents modul of
         [] -> return Nothing
-        externCode -> withFile outFile WriteMode $ \handle -> do
+        externCode -> Util.withFile outFile WriteMode $ \handle -> do
           -- TODO this is C specific
           Text.hPutStrLn handle "#include <stdint.h>"
           Text.hPutStrLn handle "#include <stdio.h>"

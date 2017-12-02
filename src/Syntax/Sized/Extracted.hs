@@ -33,7 +33,7 @@ data Declaration = Declaration
   } deriving (Eq, Ord, Show)
 
 data Submodule contents = Submodule
-  { submoduleDecls :: [Declaration]
+  { submoduleExternDecls :: [Declaration]
   , submoduleExterns :: [(Language, Text)]
   , submoduleContents :: contents
   } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)

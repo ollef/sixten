@@ -1,9 +1,11 @@
-{-# LANGUAGE ConstraintKinds, FlexibleContexts, GeneralizedNewtypeDeriving, OverloadedStrings #-}
+{-# LANGUAGE ConstraintKinds, FlexibleContexts, GeneralizedNewtypeDeriving, OverloadedStrings, UndecidableInstances #-}
 module VIX where
 
+import Control.Monad.Base
 import Control.Monad.Except
 import Control.Monad.ST
 import Control.Monad.State
+import Control.Monad.Trans.Control
 import Data.Bifunctor
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
@@ -59,7 +61,7 @@ emptyVIXState target handle verbosity = VIXState
   }
 
 newtype VIX a = VIX (StateT VIXState (ExceptT String IO) a)
-  deriving (Functor, Applicative, Monad, MonadFix, MonadError String, MonadState VIXState, MonadIO)
+  deriving (Functor, Applicative, Monad, MonadFix, MonadError String, MonadState VIXState, MonadIO, MonadBase IO, MonadBaseControl IO)
 
 liftST :: MonadIO m => ST RealWorld a -> m a
 liftST = liftIO . stToIO
@@ -214,28 +216,11 @@ addSignatures p = modify $ \s -> s { vixSignatures = p <> vixSignatures s }
 signature
   :: (MonadError String m, MonadVIX m)
   => QName
-  -> m (Signature ReturnIndirect)
-signature name = do
-  sigs <- gets vixSignatures
-  mres <- gets $ HashMap.lookup name . vixSignatures
-  maybe (throwError $ "Not in scope: signature for " ++ show name ++ show sigs)
-        return
-        mres
+  -> m (Maybe (Signature ReturnIndirect))
+signature name = gets $ HashMap.lookup name . vixSignatures
 
 -------------------------------------------------------------------------------
 -- General constructor queries
-qconstructorIndex
-  :: MonadVIX m
-  => m (QConstr -> Maybe Int)
-qconstructorIndex = do
-  cxt <- gets vixContext
-  return $ \(QConstr n c) -> do
-    (DataDefinition (DataDef constrDefs) _, _) <- HashMap.lookup n cxt
-    case constrDefs of
-      [] -> Nothing
-      [_] -> Nothing
-      _ -> findIndex ((== c) . constrName) constrDefs
-
 constrArity
   :: (MonadVIX m, MonadError String m)
   => QConstr
@@ -245,11 +230,12 @@ constrArity
   . qconstructor
 
 constrIndex
-  :: (MonadError String m, MonadVIX m)
+  :: (MonadVIX m, MonadError String m)
   => QConstr
-  -> m Int
-constrIndex qc@(QConstr n c) = do
-  (DataDefinition (DataDef cs) _, _) <- definition n
-  case List.findIndex ((== c) . constrName) cs of
-    Just i -> return i
-    Nothing -> throwError $ "Can't find index for " ++ show qc
+  -> m (Maybe Int)
+constrIndex (QConstr n c) = do
+  mres <- gets $ HashMap.lookup n . vixContext
+  return $ case mres of
+    Just (DataDefinition (DataDef constrDefs@(_:_:_)) _, _) ->
+      findIndex ((== c) . constrName) constrDefs
+    _ -> Nothing
