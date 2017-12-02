@@ -1,9 +1,11 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns, FlexibleContexts #-}
 module Util where
 
 import Bound
 import Bound.Var
 import Control.Applicative
+import Control.Exception.Lifted
+import Control.Monad.Trans.Control
 import Control.Monad.Except
 import Control.Monad.ST
 import Control.Monad.State
@@ -28,6 +30,7 @@ import qualified Data.Vector as Vector
 import qualified Data.Vector.Generic as GVector
 import qualified Data.Vector.Generic.Base as BVector
 import qualified Data.Vector.Generic.Mutable as MVector
+import System.IO
 
 type Scope1 = Scope ()
 
@@ -238,3 +241,6 @@ saturate
   -> HashSet a
   -> HashSet a
 saturate f = fixPoint $ \s -> HashSet.unions $ s : map f (HashSet.toList s)
+
+withFile :: MonadBaseControl IO m => FilePath -> IOMode -> (Handle -> m r) -> m r
+withFile name mode = liftBaseOp $ bracket (openFile name mode) hClose

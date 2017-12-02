@@ -198,9 +198,10 @@ inferFunction expr = case expr of
     go g = do
       sig <- signature g
       case sig of
-        FunctionSig retDir argDirs -> return (Global g, (fromReturnIndirect <$> retDir, argDirs))
-        ConstantSig _ -> def
-        AliasSig g' -> go g'
+        Just (FunctionSig retDir argDirs) -> return (Global g, (fromReturnIndirect <$> retDir, argDirs))
+        Just (ConstantSig _) -> def
+        Just (AliasSig g') -> go g'
+        Nothing -> error "ReturnDirection.inferFunction no sig"
     def = error "ReturnDirection.inferFunction non-function"
 
 inferDefinition

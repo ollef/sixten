@@ -2,6 +2,7 @@
 module Processor.Files where
 
 import Control.Monad.Except
+import Control.Monad.State
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
@@ -9,7 +10,6 @@ import Data.List
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.List.NonEmpty(NonEmpty)
 import Data.Semigroup
-import Data.Text(Text)
 import qualified Data.Text as Text
 import GHC.IO.Handle
 import System.FilePath
@@ -22,7 +22,6 @@ import qualified Processor.File as File
 import Processor.Result
 import Syntax
 import qualified Syntax.Concrete.Unscoped as Unscoped
-import qualified Syntax.Sized.Extracted as Extracted
 import Util.TopoSort
 import VIX
 
@@ -53,38 +52,36 @@ processFiles args = do
     parseResult <- File.parse sourceFile
     return $ fmap (:[]) $ File.dupCheck =<< parseResult
   let modulesResult = sconcat moduleResults
-  compiledModules <- fmap join $ forM modulesResult $ processModules args
-  forM compiledModules $ writeModules $ assemblyDir args
-
-processModules
-  :: Arguments
-  -> [Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))]
-  -> IO (Result [Module [Extracted.Submodule (Generate.Generated (Text, File.DependencySigs))]])
-processModules args (builtins1 : builtins2 : modules) = do
-  result <- runVIX go tgt (logHandle args) (verbosity args)
+      go = do
+        compiledModules <- forM modulesResult processModules
+        forM compiledModules $ writeModules $ assemblyDir args
+  result <- runVIX go (target args) (logHandle args) (verbosity args)
   return $ case result of
     Left err -> Failure $ pure $ TypeError $ Text.pack err
-    Right res -> Success res
-  where
-    tgt = target args
+    Right (Failure err) -> Failure err
+    Right (Success res) -> Success res
 
-    go = do
-      builtins <- processBuiltins tgt builtins1 builtins2
-      let builtinModule = Module "Sixten.Builtin" AllExposed mempty builtins
-      let orderedModules = moduleDependencyOrder modules
-      results <- forM orderedModules $ \moduleGroup -> case moduleGroup of
-        AcyclicSCC modul -> traverse (const $ File.process modul) modul
-        CyclicSCC ms -> throwError -- TODO: Could be allowed?
-          $ "Circular modules: " ++ intercalate ", " (fromModuleName . moduleName <$> ms)
-      return $ builtinModule : results
-processModules _ _ = error "processModules"
+processModules
+  :: [Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))]
+  -> VIX [Module [Generate.GeneratedSubmodule]]
+processModules (builtins1 : builtins2 : modules) = do
+  builtins <- processBuiltins builtins1 builtins2
+  let builtinModule = Module "Sixten.Builtin" AllExposed mempty builtins
+  let orderedModules = moduleDependencyOrder modules
+  results <- forM orderedModules $ \moduleGroup -> case moduleGroup of
+    AcyclicSCC modul -> traverse (const $ File.process modul) modul
+    CyclicSCC ms -> throwError -- TODO: Could be allowed?
+      $ "Circular modules: " ++ intercalate ", " (fromModuleName . moduleName <$> ms)
+  return $ builtinModule : results
+processModules _ = error "processModules"
 
 processBuiltins
-  :: Target
+  :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
-  -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
-  -> VIX [Extracted.Submodule (Generate.Generated (Text, File.DependencySigs))]
-processBuiltins tgt builtins1 builtins2 = do
+  -> VIX [Generate.GeneratedSubmodule]
+processBuiltins builtins1 builtins2 = do
+  tgt <- gets vixTarget
+  let context = Builtin.context tgt
   let builtinDefNames = HashSet.fromMap $ void context
       builtinConstrNames = HashSet.fromList
         [ QConstr n c
@@ -100,13 +97,11 @@ processBuiltins tgt builtins1 builtins2 = do
   convertedResults <- File.processConvertedGroup $ HashMap.toList $ Builtin.convertedContext tgt
   builtinResults2 <- File.process builtins2
   return $ builtinResults1 <> contextResults <> convertedResults <> builtinResults2
-  where
-    context = Builtin.context tgt
 
 writeModules
   :: FilePath
-  -> [Module [Extracted.Submodule (Generate.Generated (Text, File.DependencySigs))]]
-  -> IO ProcessFilesResult
+  -> [Module [Generate.GeneratedSubmodule]]
+  -> VIX ProcessFilesResult
 writeModules asmDir modules = do
   results <- forM modules $ \modul -> do
     let fileBase = asmDir </> fromModuleName (moduleName modul)

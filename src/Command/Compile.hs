@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Command.Compile where
 
 import qualified Data.List.NonEmpty as NonEmpty
@@ -125,7 +125,7 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
       k o'
 
     withLogHandle Nothing k = k stdout
-    withLogHandle (Just file) k = withFile file WriteMode k
+    withLogHandle (Just file) k = Util.withFile file WriteMode k
 
 command :: ParserInfo (IO ())
 command = go <$> optionsParserInfo

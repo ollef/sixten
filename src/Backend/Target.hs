@@ -3,18 +3,19 @@ module Backend.Target where
 
 import qualified Data.List as List
 import Data.Monoid
+import Data.Word
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 
 import Pretty
 
 -- | The number of bits in a byte.
-byteBits :: Int
+byteBits :: Word32
 byteBits = 8
 
 data Target = Target
   { architecture :: String
-  , ptrBytes :: Int -- ^ The number of bytes in a pointer.
-  , ptrAlign :: Int -- ^ The alignment of a pointer.
+  , ptrBytes :: Word32 -- ^ The number of bytes in a pointer.
+  , ptrAlign :: Word32 -- ^ The alignment of a pointer.
   } deriving (Eq, Ord, Show)
 
 x86 :: Target
@@ -32,10 +33,10 @@ x86_64 = Target
   }
 
 -- | The number of bits in a pointer.
-ptrBits :: Target -> Int
+ptrBits :: Target -> Word32
 ptrBits t = byteBits * ptrBytes t
 
-intBytes, intBits :: Target -> Int
+intBytes, intBits :: Target -> Word32
 intBytes = ptrBytes
 intBits = ptrBits
 
