@@ -5,7 +5,8 @@ matrix:
   include:
     - env: CABALVER=1.22 GHCVER=7.10.3
       addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.3,libgc-dev],sources: [hvr-ghc]}}
-
+    - env: CABALVER=2.0 GHCVER=8.2.2
+      addons: {apt: {packages: [cabal-install-2.0,ghc-8.2.2,libgc-dev],sources: [hvr-ghc]}}
 
 before_install:
 # stack
