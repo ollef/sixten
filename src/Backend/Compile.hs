@@ -10,6 +10,7 @@ import Data.Monoid
 import Data.Version
 import System.FilePath
 import System.Process
+import Text.Printf
 
 import Backend.Target(Target)
 import qualified Backend.Target as Target
@@ -24,24 +25,41 @@ data Arguments = Arguments
   , outputFile :: !FilePath
   }
 
+minLlvmVersion :: Version
+minLlvmVersion = makeVersion [4, 0, 0]
+
+maxLlvmVersion :: Version
+maxLlvmVersion = makeVersion [5, 0, 1]
+
+-- See http://blog.llvm.org/2016/12/llvms-new-versioning-scheme.html
+-- Tl;dr: minor versions are fixed to 0, so only different major versions need
+-- to be supported.
 supportedLlvmVersions :: [Version]
-supportedLlvmVersions = makeVersion <$> [[5, 0], [4, 0]]
+supportedLlvmVersions = makeVersion . (: [minorVer]) <$> supportedMajorVersions
+  where minorVer = 0
+        maxMajorVer = head $ versionBranch maxLlvmVersion
+        minMajorVer = head $ versionBranch minLlvmVersion
+        supportedMajorVersions = [maxMajorVer, maxMajorVer - 1 .. minMajorVer]
 
 llvmBinSuffix :: IO String
 llvmBinSuffix = checkLlvmExists trySuffixes
   where trySuffixes = "" : fmap (('-' :) . showVersion) supportedLlvmVersions
+        minVersionStr = showVersion minLlvmVersion
+        maxVersionStr = showVersion maxLlvmVersion
         checkLlvmExists :: [String] -> IO String
         checkLlvmExists (suffix : xs) =
           handle (\(_ :: IOException) -> checkLlvmExists xs) $ do
           _ <- readProcess ("llvm-config" ++ suffix) ["--version"] ""
           return suffix
-        checkLlvmExists [] =
-          error "Couldn't find LLVM binaries for supported versions.\n\
-                \Try using the --llvm-config flag."
+        checkLlvmExists [] = error (
+          (printf "Couldn't find llvm-config. Currently supported versions are\
+                  \%s <= v <= %s." minVersionStr maxVersionStr) :: String)
 
 compile :: Options -> Arguments -> IO ()
 compile opts args = do
-  suffix <- llvmBinSuffix
+  suffix <- case Options.llvmConfig opts of
+    Nothing -> llvmBinSuffix
+    Just s -> return $ '-' : s
   let opt = "opt" ++ suffix
   let clang = "clang" ++ suffix
   let linker = "llvm-link" ++ suffix
