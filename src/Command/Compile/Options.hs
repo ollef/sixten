@@ -10,5 +10,5 @@ data Options = Options
   , assemblyDir :: Maybe FilePath
   , verbosity :: Int
   , logFile :: Maybe FilePath
-  , llvmConfig :: Maybe String
+  , llvmConfig :: Maybe FilePath
   } deriving (Show)
