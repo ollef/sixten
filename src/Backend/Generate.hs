@@ -63,9 +63,11 @@ voidT, byteT :: LLVM.Type
 voidT = LLVM.void
 byteT = LLVM.i8
 
--- TODO byte var alignment?
 getAlign :: MonadVIX m => m Word32
 getAlign = gets $ Target.ptrAlign . vixTarget
+
+loadStoreAlign :: Word32
+loadStoreAlign = 1
 
 getIntRep :: MonadVIX m => m TypeRep
 getIntRep = gets $ TypeRep.intRep . vixTarget
@@ -129,8 +131,7 @@ loadDirect rep o = case directType rep of
     t = directT rep
     nonVoidCase = do
       ptr <- bitcast o (LLVM.ptr t) `named` "direct-ptr"
-      align <- getAlign
-      load ptr align
+      load ptr loadStoreAlign
 
 storeDirect
   :: TypeRep
@@ -145,8 +146,7 @@ storeDirect rep src dst = case directType rep of
     t = directT rep
     nonVoidCase = do
       ptr <- bitcast dst (LLVM.ptr t) `named` "direct-ptr"
-      align <- getAlign
-      store ptr align src
+      store ptr loadStoreAlign src
       return ()
 
 -------------------------------------------------------------------------------
@@ -181,12 +181,11 @@ allocaBytes o = do
 memcpy :: LLVM.Operand -> LLVM.Operand -> LLVM.Operand -> InstrGen ()
 memcpy dst src sz = do
   bits <- getTypeRepBits
-  align <- getAlign
   let args =
         [ dst
         , src
         , sz
-        , LLVM.ConstantOperand $ LLVM.Int 32 $ fromIntegral align
+        , LLVM.ConstantOperand $ LLVM.Int 32 $ fromIntegral loadStoreAlign
         , LLVM.ConstantOperand $ LLVM.Int 1 0 -- isvolatile
         ]
       memcpyGlob
@@ -380,7 +379,9 @@ literalConstant (TypeRep r) = do
 
 storeLit :: Literal -> LLVM.Operand -> InstrGen ()
 storeLit lit out = do
-  align <- getAlign
+  align <- case lit of
+    Byte {} -> return 1
+    _ -> getAlign
   c <- literalConstant lit
   castRet <- bitcast out $ LLVM.ptr $ LLVM.typeOf c
   store castRet align $ LLVM.ConstantOperand c
