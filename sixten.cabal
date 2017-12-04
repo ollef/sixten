@@ -28,7 +28,8 @@ executable sixten
                        Backend.Compile
                        Backend.ExtractExtern
                        Backend.Generate
-                       Backend.LLVM
+                       Backend.Generate.LLVM
+                       Backend.Generate.Types
                        Backend.Lift
                        Backend.SLam
                        Backend.Target
