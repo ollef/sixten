@@ -192,16 +192,15 @@ inferFunction
   -> VIX (Expr MetaVar, (RetDirM, Vector Direction))
 inferFunction expr = case expr of
   Var v -> return (expr, fromMaybe def $ metaFunSig $ varData v)
-  Global g -> go g
+  Global g -> do
+    sig <- signature g
+    case sig of
+      Just (FunctionSig retDir argDirs) -> return (Global g, (fromReturnIndirect <$> retDir, argDirs))
+      Just (ConstantSig _) -> def
+      Just (AliasSig aliasee) -> inferFunction $ Global aliasee
+      Nothing -> error "ReturnDirection.inferFunction no sig"
   _ -> return def
   where
-    go g = do
-      sig <- signature g
-      case sig of
-        Just (FunctionSig retDir argDirs) -> return (Global g, (fromReturnIndirect <$> retDir, argDirs))
-        Just (ConstantSig _) -> def
-        Just (AliasSig g') -> go g'
-        Nothing -> error "ReturnDirection.inferFunction no sig"
     def = error "ReturnDirection.inferFunction non-function"
 
 inferDefinition

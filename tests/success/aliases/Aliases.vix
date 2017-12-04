@@ -1,0 +1,13 @@
+myInt = 100
+myIntAlias = myInt
+myIntAliasAlias = myIntAlias
+
+myFun : Int -> Int
+myFun x = addInt 23 x
+
+myFunAlias : Int -> Int
+myFunAlias = myFun
+
+myFunAliasAlias = myFunAlias
+
+main = printInt (myFunAliasAlias myIntAliasAlias)

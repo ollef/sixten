@@ -1,0 +1,9 @@
+module B exposing (..)
+
+import A exposing (..)
+
+testAlias : Int
+testAlias = test
+
+funAlias : Int -> Int
+funAlias = fun

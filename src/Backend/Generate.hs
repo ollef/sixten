@@ -376,7 +376,8 @@ generateGlobal g = do
       $ LLVM.Constant.PtrToInt
         (LLVM.Constant.BitCast glob indirectType)
         (directType ptrRep)
-    _ -> return $ IndirectVar globOperand
+    Just (AliasSig _) -> error "generateGlobal alias"
+    Nothing -> return $ IndirectVar globOperand
 
 generateBranches
   :: Expr Var
@@ -558,60 +559,60 @@ generateConstant visibility name (Constant e) = do
           , LLVM.Global.alignment = align
           }
         return $ return ()
-  case msig of
-    Just (ConstantSig dir) ->
-      case (e, dir) of
-        (Anno (Lit lit) _, Direct rep) -> case lit of
-          Byte b -> directLit (LLVM.Int 8 $ fromIntegral b) rep
-          Integer i -> directLit (LLVM.Int intBits i) rep
-          TypeRep t -> directLit (LLVM.Int typeRepBits $ TypeRep.size t) rep
-        _ -> do
-          let typ = case dir of
-                Indirect -> indirectType
-                Direct TypeRep.UnitRep -> indirectType
-                Direct rep -> directType rep
-          let glob = LLVM.GlobalReference (LLVM.ptr typ) gname
-          emitDefn $ LLVM.GlobalDefinition LLVM.globalVariableDefaults
-            { LLVM.Global.name = gname
-            , LLVM.Global.linkage = linkage
-            , LLVM.Global.unnamedAddr = Just LLVM.GlobalAddr
-            , LLVM.Global.initializer = Just $ LLVM.Null typ
-            -- , LLVM.Global.isConstant = True
-            , LLVM.Global.type' = typ
-            , LLVM.Global.alignment = align
+
+  case (e, msig) of
+    (Anno (Lit lit) _, Just (ConstantSig (Direct rep))) -> case lit of
+      Byte b -> directLit (LLVM.Int 8 $ fromIntegral b) rep
+      Integer i -> directLit (LLVM.Int intBits i) rep
+      TypeRep t -> directLit (LLVM.Int typeRepBits $ TypeRep.size t) rep
+
+    (_, Just (ConstantSig dir)) -> do
+      let typ = case dir of
+            Indirect -> indirectType
+            Direct TypeRep.UnitRep -> indirectType
+            Direct rep -> directType rep
+      let glob = LLVM.GlobalReference (LLVM.ptr typ) gname
+      emitDefn $ LLVM.GlobalDefinition LLVM.globalVariableDefaults
+        { LLVM.Global.name = gname
+        , LLVM.Global.linkage = linkage
+        , LLVM.Global.unnamedAddr = Just LLVM.GlobalAddr
+        , LLVM.Global.initializer = Just $ LLVM.Null typ
+        -- , LLVM.Global.isConstant = True
+        , LLVM.Global.type' = typ
+        , LLVM.Global.alignment = align
+        }
+      initBody <- execIRBuilderT emptyIRBuilder $ case dir of
+        Direct TypeRep.UnitRep -> do
+          _ <- generateExpr e $ Lit $ TypeRep TypeRep.UnitRep
+          retVoid
+          return ()
+        Direct rep -> do
+          storeExpr e (Lit $ TypeRep rep)
+            $ LLVM.ConstantOperand
+            $ LLVM.Constant.BitCast glob indirectType
+          retVoid
+        Indirect -> do
+          ptr <- gcAllocExpr e
+          store (LLVM.ConstantOperand glob) align ptr
+          retVoid
+          return ()
+      let initName = LLVM.Name $ fromQName name <> "-init"
+          voidFunType = LLVM.FunctionType
+            { LLVM.resultType = LLVM.void
+            , LLVM.argumentTypes = []
+            , LLVM.isVarArg = False
             }
-          initBody <- execIRBuilderT emptyIRBuilder $ case dir of
-            Direct TypeRep.UnitRep -> do
-              _ <- generateExpr e $ Lit $ TypeRep TypeRep.UnitRep
-              retVoid
-              return ()
-            Direct rep -> do
-              storeExpr e (Lit $ TypeRep rep)
-                $ LLVM.ConstantOperand
-                $ LLVM.Constant.BitCast glob indirectType
-              retVoid
-            Indirect -> do
-              ptr <- gcAllocExpr e
-              store (LLVM.ConstantOperand glob) align ptr
-              retVoid
-              return ()
-          let initName = LLVM.Name $ fromQName name <> "-init"
-              voidFunType = LLVM.FunctionType
-                { LLVM.resultType = LLVM.void
-                , LLVM.argumentTypes = []
-                , LLVM.isVarArg = False
-                }
-              initOperand = LLVM.ConstantOperand $ LLVM.GlobalReference voidFunType initName
-          emitDefn $ LLVM.GlobalDefinition LLVM.functionDefaults
-            { LLVM.Global.name = initName
-            , LLVM.Global.linkage = LLVM.Private
-            , LLVM.Global.returnType = LLVM.void
-            , LLVM.Global.basicBlocks = initBody
-            }
-          return
-            $ void
-            $ call initOperand [] `with` \c -> c
-              { LLVM.callingConvention = CC.Fast }
+          initOperand = LLVM.ConstantOperand $ LLVM.GlobalReference voidFunType initName
+      emitDefn $ LLVM.GlobalDefinition LLVM.functionDefaults
+        { LLVM.Global.name = initName
+        , LLVM.Global.linkage = LLVM.Private
+        , LLVM.Global.returnType = LLVM.void
+        , LLVM.Global.basicBlocks = initBody
+        }
+      return
+        $ void
+        $ call initOperand [] `with` \c -> c
+          { LLVM.callingConvention = CC.Fast }
     _ -> error "generateConstant"
 
 generateFunction :: Visibility -> QName -> Function Expr Var -> ModuleGen ()
@@ -696,6 +697,15 @@ generateDeclaration :: Declaration -> ModuleGen ()
 generateDeclaration decl
   = declareFun (declRetDir decl) (fromName $ declName decl) (declArgDirs decl)
 
+declareGlobal :: QName -> ModuleGen ()
+declareGlobal g = do
+  msig <- signature g
+  case msig of
+    Just (FunctionSig retDir argDirs) -> declareFun retDir (fromQName g) argDirs
+    Just (ConstantSig dir) -> declareConstant dir (fromQName g)
+    Just (AliasSig _) -> error "declareGlobal alias"
+    Nothing -> return ()
+
 declareFun
   :: RetDir
   -> LLVM.Name
@@ -738,7 +748,13 @@ generateSubmodule
   -> Extracted.Submodule (Definition Expr Var)
   -> VIX GeneratedSubmodule
 generateSubmodule name modul = do
-  let def = submoduleContents modul
+  let followAliases g = do
+        msig <- signature g
+        case msig of
+          Just (AliasSig g') -> followAliases g'
+          _ -> return g
+
+  def <- traverseGlobals followAliases $ submoduleContents modul
 
   let globalDeps
         = HashSet.toList
@@ -750,12 +766,7 @@ generateSubmodule name modul = do
         $ boundGlobals def
 
   decls <- forM globalDeps $ \g -> do
-    msig <- signature g
-    decls <- execModuleBuilderT emptyModuleBuilder $ case msig of
-      Just (FunctionSig retDir argDirs) -> declareFun retDir (fromQName g) argDirs
-      Just (ConstantSig dir) -> declareConstant dir (fromQName g)
-      Just (AliasSig _) -> return ()
-      Nothing -> return ()
+    decls <- execModuleBuilderT emptyModuleBuilder $ declareGlobal g
     return (g, decls)
 
   (i, defs) <- runModuleBuilderT emptyModuleBuilder $ do

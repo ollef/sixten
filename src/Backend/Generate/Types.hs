@@ -124,6 +124,7 @@ signatureType (ConstantSig (Direct TypeRep.UnitRep)) = LLVM.void
 signatureType (ConstantSig (Direct rep)) = directType rep
 signatureType (ConstantSig Indirect) = indirectType
 signatureType (FunctionSig retDir args) = functionType retDir args
+signatureType (AliasSig _) = error "signatureType alias"
 
 functionType
   :: RetDir

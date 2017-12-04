@@ -42,3 +42,13 @@ globals = fold . bind (pure . const mempty) (pure . HashSet.singleton)
 
 boundGlobals :: (Foldable (t e), GlobalBind e, GlobalBound t) => t e v -> HashSet QName
 boundGlobals = fold . bound (pure . const mempty) (pure . HashSet.singleton)
+
+traverseGlobals
+  :: (GlobalBound t, GlobalBind e, Traversable (t e), Applicative f)
+  => (QName -> f QName)
+  -> t e a
+  -> f (t e a)
+traverseGlobals f
+  = fmap (bound (unvar pure global) global)
+  . sequenceA
+  . bound (pure . pure . B) (pure . fmap F . f)
