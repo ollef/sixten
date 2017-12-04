@@ -1,0 +1,7 @@
+module A exposing (..)
+
+test : Int
+test = 100
+
+fun : Int -> Int
+fun x = addInt 23 x

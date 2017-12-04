@@ -1,0 +1,9 @@
+import B exposing (..)
+
+testAliasAlias : Int
+testAliasAlias = testAlias
+
+funAliasAlias : Int -> Int
+funAliasAlias = funAlias
+
+main = printInt (funAliasAlias testAliasAlias)

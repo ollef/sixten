@@ -216,7 +216,7 @@ addSignatures
 addSignatures p = modify $ \s -> s { vixSignatures = p <> vixSignatures s }
 
 signature
-  :: (MonadError String m, MonadVIX m)
+  :: MonadVIX m
   => QName
   -> m (Maybe (Signature ReturnIndirect))
 signature name = gets $ HashMap.lookup name . vixSignatures
