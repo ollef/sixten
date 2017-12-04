@@ -73,6 +73,13 @@ optionsParser = Options
     <> help "Write logs to FILE instead of standard output"
     <> action "file"
     )
+  <*> optional (strOption
+    $ long "llvm-config"
+    <> metavar "VERSION"
+    <> help "Version suffix of the llvm-config binary. For example, if the \
+            \binary is llvm-config-X.Y then specify X.Y."
+    <> action "file"
+    )
 
 compile
   :: Options
