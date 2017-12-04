@@ -17,13 +17,15 @@ import Data.Text(Text)
 import qualified Data.Text.IO as Text
 import Data.Vector(Vector)
 import Data.Void
+import Data.Word
 import System.IO
 import Text.Trifecta.Result(Err(Err), explain)
 
-import Backend.Target
+import Backend.Target as Target
 import Syntax
 import Syntax.Abstract
 import qualified Syntax.Sized.Lifted as Lifted
+import TypeRep
 import Util.MultiHashMap(MultiHashMap)
 import qualified Util.MultiHashMap as MultiHashMap
 
@@ -239,3 +241,26 @@ constrIndex (QConstr n c) = do
     Just (DataDefinition (DataDef constrDefs@(_:_:_)) _, _) ->
       findIndex ((== c) . constrName) constrDefs
     _ -> Nothing
+
+-------------------------------------------------------------------------------
+-- Type representation queries
+getIntRep :: MonadVIX m => m TypeRep
+getIntRep = gets $ TypeRep.intRep . vixTarget
+
+getPtrRep :: MonadVIX m => m TypeRep
+getPtrRep = gets $ TypeRep.ptrRep . vixTarget
+
+getTypeRep :: MonadVIX m => m TypeRep
+getTypeRep = gets $ TypeRep.typeRep . vixTarget
+
+getPiRep :: MonadVIX m => m TypeRep
+getPiRep = gets $ TypeRep.piRep . vixTarget
+
+getIntBits :: MonadVIX m => m Word32
+getIntBits = gets $ Target.intBits . vixTarget
+
+getTypeRepBits :: MonadVIX m => m Word32
+getTypeRepBits = (* Target.byteBits) . fromIntegral . TypeRep.size <$> getTypeRep
+
+getPtrAlign :: MonadVIX m => m Word32
+getPtrAlign = gets $ Target.ptrAlign . vixTarget
