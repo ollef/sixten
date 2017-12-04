@@ -75,9 +75,8 @@ optionsParser = Options
     )
   <*> optional (strOption
     $ long "llvm-config"
-    <> metavar "VERSION"
-    <> help "Version suffix of the llvm-config binary. For example, if the \
-            \binary is llvm-config-X.Y then specify X.Y."
+    <> metavar "PATH"
+    <> help "Path to the llvm-config binary."
     <> action "file"
     )
 

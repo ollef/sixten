@@ -41,29 +41,29 @@ supportedLlvmVersions = makeVersion . (: [minorVer]) <$> supportedMajorVersions
         minMajorVer = head $ versionBranch minLlvmVersion
         supportedMajorVersions = [maxMajorVer, maxMajorVer - 1 .. minMajorVer]
 
-llvmBinSuffix :: IO String
-llvmBinSuffix = checkLlvmExists trySuffixes
+llvmBinPath :: IO FilePath
+llvmBinPath = checkLlvmExists trySuffixes
   where trySuffixes = "" : fmap (('-' :) . showVersion) supportedLlvmVersions
         minVersionStr = showVersion minLlvmVersion
         maxVersionStr = showVersion maxLlvmVersion
         checkLlvmExists :: [String] -> IO String
         checkLlvmExists (suffix : xs) =
-          handle (\(_ :: IOException) -> checkLlvmExists xs) $ do
-          _ <- readProcess ("llvm-config" ++ suffix) ["--version"] ""
-          return suffix
+          handle (\(_ :: IOException) -> checkLlvmExists xs)
+          $ readProcess ("llvm-config" ++ suffix) ["--bindir"] ""
         checkLlvmExists [] = error (
-          (printf "Couldn't find llvm-config. Currently supported versions are\
-                  \%s <= v <= %s." minVersionStr maxVersionStr) :: String)
+          (printf "Couldn't find llvm-config. Currently supported versions are \
+                  \%s <= v <= %s.\n You can specify its path using the \
+                  \--llvm-config flag." minVersionStr maxVersionStr) :: String)
 
 compile :: Options -> Arguments -> IO ()
 compile opts args = do
-  suffix <- case Options.llvmConfig opts of
-    Nothing -> llvmBinSuffix
-    Just s -> return $ '-' : s
-  let opt = "opt" ++ suffix
-  let clang = "clang" ++ suffix
-  let linker = "llvm-link" ++ suffix
-  let compiler = "llc" ++ suffix
+  binPath <- takeWhile (/= '\n') <$> case Options.llvmConfig opts of
+    Nothing -> llvmBinPath
+    Just configBin -> readProcess configBin ["--bindir"] ""
+  let opt = binPath </> "opt"
+  let clang = binPath </> "clang"
+  let linker = binPath </> "llvm-link"
+  let compiler = binPath </> "llc"
   cLlFiles <- forM (cFiles args) $ compileC clang opts $ target args
   linkedLlFile <- linkLlvm linker (llFiles args ++ toList cLlFiles)
     $ linkedLlFileName args
