@@ -75,11 +75,11 @@ executable sixten
                        Syntax.Direction
                        Syntax.Extern
                        Syntax.GlobalBind
-                       Syntax.Hint
                        Syntax.Let
                        Syntax.Literal
                        Syntax.Module
                        Syntax.Name
+                       Syntax.NameHint
                        Syntax.Pattern
                        Syntax.Sized.Definition
                        Syntax.Sized.Extracted

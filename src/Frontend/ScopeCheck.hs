@@ -162,7 +162,7 @@ scopeCheckParamsType params kind = do
   typ' <- scopeCheckExpr typ
   return (typ', abstr)
   where
-    pats = (\(p, n, t) -> (p, AnnoPat t $ VarPat (nameHint n) $ unqualified n)) <$> params
+    pats = (\(p, n, t) -> (p, AnnoPat t $ VarPat (NameHint n) $ unqualified n)) <$> params
     typ = Unscoped.pis pats kind
     paramNames = (\(_, n, _) -> unqualified n) <$> params
     abstr = abstract $ teleAbstraction $ Vector.fromList paramNames

@@ -6,7 +6,7 @@ import qualified LLVM.AST as LLVM
 import LLVM.AST.Instruction
 import Util.SnocList
 
-import Syntax.Hint
+import Syntax.NameHint
 import Syntax.Name
 
 with
@@ -31,5 +31,5 @@ currentBlock
   $ maybe (LLVM.UnName 0) partialBlockName . builderBlock
 
 hinted :: MonadIRBuilder m => m a -> NameHint -> m a
-hinted gen (NameHint (Hint Nothing)) = gen
-hinted gen (NameHint (Hint (Just n))) = gen `named` fromName n
+hinted gen NoHint = gen
+hinted gen (NameHint n) = gen `named` fromName n

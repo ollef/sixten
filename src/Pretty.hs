@@ -44,7 +44,7 @@ import Text.PrettyPrint.ANSI.Leijen
   )
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 
-import Syntax.Hint
+import Syntax.NameHint
 import Syntax.Name
 
 infixr 6 <+>
@@ -136,8 +136,8 @@ withHint name k = do
   local (\env -> env {boundNames = bnames'}) $ k actualName
 
 withNameHint :: NameHint -> (Name -> PrettyM a) -> PrettyM a
-withNameHint (NameHint (Hint (Just name))) = withHint name
-withNameHint (NameHint (Hint Nothing)) = withName
+withNameHint (NameHint name) = withHint name
+withNameHint NoHint = withName
 
 withNameHints :: Vector NameHint -> (Vector Name -> PrettyM a) -> PrettyM a
 withNameHints v k = go (Vector.toList v) $ k . Vector.fromList

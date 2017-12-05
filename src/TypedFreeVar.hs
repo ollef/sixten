@@ -7,12 +7,11 @@ import Data.Function
 import Data.Functor.Classes
 import Data.Hashable
 import qualified Data.HashSet as HashSet
-import Data.Maybe
 import Data.Monoid
 import Data.String
 
 import Pretty
-import Syntax.Hint
+import Syntax.NameHint
 import Syntax.Name
 import VIX
 
@@ -51,7 +50,7 @@ showFreeVar
   -> Doc
 showFreeVar x = do
   let vs = foldMap HashSet.singleton x
-  let showVar v = "$" ++ fromMaybe "" (fromName <$> unNameHint (varHint v))
+  let showVar v = "$" ++ fromNameHint "" fromName (varHint v)
           ++ show (varId v)
   let shownVars = [(showVar v, pretty $ showVar <$> varType v) | v <- HashSet.toList vs]
   pretty (showVar <$> x)

@@ -427,7 +427,7 @@ classDef :: Parser TopLevelDefinition
 classDef = TopLevelClassDefinition <$ reserved "class" <*>% name <*> manyTypedBindings
   <*% reserved "where" <*> manyIndentedOrSameCol (mkMethodDef <$> located ((,) <$> name <*% symbol ":" <*>% expr))
   where
-    mkMethodDef (loc, (n, e)) = MethodDef n (Hint loc) e
+    mkMethodDef (loc, (n, e)) = MethodDef n loc e
 
 
 instanceDef :: Parser TopLevelDefinition

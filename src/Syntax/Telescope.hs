@@ -21,6 +21,7 @@ import Data.Bifunctor
 import Data.Bitraversable
 import Data.Deriving
 import qualified Data.Foldable as Foldable
+import Data.Function
 import Data.Functor.Classes
 import Data.Hashable
 import Data.List as List
@@ -34,8 +35,8 @@ import qualified Data.Vector as Vector
 import Pretty
 import Syntax.Annotation
 import Syntax.GlobalBind
-import Syntax.Hint
 import Syntax.Name
+import Syntax.NameHint
 import Util
 
 newtype TeleVar = TeleVar Int
@@ -175,8 +176,8 @@ prettyTeleVarTypes ns (Telescope v) = hcat $ map go grouped
   where
     inst = instantiateTele (pure . fromName) ns
     vlist = Vector.toList v
-    grouped = [ (n : [n' | (Hint n', _) <- vlist'], a, t)
-              | (Hint n, TeleArg _ a t):vlist' <- List.group $ zip (map Hint [(0 :: Int)..]) vlist]
+    grouped = [ (n : [n' | (n', _) <- vlist'], a, t)
+              | (n, TeleArg _ a t):vlist' <- List.groupBy ((==) `on` snd) $ zip [(0 :: Int)..] vlist]
     go (xs, a, t)
       = prettyAnnotationParens a
       $ hsep (map (prettyM . (ns Vector.!)) xs) <+> ":" <+> prettyM (inst t)

@@ -5,7 +5,7 @@ import Control.Monad.IO.Class
 import Data.Function
 import Data.Hashable
 
-import Syntax.Hint
+import Syntax.NameHint
 import VIX
 
 data FreeVar d = FreeVar
