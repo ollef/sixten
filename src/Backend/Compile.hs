@@ -4,6 +4,7 @@ module Backend.Compile where
 
 import Control.Exception
 import Control.Monad
+import Data.Char
 import Data.Foldable
 import Data.Maybe
 import Data.Monoid
@@ -25,41 +26,44 @@ data Arguments = Arguments
   , outputFile :: !FilePath
   }
 
-minLlvmVersion :: Version
-minLlvmVersion = makeVersion [4, 0, 0]
+minLlvmVersion :: Int
+minLlvmVersion = 4
 
-maxLlvmVersion :: Version
-maxLlvmVersion = makeVersion [5, 0, 1]
+maxLlvmVersion :: Int
+maxLlvmVersion = 5
 
 -- See http://blog.llvm.org/2016/12/llvms-new-versioning-scheme.html
 -- Tl;dr: minor versions are fixed to 0, so only different major versions need
 -- to be supported.
 supportedLlvmVersions :: [Version]
-supportedLlvmVersions = makeVersion . (: [minorVer]) <$> supportedMajorVersions
-  where minorVer = 0
-        maxMajorVer = head $ versionBranch maxLlvmVersion
-        minMajorVer = head $ versionBranch minLlvmVersion
-        supportedMajorVersions = [maxMajorVer, maxMajorVer - 1 .. minMajorVer]
+supportedLlvmVersions = makeVersion . (: [minorVersion]) <$> supportedMajorVersions
+  where minorVersion = 0
+        supportedMajorVersions = [maxLlvmVersion, maxLlvmVersion - 1 .. minLlvmVersion]
 
 llvmBinPath :: IO FilePath
 llvmBinPath = checkLlvmExists trySuffixes
   where trySuffixes = "" : fmap (('-' :) . showVersion) supportedLlvmVersions
-        minVersionStr = showVersion minLlvmVersion
-        maxVersionStr = showVersion maxLlvmVersion
         checkLlvmExists :: [String] -> IO String
         checkLlvmExists (suffix : xs) =
           handle (\(_ :: IOException) -> checkLlvmExists xs)
           $ readProcess ("llvm-config" ++ suffix) ["--bindir"] ""
         checkLlvmExists [] = error (
           (printf "Couldn't find llvm-config. Currently supported versions are \
-                  \%s <= v <= %s.\n You can specify its path using the \
-                  \--llvm-config flag." minVersionStr maxVersionStr) :: String)
+                  \%d <= v <= %d.\n You can specify its path using the \
+                  \--llvm-config flag." minLlvmVersion maxLlvmVersion) :: String)
 
 compile :: Options -> Arguments -> IO ()
 compile opts args = do
-  binPath <- takeWhile (/= '\n') <$> case Options.llvmConfig opts of
+  binPath <- takeWhile (not . isSpace) <$> case Options.llvmConfig opts of
     Nothing -> llvmBinPath
-    Just configBin -> readProcess configBin ["--bindir"] ""
+    Just configBin -> do
+      majorVersion <- read . takeWhile (not . (== '.'))
+        <$> readProcess configBin ["--version"] ""
+      if minLlvmVersion <= majorVersion && majorVersion <= maxLlvmVersion then
+        readProcess configBin ["--bindir"] ""
+      else error (
+          (printf "LLVM version out of range. Currently supported versions are \
+                  \%d <= v <= %d.\n" minLlvmVersion maxLlvmVersion) :: String)
   let opt = binPath </> "opt"
   let clang = binPath </> "clang"
   let linker = binPath </> "llvm-link"
