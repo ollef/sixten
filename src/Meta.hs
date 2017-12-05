@@ -325,7 +325,7 @@ showMeta x = do
       p _ = return $ Left $ Level (-1)
   let vsl = HashSet.toList vs
   pvs <- mapM p vsl
-  let sv v = "$" ++ fromMaybe "" (fromName <$> unNameHint (metaHint v)) ++ refType (metaRef v)
+  let sv v = "$" ++ fromNameHint "" fromName (metaHint v) ++ refType (metaRef v)
           ++ show (metaId v)
   let solutions = [(sv v, pretty $ sv <$> metaType v, pretty $ fmap sv <$> msol) | (v, msol) <- zip vsl pvs]
   return

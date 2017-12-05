@@ -161,7 +161,7 @@ liftLet ds scope = do
               | otherwise = (`Lifted.Call` args)
 
   subVec <- forM dsToLift $ \(v, _) -> do
-    g <- freshNameWithHint $ fold $ unNameHint $ varHint v
+    g <- fromNameHint freshName freshNameWithHint $ varHint v
     return (v, g)
 
   lift $ logShow 20 "subVec" subVec

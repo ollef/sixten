@@ -931,7 +931,7 @@ checkAndElabDefs
     )
 checkAndElabDefs defs = do
   forM_ defs $ \(evar, (_, def)) ->
-    logMeta 20 ("checkAndElabDefs " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) def
+    logMeta 20 ("checkAndElabDefs " ++ show (pretty $ fromNameHint "" id $ metaHint evar)) def
 
   modifyIndent succ
 
@@ -944,8 +944,8 @@ checkAndElabDefs defs = do
   modifyIndent pred
 
   forM_ elabDefs $ \(evar, def, typ) -> do
-    logMeta 20 ("checkAndElabDefs res " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) def
-    logMeta 20 ("checkAndElabDefs res t " ++ show (pretty $ fromJust $ unNameHint $ metaHint evar)) typ
+    logMeta 20 ("checkAndElabDefs res " ++ show (pretty $ fromNameHint "" id $ metaHint evar)) def
+    logMeta 20 ("checkAndElabDefs res t " ++ show (pretty $ fromNameHint "" id $ metaHint evar)) typ
 
   return elabDefs
 

@@ -23,7 +23,7 @@ import qualified Data.Vector as Vector
 
 import Pretty
 import Syntax.GlobalBind
-import Syntax.Hint
+import Syntax.NameHint
 import Syntax.Name
 import Util
 

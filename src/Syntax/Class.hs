@@ -10,7 +10,6 @@ import Data.String
 import Pretty
 import Syntax.Annotation
 import Syntax.GlobalBind
-import Syntax.Hint
 import Syntax.Name
 import Syntax.SourceLoc
 import Syntax.Telescope
@@ -19,7 +18,7 @@ import Util
 -------------------------------------------------------------------------------
 -- Class definitions
 newtype ClassDef typ v = ClassDef { classMethods :: [MethodDef (Scope TeleVar typ v)] }
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  deriving (Foldable, Functor, Show, Traversable)
 
 instance GlobalBound ClassDef where
   bound f g (ClassDef cs) = ClassDef $ fmap (bound f g) <$> cs
@@ -44,9 +43,9 @@ prettyClassDef name ps (ClassDef cs) = "class" <+> name <+> withTeleHints ps (\n
 
 data MethodDef typ = MethodDef
   { methodName :: !Name
-  , methodLoc :: !(Hint SourceLoc)
+  , methodLoc :: !SourceLoc
   , methodType :: typ
-  } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  } deriving (Foldable, Functor, Show, Traversable)
 
 instance (IsString v, Pretty (typ v), Monad typ) => PrettyNamed (ClassDef typ v) where
   prettyNamed name (ClassDef cs) = "class" <+> name <+> "where" <$$>
