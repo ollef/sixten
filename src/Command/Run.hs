@@ -10,7 +10,7 @@ import qualified Processor.Result as Processor
 
 data Options = Options
   { compileOptions :: Compile.Options
-  , commandLineArguments :: [String]
+  , commandLineArguments :: Maybe String
   } deriving (Show)
 
 optionsParserInfo :: ParserInfo Options
@@ -22,15 +22,15 @@ optionsParserInfo = info (helper <*> optionsParser)
 optionsParser :: Parser Options
 optionsParser = Options
   <$> Compile.optionsParser
-  <*> many
-    (strArgument
-    $ metavar "ARGS..."
+  <*> optional (strOption
+    $ long "args"
+    <> metavar "ARGS"
     <> help "Command-line options passed to the Sixten program"
     )
 
 run :: Options -> IO ()
 run opts = Compile.compile (compileOptions opts) (mapM_ Processor.printError) $ \f ->
-  callProcess f $ commandLineArguments opts
+  callProcess f $ maybe [] words $ commandLineArguments opts
 
 command :: ParserInfo (IO ())
 command = run <$> optionsParserInfo
