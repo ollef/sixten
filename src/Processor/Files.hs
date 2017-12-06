@@ -43,8 +43,21 @@ instance Monoid ProcessFilesResult where
   mappend (ProcessFilesResult c1 l1) (ProcessFilesResult c2 l2)
     = ProcessFilesResult (mappend c1 c2) (mappend l1 l2)
 
+checkFiles :: Arguments -> IO (Result ())
+checkFiles = processFilesWith $
+                mapM (processModulesWith (File.frontend (const $ return [])))
+                  >=> mapM (const $ return ())
+
 processFiles :: Arguments -> IO (Result ProcessFilesResult)
-processFiles args = do
+processFiles args = processFilesWith 
+                      (mapM (processModulesWith File.process) 
+                        >=> mapM (writeModules $ assemblyDir args)) args
+
+processFilesWith
+  :: (Result [Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))] -> VIX (Result a))
+  -> Arguments
+  -> IO (Result a)
+processFilesWith f args = do
   builtin1File <- getDataFileName "rts/Builtin1.vix"
   builtin2File <- getDataFileName "rts/Builtin2.vix"
   let files = builtin1File NonEmpty.<| builtin2File NonEmpty.<| sourceFiles args
@@ -52,28 +65,26 @@ processFiles args = do
     parseResult <- File.parse sourceFile
     return $ fmap (:[]) $ File.dupCheck =<< parseResult
   let modulesResult = sconcat moduleResults
-      go = do
-        compiledModules <- forM modulesResult processModules
-        forM compiledModules $ writeModules $ assemblyDir args
-  result <- runVIX go (target args) (logHandle args) (verbosity args)
+  result <- runVIX (f modulesResult) (target args) (logHandle args) (verbosity args)
   return $ case result of
     Left err -> Failure $ pure $ TypeError $ Text.pack err
     Right (Failure err) -> Failure err
     Right (Success res) -> Success res
 
-processModules
-  :: [Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))]
+processModulesWith
+  :: (Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)) -> VIX [Generate.GeneratedSubmodule])
+  -> [Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))]
   -> VIX [Module [Generate.GeneratedSubmodule]]
-processModules (builtins1 : builtins2 : modules) = do
+processModulesWith f (builtins1 : builtins2 : modules) = do
   builtins <- processBuiltins builtins1 builtins2
   let builtinModule = Module "Sixten.Builtin" AllExposed mempty builtins
   let orderedModules = moduleDependencyOrder modules
   results <- forM orderedModules $ \moduleGroup -> case moduleGroup of
-    AcyclicSCC modul -> traverse (const $ File.process modul) modul
+    AcyclicSCC modul -> traverse (const $ f modul) modul
     CyclicSCC ms -> throwError -- TODO: Could be allowed?
       $ "Circular modules: " ++ intercalate ", " (fromModuleName . moduleName <$> ms)
   return $ builtinModule : results
-processModules _ = error "processModules"
+processModulesWith _ _ = error "processModules"
 
 processBuiltins
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
