@@ -5,6 +5,7 @@ import Control.Monad
 import Data.Monoid
 import Options.Applicative
 
+import qualified Command.Check as Check
 import qualified Command.Compile as Compile
 import qualified Command.Run as Run
 import qualified Command.Test as Test
@@ -19,6 +20,7 @@ commands :: Parser (IO ())
 commands = subparser
   $ command "compile" Compile.command
   <> command "run" Run.command
+  <> command "check" Check.command
   <> command "test" Test.command
 
 main :: IO ()

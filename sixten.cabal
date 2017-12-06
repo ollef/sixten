@@ -35,6 +35,7 @@ executable sixten
                        Backend.Target
                        Builtin
                        Builtin.Names
+                       Command.Check
                        Command.Compile
                        Command.Compile.Options
                        Command.Run
