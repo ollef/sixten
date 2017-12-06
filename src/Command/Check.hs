@@ -2,21 +2,15 @@
 module Command.Check where
 
 import Data.Monoid
-import Data.List.NonEmpty(NonEmpty)
 import Options.Applicative
 import Util
 import System.IO
 import qualified Data.Text.IO as Text
 
 import qualified Backend.Target as Target
+import Command.Check.Options
 import qualified Processor.Files as Processor
 import qualified Processor.Result as Processor
-
-data Options = Options
-  { inputFiles :: NonEmpty FilePath
-  , verbosity :: Int
-  , logFile :: Maybe FilePath
-  } deriving (Show)
 
 optionsParserInfo :: ParserInfo Options
 optionsParserInfo = info (helper <*> optionsParser)

@@ -8,6 +8,7 @@ import Options.Applicative
 import System.Exit
 import System.Process
 
+import qualified Command.Check.Options as Check
 import qualified Command.Compile as Compile
 import qualified Command.Compile.Options as Compile
 import qualified Processor.Result as Processor
@@ -69,10 +70,10 @@ test opts = Compile.compile (compileOptions opts) onCompileError onCompileSucces
           | output == expectedOutput -> success
           | otherwise -> failed expectedOutput $ putStrLn output
     success = do
-      putStrLn $ "OK: " ++ intercalate ", " (toList $ Compile.inputFiles $ compileOptions opts)
+      putStrLn $ "OK: " ++ intercalate ", " (toList . Check.inputFiles . Compile.checkOptions . compileOptions $ opts)
       exitSuccess
     failed expected actual = do
-      putStrLn $ "FAILED: " ++ intercalate ", " (toList $ Compile.inputFiles $ compileOptions opts)
+      putStrLn $ "FAILED: " ++ intercalate ", " (toList . Check.inputFiles . Compile.checkOptions . compileOptions $ opts)
       putStrLn "Expected:"
       putStrLn expected
       putStrLn "But got:"

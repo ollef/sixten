@@ -36,6 +36,7 @@ executable sixten
                        Builtin
                        Builtin.Names
                        Command.Check
+                       Command.Check.Options
                        Command.Compile
                        Command.Compile.Options
                        Command.Run
