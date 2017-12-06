@@ -320,3 +320,5 @@ Please read the [code of conduct](CODE_OF_CONDUCT.md).
 [Victor Borja](https://github.com/vic)
 
 [Varun Gandhi](https://github.com/theindigamer)
+
+[Brandon Hamilton](https://github.com/brandonhamilton)
