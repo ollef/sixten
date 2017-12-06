@@ -13,6 +13,8 @@ import System.IO.Temp
 import qualified Backend.Compile as Compile
 import qualified Backend.Target as Target
 import Command.Compile.Options
+import qualified Command.Check as Check
+import qualified Command.Check.Options as Check
 import qualified Processor.Files as Processor
 import qualified Processor.Result as Processor
 import Util
@@ -26,11 +28,7 @@ optionsParserInfo = info (helper <*> optionsParser)
 
 optionsParser :: Parser Options
 optionsParser = Options
-  <$> nonEmptySome (strArgument
-    $ metavar "FILES..."
-    <> help "Input source FILES"
-    <> action "file"
-    )
+  <$> Check.optionsParser
   <*> optional (strOption
     $ long "output"
     <> short 'o'
@@ -59,20 +57,6 @@ optionsParser = Options
     <> help "Save intermediate assembly files to DIR"
     <> action "directory"
     )
-  <*> option auto
-    (long "verbose"
-    <> short 'v'
-    <> metavar "LEVEL"
-    <> help "Set the verbosity level to LEVEL"
-    <> value 0
-    <> completeWith ["0", "10", "20", "30", "40"]
-    )
-  <*> optional (strOption
-    $ long "log-file"
-    <> metavar "FILE"
-    <> help "Write logs to FILE instead of standard output"
-    <> action "file"
-    )
   <*> optional (strOption
     $ long "llvm-config"
     <> metavar "PATH"
@@ -90,14 +74,14 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
   Right tgt ->
     withAssemblyDir (assemblyDir opts) $ \asmDir ->
     withOutputFile (maybeOutputFile opts) $ \outputFile ->
-    withLogHandle (logFile opts) $ \logHandle -> do
+    withLogHandle (Check.logFile . checkOptions $ opts) $ \logHandle -> do
       let linkedLlFileName = asmDir </> firstFileName <.> "linked" <.> "ll"
       procResult <- Processor.processFiles Processor.Arguments
-        { Processor.sourceFiles = inputFiles opts
+        { Processor.sourceFiles = inputFiles
         , Processor.assemblyDir = asmDir
         , Processor.target = tgt
         , Processor.logHandle = logHandle
-        , Processor.verbosity = verbosity opts
+        , Processor.verbosity = Check.verbosity . checkOptions $ opts
         }
       case procResult of
         Processor.Failure errs -> onError errs
@@ -112,7 +96,7 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
           onSuccess outputFile
   where
     -- TODO should use the main file instead
-    firstInputFile = case inputFiles opts of
+    firstInputFile = case inputFiles of
       x NonEmpty.:| _ -> x
     (firstInputDir, firstInputFileName) = splitFileName firstInputFile
     firstFileName = dropExtension firstInputFileName
@@ -132,6 +116,8 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
 
     withLogHandle Nothing k = k stdout
     withLogHandle (Just file) k = Util.withFile file WriteMode k
+
+    inputFiles = Check.inputFiles . checkOptions $ opts
 
 command :: ParserInfo (IO ())
 command = go <$> optionsParserInfo
