@@ -401,7 +401,7 @@ tcPat' p pat vs expected = case pat of
     (pat', patExpr') <- instPatExpected expected retType (Abstract.ConPat qc params pats''') patExpr
 
     return (pat', patExpr', vs')
-  Concrete.AnnoPat s pat' -> do
+  Concrete.AnnoPat pat' s -> do
     let patType = instantiatePattern pure vs s
     patType' <- checkPoly patType Builtin.Type
     (pat'', patExpr, vs') <- checkPat p pat' vs patType'

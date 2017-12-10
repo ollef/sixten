@@ -61,7 +61,7 @@ instance Traversable expr => Traversable (Clause b expr) where
     <*> traverse f s
 
 instance (Eq1 expr, Monad expr, Eq b) => Eq1 (Clause b expr) where
-  liftEq f (Clause ps1 s1) (Clause ps2 s2) = liftEq (\(p1, pat1) (p2, pat2) -> p1 == p2 && patEq (liftEq f) (==) pat1 pat2) ps1 ps2 && liftEq f s1 s2
+  liftEq f (Clause ps1 s1) (Clause ps2 s2) = liftEq (\(p1, pat1) (p2, pat2) -> p1 == p2 && liftPatEq (liftEq f) (==) pat1 pat2) ps1 ps2 && liftEq f s1 s2
 
 instance GlobalBound TopLevelPatDefinition where
   bound f g (TopLevelPatDefinition d) = TopLevelPatDefinition $ bound f g <$> d

@@ -20,25 +20,25 @@ data Pat typ b
   | WildcardPat
   | LitPat Literal
   | ConPat (HashSet QConstr) (Vector (Plicitness, Pat typ b))
-  | AnnoPat typ (Pat typ b)
+  | AnnoPat (Pat typ b) typ
   | ViewPat typ (Pat typ b)
   | PatLoc !SourceLoc (Pat typ b)
   deriving (Foldable, Functor, Show, Traversable)
 
 -------------------------------------------------------------------------------
 -- Helpers
-patEq :: (typ1 -> typ2 -> Bool) -> (a -> b -> Bool) -> Pat typ1 a -> Pat typ2 b -> Bool
-patEq _ g (VarPat _ a) (VarPat _ b) = g a b
-patEq _ _ WildcardPat WildcardPat = True
-patEq _ _ (LitPat l1) (LitPat l2) = l1 == l2
-patEq f g (ConPat qc1 as1) (ConPat qc2 as2)
+liftPatEq :: (typ1 -> typ2 -> Bool) -> (a -> b -> Bool) -> Pat typ1 a -> Pat typ2 b -> Bool
+liftPatEq _ g (VarPat _ a) (VarPat _ b) = g a b
+liftPatEq _ _ WildcardPat WildcardPat = True
+liftPatEq _ _ (LitPat l1) (LitPat l2) = l1 == l2
+liftPatEq f g (ConPat qc1 as1) (ConPat qc2 as2)
   = qc1 == qc2
-  && liftEq (\(p1, pat1) (p2, pat2) -> p1 == p2 && patEq f g pat1 pat2) as1 as2
-patEq f g (AnnoPat t1 p1) (AnnoPat t2 p2) = f t1 t2 && patEq f g p1 p2
-patEq f g (ViewPat t1 p1) (ViewPat t2 p2) = f t1 t2 && patEq f g p1 p2
-patEq f g (PatLoc _ p1) p2 = patEq f g p1 p2
-patEq f g p1 (PatLoc _ p2) = patEq f g p1 p2
-patEq _ _ _ _ = False
+  && liftEq (\(p1, pat1) (p2, pat2) -> p1 == p2 && liftPatEq f g pat1 pat2) as1 as2
+liftPatEq f g (AnnoPat p1 t1) (AnnoPat p2 t2) = liftPatEq f g p1 p2 && f t1 t2
+liftPatEq f g (ViewPat t1 p1) (ViewPat t2 p2) = f t1 t2 && liftPatEq f g p1 p2
+liftPatEq f g (PatLoc _ p1) p2 = liftPatEq f g p1 p2
+liftPatEq f g p1 (PatLoc _ p2) = liftPatEq f g p1 p2
+liftPatEq _ _ _ _ = False
 
 nameHints :: Pat typ b -> Vector NameHint
 nameHints pat = case pat of
@@ -46,7 +46,7 @@ nameHints pat = case pat of
   WildcardPat -> mempty
   LitPat _ -> mempty
   ConPat _ ps -> ps >>= nameHints . snd
-  AnnoPat _ p -> nameHints p
+  AnnoPat p _ -> nameHints p
   ViewPat _ p -> nameHints p
   PatLoc _ p -> nameHints p
 
@@ -54,24 +54,6 @@ patternHint :: Pat typ b -> NameHint
 patternHint (VarPat h _) = h
 patternHint (PatLoc _ p) = patternHint p
 patternHint _ = mempty
-
-liftPatEq
-  :: (typ1 -> typ2 -> Bool)
-  -> (a -> b -> Bool)
-  -> Pat typ1 a
-  -> Pat typ2 b
-  -> Bool
-liftPatEq _ g (VarPat _ a) (VarPat _ b) = g a b
-liftPatEq _ _ WildcardPat WildcardPat = True
-liftPatEq _ _ (LitPat l1) (LitPat l2) = l1 == l2
-liftPatEq f g (ConPat c1 ps1) (ConPat c2 ps2)
-  = c1 == c2
-  && liftEq (\(p1, pat1) (p2, pat2) -> p1 == p2 && liftPatEq f g pat1 pat2) ps1 ps2
-liftPatEq f g (AnnoPat typ1 pat1) (AnnoPat typ2 pat2) = f typ1 typ2 && liftPatEq f g pat1 pat2
-liftPatEq f g (ViewPat typ1 pat1) (ViewPat typ2 pat2) = f typ1 typ2 && liftPatEq f g pat1 pat2
-liftPatEq f g (PatLoc _ pat1) pat2 = liftPatEq f g pat1 pat2
-liftPatEq f g pat1 (PatLoc _ pat2) = liftPatEq f g pat1 pat2
-liftPatEq _ _ _ _ = False
 
 varPatView
   :: Pat t ()
@@ -107,7 +89,7 @@ instance Monad (Pat typ) where
     WildcardPat -> WildcardPat
     LitPat l -> LitPat l
     ConPat c pats -> ConPat c [(a, p >>= f) | (a, p) <- pats]
-    AnnoPat t p -> AnnoPat t $ p >>= f
+    AnnoPat p t -> AnnoPat (p >>= f) t
     ViewPat t p -> ViewPat t $ p >>= f
     PatLoc loc p -> PatLoc loc $ p >>= f
 
@@ -120,7 +102,7 @@ instance Bitraversable Pat where
     WildcardPat -> pure WildcardPat
     LitPat l -> pure $ LitPat l
     ConPat c pats -> ConPat c <$> traverse (traverse (bitraverse f g)) pats
-    AnnoPat t p -> AnnoPat <$> f t <*> bitraverse f g p
+    AnnoPat p t -> AnnoPat <$> bitraverse f g p <*> f t
     ViewPat t p -> ViewPat <$> f t <*> bitraverse f g p
     PatLoc loc p -> PatLoc loc <$> bitraverse f g p
 
