@@ -216,7 +216,7 @@ pattern = locatedPat $
   ( Trifecta.try (ConPat <$> (HashSet.singleton <$> qconstructor) <*> (Vector.fromList <$> someSI plicitPattern))
     <|> atomicPattern
   ) <**>
-  ( AnnoPat <$% symbol ":" <*> expr
+  ( flip AnnoPat <$% symbol ":" <*> expr
     <|> pure id
   ) <?> "pattern"
 
@@ -239,14 +239,14 @@ plicitPatternBinding
   <|> go Explicit <$ symbol "(" <*> someSI atomicPattern <*% symbol ":" <*>% expr <*% symbol ")"
   <?> "typed pattern"
   where
-    go p pats t = [(p, AnnoPat t pat) | pat <- pats]
+    go p pats t = [(p, AnnoPat pat t) | pat <- pats]
 
 patternBinding :: Parser [(Pat Type QName)]
 patternBinding
   = go <$ symbol "(" <*> someSI atomicPattern <*% symbol ":" <*>% expr <*% symbol ")"
   <?> "typed pattern"
   where
-    go pats t = [AnnoPat t pat | pat <- pats]
+    go pats t = [AnnoPat pat t | pat <- pats]
 
 somePlicitPatternBindings :: Parser [(Plicitness, Pat Type QName)]
 somePlicitPatternBindings
@@ -336,7 +336,7 @@ exprWithoutWhere
   <|> plicitPi Implicit <$ symbol "@" <*>% atomicExpr <*% symbol "->" <*>% exprWithoutWhere
   <?> "expression"
   where
-    plicitPi p argType retType = Pi p (AnnoPat argType WildcardPat) retType
+    plicitPi p argType retType = Pi p (AnnoPat WildcardPat argType) retType
 
     arr
       = flip (plicitPi Explicit) <$% symbol "->" <*>% exprWithoutWhere
@@ -421,7 +421,7 @@ dataDef = TopLevelDataDefinition <$ reserved "type" <*>% name <*> manyTypedBindi
       <*% symbol ":" <*>% expr
     constrDefs cs t = [ConstrDef c t | c <- cs]
     adtConDef = ConstrDef <$> constructor <*> (adtConType <$> manySI atomicExpr)
-    adtConType es = Unscoped.pis ((\e -> (Explicit, AnnoPat e WildcardPat)) <$> es) Wildcard
+    adtConType es = Unscoped.pis ((\e -> (Explicit, AnnoPat WildcardPat e)) <$> es) Wildcard
 
 classDef :: Parser TopLevelDefinition
 classDef = TopLevelClassDefinition <$ reserved "class" <*>% name <*> manyTypedBindings

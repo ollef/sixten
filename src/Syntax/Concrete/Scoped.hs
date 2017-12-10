@@ -61,10 +61,10 @@ appsView = second toList . go
 
 annoPatView
   :: Pat (Scope b Expr a) t
-  -> (Scope b Expr a, Pat (Scope b Expr a) t)
+  -> (Pat (Scope b Expr a) t, Scope b Expr a)
 annoPatView (PatLoc _ p) = annoPatView p
-annoPatView (AnnoPat t p) = (t, p)
-annoPatView p = (Scope Wildcard, p)
+annoPatView (AnnoPat p t) = (p, t)
+annoPatView p = (p, Scope Wildcard)
 
 pattern Pi1
   :: NameHint
@@ -72,10 +72,10 @@ pattern Pi1
   -> Expr v
   -> Scope1 Expr v
   -> Expr v
-pattern Pi1 h p t s <- Pi p (annoPatView -> (unusedScope -> Just t, varPatView -> Just h)) (mapBound (\0 -> ()) -> s)
+pattern Pi1 h p t s <- Pi p (annoPatView -> (varPatView -> Just h, unusedScope -> Just t)) (mapBound (\0 -> ()) -> s)
   where
     Pi1 h p Wildcard s = Pi p (VarPat h ()) $ mapBound (\() -> 0) s
-    Pi1 h p t s = Pi p (AnnoPat (abstractNone t) (VarPat h ())) $ mapBound (\() -> 0) s
+    Pi1 h p t s = Pi p (AnnoPat (VarPat h ()) (abstractNone t)) $ mapBound (\() -> 0) s
 
 -------------------------------------------------------------------------------
 -- Instances

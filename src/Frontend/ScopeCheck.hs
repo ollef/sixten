@@ -162,7 +162,7 @@ scopeCheckParamsType params kind = do
   typ' <- scopeCheckExpr typ
   return (typ', abstr)
   where
-    pats = (\(p, n, t) -> (p, AnnoPat t $ VarPat (NameHint n) $ unqualified n)) <$> params
+    pats = (\(p, n, t) -> (p, AnnoPat (VarPat (NameHint n) $ unqualified n) t)) <$> params
     typ = Unscoped.pis pats kind
     paramNames = (\(_, n, _) -> unqualified n) <$> params
     abstr = abstract $ teleAbstraction $ Vector.fromList paramNames
@@ -266,6 +266,6 @@ scopeCheckPat pat = case pat of
       forM_ constrCandidates $ \(QConstr def _) -> modify $ HashSet.insert def
       return constrCandidates
     ConPat (HashSet.unions conss) <$> mapM (\(p, pat') -> (,) p <$> scopeCheckPat pat') ps
-  AnnoPat t p -> AnnoPat <$> scopeCheckExpr t <*> scopeCheckPat p
+  AnnoPat p t -> AnnoPat <$> scopeCheckPat p <*> scopeCheckExpr t
   ViewPat t p -> ViewPat <$> scopeCheckExpr t <*> scopeCheckPat p
   PatLoc loc p -> PatLoc loc <$> scopeCheckPat p

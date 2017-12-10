@@ -66,9 +66,9 @@ declass qname loc classDef typ = do
   let classConstrName = classConstr qname
       (params, _retType) = extractParams typ
       numMethods = length $ classMethods classDef
-      implicitPiParams = quantify (\h _ t s -> Pi Implicit (AnnoPat (abstractNone t) $ VarPat h ()) $ mapBound (\() -> 0) s) params
+      implicitPiParams = quantify (\h _ t s -> Pi Implicit (AnnoPat (VarPat h ()) $ abstractNone t) $ mapBound (\() -> 0) s) params
       classType = apps (Global qname) $ iforTele params $ \i _ p _ -> (p, pure $ B $ TeleVar i)
-      classParam = Pi Constraint (AnnoPat (abstractNone classType) $ VarPat mempty ()) . abstractNone
+      classParam = Pi Constraint (AnnoPat (VarPat mempty ()) $ abstractNone classType) . abstractNone
   return
     (( qname
       , loc
@@ -81,7 +81,7 @@ declass qname loc classDef typ = do
           (\(MethodDef mname _ mtyp) ->
             Pi
               Explicit
-              (AnnoPat (Scope $ pure . F $ unscope mtyp) (VarPat (fromName mname) ()))
+              (AnnoPat (VarPat (fromName mname) ()) (Scope $ pure . F $ unscope mtyp))
             . abstractNone)
           classType
         $ classMethods classDef
