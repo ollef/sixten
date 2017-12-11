@@ -224,7 +224,7 @@ tcRho expr expected expectedAppResult = case expr of
       let abstr = letAbstraction vars
       body <- tcRho (instantiateLet pure vars scope) expected expectedAppResult
       Abstract.Let ds'' <$> abstractM abstr body
-  Concrete.Case e brs -> tcBranches e brs expected
+  Concrete.Case e brs -> tcBranches e brs expected expectedAppResult
   Concrete.ExternCode c -> do
     c' <- mapM (\e -> fst <$> inferRho e (InstUntil Explicit) Nothing) c
     returnType <- existsType mempty
@@ -241,8 +241,9 @@ tcBranches
   :: ConcreteM
   -> [(Concrete.Pat (PatternScope Concrete.Expr MetaA) (), PatternScope Concrete.Expr MetaA)]
   -> Expected Rhotype
+  -> Maybe Rhotype
   -> Infer AbstractM
-tcBranches expr pbrs expected = do
+tcBranches expr pbrs expected expectedAppResult = do
   (expr', exprType) <- inferRho expr (InstUntil Explicit) Nothing
 
   inferredPats <- forM pbrs $ \(pat, brScope) -> do
@@ -256,16 +257,13 @@ tcBranches expr pbrs expected = do
         br' <- checkRho br resType
         return (pat, br')
       return (brs, resType)
-    Infer _ instUntil -> case inferredPats of
-      [] -> do
-        resType <- existsType mempty
-        return ([], resType)
-      (headPat, headBr):inferredPats' -> do
-        (headBr', resType) <- inferRho headBr instUntil Nothing
-        brs' <- forM inferredPats' $ \(pat, br) -> do
-          br' <- checkRho br resType
-          return (pat, br')
-        return ((headPat, headBr') : brs', resType)
+    Infer _ instUntil -> do
+      resType <- existsType mempty
+      brs <- forM inferredPats $ \(pat, br) -> do
+        (br', brType) <- inferRho br instUntil expectedAppResult
+        unify mempty brType resType
+        return (pat, br')
+      return (brs, resType)
 
   f <- instExpected expected resType
 
