@@ -1,13 +1,13 @@
 module Backend.Generate.LLVM where
 
 import Control.Monad.State
-import IRBuilder
 import qualified LLVM.AST as LLVM
 import LLVM.AST.Instruction
-import Util.SnocList
+import LLVM.IRBuilder
+import LLVM.IRBuilder.Internal.SnocList
 
-import Syntax.NameHint
 import Syntax.Name
+import Syntax.NameHint
 
 with
   :: MonadIRBuilder m

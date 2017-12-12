@@ -6,7 +6,7 @@ import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Word
-import IRBuilder
+import LLVM.IRBuilder
 import qualified LLVM.AST as LLVM
 import LLVM.AST.CallingConvention as CC
 import qualified LLVM.AST.Constant as LLVM
