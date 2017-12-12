@@ -49,7 +49,7 @@ packages:
   extra-dep: true
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
-extra-deps: [monadLib-3.7.3]
+extra-deps: []
 
 # Override default flag values for local packages and extra-deps
 flags: {}
