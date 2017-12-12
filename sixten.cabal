@@ -109,7 +109,6 @@ executable sixten
                        hashable,
                        lifted-base,
                        llvm-hs-pure,
-                       irbuilder,
                        llvm-hs-pretty,
                        mmorph,
                        monad-control,

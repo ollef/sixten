@@ -18,7 +18,6 @@ import qualified Data.Text.Lazy.IO as Lazy
 import qualified Data.Traversable as Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
-import IRBuilder
 import qualified LLVM.AST as LLVM
 import LLVM.AST.CallingConvention as CC
 import qualified LLVM.AST.Constant as LLVM
@@ -27,6 +26,7 @@ import qualified LLVM.AST.Global as LLVM.Global
 import qualified LLVM.AST.Linkage as LLVM
 import qualified LLVM.AST.Type as LLVM
 import qualified LLVM.AST.Type as LLVM.Type
+import LLVM.IRBuilder as IRBuilder
 import qualified LLVM.Pretty as LLVM
 import qualified LLVM.Typed as LLVM
 import System.IO
