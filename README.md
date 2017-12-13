@@ -172,7 +172,7 @@ LLVM link-time optimisation is used to minimise function-call overheads.
 
 ### Compilation to LLVM
 
-This currently uses the the Boehm–Demers–Weiser garbage collector for
+This currently uses the Boehm–Demers–Weiser garbage collector for
 garbage-collecting heap-allocated data.
 
 ## Planned features
@@ -303,6 +303,44 @@ functions to _single_ implementations that leverage the information in the
 type representation to be general enough to work for all types.
 Type representations are also not structural in Sixten, but consist simply
 of the size of the type.
+
+## Installation
+
+To build Sixten from source, clone this repository and build it using
+[Stack](https://www.haskellstack.org):
+
+     git clone git@github.com:ollef/sixten.git
+     cd sixten
+     stack build
+
+To install the `sixten` binary, run:
+
+     stack install
+
+This will install `sixten` locally, which usually means `~/.local/bin`. This
+path can be added to your `PATH` environment variable if desired.
+
+To run tests, run:
+
+     stack test
+
+### Sixten compilation dependencies
+
+To build Sixten programs, you'll need:
+
+* LLVM and Clang 5. The `--llvm-config` flag can be used to tell `sixten` where
+  to look for these.
+* The Boehm–Demers–Weiser garbage collector library.
+* pkg-config (used to find the Boehm–Demers–Weiser GC library).
+
+### Bash command completion
+
+With `sixten` in your PATH, add the following to your `.bashrc` to get
+completion for the `sixten` command:
+
+```shell
+source <(sixten --bash-completion-script `which sixten`)
+```
 
 ## Contributions
 
