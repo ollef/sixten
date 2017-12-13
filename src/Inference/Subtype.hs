@@ -1,13 +1,11 @@
 module Inference.Subtype where
 
 import Control.Monad
-import Data.Bifunctor
 import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import {-# SOURCE #-} Inference.Class
-import Analysis.Simplify
 import Inference.Monad
 import Inference.Unify
 import Meta
@@ -18,55 +16,6 @@ import Util.Tsil
 import VIX
 
 --------------------------------------------------------------------------------
--- Prenex conversion/deep skolemisation
--- | prenexConvert t1 = (t2, f) => f : t2 -> t1
-prenexConvert
-  :: Polytype
-  -> Infer (Rhotype, AbstractM -> Infer AbstractM)
-prenexConvert t1 = do
-  (vs, t2, f) <- prenexConvertInner t1
-  return
-    ( t2
-    , \x ->
-      f =<< Abstract.lams
-        <$> metaTelescopeM vs
-        <*> abstractM (teleAbstraction $ snd <$> vs) x
-    )
-
-prenexConvertInner
-  :: Polytype
-  -> Infer (Vector (Plicitness, MetaA), Rhotype, AbstractM -> Infer AbstractM)
-prenexConvertInner typ = do
-  typ' <- whnf typ
-  prenexConvertInner' typ'
-
-prenexConvertInner'
-  :: Polytype
-  -> Infer (Vector (Plicitness, MetaA), Rhotype, AbstractM -> Infer AbstractM)
-prenexConvertInner' (Pi h p t resScope) = do
-  y <- forall h p t
-  let resType = Util.instantiate1 (pure y) resScope
-  (vs, resType', f) <- prenexConvertInner resType
-  let implicitCase =
-        ( Vector.cons (p, y) vs
-        , resType'
-        , \x -> fmap (Lam h p t) $ abstract1M y
-          =<< f (betaApp x p $ pure y)
-        )
-  return $ case p of
-    Constraint -> implicitCase
-    Implicit -> implicitCase
-    Explicit ->
-      ( vs
-      , Pi h p t $ abstract1 y resType'
-      , \x -> fmap (Lam h p t) . abstract1M y
-        =<< f
-        =<< lams <$> metaTelescopeM vs
-        <*> abstractM (teleAbstraction $ snd <$> vs)
-        (betaApp (betaApps x $ second pure <$> vs) p $ pure y)
-      )
-prenexConvertInner' typ = return (mempty, typ, pure)
-
 -- | skolemise t1 = (t2, f) => f : t2 -> t1
 --
 -- Peel off quantifiers from the given type, instantiating them with skolem
