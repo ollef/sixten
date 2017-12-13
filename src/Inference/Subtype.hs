@@ -1,41 +1,52 @@
 module Inference.Subtype where
 
+import Control.Monad
 import Data.Bifunctor
 import Data.Monoid
-import Data.Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import Analysis.Simplify
 import {-# SOURCE #-} Inference.Class
+import Analysis.Simplify
 import Inference.Monad
 import Inference.Unify
 import Meta
 import Syntax
-import Syntax.Abstract
+import Syntax.Abstract as Abstract
 import Util
 import Util.Tsil
 import VIX
 
 --------------------------------------------------------------------------------
 -- Prenex conversion/deep skolemisation
--- | prenexConvert t1 = (vs, t2, f) => f : t2 -> t1
+-- | prenexConvert t1 = (t2, f) => f : t2 -> t1
 prenexConvert
   :: Polytype
-  -> InstUntil
-  -> Infer (Vector (Plicitness, MetaA), Rhotype, AbstractM -> Infer AbstractM)
-prenexConvert typ instUntil = do
-  typ' <- whnf typ
-  prenexConvert' typ' instUntil
+  -> Infer (Rhotype, AbstractM -> Infer AbstractM)
+prenexConvert t1 = do
+  (vs, t2, f) <- prenexConvertInner t1
+  return
+    ( t2
+    , \x ->
+      f =<< Abstract.lams
+        <$> metaTelescopeM vs
+        <*> abstractM (teleAbstraction $ snd <$> vs) x
+    )
 
-prenexConvert'
+prenexConvertInner
   :: Polytype
-  -> InstUntil
   -> Infer (Vector (Plicitness, MetaA), Rhotype, AbstractM -> Infer AbstractM)
-prenexConvert' (Pi h p t resScope) instUntil | shouldInst p instUntil = do
+prenexConvertInner typ = do
+  typ' <- whnf typ
+  prenexConvertInner' typ'
+
+prenexConvertInner'
+  :: Polytype
+  -> Infer (Vector (Plicitness, MetaA), Rhotype, AbstractM -> Infer AbstractM)
+prenexConvertInner' (Pi h p t resScope) = do
   y <- forall h p t
   let resType = Util.instantiate1 (pure y) resScope
-  (vs, resType', f) <- prenexConvert resType instUntil
+  (vs, resType', f) <- prenexConvertInner resType
   let implicitCase =
         ( Vector.cons (p, y) vs
         , resType'
@@ -54,7 +65,36 @@ prenexConvert' (Pi h p t resScope) instUntil | shouldInst p instUntil = do
         <*> abstractM (teleAbstraction $ snd <$> vs)
         (betaApp (betaApps x $ second pure <$> vs) p $ pure y)
       )
-prenexConvert' typ _ = return (mempty, typ, pure)
+prenexConvertInner' typ = return (mempty, typ, pure)
+
+-- | skolemise t1 = (t2, f) => f : t2 -> t1
+--
+-- Peel off quantifiers from the given type, instantiating them with skolem
+-- variables ('forall'), and return a function that takes a term of the peeled
+-- type and produces a term of the unpeeled type.
+skolemise
+  :: Polytype
+  -> InstUntil
+  -> Infer (Rhotype, AbstractM -> Infer AbstractM)
+skolemise typ instUntil = do
+  typ' <- whnf typ
+  skolemise' typ' instUntil
+
+skolemise'
+  :: Polytype
+  -> InstUntil
+  -> Infer (Rhotype, AbstractM -> Infer AbstractM)
+skolemise' (Pi h p t resScope) instUntil
+  | shouldInst p instUntil = do
+    v <- forall h p t
+    let resType = Util.instantiate1 (pure v) resScope
+    (resType', f) <- skolemise resType instUntil
+    return
+      ( resType'
+      , \x -> fmap (Lam h p t) $ abstract1M v
+        =<< f x
+      )
+skolemise' typ _ = return (typ, pure)
 
 --------------------------------------------------------------------------------
 -- Subtyping/subsumption
@@ -84,11 +124,9 @@ subtype' (Pi h1 p1 argType1 retScope1) (Pi h2 p2 argType2 retScope2)
       $ \x -> fmap (Lam h p2 argType2)
       $ abstract1M v2 =<< f2 (App x p1 v1)
 subtype' typ1 typ2 = do
-  (as, rho, f1) <- prenexConvert typ2 $ InstUntil Explicit
+  (rho, f1) <- skolemise typ2 $ InstUntil Explicit
   f2 <- subtypeRho typ1 rho $ InstUntil Explicit
-  return $ \x ->
-    f1 =<< lams <$> metaTelescopeM as
-    <*> (abstractM (teleAbstraction $ snd <$> as) =<< f2 x)
+  return $ f1 <=< f2
 
 subtypeRho :: Polytype -> Rhotype -> InstUntil -> Infer (AbstractM -> Infer AbstractM)
 subtypeRho typ1 typ2 instUntil = do

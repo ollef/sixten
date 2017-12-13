@@ -70,12 +70,9 @@ checkPoly' :: ConcreteM -> Polytype -> Infer AbstractM
 checkPoly' expr@(Concrete.Lam Implicit _ _) polyType
   = checkRho expr polyType
 checkPoly' expr polyType = do
-  (vs, rhoType, f) <- prenexConvert polyType $ instUntilExpr expr
+  (rhoType, f) <- skolemise polyType $ instUntilExpr expr
   e <- checkRho expr rhoType
-  logShow 25 "checkPoly: prenexConvert vars" vs
-  f =<< Abstract.lams
-    <$> metaTelescopeM vs
-    <*> abstractM (teleAbstraction $ snd <$> vs) e
+  f e
 
 instUntilExpr :: Concrete.Expr v -> InstUntil
 instUntilExpr (Concrete.Lam p _ _) = InstUntil p
@@ -587,7 +584,7 @@ checkClauses clauses polyType = do
 
   modifyIndent succ
 
-  (vs, rhoType, f) <- prenexConvert polyType $ minimum $ instUntilClause <$> clauses
+  (rhoType, f) <- skolemise polyType $ minimum $ instUntilClause <$> clauses
 
   ps <- piPlicitnesses rhoType
 
@@ -605,9 +602,7 @@ checkClauses clauses polyType = do
   l <- level
   logMeta 20 ("checkClauses res " <> show l) res
 
-  f =<< Abstract.lams
-    <$> metaTelescopeM vs
-    <*> abstractM (teleAbstraction $ snd <$> vs) res
+  f res
   where
     instUntilClause :: Concrete.Clause Void Concrete.Expr v -> InstUntil
     instUntilClause (Concrete.Clause pats s)
