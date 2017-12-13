@@ -14,6 +14,8 @@ import qualified TypeRep
 import Util
 import VIX
 
+-------------------------------------------------------------------------------
+-- * Weak head normal forms
 whnf
   :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
   => AbstractM
@@ -34,7 +36,11 @@ whnfExpandingTypeReps = whnf' WhnfArgs
 
 data WhnfArgs m = WhnfArgs
   { expandTypeReps :: !Bool
+    -- ^ Should types be reduced to type representations (i.e. forget what the
+    -- type is and only remember its representation)?
   , handleUnsolvedConstraint :: !(AbstractM -> m (Maybe AbstractM))
+    -- ^ Allows whnf to try to solve an unsoilved class constraint when they're
+    -- encountered.
   }
 
 whnf'
