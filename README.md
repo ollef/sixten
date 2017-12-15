@@ -178,7 +178,7 @@ garbage-collecting heap-allocated data.
 ## Planned features
 
 * Inductive families/indexed types
-* Editor integration (there's already Vim syntax highlighting though!!1)
+* Editor integration (there's already Vim syntax highlighting though!!)
 * Records
 * Effects and IO
 * Standard library

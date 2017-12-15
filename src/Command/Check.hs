@@ -54,7 +54,7 @@ check opts onError = withLogHandle (logFile opts) $ \logHandle -> do
         }
   case procResult of
     Processor.Failure errs -> onError errs
-    Processor.Success _ -> Text.putStrLn "✔ Type checking completed succesfully"
+    Processor.Success _ -> Text.putStrLn "Type checking completed successfully"
   where
     withLogHandle Nothing k = k stdout
     withLogHandle (Just file) k = Util.withFile file WriteMode k
