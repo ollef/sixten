@@ -39,7 +39,7 @@ data WhnfArgs m = WhnfArgs
     -- ^ Should types be reduced to type representations (i.e. forget what the
     -- type is and only remember its representation)?
   , handleUnsolvedConstraint :: !(AbstractM -> m (Maybe AbstractM))
-    -- ^ Allows whnf to try to solve an unsoilved class constraint when they're
+    -- ^ Allows whnf to try to solve an unsolved class constraint when they're
     -- encountered.
   }
 
