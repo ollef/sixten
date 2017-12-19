@@ -605,6 +605,7 @@ generateConstant visibility name (Constant e) = do
           initOperand = LLVM.ConstantOperand $ LLVM.GlobalReference voidFunType initName
       emitDefn $ LLVM.GlobalDefinition LLVM.functionDefaults
         { LLVM.Global.name = initName
+        , LLVM.Global.callingConvention = CC.Fast
         , LLVM.Global.linkage = LLVM.Private
         , LLVM.Global.returnType = LLVM.void
         , LLVM.Global.basicBlocks = initBody
