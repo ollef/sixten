@@ -12,6 +12,7 @@ import qualified Data.HashSet as HashSet
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Maybe
 import Data.Monoid
+import Data.String
 import Data.Text(Text)
 import qualified Data.Text.IO as Text
 import qualified Data.Text.Lazy.IO as Lazy
@@ -31,6 +32,7 @@ import qualified LLVM.Pretty as LLVM
 import qualified LLVM.Typed as LLVM
 import System.IO
 
+import qualified Backend.ExtractExtern as ExtractExtern
 import Backend.Generate.LLVM
 import Backend.Generate.Types
 import qualified Builtin.Names as Builtin
@@ -39,6 +41,7 @@ import Syntax.Annotation
 import Syntax.Branches
 import Syntax.Direction
 import Syntax.Extern(Language)
+import Syntax.Extern as Extern
 import Syntax.GlobalBind hiding (global)
 import Syntax.Literal
 import Syntax.Module
@@ -230,7 +233,7 @@ funSignature expr arity = case expr of
   Global g -> do
     msig <- signature g
     return $ case msig of
-      Just (FunctionSig retDir argDirs) -> (retDir, argDirs)
+      Just (FunctionSig _ retDir argDirs) -> (retDir, argDirs)
       _ -> def
   _ -> error "Generate.funSignature non-global"
   where
@@ -370,7 +373,7 @@ generateGlobal g = do
       align <- getPtrAlign
       ptr <- load globOperand align `named` "global"
       return $ IndirectVar ptr
-    Just (FunctionSig _ _) -> return
+    Just FunctionSig {} -> return
       $ DirectVar ptrRep
       $ LLVM.ConstantOperand
       $ LLVM.Constant.PtrToInt
@@ -618,7 +621,7 @@ generateConstant visibility name (Constant e) = do
 
 generateFunction :: Visibility -> QName -> Function Expr Var -> ModuleGen ()
 generateFunction visibility name (Function args funScope) = do
-  Just (FunctionSig retDir argDirs) <- signature name
+  msig@(Just (FunctionSig _ retDir argDirs)) <- signature name
   ((retType, params), basicBlocks) <- runIRBuilderT emptyIRBuilder $ do
     paramVars <- iforMTele args $ \i h _ _sz -> do
       let d = argDirs Vector.! i
@@ -677,13 +680,26 @@ generateFunction visibility name (Function args funScope) = do
         Private -> LLVM.Private
         Public -> LLVM.External
   emitDefn $ LLVM.GlobalDefinition LLVM.functionDefaults
-    { LLVM.Global.name = fromQName name
-    , LLVM.Global.callingConvention = CC.Fast
+    { LLVM.Global.name = fromQNameSig msig name
+    , LLVM.Global.callingConvention = sigCallingConvention msig
     , LLVM.Global.basicBlocks = basicBlocks
     , LLVM.Global.parameters = (params, False)
     , LLVM.Global.returnType = retType
     , LLVM.Global.linkage = linkage
     }
+
+  where
+    fromQNameSig
+      :: IsString s
+      => Maybe (Signature d)
+      -> QName
+      -> s
+    fromQNameSig (Just (FunctionSig (CompatibleWith Extern.C) _ _)) qname = fromName $ ExtractExtern.mangle qname
+    fromQNameSig _ qname = fromQName qname
+
+    sigCallingConvention :: Maybe (Signature d) -> CC.CallingConvention
+    sigCallingConvention (Just (FunctionSig (CompatibleWith Extern.C) _ _)) = CC.C
+    sigCallingConvention _ = CC.Fast
 
 generateDefinition :: QName -> Definition Expr Var -> ModuleGen (InstrGen ())
 generateDefinition name def = case def of
@@ -702,8 +718,8 @@ declareGlobal :: QName -> ModuleGen ()
 declareGlobal g = do
   msig <- signature g
   case msig of
-    Just (FunctionSig retDir argDirs) -> declareFun retDir (fromQName g) argDirs
-    Just (ConstantSig dir) -> declareConstant dir (fromQName g)
+    Just (FunctionSig _ retDir argDirs) -> declareFun retDir (fromQName g) argDirs
+    Just (ConstantSig dir) -> declareConstant dir $ fromQName g
     Just (AliasSig _) -> error "declareGlobal alias"
     Nothing -> return ()
 

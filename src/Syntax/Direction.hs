@@ -6,6 +6,7 @@ import Data.Vector(Vector)
 
 import Pretty
 import Syntax.Annotation
+import Syntax.Extern
 import Syntax.Module
 import TypeRep
 
@@ -65,8 +66,14 @@ instance Pretty ClosureDir where
   prettyM (NonClosureDir d) = prettyM d
   prettyM ClosureDir = "closure"
 
+-- | Should the name be mangled and calling convention be adjusted to be C-compatible?
+data Compatibility
+  = CompatibleWith Language
+  | SixtenCompatible
+  deriving (Eq, Ord, Show)
+
 data Signature a
-  = FunctionSig (ReturnDirection a) (Vector Direction)
+  = FunctionSig Compatibility (ReturnDirection a) (Vector Direction)
   | ConstantSig Direction
   | AliasSig QName
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)

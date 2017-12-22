@@ -1,0 +1,15 @@
+test : Int -> Int
+
+test x = (C|
+  if ($x == 610)
+  {
+    $(printInt 43);
+  }
+  else
+  {
+    $(printInt 44);
+  }
+  return 0;
+|)
+
+main = test 610
