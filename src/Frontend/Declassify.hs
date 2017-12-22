@@ -58,7 +58,7 @@ declass
     , [(QName, SourceLoc, TopLevelPatDefinition Expr Void, Maybe (Type Void))]
     )
 declass qname loc classDef typ = do
-  modify $ \s -> s
+  liftVIX $ modify $ \s -> s
     { vixClassMethods
       = HashMap.insert qname (Vector.fromList $ methodNames classDef)
       $ vixClassMethods s
@@ -136,7 +136,7 @@ deinstance
   -> VIX [(QName, SourceLoc, TopLevelPatDefinition Expr Void, Maybe (Type Void))]
 deinstance qname@(QName modName name) loc (PatInstanceDef methods) typ = located loc $ do
   className <- getClass typ
-  mnames <- gets $ HashMap.lookup className . vixClassMethods
+  mnames <- liftVIX $ gets $ HashMap.lookup className . vixClassMethods
   case mnames of
     Nothing -> throwInvalidInstance
     Just names -> do

@@ -40,7 +40,7 @@ scopeCheckModule
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [[(QName, SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void, Maybe (Scoped.Type void))]]
 scopeCheckModule modul = do
-  otherNames <- gets vixModuleNames
+  otherNames <- liftVIX $ gets vixModuleNames
 
   let env = ScopeEnv lookupConstr
       lookupConstr c = MultiHashMap.lookup c constrs

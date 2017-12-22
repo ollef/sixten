@@ -65,6 +65,6 @@ logFreeVar
   -> f (FreeVar d)
   -> m ()
 logFreeVar v s x = whenVerbose v $ do
-  i <- gets vixIndent
+  i <- liftVIX $ gets vixIndent
   let r = showFreeVar x
   VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide r
