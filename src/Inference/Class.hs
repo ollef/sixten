@@ -56,7 +56,7 @@ elabUnsolvedConstraint mkConstraint typ = case typ of
     -- Replace existentials in typ with universals
     (uniType, uniVarMap) <- universalise typ
     -- Try subsumption on all instances of the class until a match is found
-    globalClassInstances <- gets $ HashMap.lookupDefault mempty className . vixClassInstances
+    globalClassInstances <- liftVIX $ gets $ HashMap.lookupDefault mempty className . vixClassInstances
     -- TODO universalise localInstances
     localInstances <- asks constraints
     let candidates = [(Global g, vacuous t) | (g, t) <- globalClassInstances]

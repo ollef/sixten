@@ -27,7 +27,7 @@ data LiftState thing = LiftState
   }
 
 newtype Lift thing m a = Lift (StateT (LiftState thing) m a)
-  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadTrans)
+  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadTrans, MonadVIX, MonadIO)
 
 freshName :: Monad m => Lift thing m QName
 freshName = do

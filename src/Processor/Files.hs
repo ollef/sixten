@@ -2,7 +2,6 @@
 module Processor.Files where
 
 import Control.Monad.Except
-import Control.Monad.State
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
@@ -91,7 +90,7 @@ processBuiltins
   -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [Generate.GeneratedSubmodule]
 processBuiltins builtins1 builtins2 = do
-  tgt <- gets vixTarget
+  tgt <- getTarget
   let context = Builtin.context tgt
   let builtinDefNames = HashSet.fromMap $ void context
       builtinConstrNames = HashSet.fromList

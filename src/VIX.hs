@@ -1,23 +1,27 @@
-{-# LANGUAGE ConstraintKinds, FlexibleContexts, GeneralizedNewtypeDeriving, OverloadedStrings, UndecidableInstances #-}
+{-# LANGUAGE DefaultSignatures, FlexibleContexts, GADTs, GeneralizedNewtypeDeriving, OverloadedStrings, UndecidableInstances #-}
 module VIX where
 
 import Control.Monad.Base
 import Control.Monad.Except
+import Control.Monad.Identity
+import Control.Monad.Reader
 import Control.Monad.ST
 import Control.Monad.State
 import Control.Monad.Trans.Control
+import Control.Monad.Trans.Identity
+import Control.Monad.Writer
 import Data.Bifunctor
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
 import Data.List as List
-import Data.Monoid
 import Data.String
 import Data.Text(Text)
 import qualified Data.Text.IO as Text
 import Data.Vector(Vector)
 import Data.Void
 import Data.Word
+import qualified LLVM.IRBuilder as IRBuilder
 import System.IO
 import Text.Trifecta.Result(Err(Err), explain)
 
@@ -44,7 +48,14 @@ data VIXState = VIXState
   , vixTarget :: Target
   }
 
-type MonadVIX = MonadState VIXState
+class Monad m => MonadVIX m where
+  liftVIX :: State VIXState a -> m a
+
+  default liftVIX
+    :: (MonadTrans t, MonadVIX m1, m ~ t m1)
+    => State VIXState a
+    -> m a
+  liftVIX = lift . liftVIX
 
 emptyVIXState :: Target -> Handle -> Int -> VIXState
 emptyVIXState target handle verbosity = VIXState
@@ -63,7 +74,10 @@ emptyVIXState target handle verbosity = VIXState
   }
 
 newtype VIX a = VIX (StateT VIXState (ExceptT String IO) a)
-  deriving (Functor, Applicative, Monad, MonadFix, MonadError String, MonadState VIXState, MonadIO, MonadBase IO, MonadBaseControl IO)
+  deriving (Functor, Applicative, Monad, MonadFix, MonadError String, MonadIO, MonadBase IO, MonadBaseControl IO)
+
+instance MonadVIX VIX where
+  liftVIX (StateT s) = VIX $ StateT $ pure . runIdentity . s
 
 liftST :: MonadIO m => ST RealWorld a -> m a
 liftST = liftIO . stToIO
@@ -86,54 +100,54 @@ runVIX vix target handle verbosity
   $ emptyVIXState target handle verbosity
 
 fresh :: MonadVIX m => m Int
-fresh = do
+fresh = liftVIX $ do
   i <- gets vixFresh
   modify $ \s -> s {vixFresh = i + 1}
   return i
 
 located :: MonadVIX m => SourceLoc -> m a -> m a
 located loc m = do
-  oldLoc <- gets vixLocation
-  modify $ \s -> s { vixLocation = loc }
+  oldLoc <- liftVIX $ gets vixLocation
+  liftVIX $ modify $ \s -> s { vixLocation = loc }
   res <- m
-  modify $ \s -> s { vixLocation = oldLoc }
+  liftVIX $ modify $ \s -> s { vixLocation = oldLoc }
   return res
 
 currentLocation :: MonadVIX m => m SourceLoc
-currentLocation = gets vixLocation
+currentLocation = liftVIX $ gets vixLocation
 
 -------------------------------------------------------------------------------
 -- Debugging
 log :: (MonadIO m, MonadVIX m) => Text -> m ()
 log l = do
-  h <- gets vixLogHandle
+  h <- liftVIX $ gets vixLogHandle
   liftIO $ Text.hPutStrLn h l
 
 logVerbose :: (MonadIO m, MonadVIX m) => Int -> Text -> m ()
 logVerbose v l = whenVerbose v $ VIX.log l
 
 modifyIndent :: (MonadIO m, MonadVIX m) => (Int -> Int) -> m ()
-modifyIndent f = modify $ \s -> s {vixIndent = f $ vixIndent s}
+modifyIndent f = liftVIX $ modify $ \s -> s {vixIndent = f $ vixIndent s}
 
 logPretty :: (MonadIO m, MonadVIX m, Pretty a) => Int -> String -> a -> m ()
 logPretty v s x = whenVerbose v $ do
-  i <- gets vixIndent
+  i <- liftVIX $ gets vixIndent
   VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide (pretty x)
 
 logShow :: (MonadIO m, MonadVIX m, Show a) => Int -> String -> a -> m ()
 logShow v s x = whenVerbose v $ do
-  i <- gets vixIndent
+  i <- liftVIX $ gets vixIndent
   VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> fromString (show x)
 
 whenVerbose :: MonadVIX m => Int -> m () -> m ()
 whenVerbose i m = do
-  v <- gets vixVerbosity
+  v <- liftVIX $ gets vixVerbosity
   when (v >= i) m
 
 -------------------------------------------------------------------------------
 -- Working with abstract syntax
 addContext :: MonadVIX m => HashMap QName (Definition Expr Void, Type Void) -> m ()
-addContext prog = modify $ \s -> s
+addContext prog = liftVIX $ modify $ \s -> s
   { vixContext = prog <> vixContext s
   , vixClassInstances = HashMap.unionWith (<>) instances $ vixClassInstances s
   } where
@@ -166,7 +180,7 @@ definition
   => QName
   -> m (Definition Expr v, Expr v)
 definition name = do
-  mres <- gets $ HashMap.lookup name . vixContext
+  mres <- liftVIX $ gets $ HashMap.lookup name . vixContext
   maybe (throwLocated $ "Not in scope: " <> pretty name)
         (return . bimap vacuous vacuous)
         mres
@@ -176,7 +190,7 @@ addModule
   => ModuleName
   -> HashSet (Either QConstr QName)
   -> m ()
-addModule m names = modify $ \s -> s
+addModule m names = liftVIX $ modify $ \s -> s
   { vixModuleNames = MultiHashMap.inserts m names $ vixModuleNames s
   }
 
@@ -201,25 +215,26 @@ addConvertedSignatures
   => HashMap QName Lifted.FunSignature
   -> m ()
 addConvertedSignatures p
-  = modify $ \s -> s { vixConvertedSignatures = p <> vixConvertedSignatures s }
+  = liftVIX
+  $ modify $ \s -> s { vixConvertedSignatures = p <> vixConvertedSignatures s }
 
 convertedSignature
   :: MonadVIX m
   => QName
   -> m (Maybe Lifted.FunSignature)
-convertedSignature name = gets $ HashMap.lookup name . vixConvertedSignatures
+convertedSignature name = liftVIX $ gets $ HashMap.lookup name . vixConvertedSignatures
 
 addSignatures
   :: MonadVIX m
   => HashMap QName (Signature ReturnIndirect)
   -> m ()
-addSignatures p = modify $ \s -> s { vixSignatures = p <> vixSignatures s }
+addSignatures p = liftVIX $ modify $ \s -> s { vixSignatures = p <> vixSignatures s }
 
 signature
   :: MonadVIX m
   => QName
   -> m (Maybe (Signature ReturnIndirect))
-signature name = gets $ HashMap.lookup name . vixSignatures
+signature name = liftVIX $ gets $ HashMap.lookup name . vixSignatures
 
 -------------------------------------------------------------------------------
 -- General constructor queries
@@ -236,7 +251,7 @@ constrIndex
   => QConstr
   -> m (Maybe Int)
 constrIndex (QConstr n c) = do
-  mres <- gets $ HashMap.lookup n . vixContext
+  mres <- liftVIX $ gets $ HashMap.lookup n . vixContext
   return $ case mres of
     Just (DataDefinition (DataDef constrDefs@(_:_:_)) _, _) ->
       findIndex ((== c) . constrName) constrDefs
@@ -245,22 +260,35 @@ constrIndex (QConstr n c) = do
 -------------------------------------------------------------------------------
 -- Type representation queries
 getIntRep :: MonadVIX m => m TypeRep
-getIntRep = gets $ TypeRep.intRep . vixTarget
+getIntRep = TypeRep.intRep <$> getTarget
 
 getPtrRep :: MonadVIX m => m TypeRep
-getPtrRep = gets $ TypeRep.ptrRep . vixTarget
+getPtrRep = TypeRep.ptrRep <$> getTarget
 
 getTypeRep :: MonadVIX m => m TypeRep
-getTypeRep = gets $ TypeRep.typeRep . vixTarget
+getTypeRep = TypeRep.typeRep <$> getTarget
 
 getPiRep :: MonadVIX m => m TypeRep
-getPiRep = gets $ TypeRep.piRep . vixTarget
+getPiRep = TypeRep.piRep <$> getTarget
 
 getIntBits :: MonadVIX m => m Word32
-getIntBits = gets $ Target.intBits . vixTarget
+getIntBits = Target.intBits <$> getTarget
 
 getTypeRepBits :: MonadVIX m => m Word32
 getTypeRepBits = (* Target.byteBits) . fromIntegral . TypeRep.size <$> getTypeRep
 
 getPtrAlign :: MonadVIX m => m Word32
-getPtrAlign = gets $ Target.ptrAlign . vixTarget
+getPtrAlign = Target.ptrAlign <$> getTarget
+
+getTarget :: MonadVIX m => m Target
+getTarget = liftVIX $ gets vixTarget
+
+-------------------------------------------------------------------------------
+-- mtl instances
+-------------------------------------------------------------------------------
+instance MonadVIX m => MonadVIX (ReaderT r m)
+instance (Monoid w, MonadVIX m) => MonadVIX (WriterT w m)
+instance MonadVIX m => MonadVIX (StateT s m)
+instance MonadVIX m => MonadVIX (IdentityT m)
+instance MonadVIX m => MonadVIX (IRBuilder.IRBuilderT m)
+instance MonadVIX m => MonadVIX (IRBuilder.ModuleBuilderT m)

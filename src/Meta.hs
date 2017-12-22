@@ -345,6 +345,6 @@ logMeta
   -> f (MetaVar d e)
   -> m ()
 logMeta v s x = whenVerbose v $ do
-  i <- gets vixIndent
+  i <- liftVIX $ gets vixIndent
   r <- showMeta x
   VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide r

@@ -4,7 +4,6 @@ module Inference.TypeCheck where
 import Control.Applicative
 import Control.Monad.Except
 import Control.Monad.ST
-import Control.Monad.State
 import Data.Bifunctor
 import Data.Bitraversable
 import Data.Foldable as Foldable
@@ -548,7 +547,7 @@ checkDataType name (DataDef cs) typ = do
 
   mapM_ (unify [] constrRetType) rets
 
-  intRep <- gets $ TypeRep.intRep . vixTarget
+  intRep <- getIntRep
 
   let tagRep = case cs of
         [] -> TypeRep.UnitRep

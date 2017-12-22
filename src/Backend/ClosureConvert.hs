@@ -3,7 +3,6 @@ module Backend.ClosureConvert where
 
 import Control.Applicative
 import Control.Monad.Except
-import Control.Monad.State
 import Data.Bifunctor
 import qualified Data.HashMap.Lazy as HashMap
 import Data.Maybe
@@ -150,8 +149,8 @@ unknownCall
   -> Vector (Expr FV)
   -> ClosureConvert (Expr FV)
 unknownCall e es = do
-  ptrRep <- lift $ gets (MkType . TypeRep.ptrRep . vixTarget)
-  intRep <- lift $ gets (MkType . TypeRep.intRep . vixTarget)
+  ptrRep <- MkType <$> getPtrRep
+  intRep <- MkType <$> getIntRep
   return
     $ Call (global $ Builtin.applyName $ Vector.length es)
     $ Vector.cons (Sized ptrRep e)
@@ -164,8 +163,8 @@ knownCall
   -> ClosureConvert (Expr FV)
 knownCall f (tele, returnTypeScope) args
   | numArgs < arity = do
-    vs <- lift $ forM (teleNames tele) $ \h -> freeVar h ()
-    target <- lift $ gets vixTarget
+    vs <- forM (teleNames tele) $ \h -> freeVar h ()
+    target <- getTarget
     let intRep, ptrRep :: Expr v
         intRep = MkType $ TypeRep.intRep target
         ptrRep = MkType $ TypeRep.ptrRep target
