@@ -269,10 +269,7 @@ extractExternGroup
   -> VIX [(QName, Extracted.Submodule (Sized.Definition Extracted.Expr Void))]
 extractExternGroup defs = do
   target <- getTarget
-  forM defs $ \(n, d) -> do
-    d' <- ExtractExtern.extractDef n (vacuous d) target
-    d'' <- traverse (traverse (throwError . ("extractExternGroup " ++) . show)) d'
-    return (n, d'')
+  concat <$> forM defs (uncurry $ ExtractExtern.extractDef target)
 
 generateGroup
   :: [(QName, Extracted.Submodule (Sized.Definition Extracted.Expr Void))]

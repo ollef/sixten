@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module TypedFreeVar where
 
+import Bound
 import Control.Monad.IO.Class
 import Control.Monad.State
 import Data.Function
@@ -9,10 +10,12 @@ import Data.Hashable
 import qualified Data.HashSet as HashSet
 import Data.Monoid
 import Data.String
+import Data.Vector(Vector)
 
 import Pretty
-import Syntax.NameHint
 import Syntax.Name
+import Syntax.NameHint
+import Syntax.Telescope
 import VIX
 
 data FreeVar d = FreeVar
@@ -68,3 +71,14 @@ logFreeVar v s x = whenVerbose v $ do
   i <- liftVIX $ gets vixIndent
   let r = showFreeVar x
   VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide r
+
+varTelescope
+  :: Monad e
+  => Vector (a, FreeVar e)
+  -> Telescope a e (FreeVar e)
+varTelescope vs =
+  Telescope
+  $ (\(a, v) -> TeleArg (varHint v) a $ abstract abstr $ varType v)
+  <$> vs
+  where
+    abstr = teleAbstraction $ snd <$> vs

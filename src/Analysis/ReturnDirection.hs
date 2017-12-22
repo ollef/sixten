@@ -195,7 +195,7 @@ inferFunction expr = case expr of
   Global g -> do
     sig <- signature g
     case sig of
-      Just (FunctionSig retDir argDirs) -> return (Global g, (fromReturnIndirect <$> retDir, argDirs))
+      Just (FunctionSig _ retDir argDirs) -> return (Global g, (fromReturnIndirect <$> retDir, argDirs))
       Just (ConstantSig _) -> def
       Just (AliasSig aliasee) -> inferFunction $ Global aliasee
       Nothing -> error "ReturnDirection.inferFunction no sig"
@@ -223,7 +223,7 @@ inferDefinition FreeVar {varData = MetaData {metaFunSig = Just (retDir, argDirs)
       unifyMetaReturnIndirect glbdir m
     ReturnDirect _ -> return ()
   let s' = abstract abstr e'
-  return (FunctionDef vis cl $ Function (Telescope args') s', FunctionSig retDir argDirs)
+  return (FunctionDef vis cl $ Function (Telescope args') s', FunctionSig SixtenCompatible retDir argDirs)
 inferDefinition _ (ConstantDef _ (Constant (Anno (Global glob) _))) =
   return (AliasDef, AliasSig glob)
 inferDefinition _ (ConstantDef vis (Constant e)) = do

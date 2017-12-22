@@ -8,8 +8,9 @@ force : forall a. Lazy a -> a
 force @a (MkLazy l) = case l of
   Ref (Thunk f) ->
     let result = f MkUnit
+        doneResult = Done result
     (C|
-      memcpy((void*)$l, $(Done result), $(sizeOf (LazyValue a)));
+      memcpy((void*)$l, $doneResult, $(sizeOf (LazyValue a)));
       memcpy(return_, $result, $(sizeOf a));
     |)
   Ref (Done a) -> a

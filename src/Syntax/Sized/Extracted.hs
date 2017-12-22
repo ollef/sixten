@@ -38,6 +38,9 @@ data Submodule contents = Submodule
   , submoduleContents :: contents
   } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
+emptySubmodule :: contents -> Submodule contents
+emptySubmodule = Submodule mempty mempty
+
 -------------------------------------------------------------------------------
 -- Helpers
 pattern Sized :: Type v -> Expr v -> Expr v
