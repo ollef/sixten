@@ -219,7 +219,7 @@ lets
   -> Lifted.Expr FV
 lets = flip $ foldr go
   where
-    go [(v, e)] = Lifted.Let (varHint v) e . abstract1 v
+    go [(v, e)] = Lifted.Let (varHint v) e (varType v) . abstract1 v
     go _ = error "Circular Lift lets"
 
 liftToDefinitionM
