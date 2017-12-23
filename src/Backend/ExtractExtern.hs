@@ -13,9 +13,11 @@ import Syntax
 import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Extracted as Extracted
 import qualified Syntax.Sized.Lifted as Lifted
+import TypedFreeVar
 import qualified TypeRep
 import Util
 import Util.Tsil as Tsil
+import VIX
 
 data ExtractState = ExtractState
   { freshNames :: [QName]
@@ -23,15 +25,14 @@ data ExtractState = ExtractState
   , target :: Target
   }
 
-newtype Extract a = Extract { unExtract :: State ExtractState a }
-  deriving (Functor, Applicative, Monad, MonadState ExtractState)
+newtype Extract a = Extract { unExtract :: StateT ExtractState VIX a }
+  deriving (Functor, Applicative, Monad, MonadState ExtractState, MonadVIX, MonadIO)
 
-runExtract :: [QName] -> Target -> Extract a -> Extracted.Submodule a
-runExtract names tgt
-  = (\(a, s) -> let (decls, defs) = unzip $ toList $ extractedCode s in
-      Extracted.Submodule decls ((,) C <$> defs) a)
-  . flip runState (ExtractState names mempty tgt)
-  . unExtract
+runExtract :: [QName] -> Target -> Extract a -> VIX (Extracted.Submodule a)
+runExtract names tgt (Extract m) = do
+  (a, s) <- runStateT m (ExtractState names mempty tgt)
+  let (decls, defs) = unzip $ toList $ extractedCode s
+  return $ Extracted.Submodule decls ((,) C <$> defs) a
 
 freshName :: Extract Name
 freshName = do
@@ -42,11 +43,12 @@ freshName = do
 addExtractedCode :: Extracted.Declaration -> Text -> Extract ()
 addExtractedCode d t = modify $ \s -> s { extractedCode = Snoc (extractedCode s) (d, t) }
 
+type FV = FreeVar Extracted.Expr
+
 extractExpr
-  :: Ord v
-  => Maybe (Extracted.Type v)
-  -> Lifted.Expr v
-  -> Extract (Extracted.Expr v)
+  :: Maybe (Extracted.Type FV)
+  -> Lifted.Expr FV
+  -> Extract (Extracted.Expr FV)
 extractExpr mtype expr = case expr of
   Lifted.Var v -> return $ Extracted.Var v
   Lifted.Global g -> return $ Extracted.Global g
@@ -56,10 +58,15 @@ extractExpr mtype expr = case expr of
   Lifted.PrimCall retDir e es -> Extracted.PrimCall Nothing retDir
     <$> extractExpr Nothing e
     <*> traverse (traverse (extractExpr Nothing)) es
-  Lifted.Let h e s -> Extracted.Let h
-    <$> extractExpr Nothing e
-    <*> extractScope s
-  Lifted.Case e brs -> Extracted.Case <$> extractExpr Nothing e <*> extractBranches brs
+  Lifted.Let h e t s -> do
+    e' <- extractExpr Nothing e
+    t' <- extractExpr Nothing t
+    v <- freeVar h t'
+    let body = instantiate1 (pure v) s
+    body' <- extractExpr mtype body
+    let s' = abstract1 v body'
+    return $ Extracted.Let h e' s'
+  Lifted.Case e brs -> Extracted.Case <$> extractExpr Nothing e <*> extractBranches mtype brs
   Lifted.ExternCode f -> case mtype of
     Nothing -> error "extractExpr Nothing"
     Just typ -> extractExtern typ =<< mapM (extractExpr Nothing) f
@@ -67,11 +74,39 @@ extractExpr mtype expr = case expr of
     t' <- extractExpr Nothing t
     Extracted.Anno <$> extractExpr (Just t') e <*> pure t'
 
+-- The idea here is to take blocks of the form
+--
+-- (C|
+--    foo
+--    $(a b c)
+--    bar
+--    $x
+--  |)
+--
+-- and produce a C function taking as argument the free variables of all splices:
+--
+-- retType f(aType a, bType b, cType c, xType x) {
+--    foo
+--    f_callback_1(a, b, c);
+--    bar
+--    x
+-- }
+--
+-- We create functions that use the C calling convention for the splices that
+-- aren't plain variables, roughly:
+--
+-- retType' f_callback_1(aType a, bType b, cType c) {
+--    [compiled code for 'a b c'];
+-- }
+--
+-- Plan:
+-- Generate the callback functions and call them
+-- Forward-declare callback functions in generated C code
+-- Make calling code compile the callback functions
 extractExtern
-  :: Ord v
-  => Extracted.Type v
-  -> Extern (Extracted.Expr v)
-  -> Extract (Extracted.Expr v)
+  :: Extracted.Type FV
+  -> Extern (Extracted.Expr FV)
+  -> Extract (Extracted.Expr FV)
 extractExtern retType (Extern C parts) = do
   name <- freshName
   tgt <- gets target
@@ -131,45 +166,46 @@ extractType (Extracted.MkType rep) = case TypeRep.size rep of
 extractType _ = ("uint8_t*", Indirect)
 
 extractBranches
-  :: Ord v
-  => Branches QConstr () Lifted.Expr v
-  -> Extract (Branches QConstr () Extracted.Expr v)
-extractBranches (ConBranches cbrs) = ConBranches <$> sequence
-  [ ConBranch qc <$> extractTelescope tele <*> extractScope s
-  | ConBranch qc tele s <- cbrs
-  ]
-extractBranches (LitBranches lbrs def) = LitBranches <$> sequence
-  [ LitBranch l <$> extractExpr Nothing e
+  :: Maybe (Extracted.Type FV)
+  -> Branches QConstr () Lifted.Expr FV
+  -> Extract (Branches QConstr () Extracted.Expr FV)
+extractBranches mtype (ConBranches cbrs) = fmap ConBranches $
+  forM cbrs $ \(ConBranch qc tele brScope) -> do
+    vs <- forTeleWithPrefixM tele $ \h () s vs -> do
+      let e = instantiateTele pure vs s
+      e' <- extractExpr Nothing e
+      freeVar h e'
+    let brExpr = instantiateTele pure vs brScope
+        abstr = teleAbstraction vs
+        tele'' = Telescope $ (\v -> TeleArg (varHint v) () $ abstract abstr $ varType v) <$> vs
+    brExpr' <- extractExpr mtype brExpr
+    let brScope' = abstract abstr brExpr'
+    return $ ConBranch qc tele'' brScope'
+extractBranches mtype (LitBranches lbrs def) = LitBranches <$> sequence
+  [ LitBranch l <$> extractExpr mtype e
   | LitBranch l e <- lbrs
-  ] <*> extractExpr Nothing def
-
-extractTelescope
-  :: Ord v
-  => Telescope d Lifted.Expr v
-  -> Extract (Telescope d Extracted.Expr v)
-extractTelescope (Telescope tele) = Telescope
-  <$> mapM (\(TeleArg h d s) -> TeleArg h d <$> extractScope s) tele
-
-extractScope
-  :: (Ord b, Ord v)
-  => Scope b Lifted.Expr v
-  -> Extract (Scope b Extracted.Expr v)
-extractScope = fmap toScope . extractExpr Nothing . fromScope
+  ] <*> extractExpr mtype def
 
 extractDef
-  :: Ord v
-  => QName
-  -> Sized.Definition Lifted.Expr v
+  :: QName
+  -> Sized.Definition Lifted.Expr FV
   -> Target
-  -> Extracted.Submodule (Sized.Definition Extracted.Expr v)
-extractDef (QName mname name) def tgt = case def of
-  Sized.FunctionDef vis cl (Sized.Function tele s) -> runExtract names tgt
-    $ Sized.FunctionDef vis cl
-    <$> (Sized.Function <$> extractTelescope tele <*> extractScope s)
-  Sized.ConstantDef vis (Sized.Constant e) -> runExtract names tgt
-    $ Sized.ConstantDef vis
+  -> VIX (Extracted.Submodule (Sized.Definition Extracted.Expr FV))
+extractDef (QName mname name) def tgt = runExtract names tgt $ case def of
+  Sized.FunctionDef vis cl (Sized.Function tele scope) -> fmap (Sized.FunctionDef vis cl) $ do
+    vs <- forTeleWithPrefixM tele $ \h () s vs -> do
+      let e = instantiateTele pure vs s
+      e' <- extractExpr Nothing e
+      freeVar h e'
+    let expr = instantiateTele pure vs scope
+        abstr = teleAbstraction vs
+        tele'' = Telescope $ (\v -> TeleArg (varHint v) () $ abstract abstr $ varType v) <$> vs
+    expr' <- extractExpr Nothing expr
+    let scope' = abstract abstr expr'
+    return $ Sized.Function tele'' scope'
+  Sized.ConstantDef vis (Sized.Constant e) -> Sized.ConstantDef vis
     <$> (Sized.Constant <$> extractExpr Nothing e)
-  Sized.AliasDef -> runExtract names tgt $ return Sized.AliasDef
+  Sized.AliasDef -> return Sized.AliasDef
   where
     names =
       [ QName mname $ if n == 0

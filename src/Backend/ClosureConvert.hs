@@ -133,13 +133,14 @@ convertExpr expr = case expr of
     e' <- convertExpr e
     es' <- mapM (traverse convertExpr) es
     return $ PrimCall retDir e' es'
-  Let h e bodyScope -> do
+  Let h e t bodyScope -> do
     e' <- convertExpr e
+    t' <- convertExpr t
     v <- lift $ freeVar h ()
     let bodyExpr = Util.instantiate1 (pure v) bodyScope
     bodyExpr' <- convertExpr bodyExpr
     let bodyScope' = abstract1 v bodyExpr'
-    return $ Let h e' bodyScope'
+    return $ Let h e' t' bodyScope'
   Case e brs -> Case <$> convertExpr e <*> convertBranches brs
   ExternCode c -> ExternCode <$> mapM convertExpr c
   Anno e t -> Anno <$> convertExpr e <*> convertExpr t

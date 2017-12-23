@@ -120,11 +120,11 @@ infer expr = case expr of
       argDirs
       f
       args
-  Let h e s -> do
+  Let h e t s -> do
     (e', eloc) <- infer e
     v <- exists h eloc Nothing
     (s', sloc) <- infer $ instantiate1 (pure v) s
-    return (Let h e' $ abstract1 v s', sloc)
+    return (Let h e' t $ abstract1 v s', sloc)
   Case e brs -> do
     (e', eloc) <- infer e
     (brs', loc) <- inferBranches eloc brs
