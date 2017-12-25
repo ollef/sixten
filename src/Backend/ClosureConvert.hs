@@ -41,7 +41,7 @@ convertDefinitionsM
 convertDefinitionsM defs = do
   funSigs <- forM defs $ \(name, def) -> case def of
     Sized.FunctionDef _ _ (Sized.Function tele scope) -> do
-      vs <- lift $ forMTele tele $ \h () _ ->
+      vs <- forMTele tele $ \h () _ ->
         freeVar h ()
 
       es <- forMTele tele $ \_ () s ->
@@ -60,11 +60,11 @@ convertDefinitionsM defs = do
             <$> abstract abstr convertedType
       return $ Just (name, (tele', typeScope))
     Sized.ConstantDef _ (Sized.Constant (Anno (Global glob) _)) -> do
-      msig <- lift $ convertedSignature glob
+      msig <- convertedSignature glob
       return $ (,) name <$> msig
     _ -> return Nothing
 
-  lift $ addConvertedSignatures $ HashMap.fromList $ catMaybes funSigs
+  addConvertedSignatures $ HashMap.fromList $ catMaybes funSigs
 
   forM defs $ \(name, def) -> do
     def' <- convertDefinition def
@@ -74,7 +74,7 @@ convertDefinition
   :: Sized.Definition Expr Void
   -> ClosureConvert (Sized.Definition Expr Void)
 convertDefinition (Sized.FunctionDef vis cl (Sized.Function tele scope)) = do
-  vs <- lift $ forMTele tele $ \h () _ ->
+  vs <- forMTele tele $ \h () _ ->
     freeVar h ()
 
   es <- forMTele tele $ \_ () s ->
@@ -90,7 +90,7 @@ convertDefinition (Sized.FunctionDef vis cl (Sized.Function tele scope)) = do
     $ Sized.Function tele''
     $ error "convertDefinition Function" <$> scope'
 convertDefinition (Sized.ConstantDef vis (Sized.Constant expr@(Anno (Global glob) sz))) = do
-  msig <- lift $ convertedSignature glob
+  msig <- convertedSignature glob
   expr' <- case msig of
     Nothing -> convertExpr $ vacuous expr
     Just _ -> do
@@ -112,7 +112,7 @@ convertExpr :: Expr FV -> ClosureConvert (Expr FV)
 convertExpr expr = case expr of
   Var v -> return $ Var v
   Global g -> do
-    msig <- lift $ convertedSignature g
+    msig <- convertedSignature g
     case msig of
       Nothing -> return $ Global g
       Just sig -> knownCall g sig mempty
@@ -120,7 +120,7 @@ convertExpr expr = case expr of
   Con qc es -> Con qc <$> mapM convertExpr es
   (callsView -> Just (Global g, es)) -> do
     es' <- mapM convertExpr es
-    msig <- lift $ convertedSignature g
+    msig <- convertedSignature g
     case msig of
       Nothing -> unknownCall (Global g) es'
       Just sig -> knownCall g sig es'
@@ -136,7 +136,7 @@ convertExpr expr = case expr of
   Let h e t bodyScope -> do
     e' <- convertExpr e
     t' <- convertExpr t
-    v <- lift $ freeVar h ()
+    v <- freeVar h ()
     let bodyExpr = Util.instantiate1 (pure v) bodyScope
     bodyExpr' <- convertExpr bodyExpr
     let bodyScope' = abstract1 v bodyExpr'
@@ -224,7 +224,7 @@ convertBranches
   -> ClosureConvert (Branches QConstr () Expr FV)
 convertBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(ConBranch qc tele brScope) -> do
-    vs <- lift $ forMTele tele $ \h () _ ->
+    vs <- forMTele tele $ \h () _ ->
       freeVar h ()
     es <- forMTele tele $ \_ () s ->
       convertExpr $ instantiateTele pure vs s
