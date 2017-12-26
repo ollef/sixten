@@ -5,7 +5,6 @@ module Pretty
   , runPrettyM
   , (<+>), (<$$>)
   , align, indent, hcat, vcat, hsep
-  , iff
   , above
   , absPrec, annoPrec, appPrec, arrPrec, casePrec, letPrec
   , associate
@@ -159,14 +158,10 @@ arrPrec  = 1
 casePrec = 1
 letPrec  = 1
 
-iff :: (PrettyM a -> PrettyM a) -> Bool -> PrettyM a -> PrettyM a
-iff f True  m = f m
-iff _ False m = m
-
 above :: (PrettyM a -> PrettyM a) -> Int -> PrettyM a -> PrettyM a
 above f p' m = do
   p <- asks precedence
-  f `iff` (p > p') $ associate (p' + 1) m
+  (if p > p' then f else id) $ associate (p' + 1) m
 
 prettyApp :: PrettyM Doc -> PrettyM Doc -> PrettyM Doc
 prettyApp p q = parens `above` appPrec $ associate appPrec p <+> q
