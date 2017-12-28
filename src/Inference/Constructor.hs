@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
-module Inference.Constr where
+module Inference.Constructor where
 
 import Control.Monad.Except
 import qualified Data.HashSet as HashSet
@@ -8,7 +8,7 @@ import Data.Monoid
 import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import Text.Trifecta.Result(Err(Err), explain)
 
-import Inference.Class as Class
+import Inference.Constraint
 import Inference.Meta
 import Inference.Monad
 import Syntax

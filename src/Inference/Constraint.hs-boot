@@ -1,4 +1,4 @@
-module Inference.Class where
+module Inference.Constraint where
 
 import Inference.Meta
 import Inference.Monad

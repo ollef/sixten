@@ -10,7 +10,7 @@ import Data.Monoid
 import qualified Data.Vector as Vector
 import Data.Void
 
-import Inference.Class as Class
+import Inference.Constraint
 import Inference.Match as Match
 import Inference.Meta
 import Inference.Monad

@@ -45,8 +45,8 @@ executable sixten
                        Frontend.Declassify
                        Frontend.Parse
                        Frontend.ScopeCheck
-                       Inference.Class
-                       Inference.Constr
+                       Inference.Constraint
+                       Inference.Constructor
                        Inference.Cycle
                        Inference.Match
                        Inference.Meta

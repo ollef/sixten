@@ -9,8 +9,8 @@ import qualified Data.Vector as Vector
 
 import Analysis.Simplify
 import qualified Builtin.Names as Builtin
-import Inference.Class as Class
-import Inference.Constr
+import Inference.Constraint
+import Inference.Constructor
 import Inference.Match as Match
 import Inference.Meta as Meta
 import Inference.Monad

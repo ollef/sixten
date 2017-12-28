@@ -15,7 +15,7 @@ import Text.Trifecta.Result(Err(Err), explain)
 
 import {-# SOURCE #-} Inference.TypeCheck.Expr
 import qualified Builtin.Names as Builtin
-import Inference.Constr
+import Inference.Constructor
 import Inference.Meta
 import Inference.Monad
 import Inference.Subtype

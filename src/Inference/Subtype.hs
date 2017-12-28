@@ -5,7 +5,7 @@ import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import {-# SOURCE #-} Inference.Class
+import {-# SOURCE #-} Inference.Constraint
 import Inference.Meta
 import Inference.Monad
 import Inference.Unify
