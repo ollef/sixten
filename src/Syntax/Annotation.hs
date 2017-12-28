@@ -14,6 +14,11 @@ instance PrettyAnnotation () where
 data Plicitness = Constraint | Implicit | Explicit
   deriving (Eq, Ord)
 
+implicitise :: Plicitness -> Plicitness
+implicitise Constraint = Constraint
+implicitise Implicit = Implicit
+implicitise Explicit = Implicit
+
 instance Show Plicitness where
   show Constraint = "Co"
   show Implicit = "Im"

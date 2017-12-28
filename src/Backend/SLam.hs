@@ -7,9 +7,9 @@ import Data.Monoid
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
-import Inference.TypeOf
-import Meta
+import Inference.Meta
 import Inference.Normalise
+import Inference.TypeOf
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Sized.SLambda as SLambda

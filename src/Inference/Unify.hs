@@ -15,7 +15,7 @@ import Text.Trifecta.Result(Err(Err), explain)
 import Inference.Monad
 import Inference.Normalise
 import Inference.TypeOf
-import Meta
+import Inference.Meta
 import Syntax
 import Syntax.Abstract
 import VIX

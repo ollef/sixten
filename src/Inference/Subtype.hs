@@ -6,11 +6,12 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import {-# SOURCE #-} Inference.Class
+import Inference.Meta
 import Inference.Monad
 import Inference.Unify
-import Meta
 import Syntax
 import Syntax.Abstract as Abstract
+import qualified Syntax.Concrete.Scoped as Concrete
 import Util
 import Util.Tsil
 import VIX
@@ -44,6 +45,10 @@ skolemise' (Pi h p t resScope) instUntil
         =<< f x
       )
 skolemise' typ _ = return (typ, pure)
+
+instUntilExpr :: Concrete.Expr v -> InstUntil
+instUntilExpr (Concrete.Lam p _ _) = InstUntil p
+instUntilExpr _ = InstUntil Explicit
 
 --------------------------------------------------------------------------------
 -- Subtyping/subsumption

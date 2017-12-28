@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, GeneralizedNewtypeDeriving, ViewPatterns, OverloadedStrings #-}
-module Meta where
+module Inference.Meta where
 
 import Control.Monad.Except
 import Control.Monad.ST
