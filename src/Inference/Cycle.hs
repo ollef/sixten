@@ -16,7 +16,7 @@ import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 import Text.Trifecta.Result(Err(Err), explain)
 
 import Inference.Monad
-import Meta
+import Inference.Meta
 import Syntax
 import Syntax.Abstract
 import Util

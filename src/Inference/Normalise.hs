@@ -6,7 +6,7 @@ import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
-import Meta
+import Inference.Meta
 import Syntax
 import Syntax.Abstract
 import TypeRep(TypeRep)

@@ -46,16 +46,20 @@ executable sixten
                        Frontend.Parse
                        Frontend.ScopeCheck
                        Inference.Class
-                       Inference.Clause
+                       Inference.Constr
                        Inference.Cycle
                        Inference.Match
+                       Inference.Meta
                        Inference.Monad
                        Inference.Normalise
                        Inference.Subtype
-                       Inference.TypeCheck
+                       Inference.TypeCheck.Clause
+                       Inference.TypeCheck.Data
+                       Inference.TypeCheck.Definition
+                       Inference.TypeCheck.Expr
+                       Inference.TypeCheck.Pattern
                        Inference.TypeOf
                        Inference.Unify
-                       Meta
                        Paths_sixten
                        Pretty
                        Processor.File

@@ -5,7 +5,7 @@ import Control.Monad.Except
 
 import qualified Builtin.Names as Builtin
 import Inference.Normalise
-import Meta
+import Inference.Meta
 import Syntax
 import Syntax.Abstract
 import VIX

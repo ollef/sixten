@@ -32,7 +32,7 @@ import qualified Frontend.Declassify as Declassify
 import qualified Frontend.Parse as Parse
 import qualified Frontend.ScopeCheck as ScopeCheck
 import qualified Inference.Monad as TypeCheck
-import qualified Inference.TypeCheck as TypeCheck
+import qualified Inference.TypeCheck.Definition as TypeCheck
 import Processor.Result
 import Syntax
 import qualified Syntax.Abstract as Abstract

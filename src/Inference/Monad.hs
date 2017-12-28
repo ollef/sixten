@@ -3,7 +3,7 @@ module Inference.Monad where
 import Control.Monad.Reader
 
 import qualified Builtin.Names as Builtin
-import Meta
+import Inference.Meta
 import Syntax
 import VIX
 

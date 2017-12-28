@@ -17,10 +17,10 @@ import qualified Data.Vector as Vector
 import Data.Void
 
 import qualified Builtin.Names as Builtin
+import Inference.Meta
 import Inference.Monad
 import qualified Inference.Normalise as Normalise
 import Inference.Subtype
-import Meta
 import Syntax
 import Syntax.Abstract
 import Util

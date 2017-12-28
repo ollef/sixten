@@ -14,10 +14,10 @@ import Data.Vector(Vector)
 
 import qualified Analysis.Simplify as Simplify
 import qualified Builtin.Names as Builtin
+import Inference.Meta
+import Inference.Monad
 import Inference.Normalise
 import Inference.TypeOf
-import Inference.Monad
-import Meta
 import Syntax
 import Syntax.Abstract
 import Syntax.Abstract.Pattern
