@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings, ViewPatterns #-}
-module Inference.Class where
+module Inference.Constraint where
 
 import Control.Monad.Except
 import Control.Monad.Reader

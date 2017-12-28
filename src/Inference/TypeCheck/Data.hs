@@ -4,13 +4,13 @@ import Control.Monad.Except
 import Data.Bifunctor
 import Data.Foldable as Foldable
 
-import qualified Builtin.Names as Builtin
-import Inference.Class as Class
-import Inference.Monad
 import {-# SOURCE #-} Inference.TypeCheck.Expr
+import qualified Builtin.Names as Builtin
+import Inference.Constraint as Constraint
+import Inference.Meta
+import Inference.Monad
 import Inference.TypeOf
 import Inference.Unify
-import Inference.Meta
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
