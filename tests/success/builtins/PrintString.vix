@@ -1,0 +1,1 @@
+main = printString "Hello world!\n"
