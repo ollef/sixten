@@ -308,6 +308,7 @@ writeModule modul llOutputFile externOutputFiles = do
           Text.hPutStrLn handle "#include <stdio.h>"
           Text.hPutStrLn handle "#include <stdlib.h>"
           Text.hPutStrLn handle "#include <string.h>"
+          Text.hPutStrLn handle "#include <unistd.h>"
           forM_ externCode $ \code -> do
             Text.hPutStrLn handle ""
             Text.hPutStrLn handle code

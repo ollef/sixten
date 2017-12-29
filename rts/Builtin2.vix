@@ -15,6 +15,11 @@ Byte = MkType 1
 
 type String = MkString (Array Byte)
 
+printString : String -> Unit
+printString (MkString (MkArray len data)) = (C|
+  write(STDOUT_FILENO, (const void*)$data, $len);
+|)
+
 intToNat : Int -> Nat
 intToNat 0 = Zero
 intToNat n = Succ (intToNat (subInt n 1))
