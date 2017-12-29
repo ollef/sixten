@@ -1,0 +1,7 @@
+test : String -> Unit
+test (MkString s) = MkUnit
+
+test2 : String -> Unit
+test2 (MkString s) =
+  let local (MkString s') = MkUnit
+  local (MkString s)
