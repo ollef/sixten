@@ -1,0 +1,7 @@
+import Data.Functor exposing (..)
+
+id : forall a. a -> a
+id x = x
+
+helper : forall f a. Functor f => f a -> f a
+helper = map id

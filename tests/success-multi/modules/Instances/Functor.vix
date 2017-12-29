@@ -1,0 +1,13 @@
+module Data.Functor exposing
+  ( Functor
+  , map
+  )
+
+class Functor f where
+  map : forall a b. (a -> b) -> f a -> f b
+
+type Maybe a = Nothing | Just a
+
+instance Functor Maybe where
+  map f Nothing = Nothing
+  map f (Just x) = Just (f x)
