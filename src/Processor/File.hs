@@ -180,15 +180,23 @@ prettyGroup str f defs = do
 scopeCheckProgram
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [[(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Maybe (Concrete.Type Void))]]
-scopeCheckProgram m = do
-  res <- ScopeCheck.scopeCheckModule m
-  let defnames = HashSet.fromMap $ void $ moduleContents m
+scopeCheckProgram modul = do
+  res <- ScopeCheck.scopeCheckModule modul
+  let defnames = HashSet.fromMap $ void $ moduleContents modul
       connames = HashSet.fromList
         [ QConstr n c
-        | (n, (_, Unscoped.TopLevelDataDefinition _ _ d)) <- HashMap.toList $ moduleContents m
-        , c <- constrName <$> d
+        | (n, (_, Unscoped.TopLevelDataDefinition _ _ cs)) <- HashMap.toList $ moduleContents modul
+        , c <- constrName <$> cs
         ]
-  addModule (moduleName m) $ HashSet.map Right defnames <> HashSet.map Left connames
+      methods = HashSet.fromList
+        [ QName n m
+        | (QName n _, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList $ moduleContents modul
+        , m <- methodName <$> ms
+        ]
+  addModule (moduleName modul)
+    $ HashSet.map Right defnames
+    <> HashSet.map Left connames
+    <> HashSet.map Right methods
   return res
 
 declassifyGroup

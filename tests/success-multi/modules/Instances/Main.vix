@@ -1,0 +1,3 @@
+import Data.Functor exposing (..)
+
+main = map printInt (Just 610)
