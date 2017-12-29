@@ -81,9 +81,10 @@ generateExpr expr typ = case expr of
       rets <- generateBranches e brs $ \branch -> do
         v <- generateExpr branch typ
         loadVar rep v `named` "branch-result"
-      case rets of
-        [] -> return $ DirectVar rep $ LLVM.ConstantOperand $ LLVM.Undef $ directType rep
-        _ -> fmap (DirectVar rep) $ phi rets `named` "case-result"
+      case (rets, rep) of
+        ([], _) -> return $ DirectVar rep $ LLVM.ConstantOperand $ LLVM.Undef $ directType rep
+        (_, TypeRep.UnitRep) -> return $ DirectVar rep $ LLVM.ConstantOperand $ LLVM.Undef $ directType rep
+        (_, _) -> fmap (DirectVar rep) $ phi rets `named` "case-result"
     _ -> do
       rets <- generateBranches e brs $ \branch -> do
         v <- generateExpr branch typ
