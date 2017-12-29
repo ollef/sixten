@@ -11,7 +11,7 @@ import qualified Data.HashSet as HashSet
 import qualified Data.Maybe as Maybe
 
 newtype MultiHashMap k v = MultiHashMap { toMap :: HashMap k (HashSet v) }
-  deriving (Monoid)
+  deriving (Eq, Show, Monoid)
 
 insert
   :: (Eq k, Hashable k, Eq v, Hashable v)
