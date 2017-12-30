@@ -3,17 +3,17 @@ module Frontend.Parse where
 
 import Control.Applicative((<**>), (<|>), Alternative)
 import Control.Monad.Except
-import Control.Monad.State
+import Control.Monad.Reader
 import Data.Char
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.Maybe
 import Data.Ord
 import Data.String
 import Data.Text(Text)
 import qualified Data.Text as Text
 import qualified Data.Vector as Vector
-import qualified Data.List.NonEmpty as NonEmpty
 import qualified Text.Parser.LookAhead as LookAhead
 import qualified Text.Parser.Token.Highlight as Highlight
 import qualified Text.Trifecta as Trifecta
@@ -26,26 +26,26 @@ import Syntax.Concrete.Pattern
 import Syntax.Concrete.Unscoped as Unscoped
 
 type Input = Text
-newtype Parser a = Parser {runParser :: StateT Delta Trifecta.Parser a}
+newtype Parser a = Parser {runParser :: ReaderT Delta Trifecta.Parser a}
   deriving
-    ( Monad, MonadPlus, MonadState Delta, Functor, Applicative, Alternative
+    ( Monad, MonadPlus, MonadReader Delta, Functor, Applicative, Alternative
     , Trifecta.Parsing, Trifecta.CharParsing, Trifecta.DeltaParsing
     , LookAhead.LookAheadParsing
     )
 
 parseString :: Parser a -> String -> Trifecta.Result a
 parseString p
-  = Trifecta.parseString (evalStateT (runParser p) mempty <* Trifecta.eof) mempty
+  = Trifecta.parseString (runReaderT (runParser p) mempty <* Trifecta.eof) mempty
 
 parseFromFile :: MonadIO m => Parser a -> FilePath -> m (Maybe a)
 parseFromFile p
   = Trifecta.parseFromFile
-  $ evalStateT (runParser p) mempty <* Trifecta.eof
+  $ runReaderT (runParser p) mempty <* Trifecta.eof
 
 parseFromFileEx :: MonadIO m => Parser a -> FilePath -> m (Trifecta.Result a)
 parseFromFileEx p
   = Trifecta.parseFromFileEx
-  $ evalStateT (runParser p) mempty <* Trifecta.eof
+  $ runReaderT (runParser p) mempty <* Trifecta.eof
 
 instance Trifecta.TokenParsing Parser where
   someSpace = Trifecta.skipSome (Trifecta.satisfy isSpace) *> (comments <|> pure ())
@@ -83,18 +83,14 @@ deltaColumn pos = fromIntegral (column pos) + 1
 --   point in the given parser.
 dropAnchor :: Parser a -> Parser a
 dropAnchor p = do
-  oldAnchor <- get
   pos <- Trifecta.position
-  put pos
-  result <- p
-  put oldAnchor
-  return result
+  local (const pos) p
 
 -- | Check that the current indentation level is the same as the anchor
 sameCol :: Parser ()
 sameCol = do
   pos <- Trifecta.position
-  anchor <- get
+  anchor <- ask
   case comparing deltaColumn pos anchor of
     LT -> Trifecta.unexpected "unindent"
     EQ -> return ()
@@ -105,7 +101,7 @@ sameCol = do
 sameLineOrIndented :: Parser ()
 sameLineOrIndented = do
   pos <- Trifecta.position
-  anchor <- get
+  anchor <- ask
   case (comparing deltaLine pos anchor, comparing deltaColumn pos anchor) of
     (EQ, _) -> return () -- Same line
     (GT, GT) -> return () -- Indented
