@@ -11,7 +11,6 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Maybe
 import Data.Ord
 import Data.String
-import Data.Text(Text)
 import qualified Data.Text as Text
 import qualified Data.Vector as Vector
 import qualified Text.Parser.LookAhead as LookAhead
@@ -25,7 +24,6 @@ import Syntax.Concrete.Literal
 import Syntax.Concrete.Pattern
 import Syntax.Concrete.Unscoped as Unscoped
 
-type Input = Text
 newtype Parser a = Parser {runParser :: ReaderT Delta Trifecta.Parser a}
   deriving
     ( Monad, MonadPlus, MonadReader Delta, Functor, Applicative, Alternative
