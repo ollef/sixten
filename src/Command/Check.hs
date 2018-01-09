@@ -2,13 +2,14 @@
 module Command.Check where
 
 import Data.Monoid
-import Options.Applicative
-import Util
-import System.IO
 import qualified Data.Text.IO as Text
+import Options.Applicative
+import System.IO
+import Util
 
 import qualified Backend.Target as Target
 import Command.Check.Options
+import Error
 import qualified Processor.Files as Processor
 import qualified Processor.Result as Processor
 
@@ -42,7 +43,7 @@ optionsParser = Options
 
 check
   :: Options
-  -> ([Processor.Error] -> IO ())
+  -> ([Error] -> IO ())
   -> IO ()
 check opts onError = withLogHandle (logFile opts) $ \logHandle -> do
   procResult <- Processor.checkFiles Processor.Arguments
@@ -62,4 +63,4 @@ check opts onError = withLogHandle (logFile opts) $ \logHandle -> do
 command :: ParserInfo (IO ())
 command = go <$> optionsParserInfo
   where
-    go opts = check opts (mapM_ Processor.printError)
+    go opts = check opts (mapM_ printError)

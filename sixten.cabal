@@ -41,6 +41,7 @@ executable sixten
                        Command.Compile.Options
                        Command.Run
                        Command.Test
+                       Error
                        FreeVar
                        Frontend.Declassify
                        Frontend.Parse
@@ -91,7 +92,6 @@ executable sixten
                        Syntax.Sized.Extracted
                        Syntax.Sized.Lifted
                        Syntax.Sized.SLambda
-                       Syntax.SourceLoc
                        Syntax.Telescope
                        TypeRep
                        TypedFreeVar
@@ -101,7 +101,6 @@ executable sixten
                        Util.TopoSort
                        Util.Tsil
   build-depends:
-                       ansi-wl-pprint,
                        base >=4.8 && <4.11,
                        bifunctors,
                        bound,
@@ -120,6 +119,9 @@ executable sixten
                        multiset,
                        optparse-applicative,
                        parsers,
+                       parsix,
+                       prettyprinter,
+                       prettyprinter-ansi-terminal,
                        process,
                        semigroups,
                        split,
@@ -127,7 +129,6 @@ executable sixten
                        text,
                        transformers,
                        transformers-base,
-                       trifecta,
                        unordered-containers,
                        vector,
                        void

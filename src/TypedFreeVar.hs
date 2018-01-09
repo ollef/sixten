@@ -59,7 +59,7 @@ showFreeVar x = do
   pretty (showVar <$> x)
     <> if null shownVars
       then mempty
-      else text ", free vars: " <> pretty shownVars
+      else ", free vars: " <> pretty shownVars
 
 logFreeVar
   :: (Functor d, Functor f, Foldable f, Pretty (f String), Pretty (d String), MonadVIX m, MonadIO m)

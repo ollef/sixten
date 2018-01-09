@@ -5,8 +5,7 @@ import Control.Monad.Except
 import qualified Data.HashSet as HashSet
 import Data.HashSet(HashSet)
 import Data.Monoid
-import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
-import Text.Trifecta.Result(Err(Err), explain)
+import qualified Data.Text.Prettyprint.Doc as PP
 
 import Inference.Constraint
 import Inference.Meta
@@ -26,7 +25,7 @@ resolveConstr cs expected = do
   when (HashSet.null cs) $
     err
       "No such data type"
-      ["There is no data type with the" Leijen.<+> constrDoc <> "."]
+      ["There is no data type with the" PP.<+> constrDoc <> "."]
 
   let candidates
         = maybe
@@ -37,15 +36,15 @@ resolveConstr cs expected = do
   case (HashSet.toList candidates, mExpectedTypeName) of
     ([], Just expectedTypeName) ->
       err "Undefined constructor"
-        [ Leijen.dullgreen (pretty expectedTypeName)
-        Leijen.<+> "doesn't define the constructor"
-        Leijen.<+> constrDoc <> "."
+        [ dullGreen (pretty expectedTypeName)
+        PP.<+> "doesn't define the constructor"
+        PP.<+> constrDoc <> "."
         ]
     ([x], _) -> return x
     (xs, _) -> err "Ambiguous constructor"
-      [ "Unable to determine which constructor" Leijen.<+> constrDoc Leijen.<+> "refers to."
+      [ "Unable to determine which constructor" PP.<+> constrDoc PP.<+> "refers to."
       , "Possible candidates:"
-      Leijen.<+> prettyHumanList "and" (Leijen.dullgreen . pretty <$> xs)
+      PP.<+> prettyHumanList "and" (dullGreen . pretty <$> xs)
       <> "."
       ]
   where
@@ -64,13 +63,8 @@ resolveConstr cs expected = do
             DataDefinition _ _ -> Just v
             _ -> Nothing
         _ -> return Nothing
-    err heading docs = do
-      loc <- currentLocation
-      throwError
-        $ show
-        $ explain loc
-        $ Err (Just heading) docs mempty mempty
+    err heading docs = throwLocated $ heading <> PP.line <> PP.vcat docs
     constrDoc = case HashSet.toList cs of
-      (QConstr _ cname:_) -> Leijen.red (pretty cname)
+      (QConstr _ cname:_) -> red (pretty cname)
       _ -> error "resolveConstr no constrs"
 

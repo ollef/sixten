@@ -1,12 +1,13 @@
 {-# LANGUAGE GADTs, GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module Pretty
-  ( module Text.PrettyPrint.ANSI.Leijen
+  ( AnsiStyle, bold, italicized, underlined, red, dullGreen, dullBlue
+  , Doc
   , Pretty, PrettyM, PrettyNamed
   , runPrettyM
   , (<+>), (<$$>)
   , align, indent, hcat, vcat, hsep
-  , above
   , absPrec, annoPrec, appPrec, arrPrec, casePrec, letPrec
+  , above
   , associate
   , inviolable
   , angles, brackets, braces, parens
@@ -31,20 +32,16 @@ import Data.Proxy
 import Data.String
 import Data.Text(Text)
 import qualified Data.Text as Text
+import qualified Data.Text.Prettyprint.Doc as PP
+import Data.Text.Prettyprint.Doc.Render.Terminal(AnsiStyle)
+import qualified Data.Text.Prettyprint.Doc.Render.Terminal as PP
+import qualified Data.Text.Prettyprint.Doc.Render.Text as RenderText
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
-import Text.PrettyPrint.ANSI.Leijen
-  ( Doc
-  , list
-  , putDoc
-  , text
-  , tupled
-  )
-import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 
-import Syntax.NameHint
 import Syntax.Name
+import Syntax.NameHint
 
 infixr 6 <+>
 
@@ -53,6 +50,8 @@ infixr 6 <+>
 -------------------------------------------------------------------------------
 newtype PrettyM a = PrettyM (PrettyEnv -> a)
   deriving (Functor, Applicative, Monad, MonadReader PrettyEnv, Monoid)
+
+type Doc = PP.Doc AnsiStyle
 
 data PrettyEnv = PrettyEnv
   { precedence :: !Int -- ^ The precedence of the surrounding expression
@@ -66,7 +65,7 @@ class Pretty a where
   prettyM :: a -> PrettyM Doc
   prettyM = return . pretty
   prettyList :: [a] -> PrettyM Doc
-  prettyList xs = list <$> mapM (inviolable . prettyM) xs
+  prettyList xs = PP.list <$> mapM (inviolable . prettyM) xs
 
 class PrettyNamed a where
   prettyNamed :: PrettyM Doc -> a -> PrettyM Doc
@@ -85,26 +84,29 @@ runPrettyM (PrettyM p) = p PrettyEnv
 -- * Doc helpers
 -------------------------------------------------------------------------------
 (<+>), (<$$>) :: PrettyM Doc -> PrettyM Doc -> PrettyM Doc
-a <+> b = (Leijen.<+>) <$> a <*> b
-a <$$> b = (Leijen.<$$>) <$> a <*> b
+a <+> b = (PP.<+>) <$> a <*> b
+a <$$> b = (\x y -> x <> PP.line <> y) <$> a <*> b
 
 vcat :: Foldable f => f (PrettyM Doc) -> PrettyM Doc
-vcat xs = Leijen.vcat <$> sequence (Foldable.toList xs)
+vcat xs = PP.vcat <$> sequence (Foldable.toList xs)
 
 hcat :: Foldable f => f (PrettyM Doc) -> PrettyM Doc
-hcat xs = Leijen.hcat <$> sequence (Foldable.toList xs)
+hcat xs = PP.hcat <$> sequence (Foldable.toList xs)
 
 hsep :: Foldable f => f (PrettyM Doc) -> PrettyM Doc
-hsep xs = Leijen.hsep <$> sequence (Foldable.toList xs)
+hsep xs = PP.hsep <$> sequence (Foldable.toList xs)
 
 align :: PrettyM Doc -> PrettyM Doc
-align = fmap Leijen.align
+align = fmap PP.align
 
 indent :: Int -> PrettyM Doc -> PrettyM Doc
-indent n = fmap $ Leijen.indent n
+indent n = fmap $ PP.indent n
 
 showWide :: Doc -> Text
-showWide d = Text.pack $ Leijen.displayS (Leijen.renderPretty 1.0 10000 d) ""
+showWide d = RenderText.renderStrict $ PP.layoutSmart opts d
+  where
+    opts = PP.defaultLayoutOptions
+      { PP.layoutPageWidth = PP.Unbounded }
 
 prettyHumanListM :: Pretty a => Text -> [a] -> PrettyM Doc
 prettyHumanListM conjunct [x, y] = prettyM x <+> prettyM conjunct <+> prettyM y
@@ -117,6 +119,14 @@ prettyHumanListM conjunct xs = go xs
 
 prettyHumanList :: Pretty a => Text -> [a] -> Doc
 prettyHumanList conjunct = runPrettyM . prettyHumanListM conjunct
+
+bold, italicized, underlined, red, dullBlue, dullGreen :: Doc -> Doc
+bold = PP.annotate PP.bold
+italicized = PP.annotate PP.bold
+underlined = PP.annotate PP.underlined
+red = PP.annotate $ PP.color PP.Red
+dullBlue = PP.annotate $ PP.colorDull PP.Blue
+dullGreen = PP.annotate $ PP.colorDull PP.Green
 
 -------------------------------------------------------------------------------
 -- * Working with names
@@ -179,10 +189,10 @@ inviolable :: PrettyM a -> PrettyM a
 inviolable = local $ \s -> s {precedence = -1}
 
 angles, braces, brackets, parens :: PrettyM Doc -> PrettyM Doc
-angles = fmap Leijen.angles . inviolable
-braces = fmap Leijen.braces . inviolable
-brackets = fmap Leijen.brackets . inviolable
-parens = fmap Leijen.parens . inviolable
+angles = fmap PP.angles . inviolable
+braces = fmap PP.braces . inviolable
+brackets = fmap PP.brackets . inviolable
+parens = fmap PP.parens . inviolable
 
 -------------------------------------------------------------------------------
 -- * Instances
@@ -190,20 +200,20 @@ parens = fmap Leijen.parens . inviolable
 instance a ~ Doc => IsString (PrettyM a) where
   fromString = PrettyM . const . fromString
 
-instance Pretty Bool    where pretty = fromString . show
-instance Pretty Char    where
+instance Pretty Bool where pretty = fromString . show
+instance Pretty Char where
   pretty = fromString . show
   prettyList = pure . fromString
-instance Pretty Int     where pretty = fromString . show
-instance Pretty ()      where pretty = fromString . show
+instance Pretty Int where pretty = fromString . show
+instance Pretty () where pretty = fromString . show
 instance Pretty Integer where pretty = fromString . show
-instance Pretty Float   where pretty = fromString . show
-instance Pretty Double  where pretty = fromString . show
-instance Pretty Doc     where pretty = id
-instance Pretty Text    where pretty = fromString . Text.unpack
-instance Pretty Name    where pretty (Name n) = pretty n
-instance Pretty Constr  where pretty (Constr c) = pretty c
-instance Pretty Void    where pretty = absurd
+instance Pretty Float  where pretty = fromString . show
+instance Pretty Double where pretty = fromString . show
+instance a ~ AnsiStyle => Pretty (PP.Doc a) where pretty = id
+instance Pretty Text where pretty = fromString . Text.unpack
+instance Pretty Name where pretty (Name n) = pretty n
+instance Pretty Constr where pretty (Constr c) = pretty c
+instance Pretty Void where pretty = absurd
 
 instance Pretty a => Pretty [a] where prettyM = prettyList
 instance Pretty a => Pretty (Vector a) where prettyM = prettyM . Vector.toList
@@ -221,15 +231,19 @@ instance (Pretty a, Pretty b) => Pretty (Either a b) where
   prettyM (Right b) = prettyApp "Right" (prettyM b)
 
 instance (Pretty a, Pretty b) => Pretty (a, b) where
-  prettyM (a, b) = inviolable $ f <$> prettyM a
-                                  <*> prettyM b
-    where f x y = tupled [x, y]
+  prettyM (a, b) = inviolable $ f
+    <$> prettyM a
+    <*> prettyM b
+    where
+      f x y = PP.tupled [x, y]
 
 instance (Pretty a, Pretty b, Pretty c) => Pretty (a, b, c) where
-  prettyM (a, b, c) = inviolable $ f <$> prettyM a
-                                     <*> prettyM b
-                                     <*> prettyM c
-    where f x y z = tupled [x, y, z]
+  prettyM (a, b, c) = inviolable $ f
+    <$> prettyM a
+    <*> prettyM b
+    <*> prettyM c
+    where
+      f x y z = PP.tupled [x, y, z]
 
 instance Pretty (Proxy a) where
   prettyM Proxy = "Proxy"

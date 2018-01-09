@@ -7,11 +7,11 @@ import Control.Monad.Morph
 import Data.Functor.Classes
 import Data.String
 
+import Error
 import Pretty
 import Syntax.Annotation
 import Syntax.GlobalBind
 import Syntax.Name
-import Syntax.SourceLoc
 import Syntax.Telescope
 import Util
 

@@ -1,29 +1,31 @@
-{-# LANGUAGE FlexibleContexts, TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings, TypeFamilies #-}
 module Inference.TypeOf where
 
 import Control.Monad.Except
+import qualified Data.Text.Prettyprint.Doc as PP
 
 import qualified Builtin.Names as Builtin
-import Inference.Normalise
 import Inference.Meta
+import Inference.Normalise
 import Syntax
 import Syntax.Abstract
+import Util
 import VIX
 
 typeOfM
-  :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
+  :: (MonadIO m, MonadVIX m, MonadError Error m, MonadFix m)
   => AbstractM
   -> m AbstractM
 typeOfM = typeOfGen abstract1M
 
 typeOf
-  :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
+  :: (MonadIO m, MonadVIX m, MonadError Error m, MonadFix m)
   => AbstractM
   -> m AbstractM
 typeOf = typeOfGen (\x e -> pure $ abstract1 x e)
 
 typeOfGen
-  :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
+  :: (MonadIO m, MonadVIX m, MonadError Error m, MonadFix m)
   => (MetaA -> AbstractM -> m (Scope () Expr MetaA))
   -> AbstractM
   -> m AbstractM
@@ -47,7 +49,7 @@ typeOfGen abstr expr = do
       e1type' <- whnf e1type
       case e1type' of
         Pi _ p' _ resType | p == p' -> return $ instantiate1 e2 resType
-        _ -> throwError $ "typeOfGen: expected " ++ show p ++ " pi type " ++ show e1type'
+        _ -> internalError $ "typeOfGen: expected" PP.<+> shower p PP.<+> "pi type" PP.<+> shower e1type'
     Let ds s -> do
       xs <- forMLet ds $ \h _ t -> forall h Explicit t
       typeOfGen abstr $ instantiateLet pure xs s

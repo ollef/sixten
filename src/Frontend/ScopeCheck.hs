@@ -9,6 +9,7 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
+import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
@@ -77,7 +78,7 @@ scopeCheckModule modul = do
       lookupAlias qname
         | HashSet.size candidates == 1 = return $ head $ HashSet.toList candidates
         -- TODO: Error message, duplicate checking, tests
-        | otherwise = throwError $ "scopeCheckModule ambiguous " ++ show candidates
+        | otherwise = throwError $ TypeError ("scopeCheckModule ambiguous" PP.<+> shower candidates) Nothing mempty
         where
           candidates = MultiHashMap.lookupDefault (HashSet.singleton qname) qname aliases
 
