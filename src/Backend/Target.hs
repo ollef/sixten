@@ -4,8 +4,8 @@ module Backend.Target where
 import qualified Data.List as List
 import Data.Monoid
 import Data.Word
-import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
 
+import Error
 import Pretty
 
 -- | The number of bits in a byte.
@@ -46,14 +46,15 @@ targets = [x86, x86_64]
 architectures :: [String]
 architectures = architecture <$> targets
 
-findTarget :: String -> Either Doc Target
+findTarget :: String -> Either Error Target
 findTarget arch = case List.find ((== arch) . architecture) targets of
   Nothing -> Left
-    $ "There is no target architecture called "
-    <> Leijen.red (pretty arch)
-    <> ". Available targets are: "
-    <> prettyHumanList "and" (Leijen.dullgreen . pretty <$> architectures)
-    <> "."
+    $ CommandLineError
+    ("There is no target architecture called " <> red (pretty arch) <> ".")
+    Nothing
+    ("Available targets are: "
+    <> prettyHumanList "and" (dullGreen . pretty <$> architectures)
+    <> ".")
   Just t -> Right t
 
 defaultTarget :: Target

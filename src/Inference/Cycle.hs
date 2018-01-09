@@ -10,13 +10,13 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Monoid
+import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
-import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
-import Text.Trifecta.Result(Err(Err), explain)
 
-import Inference.Monad
+import Error
 import Inference.Meta
+import Inference.Monad
 import Syntax
 import Syntax.Abstract
 import Util
@@ -38,16 +38,15 @@ detectTypeRepCycles defs = do
       printedHeadVar <- showVar headVar
       printedCycle <- mapM showVar $ drop 1 firstCycle ++ [headVar]
       throwError
-        $ show (explain loc
-          $ Err
-            (Just "Type has potentially infinite memory representation")
-            ([ "The size in memory of the type " <> Leijen.red printedHeadVar <> " might be infinite."
-            , "Its size depends on the size of " <> Leijen.dullblue (head printedCycle)
+        $ TypeError
+          "Type has potentially infinite memory representation"
+          (Just loc)
+          $ PP.vcat
+            ([ "The size in memory of the type " <> red printedHeadVar <> " might be infinite."
+            , "Its size depends on the size of " <> dullBlue (head printedCycle)
             ] ++
-            ["which depends on the size of " <> Leijen.dullblue v' | v' <- drop 1 printedCycle]
+            ["which depends on the size of " <> dullBlue v' | v' <- drop 1 printedCycle]
             )
-            mempty
-            mempty)
     [] -> return ()
 
 -- We need to detect possible cycles in top-level constants because if not,
@@ -108,14 +107,13 @@ detectDefCycles defs = do
             printedVar <- showVar var
             printedOccs <- mapM showVar $ HashSet.toList circularOccs
             throwError
-              $ show (explain loc
-                $ Err
-                  (Just "Circular definition")
-                  [ "The definition of " <> Leijen.red printedVar <> " is circular."
-                  , "It depends on " <> prettyHumanList "and" (Leijen.dullblue <$> printedOccs) <> " from the same binding group."
+              $ TypeError
+                "Circular definition"
+                (Just loc)
+                $ PP.vcat
+                  [ "The definition of " <> red printedVar <> " is circular."
+                  , "It depends on " <> prettyHumanList "and" (dullBlue <$> printedOccs) <> " from the same binding group."
                   ]
-                  mempty
-                  mempty)
 
 peelLets
   :: [(SourceLoc, MetaA, AbstractM)]

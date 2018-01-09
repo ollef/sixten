@@ -10,124 +10,140 @@ import qualified Data.HashSet as HashSet
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Maybe
 import Data.Ord
+import qualified Data.Set as Set
 import Data.String
+import Data.Text(Text)
 import qualified Data.Text as Text
+import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 import qualified Text.Parser.LookAhead as LookAhead
 import qualified Text.Parser.Token.Highlight as Highlight
-import qualified Text.Trifecta as Trifecta
-import Text.Trifecta((<?>))
-import Text.Trifecta.Delta
+import qualified Text.Parsix as Parsix
+import Text.Parsix(Position(Position, visualRow, visualColumn), (<?>))
 
+import Error
+import Processor.Result
 import Syntax
 import Syntax.Concrete.Literal
 import Syntax.Concrete.Pattern
 import Syntax.Concrete.Unscoped as Unscoped
 
-newtype Parser a = Parser {runParser :: ReaderT Delta Trifecta.Parser a}
+data ParseEnv = ParseEnv
+  { parseEnvIndentAnchor :: !Position
+  , parseEnvSourceFile :: FilePath
+  }
+
+newtype Parser a = Parser {runParser :: ReaderT ParseEnv Parsix.Parser a}
   deriving
-    ( Monad, MonadPlus, MonadReader Delta, Functor, Applicative, Alternative
-    , Trifecta.Parsing, Trifecta.CharParsing, Trifecta.DeltaParsing
+    ( Monad, MonadPlus, MonadReader ParseEnv, Functor, Applicative, Alternative
+    , Parsix.Parsing, Parsix.CharParsing, Parsix.SliceParsing, Parsix.RecoveryParsing
     , LookAhead.LookAheadParsing
     )
 
-parseString :: Parser a -> String -> Trifecta.Result a
-parseString p
-  = Trifecta.parseString (runReaderT (runParser p) mempty <* Trifecta.eof) mempty
+parseTest :: (MonadIO m, Show a) => Parser a -> String -> m ()
+parseTest p = Parsix.parseTest $ runReaderT (runParser p) env <* Parsix.eof
+  where
+    env = ParseEnv (Position 0 0 0) "<interactive>"
 
-parseFromFile :: MonadIO m => Parser a -> FilePath -> m (Maybe a)
-parseFromFile p
-  = Trifecta.parseFromFile
-  $ runReaderT (runParser p) mempty <* Trifecta.eof
+parseFromFileEx :: MonadIO m => Parser a -> FilePath -> m (Result a)
+parseFromFileEx p fp = do
+  res <- Parsix.parseFromFileEx (runReaderT (runParser p) env <* Parsix.eof) fp
+  return $ case res of
+    Parsix.Failure e -> Failure
+      $ pure
+      $ SyntaxError
+        (pretty $ fromMaybe mempty $ Parsix.errorReason e)
+        (Just loc)
+        $ case Set.toList $ Parsix.errorExpected e of
+          [] -> mempty
+          expected -> "expected:" PP.<+> PP.hsep (PP.punctuate PP.comma $ PP.pretty <$> expected)
+      where
+        loc = SourceLocation
+          { sourceLocFile = Parsix.errorFilePath e
+          , sourceLocSpan = Parsix.Span (Parsix.errorPosition e) (Parsix.errorPosition e)
+          , sourceLocSource = Parsix.errorSourceText e
+          , sourceLocHighlights = Parsix.errorHighlights e
+          }
+    Parsix.Success a -> return a
+  where
+    env = ParseEnv (Position 0 0 0) fp
 
-parseFromFileEx :: MonadIO m => Parser a -> FilePath -> m (Trifecta.Result a)
-parseFromFileEx p
-  = Trifecta.parseFromFileEx
-  $ runReaderT (runParser p) mempty <* Trifecta.eof
-
-instance Trifecta.TokenParsing Parser where
-  someSpace = Trifecta.skipSome (Trifecta.satisfy isSpace) *> (comments <|> pure ())
+instance Parsix.TokenParsing Parser where
+  someSpace = Parsix.skipSome (Parsix.satisfy isSpace) *> (comments <|> pure ())
            <|> comments
     where
-      comments = Trifecta.highlight Highlight.Comment (lineComment <|> multilineComment) *> Trifecta.whiteSpace
+      comments = Parsix.highlight Highlight.Comment (lineComment <|> multilineComment) *> Parsix.whiteSpace
+  highlight h (Parser p) = Parser $ Parsix.highlight h p
 
 lineComment :: Parser ()
 lineComment =
-  () <$ Trifecta.string "--"
-     <* Trifecta.manyTill Trifecta.anyChar (Trifecta.char '\n')
+  () <$ Parsix.string "--"
+     <* Parsix.manyTill Parsix.anyChar (Parsix.char '\n')
      <?> "line comment"
 
 multilineComment :: Parser ()
 multilineComment =
-  () <$ Trifecta.string "{-" <* inner
+  () <$ Parsix.string "{-" <* inner
   <?> "multi-line comment"
   where
-    inner =  Trifecta.string "-}"
+    inner =  Parsix.string "-}"
          <|> multilineComment *> inner
-         <|> Trifecta.anyChar *> inner
+         <|> Parsix.anyChar *> inner
 
 -------------------------------------------------------------------------------
 -- * Indentation parsing
-deltaLine :: Delta -> Int
-deltaLine Columns {} = 0
-deltaLine Tab {} = 0
-deltaLine (Lines l _ _ _) = fromIntegral l + 1
-deltaLine (Directed _ l _ _ _) = fromIntegral l + 1
-
-deltaColumn :: Delta -> Int
-deltaColumn pos = fromIntegral (column pos) + 1
 
 -- | Drop the indentation anchor -- use the current position as the reference
 --   point in the given parser.
 dropAnchor :: Parser a -> Parser a
 dropAnchor p = do
-  pos <- Trifecta.position
-  local (const pos) p
+  pos <- Parsix.position
+  local (\env -> env { parseEnvIndentAnchor = pos }) p
 
 -- | Check that the current indentation level is the same as the anchor
 sameCol :: Parser ()
 sameCol = do
-  pos <- Trifecta.position
-  anchor <- ask
-  case comparing deltaColumn pos anchor of
-    LT -> Trifecta.unexpected "unindent"
+  pos <- Parsix.position
+  anchor <- asks parseEnvIndentAnchor
+  case comparing visualColumn pos anchor of
+    LT -> Parsix.unexpected "unindent"
     EQ -> return ()
-    GT -> Trifecta.unexpected "indent"
+    GT -> Parsix.unexpected "indent"
 
 -- | Check that the current indentation level is on the same line as the anchor
 --   or on a successive line but more indented.
 sameLineOrIndented :: Parser ()
 sameLineOrIndented = do
-  pos <- Trifecta.position
-  anchor <- ask
-  case (comparing deltaLine pos anchor, comparing deltaColumn pos anchor) of
+  pos <- Parsix.position
+  anchor <- asks parseEnvIndentAnchor
+  case (comparing visualRow pos anchor, comparing visualColumn pos anchor) of
     (EQ, _) -> return () -- Same line
     (GT, GT) -> return () -- Indented
-    (_,  _) -> Trifecta.unexpected "unindent"
+    (_,  _) -> Parsix.unexpected "unindent"
 
 -- | One or more at the same indentation level.
 someSameCol :: Parser a -> Parser [a]
-someSameCol p = Trifecta.some (sameCol >> p)
+someSameCol p = Parsix.some (sameCol >> p)
 
 -- | Zero or more at the same indentation level.
 manySameCol :: Parser a -> Parser [a]
-manySameCol p = Trifecta.many (sameCol >> p)
+manySameCol p = Parsix.many (sameCol >> p)
 
 manyIndentedOrSameCol :: Parser a -> Parser [a]
 manyIndentedOrSameCol p
-  = Trifecta.option []
+  = Parsix.option []
   $ sameLineOrIndented >> dropAnchor (someSameCol p)
 
 optionalSI :: Parser a -> Parser (Maybe a)
-optionalSI p = Trifecta.optional (sameLineOrIndented >> p)
+optionalSI p = Parsix.optional (sameLineOrIndented >> p)
 
 -- | One or more on the same line or a successive but indented line.
 someSI :: Parser a -> Parser [a]
-someSI p = Trifecta.some (sameLineOrIndented >> p)
+someSI p = Parsix.some (sameLineOrIndented >> p)
 
 -- | Zero or more on the same line or a successive but indented line.
 manySI :: Parser a -> Parser [a]
-manySI p = Trifecta.many (sameLineOrIndented >> p)
+manySI p = Parsix.many (sameLineOrIndented >> p)
 
 sepBySI :: Parser a -> Parser sep -> Parser [a]
 sepBySI p sep = (:) <$> p <*> manySI (sep *>% p)
@@ -151,37 +167,42 @@ p <**>% q = p <**> (sameLineOrIndented >> q)
 -------------------------------------------------------------------------------
 -- * Tokens
 idStart, idLetter, qidLetter :: Parser Char
-idStart = Trifecta.satisfy isAlpha <|> Trifecta.oneOf "_"
-idLetter = Trifecta.satisfy isAlphaNum <|> Trifecta.oneOf "_'"
+idStart = Parsix.satisfy isAlpha <|> Parsix.oneOf "_"
+idLetter = Parsix.satisfy isAlphaNum <|> Parsix.oneOf "_'"
 qidLetter = idLetter
-  <|> Trifecta.try (Trifecta.char '.' <* LookAhead.lookAhead idLetter)
+  <|> Parsix.try (Parsix.char '.' <* LookAhead.lookAhead idLetter)
 
 reservedIds :: HashSet String
 reservedIds = HashSet.fromList ["forall", "_", "case", "of", "let", "in", "where", "abstract", "class", "instance"]
 
-idStyle :: Trifecta.IdentifierStyle Parser
-idStyle = Trifecta.IdentifierStyle "identifier" idStart idLetter reservedIds Highlight.Identifier Highlight.ReservedIdentifier
+-- TODO Stop using these, roll our own to be able to slice
+idStyle :: Parsix.IdentifierStyle Parser
+idStyle = Parsix.IdentifierStyle "identifier" idStart idLetter reservedIds Highlight.Identifier Highlight.ReservedIdentifier
 
-qidStyle :: Trifecta.IdentifierStyle Parser
-qidStyle = Trifecta.IdentifierStyle "identifier" idStart qidLetter reservedIds Highlight.Identifier Highlight.ReservedIdentifier
+qidStyle :: Parsix.IdentifierStyle Parser
+qidStyle = Parsix.IdentifierStyle "identifier" idStart qidLetter reservedIds Highlight.Identifier Highlight.ReservedIdentifier
 
 name :: Parser Name
-name = Trifecta.ident idStyle
+name = Parsix.ident idStyle
 
 qname :: Parser QName
-qname = Trifecta.ident qidStyle
+qname = Parsix.ident qidStyle
 
 constructor :: Parser Constr
-constructor = Trifecta.ident idStyle
+constructor
+  = Parsix.highlight Highlight.Constructor
+  $ Parsix.ident idStyle
 
 qconstructor :: Parser QConstr
-qconstructor = Trifecta.ident qidStyle
+qconstructor
+  = Parsix.highlight Highlight.Constructor
+  $ Parsix.ident qidStyle
 
 modulName :: Parser ModuleName
-modulName = Trifecta.ident qidStyle
+modulName = Parsix.ident qidStyle
 
-reserved :: String -> Parser ()
-reserved = Trifecta.reserve idStyle
+reserved :: Text -> Parser ()
+reserved = Parsix.reserveText idStyle
 
 wildcard :: Parser ()
 wildcard = reserved "_"
@@ -192,13 +213,18 @@ nameOrWildcard
   <|> Nothing <$ wildcard
 
 symbol :: String -> Parser Name
-symbol = fmap fromString . Trifecta.symbol
+symbol = fmap fromString . Parsix.symbol
 
 integer :: Parser Integer
-integer = Trifecta.try Trifecta.integer
+integer = Parsix.try Parsix.integer
 
 located :: Parser a -> Parser (SourceLoc, a)
-located p = (\(e Trifecta.:~ s) -> (Trifecta.render s, e)) <$> Trifecta.spanned p
+located p = do
+  (s, a) <- Parsix.highlight Highlight.Constructor $ Parsix.spanned p
+  file <- asks parseEnvSourceFile
+  inp <- Parser $ lift Parsix.input
+  hl <- Parser $ lift Parsix.highlights
+  return (SourceLocation file s inp hl, a)
 
 -------------------------------------------------------------------------------
 -- * Patterns
@@ -207,7 +233,7 @@ locatedPat p = uncurry PatLoc <$> located p
 
 pattern :: Parser (Pat Type QName)
 pattern = locatedPat $
-  ( Trifecta.try (ConPat <$> (HashSet.singleton <$> qconstructor) <*> (Vector.fromList <$> someSI plicitPattern))
+  ( Parsix.try (ConPat <$> (HashSet.singleton <$> qconstructor) <*> (Vector.fromList <$> someSI plicitPattern))
     <|> atomicPattern
   ) <**>
   ( flip AnnoPat <$% symbol ":" <*> expr
@@ -248,15 +274,15 @@ somePlicitPatternBindings
 
 somePlicitPatterns :: Parser [(Plicitness, Pat Type QName)]
 somePlicitPatterns
-  = concat <$> someSI (Trifecta.try plicitPatternBinding <|> pure <$> plicitPattern)
+  = concat <$> someSI (Parsix.try plicitPatternBinding <|> pure <$> plicitPattern)
 
 somePatterns :: Parser [(Pat Type QName)]
 somePatterns
-  = concat <$> someSI (Trifecta.try patternBinding <|> pure <$> atomicPattern)
+  = concat <$> someSI (Parsix.try patternBinding <|> pure <$> atomicPattern)
 
 manyPlicitPatterns :: Parser [(Plicitness, Pat Type QName)]
 manyPlicitPatterns
-  = concat <$> manySI (Trifecta.try plicitPatternBinding <|> pure <$> plicitPattern)
+  = concat <$> manySI (Parsix.try plicitPatternBinding <|> pure <$> plicitPattern)
 
 plicitBinding :: Parser (Plicitness, Name)
 plicitBinding
@@ -277,14 +303,12 @@ typedBinding = fmap flatten
     flatten (p, names, t) = [(p, n, t) | n <- names]
 
 manyTypedBindings :: Parser [(Plicitness, Name, Type)]
-manyTypedBindings = concat <$> manySI (Trifecta.try typedBinding <|> plicitBinding')
+manyTypedBindings = concat <$> manySI (Parsix.try typedBinding <|> plicitBinding')
 
 -------------------------------------------------------------------------------
 -- * Expressions
 locatedExpr :: Parser Expr -> Parser Expr
-locatedExpr p = go <$> Trifecta.spanned p
-  where
-    go (e Trifecta.:~ s) = SourceLoc (Trifecta.render s) e
+locatedExpr p = uncurry SourceLoc <$> located p
 
 atomicExpr :: Parser Expr
 atomicExpr = locatedExpr
@@ -325,7 +349,7 @@ expr = exprWithoutWhere <**>
 exprWithoutWhere :: Parser Expr
 exprWithoutWhere
   = locatedExpr
-  $ Unscoped.pis <$> Trifecta.try (somePlicitPatternBindings <*% symbol "->") <*>% exprWithoutWhere
+  $ Unscoped.pis <$> Parsix.try (somePlicitPatternBindings <*% symbol "->") <*>% exprWithoutWhere
   <|> Unscoped.apps <$> atomicExpr <*> manySI argument <**> arr
   <|> plicitPi Implicit <$ symbol "@" <*>% atomicExpr <*% symbol "->" <*>% exprWithoutWhere
   <?> "expression"
@@ -346,36 +370,36 @@ exprWithoutWhere
 -- * Extern C
 externCExpr :: Parser (Extern Expr)
 externCExpr
-  = Extern C . fmap (either id $ ExternPart . Text.pack) <$ Trifecta.string "(C|" <*> go
+  = Extern C . fmap (either id $ ExternPart . Text.pack) <$ Parsix.string "(C|" <*> go
   <?> "Extern C expression"
   where
-    go = Trifecta.char '\\' *> escaped <*> go
-      <|> (:) <$ Trifecta.char '$' <*> (Left <$> macroPart) <*> go
+    go = Parsix.char '\\' *> escaped <*> go
+      <|> (:) <$ Parsix.char '$' <*> (Left <$> macroPart) <*> go
       <|> [] <$ symbol "|)"
-      <|> consChar <$> Trifecta.anyChar <*> go
+      <|> consChar <$> Parsix.anyChar <*> go
     macroPart
-      = TargetMacroPart PointerAlignment <$ Trifecta.string "target:" <* Trifecta.string "pointerAlignment"
-      <|> TypeMacroPart <$ Trifecta.string "type:" <*> atomicExpr
+      = TargetMacroPart PointerAlignment <$ Parsix.string "target:" <* Parsix.string "pointerAlignment"
+      <|> TypeMacroPart <$ Parsix.string "type:" <*> atomicExpr
       <|> ExprMacroPart <$> atomicExpr
     consChar c (Right t : rest) = Right (c:t) : rest
     consChar c rest = Right [c] : rest
     consChars = foldr (\c -> (consChar c .)) id
     escaped
-      = consChar <$> Trifecta.char '$'
-      <|> consChars <$> Trifecta.string "|)"
-      <|> (\c -> consChars ('\\' : [c])) <$> Trifecta.anyChar
+      = consChar <$> Parsix.char '$'
+      <|> consChars <$> Parsix.string "|)"
+      <|> (\c -> consChars ('\\' : [c])) <$> Parsix.anyChar
 
 -------------------------------------------------------------------------------
 -- * Literals
 literal :: Parser Expr
 literal
   = Lit . Integer <$> integer
-  <|> string <$> Trifecta.stringLiteral
+  <|> string <$> Parsix.stringLiteral
 
 literalPat :: Parser (Pat t n)
 literalPat
   = LitPat . Integer <$> integer
-  <|> stringPat <$> Trifecta.stringLiteral
+  <|> stringPat <$> Parsix.stringLiteral
 
 -------------------------------------------------------------------------------
 -- * Definitions
@@ -432,7 +456,7 @@ instanceDef = TopLevelInstanceDefinition <$ reserved "instance" <*>% exprWithout
 -- * Module
 -- | A definition or type declaration on the top-level
 modul :: Parser (Module [(SourceLoc, Unscoped.TopLevelDefinition)])
-modul = Trifecta.whiteSpace >> dropAnchor
+modul = Parsix.whiteSpace >> dropAnchor
   ((Module <$ reserved "module" <*>% modulName <*% reserved "exposing" <*>% exposedNames
      <|> pure (Module "Main" AllExposed))
   <*> manySameCol (dropAnchor impor)

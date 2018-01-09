@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings, ViewPatterns #-}
 module Frontend.Declassify where
 
-import Control.Monad.Except
 import Control.Monad.State
 import Data.Bifunctor
 import qualified Data.HashMap.Lazy as HashMap
@@ -9,11 +8,11 @@ import qualified Data.HashSet as HashSet
 import Data.List
 import Data.Monoid
 import Data.Ord
+import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 import Data.Void
-import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
-import Text.Trifecta.Result(Err(Err), explain)
 
+import Error
 import Syntax
 import Syntax.Concrete.Scoped
 import Util
@@ -189,29 +188,21 @@ getClass (appsView -> (Global g, _)) = return g
 getClass _ = throwInvalidInstance
 
 throwInvalidInstance :: VIX a
-throwInvalidInstance = do
-  loc <- currentLocation
-  throwError
-    $ show
-    $ explain loc
-    $ Err (Just "Invalid instance")
-    [ "Instance types must return a class"
-    , Leijen.bold "Expected:" Leijen.<+> "an instance of the form" Leijen.<+> Leijen.dullgreen "instance ... => C as where ..." <> ", where" Leijen.<+> Leijen.dullgreen "C" Leijen.<+> "is a class."
-    ]
-    mempty
-    mempty
+throwInvalidInstance
+  = throwLocated
+  $ PP.vcat
+  [ "Invalid instance"
+  , "Instance types must return a class"
+  , bold "Expected:" PP.<+> "an instance of the form" PP.<+> dullGreen "instance ... => C as where ..." <> ", where" PP.<+> dullGreen "C" PP.<+> "is a class."
+  ]
 
 throwMethodProblem :: QName -> [Name] -> [Name] -> [Name] -> VIX a
-throwMethodProblem className missingMethods extraMethods duplicates = do
-  loc <- currentLocation
-  throwError
-    $ show
-    $ explain loc
-    $ Err (Just "Invalid instance")
-    (concat $
-      [ if null missingMethods then [] else ["The instance is missing an implementation for:" Leijen.<+> prettyHumanList "and" (Leijen.red . pretty <$> missingMethods) <> "."]
-      , if null extraMethods then [] else ["The" Leijen.<+> Leijen.dullgreen (pretty className) Leijen.<+> "class does not define:" Leijen.<+> prettyHumanList "and" (Leijen.red . pretty <$> extraMethods) <> "."]
-      , if null duplicates then [] else ["Duplicate implementations for:" Leijen.<+> prettyHumanList "and" (Leijen.red . pretty <$> duplicates) <> "."]
-      ])
-    mempty
-    mempty
+throwMethodProblem className missingMethods extraMethods duplicates
+  = throwLocated
+  $ PP.vcat
+  $ "Invalid instance"
+  : (concat $
+    [ if null missingMethods then [] else ["The instance is missing an implementation for:" PP.<+> prettyHumanList "and" (red . pretty <$> missingMethods) <> "."]
+    , if null extraMethods then [] else ["The" PP.<+> dullGreen (pretty className) PP.<+> "class does not define:" PP.<+> prettyHumanList "and" (red . pretty <$> extraMethods) <> "."]
+    , if null duplicates then [] else ["Duplicate implementations for:" PP.<+> prettyHumanList "and" (red . pretty <$> duplicates) <> "."]
+    ])

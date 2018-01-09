@@ -4,6 +4,7 @@ module Backend.SLam where
 import Bound.Scope hiding (instantiate1)
 import Control.Monad.Except
 import Data.Monoid
+import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
@@ -13,6 +14,7 @@ import Inference.TypeOf
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Sized.SLambda as SLambda
+import Util
 import VIX
 
 slamSized :: AbstractM -> VIX LambdaM
@@ -45,7 +47,7 @@ slam expr = do
       (_, typeType) <- definition typeName
       n <- constrArity qc
       case compare (length es) n of
-        GT -> throwError $ "slam: too many args for constructor: " ++ show qc
+        GT -> internalError $ "slam: too many args for constructor:" PP.<+> shower qc
         EQ -> do
           let numParams = teleLength $ Abstract.telescope typeType
               es' = drop numParams es
@@ -60,7 +62,7 @@ slam expr = do
             $ Abstract.apps (Abstract.Con qc)
             $ Vector.fromList (fmap (pure . pure) <$> es)
             <> iforTele tele (\i _ a _ -> (a, pure $ B $ TeleVar i))
-    Abstract.Con _qc -> throwError "slam impossible"
+    Abstract.Con _qc -> internalError "slam impossible"
     Abstract.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamSized e2
     Abstract.Case e brs _retType -> SLambda.Case <$> slamSized e <*> slamBranches brs
     Abstract.Let ds scope -> do

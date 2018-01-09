@@ -23,9 +23,9 @@ import Data.Void
 import Data.Word
 import qualified LLVM.IRBuilder as IRBuilder
 import System.IO
-import Text.Trifecta.Result(Err(Err), explain)
 
 import Backend.Target as Target
+import Error
 import Syntax
 import Syntax.Abstract
 import qualified Syntax.Sized.Lifted as Lifted
@@ -34,7 +34,7 @@ import Util.MultiHashMap(MultiHashMap)
 import qualified Util.MultiHashMap as MultiHashMap
 
 data VIXState = VIXState
-  { vixLocation :: SourceLoc
+  { vixLocation :: Maybe SourceLoc
   , vixContext :: HashMap QName (Definition Expr Void, Type Void)
   , vixModuleNames :: MultiHashMap ModuleName (Either QConstr QName)
   , vixConvertedSignatures :: HashMap QName Lifted.FunSignature
@@ -59,7 +59,7 @@ class Monad m => MonadVIX m where
 
 emptyVIXState :: Target -> Handle -> Int -> VIXState
 emptyVIXState target handle verbosity = VIXState
-  { vixLocation = mempty
+  { vixLocation = Nothing
   , vixContext = mempty
   , vixModuleNames = mempty
   , vixConvertedSignatures = mempty
@@ -73,8 +73,8 @@ emptyVIXState target handle verbosity = VIXState
   , vixTarget = target
   }
 
-newtype VIX a = VIX (StateT VIXState (ExceptT String IO) a)
-  deriving (Functor, Applicative, Monad, MonadFix, MonadError String, MonadIO, MonadBase IO, MonadBaseControl IO)
+newtype VIX a = VIX (StateT VIXState (ExceptT Error IO) a)
+  deriving (Functor, Applicative, Monad, MonadFix, MonadError Error, MonadIO, MonadBase IO, MonadBaseControl IO)
 
 instance MonadVIX VIX where
   liftVIX (StateT s) = VIX $ StateT $ pure . runIdentity . s
@@ -84,7 +84,7 @@ liftST = liftIO . stToIO
 
 unVIX
   :: VIX a
-  -> StateT VIXState (ExceptT String IO) a
+  -> StateT VIXState (ExceptT Error IO) a
 unVIX (VIX x) = x
 
 -- TODO vixFresh should probably be a mutable variable
@@ -93,7 +93,7 @@ runVIX
   -> Target
   -> Handle
   -> Int
-  -> IO (Either String a)
+  -> IO (Either Error a)
 runVIX vix target handle verbosity
   = runExceptT
   $ evalStateT (unVIX vix)
@@ -108,12 +108,12 @@ fresh = liftVIX $ do
 located :: MonadVIX m => SourceLoc -> m a -> m a
 located loc m = do
   oldLoc <- liftVIX $ gets vixLocation
-  liftVIX $ modify $ \s -> s { vixLocation = loc }
+  liftVIX $ modify $ \s -> s { vixLocation = Just loc }
   res <- m
   liftVIX $ modify $ \s -> s { vixLocation = oldLoc }
   return res
 
-currentLocation :: MonadVIX m => m SourceLoc
+currentLocation :: MonadVIX m => m (Maybe SourceLoc)
 currentLocation = liftVIX $ gets vixLocation
 
 -------------------------------------------------------------------------------
@@ -163,20 +163,19 @@ addContext prog = liftVIX $ modify $ \s -> s
             (Global className, _) -> HashMap.singleton className [(defName, typ)]
             _ -> mempty
 
-
 throwLocated
-  :: (MonadError String m, MonadVIX m)
+  :: (MonadError Error m, MonadVIX m)
   => Doc
   -> m a
 throwLocated x = do
   loc <- currentLocation
-  throwError
-    $ show
-    $ explain loc
-    $ Err (Just $ pretty x) mempty mempty mempty
+  throwError $ TypeError x loc mempty
+
+internalError :: MonadError Error m => Doc -> m a
+internalError d = throwError $ InternalError d Nothing mempty
 
 definition
-  :: (MonadVIX m, MonadError String m)
+  :: (MonadVIX m, MonadError Error m)
   => QName
   -> m (Definition Expr v, Expr v)
 definition name = do
@@ -194,7 +193,7 @@ addModule m names = liftVIX $ modify $ \s -> s
   { vixModuleNames = MultiHashMap.inserts m names $ vixModuleNames s
   }
 
-qconstructor :: (MonadVIX m, MonadError String m) => QConstr -> m (Type v)
+qconstructor :: (MonadVIX m, MonadError Error m) => QConstr -> m (Type v)
 qconstructor qc@(QConstr n c) = do
   (def, typ) <- definition n
   case def of
@@ -239,7 +238,7 @@ signature name = liftVIX $ gets $ HashMap.lookup name . vixSignatures
 -------------------------------------------------------------------------------
 -- General constructor queries
 constrArity
-  :: (MonadVIX m, MonadError String m)
+  :: (MonadVIX m, MonadError Error m)
   => QConstr
   -> m Int
 constrArity
@@ -247,7 +246,7 @@ constrArity
   . qconstructor
 
 constrIndex
-  :: (MonadVIX m, MonadError String m)
+  :: (MonadVIX m, MonadError Error m)
   => QConstr
   -> m (Maybe Int)
 constrIndex (QConstr n c) = do

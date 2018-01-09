@@ -12,13 +12,14 @@ import System.IO.Temp
 
 import qualified Backend.Compile as Compile
 import qualified Backend.Target as Target
-import Command.Compile.Options
 import qualified Command.Check as Check
 import qualified Command.Check.Options as Check
+import Command.Compile.Options
+import Error
 import qualified Processor.Files as Processor
 import qualified Processor.Result as Processor
-import Util
 import Syntax.Extern
+import Util
 
 optionsParserInfo :: ParserInfo Options
 optionsParserInfo = info (helper <*> optionsParser)
@@ -66,11 +67,11 @@ optionsParser = Options
 
 compile
   :: Options
-  -> ([Processor.Error] -> IO a)
+  -> ([Error] -> IO a)
   -> (FilePath -> IO a)
   -> IO a
 compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.findTarget $ target opts of
-  Left err -> onError $ pure $ Processor.CommandLineError err
+  Left err -> onError $ pure err
   Right tgt ->
     withAssemblyDir (assemblyDir opts) $ \asmDir ->
     withOutputFile (maybeOutputFile opts) $ \outputFile ->
@@ -122,4 +123,4 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
 command :: ParserInfo (IO ())
 command = go <$> optionsParserInfo
   where
-    go opts = compile opts (mapM_ Processor.printError) (const $ return ())
+    go opts = compile opts (mapM_ printError) (const $ return ())

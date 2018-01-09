@@ -1,4 +1,3 @@
+Bool : Type
 type Bool where
   False True : Bool
-
-Bool : Type

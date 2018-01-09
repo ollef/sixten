@@ -1,35 +1,9 @@
-{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, OverloadedStrings #-}
+{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
 module Processor.Result where
 
 import Control.Monad
-import Data.Monoid as Monoid
 import Data.Semigroup as Semigroup
-import Data.Text(Text)
-import qualified Data.Text.IO as Text
-import System.IO
-import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
-
-data Error
-  = SyntaxError Leijen.Doc
-  | TypeError Text
-  | CommandLineError Leijen.Doc
-  deriving Show
-
-printError :: Error -> IO ()
-printError err = case err of
-  SyntaxError doc -> do
-    Text.putStrLn "Syntax error"
-    Leijen.displayIO stdout
-      $ Leijen.renderPretty 0.8 80
-      $ doc Monoid.<> Leijen.linebreak
-  TypeError s -> do
-    Text.putStrLn "Type error"
-    Text.putStrLn s
-  CommandLineError doc -> do
-    Text.putStrLn "Command-line error"
-    Leijen.displayIO stdout
-      $ Leijen.renderPretty 0.8 80
-      $ doc Monoid.<> Leijen.linebreak
+import Error
 
 data Result a
   = Failure [Error]

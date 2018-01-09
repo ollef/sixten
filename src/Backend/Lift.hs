@@ -82,7 +82,7 @@ liftExpr expr = case expr of
   SLambda.Case e brs -> Lifted.Case <$> liftExpr e <*> liftBranches brs
   SLambda.Anno e t -> Lifted.Anno <$> liftExpr e <*> liftExpr t
   SLambda.Lams tele s -> liftLambda tele s
-  SLambda.Lam {} -> throwError "liftExpr Lam"
+  SLambda.Lam {} -> internalError "liftExpr Lam"
   SLambda.ExternCode c -> Lifted.ExternCode <$> mapM liftExpr c
 
 liftLambda
@@ -125,8 +125,8 @@ closeLambda tele lamScope sortedFvs = do
   lamExpr' <- liftExpr lamExpr
   let lamScope' = abstract abstr lamExpr'
 
-  voidedTele <- traverse (const $ throwError "closeLambda") tele''
-  voidedLamScope <- traverse (const $ throwError "closeLambda") lamScope'
+  voidedTele <- traverse (const $ internalError "closeLambda") tele''
+  voidedLamScope <- traverse (const $ internalError "closeLambda") lamScope'
 
   return (voidedTele, voidedLamScope)
 

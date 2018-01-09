@@ -17,7 +17,7 @@ import VIX
 -------------------------------------------------------------------------------
 -- * Weak head normal forms
 whnf
-  :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
+  :: (MonadIO m, MonadVIX m, MonadError Error m, MonadFix m)
   => AbstractM
   -> m AbstractM
 whnf = whnf' WhnfArgs
@@ -26,7 +26,7 @@ whnf = whnf' WhnfArgs
   }
 
 whnfExpandingTypeReps
-  :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
+  :: (MonadIO m, MonadVIX m, MonadError Error m, MonadFix m)
   => AbstractM
   -> m AbstractM
 whnfExpandingTypeReps = whnf' WhnfArgs
@@ -44,7 +44,7 @@ data WhnfArgs m = WhnfArgs
   }
 
 whnf'
-  :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
+  :: (MonadIO m, MonadVIX m, MonadError Error m, MonadFix m)
   => WhnfArgs m
   -> AbstractM
   -> m AbstractM
@@ -83,7 +83,7 @@ whnf' args expr = do
           expr' -> return expr'
 
 whnfInner
-  :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
+  :: (MonadIO m, MonadVIX m, MonadError Error m, MonadFix m)
   => WhnfArgs m
   -> AbstractM
   -> m AbstractM
@@ -113,7 +113,7 @@ whnfInner args expr = case expr of
     <*> whnf' args retType
 
 normalise
-  :: (MonadIO m, MonadVIX m, MonadError String m, MonadFix m)
+  :: (MonadIO m, MonadVIX m, MonadError Error m, MonadFix m)
   => AbstractM
   -> m AbstractM
 normalise expr = do

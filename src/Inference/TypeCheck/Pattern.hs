@@ -8,10 +8,9 @@ import Data.Bifunctor
 import Data.Bitraversable
 import Data.Monoid
 import Data.STRef
+import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
-import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
-import Text.Trifecta.Result(Err(Err), explain)
 
 import {-# SOURCE #-} Inference.TypeCheck.Expr
 import qualified Builtin.Names as Builtin
@@ -57,7 +56,7 @@ tcPats
   -> Infer (Vector (Abstract.Pat AbstractM MetaA, AbstractM, AbstractM), Vector MetaA)
 tcPats pats vs tele = do
   unless (Vector.length pats == teleLength tele)
-    $ throwError "tcPats length mismatch"
+    $ internalError "tcPats length mismatch"
   results <- iforTeleWithPrefixM tele $ \i _ _ s prefix -> do
     let argExprs = snd3 . fst <$> prefix
         vs' | Vector.null prefix = vs
@@ -160,7 +159,7 @@ tcPat' p pat vs expected = case pat of
     (pat'', patExpr, vs') <- checkPat p pat' vs patType'
     (pat''', patExpr') <- instPatExpected expected patType' pat'' patExpr
     return (pat''', patExpr', vs')
-  Concrete.ViewPat _ _ -> throwError "tcPat ViewPat undefined TODO"
+  Concrete.ViewPat _ _ -> internalError "tcPat ViewPat undefined TODO"
   Concrete.PatLoc loc pat' -> located loc $ tcPat' p pat' vs expected
 
 instPatExpected
@@ -214,17 +213,13 @@ exactlyEqualisePats
   -> [(Plicitness, Concrete.Pat e v)]
   -> Infer [(Plicitness, Concrete.Pat e v)]
 exactlyEqualisePats [] [] = return []
-exactlyEqualisePats [] ((p, pat):_) = do
-  loc <- currentLocation
-  throwError
-    $ show
-    $ explain loc
-    $ Err (Just "Too many patterns for type")
-    [ "Found the pattern:" Leijen.<+> Leijen.red (runPrettyM $ prettyAnnotation p (prettyM $ first (const ()) pat)) <> "."
-    , Leijen.bold "Expected:" Leijen.<+> "no more patterns."
+exactlyEqualisePats [] ((p, pat):_)
+  = throwLocated
+  $ PP.vcat
+    [ "Too many patterns for type"
+    , "Found the pattern:" PP.<+> red (runPrettyM $ prettyAnnotation p (prettyM $ first (const ()) pat)) <> "."
+    , bold "Expected:" PP.<+> "no more patterns."
     ]
-    mempty
-    mempty
 exactlyEqualisePats (Constraint:ps) ((Constraint, pat):pats)
   = (:) (Implicit, pat) <$> exactlyEqualisePats ps pats
 exactlyEqualisePats (Implicit:ps) ((Implicit, pat):pats)
@@ -239,17 +234,13 @@ exactlyEqualisePats (Explicit:_) ((Constraint, pat):_)
   = throwExpectedExplicit pat
 exactlyEqualisePats (Explicit:_) ((Implicit, pat):_)
   = throwExpectedExplicit pat
-exactlyEqualisePats (Explicit:_) [] = do
-  loc <- currentLocation
-  throwError
-    $ show
-    $ explain loc
-    $ Err (Just "Not enough patterns for type")
-    [ "Found the pattern: no patterns."
-    , Leijen.bold "Expected:" Leijen.<+> "an explicit pattern."
+exactlyEqualisePats (Explicit:_) []
+  = throwLocated
+  $ PP.vcat
+    [ "Not enough patterns for type"
+    , "Found the pattern: no patterns."
+    , bold "Expected:" PP.<+> "an explicit pattern."
     ]
-    mempty
-    mempty
 
 equalisePats
   :: Pretty v
@@ -274,14 +265,10 @@ equalisePats (Explicit:_) ((Constraint, pat):_)
   = throwExpectedExplicit pat
 
 throwExpectedExplicit :: Pretty v => Concrete.Pat e v -> Infer a
-throwExpectedExplicit pat = do
-  loc <- currentLocation
-  throwError
-    $ show
-    $ explain loc
-    $ Err (Just "Explicit/implicit mismatch")
-    [ "Found the implicit pattern:" Leijen.<+> Leijen.red (runPrettyM $ prettyAnnotation Implicit (prettyM $ first (const ()) pat)) <> "."
-    , Leijen.bold "Expected:" Leijen.<+> "an" Leijen.<+> Leijen.dullgreen "explicit" Leijen.<+> "pattern."
+throwExpectedExplicit pat
+  = throwLocated
+  $ PP.vcat
+    [ "Explicit/implicit mismatch"
+    , "Found the implicit pattern:" PP.<+> red (runPrettyM $ prettyAnnotation Implicit (prettyM $ first (const ()) pat)) <> "."
+    , bold "Expected:" PP.<+> "an" PP.<+> dullGreen "explicit" PP.<+> "pattern."
     ]
-    mempty
-    mempty

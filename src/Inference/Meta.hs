@@ -14,12 +14,14 @@ import Data.Maybe
 import Data.Monoid
 import Data.STRef
 import Data.String
+import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
 
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
 import qualified Syntax.Sized.SLambda as SLambda
+import Util
 import VIX
 
 newtype Level = Level Int
@@ -176,7 +178,7 @@ foldMapMetas f = flip evalStateT mempty . foldrM go mempty
           return result
 
 abstractM
-  :: (Monad e, Traversable e, Show1 e, MonadError String m, MonadIO m)
+  :: (Monad e, Traversable e, Show1 e, MonadVIX m, MonadIO m, MonadError Error m)
   => (MetaVar d e -> Maybe b)
   -> e (MetaVar d e)
   -> m (Scope b e (MetaVar d e))
@@ -194,8 +196,8 @@ abstractM f e = do
           tfvs <- foldMapMetas HashSet.singleton $ metaType v'
           let mftfvs = HashSet.filter (isJust . f) tfvs
           unless (HashSet.null mftfvs)
-            $ throwError $ "cannot abstract, " ++ show mftfvs ++ " would escape from the type of "
-            ++ show v'
+            $ throwLocated $ "Cannot abstract," PP.<+> shower mftfvs PP.<+> "would escape from the type of"
+            PP.<+> shower v'
           free v'
         Right c -> do
           changed' <- liftST $ newSTRef False
@@ -243,7 +245,7 @@ boundM f = fmap boundJoin . traverse go
     go v = f v
 
 abstract1M
-  :: (MonadIO m, MonadVIX m, MonadError String m)
+  :: (MonadIO m, MonadVIX m, MonadError Error m)
   => MetaA
   -> AbstractM
   -> m (ScopeM () Abstract.Expr)
@@ -305,7 +307,7 @@ metaTelescope vs =
     abstr = teleAbstraction $ snd <$> vs
 
 metaTelescopeM
-  :: (Monad e, Traversable e, Show1 e, MonadIO m, MonadError String m)
+  :: (Monad e, Traversable e, Show1 e, MonadVIX m, MonadIO m, MonadError Error m)
   => Vector (a, MetaVar d e)
   -> m (Telescope a e (MetaVar d e))
 metaTelescopeM vs =
@@ -332,7 +334,7 @@ showMeta x = do
     $ pretty (sv <$> x)
     <> if null solutions
       then mempty
-      else text ", metavars: " <> pretty solutions
+      else ", metavars: " <> pretty solutions
   where
     refType (Exists _) = "∃"
     refType Forall = ""

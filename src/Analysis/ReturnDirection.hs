@@ -2,12 +2,12 @@
 module Analysis.ReturnDirection where
 
 import Control.Monad
-import Control.Monad.Except
 import Control.Monad.ST
 import Data.Bitraversable
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Maybe
 import Data.STRef
+import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 import Data.Void
@@ -85,7 +85,7 @@ unifyMetaReturnIndirect' :: MetaReturnIndirect -> MetaReturnIndirect -> VIX ()
 unifyMetaReturnIndirect' m1 m2 | m1 == m2 = return ()
 unifyMetaReturnIndirect' m (MRef ref2) = liftST $ writeSTRef ref2 $ Just m
 unifyMetaReturnIndirect' (MRef ref1) m = liftST $ writeSTRef ref1 $ Just m
-unifyMetaReturnIndirect' m1 m2 = throwError $ "unifyMetaReturnIndirect " ++ show (m1, m2)
+unifyMetaReturnIndirect' m1 m2 = internalError $ "unifyMetaReturnIndirect" PP.<+> shower (m1, m2)
 
 type Location = MetaReturnIndirect
 
@@ -285,7 +285,7 @@ inferRecursiveDefs defs = do
           $ fromMaybe (error "inferRecursiveDefs 2")
           $ names Vector.!? index
       vf :: MetaVar -> VIX b
-      vf v = throwError $ "inferRecursiveDefs " ++ show v
+      vf v = internalError $ "inferRecursiveDefs" PP.<+> shower v
 
   forM (Vector.zip names genDefs) $ \(name, (def ,sig)) -> do
     let unexposedDef = bound unexpose global def

@@ -8,14 +8,14 @@ import Data.List
 import Data.Monoid
 import qualified Data.Set as Set
 import Data.STRef
+import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
-import qualified Text.PrettyPrint.ANSI.Leijen as Leijen
-import Text.Trifecta.Result(Err(Err), explain)
 
+import Inference.Meta
 import Inference.Monad
 import Inference.Normalise
 import Inference.TypeOf
-import Inference.Meta
+import Pretty
 import Syntax
 import Syntax.Abstract
 import VIX
@@ -30,7 +30,6 @@ occurs cxt l tv expr = traverse_ go expr
   where
     go tv'@(MetaVar _ typ _ mr _)
       | tv == tv' = do
-        loc <- currentLocation
         explanation <- forM cxt $ \(t1, t2) -> do
           t1' <- zonk t1
           t2' <- zonk t2
@@ -38,27 +37,22 @@ occurs cxt l tv expr = traverse_ go expr
           expect <- showMeta t2'
           return
             [ ""
-            , Leijen.bold "Inferred: " <> Leijen.red actual
-            , Leijen.bold "Expected: " <> Leijen.dullgreen expect
+            , bold "Inferred:" PP.<+> red actual
+            , bold "Expected:" PP.<+> dullGreen expect
             ]
         printedTv <- showMeta (pure tv' :: AbstractM)
         expr' <- zonk expr
         printedExpr <- showMeta expr'
-        throwError
-          $ show (explain loc
-            $ Err
-              (Just "Cannot construct the infinite type")
-              ([ Leijen.dullblue printedTv
-               , "="
-               , Leijen.dullblue printedExpr
-               , ""
-               , "while trying to unify"
-               , ""
-               ]
-                ++
-                intercalate ["", "while trying to unify"] explanation)
-              mempty
-              mempty)
+        throwLocated
+          $ "Cannot construct the infinite type"
+          <> PP.vcat
+            ([ dullBlue printedTv
+            , "="
+            , dullBlue printedExpr
+            , ""
+            , "while trying to unify"
+            , ""
+            ] ++ intercalate ["", "while trying to unify"] explanation)
       | otherwise = do
         occurs cxt l tv typ
         case mr of
@@ -95,7 +89,6 @@ unify' cxt type1 type2
       unify cxt e1  e2
       unify cxt e1' e2'
     _ -> do
-      loc <- currentLocation
       explanation <- forM cxt $ \(t1, t2) -> do
         t1' <- zonk t1
         t2' <- zonk t2
@@ -103,17 +96,12 @@ unify' cxt type1 type2
         expect <- showMeta t2'
         return
           [ ""
-          , Leijen.bold "Inferred: " <> Leijen.red actual
-          , Leijen.bold "Expected: " <> Leijen.dullgreen expect
+          , bold "Inferred:" PP.<+> red actual
+          , bold "Expected:" PP.<+> dullGreen expect
           ]
-      throwError
-        $ show
-        $ explain loc
-        $ Err
-          (Just "Type mismatch")
-          (intercalate ["", "while trying to unify"] explanation)
-          mempty
-          mempty
+      throwLocated
+        $ "Type mismatch" <> PP.line <>
+          PP.vcat (intercalate ["", "while trying to unify"] explanation)
   where
     absCase h p t1 t2 s1 s2 = do
       unify cxt t1 t2

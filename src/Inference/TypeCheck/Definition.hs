@@ -10,10 +10,12 @@ import qualified Data.HashSet as HashSet
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Maybe
 import Data.Monoid
+import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 
+import {-# SOURCE #-} Inference.TypeCheck.Expr
 import qualified Builtin.Names as Builtin
 import Inference.Constraint
 import Inference.Cycle
@@ -21,7 +23,6 @@ import Inference.Meta
 import Inference.Monad
 import Inference.TypeCheck.Clause
 import Inference.TypeCheck.Data
-import {-# SOURCE #-} Inference.TypeCheck.Expr
 import Inference.Unify
 import Syntax
 import qualified Syntax.Abstract as Abstract
@@ -44,7 +45,7 @@ checkTopLevelDefType
   -> SourceLoc
   -> AbstractM
   -> Infer (Definition Abstract.Expr MetaA, AbstractM)
-checkTopLevelDefType v def loc typ = located (render loc) $ case def of
+checkTopLevelDefType v def loc typ = located loc $ case def of
   Concrete.TopLevelPatDefinition def' -> checkDefType def' typ
   Concrete.TopLevelPatDataDefinition d -> checkDataType v d typ
   -- Should be removed by Declassify:
@@ -246,7 +247,7 @@ checkRecursiveDefs forceGeneralisation defs = do
           <|> (\(_, (loc, _)) -> loc) <$> sigDefs'
 
     unless (Vector.length locs == Vector.length result) $
-      throwError $ "checkRecursiveDefs unmatched length" ++ (show $ Vector.length locs) ++ (show $ Vector.length result)
+      internalError $ "checkRecursiveDefs unmatched length" PP.<+> shower (Vector.length locs) PP.<+> shower (Vector.length result)
 
     let locResult = Vector.zip locs result
 
@@ -351,7 +352,7 @@ checkTopLevelRecursiveDefs defs = do
   let varIndex = hashedElemIndex evars'
       unexpose v = fromMaybe (pure v) $ (fmap global . (names Vector.!?)) =<< varIndex v
       vf :: MetaA -> Infer b
-      vf v = throwError $ "checkTopLevelRecursiveDefs " ++ show v
+      vf v = internalError $ "checkTopLevelRecursiveDefs" PP.<+> shower v
 
   forM (Vector.zip names checkedDefs) $ \(name, (_, def, typ)) -> do
     unexposedDef <- boundM (pure . unexpose) def
