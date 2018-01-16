@@ -81,8 +81,8 @@ compile opts args = do
       if minLlvmVersion <= majorVersion && majorVersion <= maxLlvmVersion then
         readProcess configBin ["--bindir"] ""
       else error (
-          (printf "LLVM version out of range. Currently supported versions are \
-                  \%d <= v <= %d.\n" minLlvmVersion maxLlvmVersion) :: String)
+          (printf ("LLVM version out of range. Currently supported versions are " <>
+                   "%d <= v <= %d.\n") minLlvmVersion maxLlvmVersion) :: String)
   let opt = binPath </> "opt"
   let clang = binPath </> "clang"
   let linker = binPath </> "llvm-link"
