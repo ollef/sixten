@@ -166,7 +166,7 @@ assemble clang opts objFiles outFile = do
 #else
   -- Currently the bdwgc can only output library linking with dynamic MSVCRT.
   -- however clang will automatically pass static MSVCRT to linker.
-  let ldFlags = "-lgc-lib -Xlinker -nodefaultlib:libcmt -defaultlib:msvcrt.lib"
+  let ldFlags = "-lgc-lib -fuse-ld=lld-link -Xlinker -nodefaultlib:libcmt -Xlinker -defaultlib:msvcrt.lib"
 #endif
   callProcess clang
     $ concatMap words (lines ldFlags)
