@@ -54,8 +54,8 @@ clangBinPath command = trim <$> checkClangExists trySuffixes
           handle (\(_ :: IOException) -> checkClangExists xs)
           $ readProcess (command ++ suffix) ["-print-prog-name=" ++ command ++ suffix] ""
         checkClangExists [] = error (
-          (printf "Couldn't find clang. Currently supported versions are \\
-                  \%d <= v <= %d." minLlvmVersion maxLlvmVersion) :: String)
+          (printf ("Couldn't find clang. Currently supported versions are " <>
+                   "%d <= v <= %d.") minLlvmVersion maxLlvmVersion) :: String)
         trim = dropWhile isSpace . dropWhileEnd isSpace
 
 llvmBinPath :: IO FilePath
@@ -66,9 +66,9 @@ llvmBinPath = checkLlvmExists trySuffixes
           handle (\(_ :: IOException) -> checkLlvmExists xs)
           $ readProcess ("llvm-config" ++ suffix) ["--bindir"] ""
         checkLlvmExists [] = error (
-          (printf "Couldn't find llvm-config. Currently supported versions are \\
-                  \%d <= v <= %d.\n You can specify its path using the \\
-                  \--llvm-config flag." minLlvmVersion maxLlvmVersion) :: String)
+          (printf ("Couldn't find llvm-config. Currently supported versions are " <>
+                   "%d <= v <= %d.\n You can specify its path using the " <>
+                   "--llvm-config flag.") minLlvmVersion maxLlvmVersion) :: String)
 
 compile :: Options -> Arguments -> IO ()
 compile opts args = do
