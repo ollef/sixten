@@ -8,6 +8,7 @@ highlight def link sixtenIdentifier Identifier
 highlight def link sixtenType Type
 highlight def link sixtenDefinition Function
 highlight def link sixtenNumber Number
+highlight def link sixtenString String
 highlight def link sixtenModuleKeyword Keyword
 highlight def link sixtenClassKeyword Keyword
 highlight def link sixtenModifierKeyword Keyword
@@ -31,6 +32,8 @@ syn match sixtenIdentifier "[_a-z][a-zA-Z0-9_']*" contained
 syn match sixtenType "\<[A-Z][a-zA-Z0-9_']*\>"
 syn match sixtenDefinition "^\s*\([_a-zA-Z][a-zA-Z0-9_']*\_s*\)\+:"
 syn match sixtenNumber "\<[0-9]\+\>"
+syn region sixtenString start=+"+ skip=+\\\\\|\\"+ end=+"+
+  \ contains=@Spell
 syn keyword sixtenModuleKeyword import module as exposing
 syn keyword sixtenClassKeyword instance class
 syn keyword sixtenModifierKeyword abstract
