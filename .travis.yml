@@ -16,8 +16,8 @@ before_install:
 - stack ${STACK_FLAGS} setup
 
 script:
-- stack test
-- stack test --test-arguments "--sixten-args -O2"
+- stack test --test-arguments "--catch-stderr"
+- stack test --test-arguments "--catch-stderr --sixten-args -O2"
 
 cache:
   directories:
