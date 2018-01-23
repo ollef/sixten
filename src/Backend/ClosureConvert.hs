@@ -220,8 +220,8 @@ knownCall f (tele, returnTypeScope) args
     fArgs = fArgs1 <> fArgs2
 
 convertBranches
-  :: Branches QConstr () Expr FV
-  -> ClosureConvert (Branches QConstr () Expr FV)
+  :: Branches () Expr FV
+  -> ClosureConvert (Branches () Expr FV)
 convertBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(ConBranch qc tele brScope) -> do
     vs <- forMTele tele $ \h () _ ->

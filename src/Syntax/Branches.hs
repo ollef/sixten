@@ -19,16 +19,17 @@ import Pretty
 import Syntax.Annotation
 import Syntax.GlobalBind
 import Syntax.Literal
+import Syntax.Module
 import Syntax.Name
 import Syntax.Telescope
 import Util
 
-data Branches c a expr v
-  = ConBranches [ConBranch c a expr v]
+data Branches a expr v
+  = ConBranches [ConBranch a expr v]
   | LitBranches (NonEmpty (LitBranch expr v)) (expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-data ConBranch c a expr v = ConBranch c (Telescope a expr v) (Scope TeleVar expr v)
+data ConBranch a expr v = ConBranch QConstr (Telescope a expr v) (Scope TeleVar expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 data LitBranch expr v = LitBranch Literal (expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
@@ -37,8 +38,8 @@ bimapBranches
   :: Bifunctor expr
   => (a -> a')
   -> (v -> v')
-  -> Branches c p (expr a) v
-  -> Branches c p (expr a') v'
+  -> Branches p (expr a) v
+  -> Branches p (expr a') v'
 bimapBranches f g (ConBranches cbrs)
   = ConBranches [ConBranch c (bimapTelescope f g tele) (bimapScope f g s) | ConBranch c tele s <- cbrs]
 bimapBranches f g (LitBranches lbrs def)
@@ -48,7 +49,7 @@ bifoldMapBranches
   :: (Bifoldable expr, Monoid m)
   => (a -> m)
   -> (v -> m)
-  -> Branches c p (expr a) v
+  -> Branches p (expr a) v
   -> m
 bifoldMapBranches f g (ConBranches cbrs)
   = mconcat [bifoldMapTelescope f g tele Monoid.<> bifoldMapScope f g s | ConBranch _ tele s <- cbrs]
@@ -59,8 +60,8 @@ bitraverseBranches
   :: (Bitraversable expr, Applicative f)
   => (a -> f a')
   -> (v -> f v')
-  -> Branches c p (expr a) v
-  -> f (Branches c p (expr a') v')
+  -> Branches p (expr a) v
+  -> f (Branches p (expr a') v')
 bitraverseBranches f g (ConBranches cbrs)
   = ConBranches
   <$> traverse
@@ -71,37 +72,37 @@ bitraverseBranches f g (LitBranches lbrs def)
 
 -------------------------------------------------------------------------------
 -- Instances
-instance MFunctor (Branches c p) where
+instance MFunctor (Branches p) where
   hoist f (ConBranches cbrs)
     = ConBranches [ConBranch c (hoist f tele) (hoist f s) | ConBranch c tele s <- cbrs]
   hoist f (LitBranches lbrs def)
     = LitBranches [LitBranch l (f e) | LitBranch l e <- lbrs] $ f def
 
-instance GlobalBound (Branches c a) where
+instance GlobalBound (Branches a) where
   bound f g (ConBranches cbrs) = ConBranches $ bound f g <$> cbrs
   bound f g (LitBranches lbrs def) = LitBranches
     (bound f g <$> lbrs)
     (bind f g def)
 
-instance GlobalBound (ConBranch c a) where
+instance GlobalBound (ConBranch a) where
   bound f g (ConBranch c a s) = ConBranch c (bound f g a) (bound f g s)
 instance GlobalBound LitBranch where
   bound f g (LitBranch l s) = LitBranch l (bind f g s)
 
 $(return mempty)
 
-instance (Eq c, Eq a, Eq1 expr, Monad expr) => Eq1 (Branches c a expr) where
+instance (Eq a, Eq1 expr, Monad expr) => Eq1 (Branches a expr) where
   liftEq = $(makeLiftEq ''Branches)
-instance (Ord c, Ord a, Ord1 expr, Monad expr) => Ord1 (Branches c a expr) where
+instance (Ord a, Ord1 expr, Monad expr) => Ord1 (Branches a expr) where
   liftCompare = $(makeLiftCompare ''Branches)
-instance (Show c, Show a, Show1 expr, Monad expr) => Show1 (Branches c a expr) where
+instance (Show a, Show1 expr, Monad expr) => Show1 (Branches a expr) where
   liftShowsPrec = $(makeLiftShowsPrec ''Branches)
 
-instance (Eq c, Eq a, Eq1 expr, Monad expr) => Eq1 (ConBranch c a expr) where
+instance (Eq a, Eq1 expr, Monad expr) => Eq1 (ConBranch a expr) where
   liftEq = $(makeLiftEq ''ConBranch)
-instance (Ord c, Ord a, Ord1 expr, Monad expr) => Ord1 (ConBranch c a expr) where
+instance (Ord a, Ord1 expr, Monad expr) => Ord1 (ConBranch a expr) where
   liftCompare = $(makeLiftCompare ''ConBranch)
-instance (Show c, Show a, Show1 expr, Monad expr) => Show1 (ConBranch c a expr) where
+instance (Show a, Show1 expr, Monad expr) => Show1 (ConBranch a expr) where
   liftShowsPrec = $(makeLiftShowsPrec ''ConBranch)
 
 instance Eq1 expr => Eq1 (LitBranch expr) where
@@ -111,15 +112,15 @@ instance Ord1 expr => Ord1 (LitBranch expr) where
 instance Show1 expr => Show1 (LitBranch expr) where
   liftShowsPrec = $(makeLiftShowsPrec ''LitBranch)
 
-instance (Eq v, Eq1 f, Monad f, Pretty c, Pretty (f v), IsString v, Eq a, PrettyAnnotation a)
-  => Pretty (Branches c a f v) where
+instance (Eq v, Eq1 f, Monad f, Pretty (f v), IsString v, Eq a, PrettyAnnotation a)
+  => Pretty (Branches a f v) where
   prettyM (ConBranches cbrs) = vcat $ prettyM <$> cbrs
   prettyM (LitBranches lbrs def) = vcat $
     (prettyM <$> lbrs) Semigroup.<>
     pure ("_" <+> "->" <+> prettyM def)
 
-instance (Eq v, Eq1 f, Monad f, Pretty c, Pretty (f v), IsString v, PrettyAnnotation a)
-  => Pretty (ConBranch c a f v) where
+instance (Eq v, Eq1 f, Monad f, Pretty (f v), IsString v, PrettyAnnotation a)
+  => Pretty (ConBranch a f v) where
   prettyM (ConBranch c tele s) = withTeleHints tele $ \ns ->
     prettyM c <+> prettyTeleVarTypes ns tele <+>
       "->" <+> prettyM (instantiateTele (pure . fromName) ns s)

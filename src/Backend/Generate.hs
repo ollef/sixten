@@ -385,7 +385,7 @@ generateGlobal g = do
 
 generateBranches
   :: Expr Var
-  -> Branches QConstr () Expr Var
+  -> Branches () Expr Var
   -> (Expr Var -> InstrGen a)
   -> InstrGen [(a, LLVM.Name)]
 generateBranches caseExpr branches brCont = do

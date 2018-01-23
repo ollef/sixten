@@ -20,7 +20,7 @@ data Expr v
   | Call (Expr v) (Vector (Expr v)) -- ^ Fully applied, only global
   | PrimCall (Maybe Language) RetDir (Expr v) (Vector (Direction, Expr v))
   | Let NameHint (Expr v) (Scope1 Expr v)
-  | Case (Expr v) (Branches QConstr () Expr v)
+  | Case (Expr v) (Branches () Expr v)
   | Anno (Expr v) (Type v)
   deriving (Foldable, Functor, Traversable)
 
