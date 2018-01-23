@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, MonadComprehensions, Rank2Types, OverloadedStrings, TemplateHaskell #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, MonadComprehensions, Rank2Types, OverloadedStrings, TemplateHaskell #-}
 module Syntax.Branches where
 
 import Bound
@@ -13,7 +13,6 @@ import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Monoid as Monoid
 import Data.Semigroup as Semigroup
-import Data.String
 
 import Pretty
 import Syntax.Annotation
@@ -112,14 +111,14 @@ instance Ord1 expr => Ord1 (LitBranch expr) where
 instance Show1 expr => Show1 (LitBranch expr) where
   liftShowsPrec = $(makeLiftShowsPrec ''LitBranch)
 
-instance (Eq v, Eq1 f, Monad f, Pretty (f v), IsString v, Eq a, PrettyAnnotation a)
+instance (v ~ Doc, Eq1 f, Monad f, Pretty (f Doc), Eq a, PrettyAnnotation a)
   => Pretty (Branches a f v) where
   prettyM (ConBranches cbrs) = vcat $ prettyM <$> cbrs
   prettyM (LitBranches lbrs def) = vcat $
     (prettyM <$> lbrs) Semigroup.<>
     pure ("_" <+> "->" <+> prettyM def)
 
-instance (Eq v, Eq1 f, Monad f, Pretty (f v), IsString v, PrettyAnnotation a)
+instance (v ~ Doc, Eq1 f, Monad f, Pretty (f Doc), PrettyAnnotation a)
   => Pretty (ConBranch a f v) where
   prettyM (ConBranch c tele s) = withTeleHints tele $ \ns ->
     prettyM c <+> prettyTeleVarTypes ns tele <+>

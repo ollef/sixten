@@ -1,9 +1,8 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings, PatternSynonyms, ViewPatterns, TemplateHaskell #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, OverloadedStrings, PatternSynonyms, ViewPatterns, TemplateHaskell #-}
 module Syntax.Sized.Lifted where
 
 import Control.Monad
 import Data.Deriving
-import Data.String
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
@@ -87,8 +86,7 @@ instance Applicative Expr where
 instance Monad Expr where
   expr >>= f = bind f Global expr
 
-instance (Eq v, IsString v, Pretty v)
-  => Pretty (Expr v) where
+instance v ~ Doc => Pretty (Expr v) where
   prettyM expr = case expr of
     Var v -> prettyM v
     Global g -> prettyM g

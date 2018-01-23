@@ -27,7 +27,7 @@ import Data.Hashable
 import Data.List as List
 import Data.Maybe
 import Data.Monoid
-import Data.String
+import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
@@ -168,16 +168,17 @@ prettyTeleVars ns t = hsep
   ]
 
 prettyTeleVarTypes
-  :: (Eq1 expr, Eq v, Pretty (expr v), Monad expr, IsString v, PrettyAnnotation a, Eq a)
+  :: (Eq1 expr, Pretty (expr Doc), Monad expr, PrettyAnnotation a)
   => Vector Name
-  -> Telescope a expr v
+  -> Telescope a expr Doc
   -> PrettyM Doc
 prettyTeleVarTypes ns (Telescope v) = hcat $ map go grouped
   where
     inst = instantiateTele (pure . fromName) ns
     vlist = Vector.toList v
-    grouped = [ (n : [n' | (n', _) <- vlist'], a, t)
-              | (n, TeleArg _ a t):vlist' <- List.groupBy ((==) `on` snd) $ zip [(0 :: Int)..] vlist]
+    grouped =
+      [ (n : [n' | (n', _) <- vlist'], a, t)
+      | (n, TeleArg _ a t):vlist' <- List.groupBy ((==) `on` (fmap PP.layoutCompact . snd)) $ zip [(0 :: Int)..] vlist]
     go (xs, a, t)
       = prettyAnnotationParens a
       $ hsep (map (prettyM . (ns Vector.!)) xs) <+> ":" <+> prettyM (inst t)
@@ -272,7 +273,7 @@ transverseTeleArg f (TeleArg h a s) = TeleArg h a <$> transverseScope f s
 
 -------------------------------------------------------------------------------
 -- Instances
-instance (a ~ Plicitness, Eq1 expr, Eq v, Pretty (expr v), Monad expr, IsString v)
+instance (a ~ Plicitness, v ~ Doc, Eq1 expr, Pretty (expr v), Monad expr)
   => Pretty (Telescope a expr v) where
   prettyM tele = withTeleHints tele $ \ns -> prettyTeleVarTypes ns tele
 

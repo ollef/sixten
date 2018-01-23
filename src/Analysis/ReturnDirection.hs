@@ -245,7 +245,7 @@ inferRecursiveDefs defs = do
   let names = fst <$> defs
 
   evars <- Vector.forM defs $ \(v, d) -> do
-    logPretty 30 "InferDirection.inferRecursiveDefs 1" (v, show <$> d)
+    logPretty 30 "InferDirection.inferRecursiveDefs 1" (v, shower <$> d)
     let h = fromQName v
         funSig = case d of
           FunctionDef _ cl (Function args s) ->
@@ -273,7 +273,7 @@ inferRecursiveDefs defs = do
         bound absurd expose e
 
   inferredDefs <- Vector.forM (Vector.zip evars exposedDefs) $ \(v, d) -> do
-    logPretty 30 "InferDirection.inferRecursiveDefs 2" (show v, show <$> d)
+    logPretty 30 "InferDirection.inferRecursiveDefs 2" (show v, shower <$> d)
     inferDefinition v d
 
   genDefs <- generaliseDefs inferredDefs

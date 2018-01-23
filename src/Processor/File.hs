@@ -91,7 +91,7 @@ backend
 
   >=> processConvertedGroup
   where
-    vac :: Functor e => e Void -> e Name
+    vac :: Functor e => e Void -> e Doc
     vac = vacuous
 
 processConvertedGroup
@@ -107,7 +107,7 @@ processConvertedGroup
 
   >=> generateGroup
   where
-    vac :: Functor e => e Void -> e Name
+    vac :: Functor e => e Void -> e Doc
     vac = vacuous
 
 infixr 1 >>=>
@@ -115,17 +115,19 @@ infixr 1 >>=>
 (f >>=> g) a = concat <$> (f a >>= mapM g)
 
 prettyConcreteGroup
-  :: (Pretty (e QName), Monad e, Traversable e)
+  :: (Pretty (e Doc), Monad e, Traversable e)
   => Text
   -> (v -> QName)
   -> [(QName, SourceLoc, Concrete.TopLevelPatDefinition e v, Maybe (e v))]
   -> VIX [(QName, SourceLoc, Concrete.TopLevelPatDefinition e v, Maybe (e v))]
 prettyConcreteGroup str f defs = do
+  let toDoc :: QName -> Doc
+      toDoc = fromQName
   whenVerbose 10 $ do
     VIX.log $ "----- " <> str <> " -----"
     forM_ defs $ \(n, _, d, mt) -> do
       forM_ mt $ \t -> do
-        let t' = f <$> t
+        let t' = toDoc . f <$> t
         VIX.log
           $ showWide
           $ runPrettyM
@@ -133,7 +135,7 @@ prettyConcreteGroup str f defs = do
       VIX.log
         $ showWide
         $ runPrettyM
-        $ prettyNamed (prettyM n) (f <$> d)
+        $ prettyNamed (prettyM n) (toDoc . f <$> d)
       VIX.log ""
   return defs
 
@@ -147,7 +149,7 @@ prettyTypedGroup v str f defs = do
   whenVerbose v $ do
     VIX.log $ "----- " <> str <> " -----"
     forM_ defs $ \(n, d, t) -> do
-      let t' = f <$> t
+      let t' = fromQName . f <$> t
       VIX.log
         $ showWide
         $ runPrettyM
@@ -155,7 +157,7 @@ prettyTypedGroup v str f defs = do
       VIX.log
         $ showWide
         $ runPrettyM
-        $ Abstract.prettyTypedDef (prettyM n) (f <$> d) t'
+        $ Abstract.prettyTypedDef (prettyM n) (fromQName . f <$> d) t'
       VIX.log ""
   return defs
 

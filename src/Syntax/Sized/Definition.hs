@@ -1,10 +1,9 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, OverloadedStrings #-}
 module Syntax.Sized.Definition where
 
 import Bound
 import Control.Monad.Morph
 import Data.Monoid
-import Data.String
 import Data.Void
 
 import Pretty
@@ -66,8 +65,7 @@ instance GlobalBound Definition where
   bound f g (ConstantDef vis cdef) = ConstantDef vis $ bound f g cdef
   bound _ _ AliasDef = AliasDef
 
-instance (Eq v, IsString v, Pretty v, Pretty (expr v), Monad expr)
-  => Pretty (Function expr v) where
+instance (v ~ Doc, Pretty (expr v), Monad expr) => Pretty (Function expr v) where
   prettyM (Function vs s) = parens `above` absPrec $
     withNameHints (teleNames vs) $ \ns ->
       "\\" <> prettyTeleVars ns vs <> "." <+>
@@ -77,12 +75,10 @@ instance PrettyAnnotation IsClosure where
   prettyAnnotation IsClosure = prettyTightApp "[]"
   prettyAnnotation NonClosure = id
 
-instance (Eq v, IsString v, Pretty v, Pretty (expr v))
-  => Pretty (Constant expr v) where
+instance (v ~ Doc, Pretty (expr v)) => Pretty (Constant expr v) where
   prettyM (Constant e) = prettyM e
 
-instance (Eq v, IsString v, Pretty v, Pretty (expr v), Monad expr)
-  => Pretty (Definition expr v) where
+instance (v ~ Doc, Pretty (expr v), Monad expr) => Pretty (Definition expr v) where
   prettyM (ConstantDef v c) = prettyM v <+> prettyM c
   prettyM (FunctionDef v cl f) = prettyM v <+> prettyAnnotation cl (prettyM f)
   prettyM AliasDef = "alias"

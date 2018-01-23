@@ -6,7 +6,6 @@ import Data.Bifunctor
 import Data.Deriving
 import Data.Foldable as Foldable
 import Data.Monoid
-import Data.String
 
 import Syntax
 import TypeRep(TypeRep)
@@ -99,10 +98,9 @@ quantifiedConstrTypes (DataDef cs) typ anno = map (fmap $ pis ps) cs
     ps = mapAnnotations anno $ telescope typ
 
 prettyTypedDef
-  :: (Eq v, IsString v, Pretty v)
-  => PrettyM Doc
-  -> Definition Expr v
-  -> Expr v
+  :: PrettyM Doc
+  -> Definition Expr Doc
+  -> Expr Doc
   -> PrettyM Doc
 prettyTypedDef name (Definition a i d) _ = prettyM a <+> prettyM i <$$> name <+> "=" <+> prettyM d
 prettyTypedDef name (DataDefinition d e) t = prettyDataDef name (telescope t) d <+> "=" <+> prettyM e
@@ -138,7 +136,7 @@ instance Monad Expr where
   return = Var
   expr >>= f = bind f Global expr
 
-instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
+instance v ~ Doc => Pretty (Expr v) where
   prettyM expr = case expr of
     Var v -> prettyM v
     Global g -> prettyM g

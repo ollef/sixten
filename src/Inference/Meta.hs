@@ -317,7 +317,7 @@ metaTelescopeM vs =
     abstr = teleAbstraction $ snd <$> vs
 
 showMeta
-  :: (Functor e, Foldable e, Functor f, Foldable f, Pretty (f String), Pretty (e String), MonadIO m)
+  :: (Functor e, Foldable e, Functor f, Foldable f, Pretty (f Doc), Pretty (e Doc), MonadIO m)
   => f (MetaVar d e)
   -> m Doc
 showMeta x = do
@@ -326,11 +326,13 @@ showMeta x = do
       p _ = return $ Left $ Level (-1)
   let vsl = HashSet.toList vs
   pvs <- mapM p vsl
-  let sv v = "$" ++ fromNameHint "" fromName (metaHint v) ++ refType (metaRef v)
-          ++ show (metaId v)
-  let solutions = [(sv v, pretty $ sv <$> metaType v, pretty $ fmap sv <$> msol) | (v, msol) <- zip vsl pvs]
+  let showVar :: MetaVar d e -> Doc
+      showVar v
+        = "$" <> fromNameHint "" fromName (metaHint v) <> refType (metaRef v)
+       <> shower (metaId v)
+  let solutions = [(showVar v, pretty $ showVar <$> metaType v, pretty $ fmap showVar <$> msol) | (v, msol) <- zip vsl pvs]
   return
-    $ pretty (sv <$> x)
+    $ pretty (showVar <$> x)
     <> if null solutions
       then mempty
       else ", metavars: " <> pretty solutions
@@ -340,7 +342,7 @@ showMeta x = do
     refType LetRef {} = ""
 
 logMeta
-  :: (Functor e, Foldable e, Functor f, Foldable f, Pretty (f String), Pretty (e String), MonadIO m, MonadVIX m)
+  :: (Functor e, Foldable e, Functor f, Foldable f, Pretty (f Doc), Pretty (e Doc), MonadIO m, MonadVIX m)
   => Int
   -> String
   -> f (MetaVar d e)

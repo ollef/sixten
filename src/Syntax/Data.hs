@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings, RankNTypes #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, OverloadedStrings, RankNTypes #-}
 module Syntax.Data where
 
 import Bound
@@ -8,7 +8,6 @@ import Control.Monad.Morph
 import Data.Bifunctor
 import Data.Bitraversable
 import Data.Functor.Classes
-import Data.String
 
 import Pretty
 import Syntax.Annotation
@@ -46,10 +45,10 @@ constrNames :: DataDef typ v -> [Constr]
 constrNames = map constrName . dataConstructors
 
 prettyDataDef
-  :: (Eq1 typ, Eq v, IsString v, Monad typ, Pretty (typ v))
+  :: (Eq1 typ, Pretty (typ Doc), Monad typ)
   => PrettyM Doc
-  -> Telescope Plicitness typ v
-  -> DataDef typ v
+  -> Telescope Plicitness typ Doc
+  -> DataDef typ Doc
   -> PrettyM Doc
 prettyDataDef name ps (DataDef cs) = "type" <+> name <+> withTeleHints ps (\ns ->
     let inst = instantiateTele (pure . fromName) ns in
@@ -62,7 +61,7 @@ data ConstrDef typ = ConstrDef
   , constrType :: typ
   } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-instance (IsString v, Pretty (typ v), Monad typ) => PrettyNamed (DataDef typ v) where
+instance (v ~ Doc, Pretty (typ v), Monad typ) => PrettyNamed (DataDef typ v) where
   prettyNamed name (DataDef cs) = "type" <+> name <+> "where" <$$>
     indent 2 (vcat (map (prettyM . fmap (instantiate $ pure . shower)) cs))
 

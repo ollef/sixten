@@ -16,6 +16,7 @@ import Pretty
 import Syntax.Name
 import Syntax.NameHint
 import Syntax.Telescope
+import Util
 import VIX
 
 data FreeVar d = FreeVar
@@ -48,13 +49,14 @@ freeVar h d = do
   return $ FreeVar i h d
 
 showFreeVar
-  :: (Functor d, Functor f, Foldable f, Pretty (f String), Pretty (d String))
+  :: (Functor d, Functor f, Foldable f, Pretty (f Doc), Pretty (d Doc))
   => f (FreeVar d)
   -> Doc
 showFreeVar x = do
   let vs = foldMap HashSet.singleton x
-  let showVar v = "$" ++ fromNameHint "" fromName (varHint v)
-          ++ show (varId v)
+  let showVar :: FreeVar d -> Doc
+      showVar v = "$" <> fromNameHint "" fromName (varHint v)
+          <> shower (varId v)
   let shownVars = [(showVar v, pretty $ showVar <$> varType v) | v <- HashSet.toList vs]
   pretty (showVar <$> x)
     <> if null shownVars
@@ -62,7 +64,7 @@ showFreeVar x = do
       else ", free vars: " <> pretty shownVars
 
 logFreeVar
-  :: (Functor d, Functor f, Foldable f, Pretty (f String), Pretty (d String), MonadVIX m, MonadIO m)
+  :: (Functor d, Functor f, Foldable f, Pretty (f Doc), Pretty (d Doc), MonadVIX m, MonadIO m)
   => Int
   -> String
   -> f (FreeVar d)
