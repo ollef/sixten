@@ -20,7 +20,7 @@ data Expr v
   | Lam !NameHint (Type v) (Scope1 Expr v)
   | App (Expr v) (Expr v)
   | Let (LetRec Expr v) (Scope LetVar Expr v)
-  | Case (Expr v) (Branches QConstr () Expr v)
+  | Case (Expr v) (Branches () Expr v)
   | Anno (Expr v) (Type v)
   | ExternCode (Extern (Expr v))
   deriving (Foldable, Functor, Traversable)

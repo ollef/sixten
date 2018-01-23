@@ -239,8 +239,8 @@ externType Indirect = "uint8_t*"
 
 extractBranches
   :: Maybe (Extracted.Type FV)
-  -> Branches QConstr () Lifted.Expr FV
-  -> Extract (Branches QConstr () Extracted.Expr FV)
+  -> Branches () Lifted.Expr FV
+  -> Extract (Branches () Extracted.Expr FV)
 extractBranches mtype (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(ConBranch qc tele brScope) -> do
     vs <- forTeleWithPrefixM tele $ \h () s vs -> do

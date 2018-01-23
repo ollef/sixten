@@ -84,9 +84,8 @@ slam expr = do
   return res
 
 slamBranches
-  :: Pretty c
-  => Branches c Plicitness Abstract.Expr MetaA
-  -> VIX (Branches c () SLambda.Expr MetaA)
+  :: Branches Plicitness Abstract.Expr MetaA
+  -> VIX (Branches () SLambda.Expr MetaA)
 slamBranches (ConBranches cbrs) = do
   logMeta 20 "slamBranches brs" $ ConBranches cbrs
   modifyIndent succ

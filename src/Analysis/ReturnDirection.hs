@@ -159,8 +159,8 @@ inferCall con _ _ f es = do
 
 inferBranches
   :: Location
-  -> Branches c () Expr MetaVar
-  -> VIX (Branches c () Expr MetaVar, Location)
+  -> Branches () Expr MetaVar
+  -> VIX (Branches () Expr MetaVar, Location)
 inferBranches loc (ConBranches cbrs) = do
   locatedCBrs <- forM cbrs $ \(ConBranch c tele brScope) -> do
     vs <- forMTele tele $ \h _ _ -> exists h loc Nothing

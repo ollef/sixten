@@ -23,7 +23,7 @@ data Expr v
   | Lam !NameHint !Plicitness (Type v) (Scope1 Expr v)
   | App (Expr v) !Plicitness (Expr v)
   | Let (LetRec Expr v) (Scope LetVar Expr v)
-  | Case (Expr v) (Branches QConstr Plicitness Expr v) (Type v)
+  | Case (Expr v) (Branches Plicitness Expr v) (Type v)
   | ExternCode (Extern (Expr v)) (Type v)
   deriving (Foldable, Functor, Traversable)
 

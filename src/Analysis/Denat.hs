@@ -24,7 +24,7 @@ denat expr = case expr of
 
 denatCase
   :: Expr v
-  -> Branches QConstr () Expr v
+  -> Branches () Expr v
   -> Expr v
 denatCase expr (ConBranches [ConBranch ZeroConstr _ztele zs, ConBranch SuccConstr _stele ss])
   = let_ mempty expr (global NatName)

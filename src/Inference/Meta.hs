@@ -51,7 +51,6 @@ type ConcreteM = Concrete.Expr MetaA
 type AbstractM = Abstract.Expr MetaA
 type LambdaM = SLambda.Expr MetaA
 type ScopeM b f = Scope b f MetaA
-type BranchesM c a f = Branches c a f MetaA
 
 instance Eq (MetaVar d e) where
   (==) = (==) `on` metaId

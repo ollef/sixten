@@ -235,7 +235,7 @@ typeRepBinOp lzero rzero op cop norm x y = do
 chooseBranch
   :: Monad m
   => Expr v
-  -> Branches QConstr Plicitness Expr v
+  -> Branches Plicitness Expr v
   -> Expr v
   -> (Expr v -> m (Expr v))
   -> m (Expr v)

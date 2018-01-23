@@ -177,8 +177,8 @@ elabLet mkConstraint ds scope = do
 
 elabBranches
   :: (AbstractM -> Infer AbstractM)
-  -> Branches QConstr Plicitness Expr MetaA
-  -> Infer (Branches QConstr Plicitness Expr MetaA)
+  -> Branches Plicitness Expr MetaA
+  -> Infer (Branches Plicitness Expr MetaA)
 elabBranches mkConstraint (ConBranches cbrs) = do
   cbrs' <- forM cbrs $ \(ConBranch qc tele brScope) -> do
     vs <- forTeleWithPrefixM tele $ \h p s vs -> do

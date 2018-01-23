@@ -196,8 +196,8 @@ liftLet ds scope = do
   return $ lets sortedDs letBody
 
 liftBranches
-  :: Branches QConstr () SLambda.Expr FV
-  -> LambdaLift (Branches QConstr () Lifted.Expr FV)
+  :: Branches () SLambda.Expr FV
+  -> LambdaLift (Branches () Lifted.Expr FV)
 liftBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(ConBranch qc tele brScope) -> do
     vs <- forTeleWithPrefixM tele $ \h () s vs -> do
