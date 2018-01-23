@@ -1,4 +1,3 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Util.MultiHashMap where
 
 import Data.Bifunctor
@@ -9,9 +8,17 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.Maybe as Maybe
+import Data.Semigroup
 
 newtype MultiHashMap k v = MultiHashMap { toMap :: HashMap k (HashSet v) }
-  deriving (Eq, Show, Monoid)
+  deriving (Eq, Show)
+
+instance (Eq k, Hashable k, Eq v, Hashable v) => Semigroup (MultiHashMap k v) where
+  (<>) = union
+
+instance (Eq k, Hashable k, Eq v, Hashable v) => Monoid (MultiHashMap k v) where
+  mempty = MultiHashMap mempty
+  mappend = union
 
 insert
   :: (Eq k, Hashable k, Eq v, Hashable v)
