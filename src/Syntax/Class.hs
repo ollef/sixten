@@ -1,11 +1,10 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, GADTs, OverloadedStrings #-}
 module Syntax.Class where
 
 import Bound
 import Bound.Scope
 import Control.Monad.Morph
 import Data.Functor.Classes
-import Data.String
 
 import Error
 import Pretty
@@ -30,10 +29,10 @@ methodNames :: ClassDef typ v -> [Name]
 methodNames = map methodName . classMethods
 
 prettyClassDef
-  :: (Eq1 typ, Eq v, IsString v, Monad typ, Pretty (typ v))
+  :: (Eq1 typ, Monad typ, Pretty (typ Doc))
   => PrettyM Doc
-  -> Telescope Plicitness typ v
-  -> ClassDef typ v
+  -> Telescope Plicitness typ Doc
+  -> ClassDef typ Doc
   -> PrettyM Doc
 prettyClassDef name ps (ClassDef cs) = "class" <+> name <+> withTeleHints ps (\ns ->
     let inst = instantiateTele (pure . fromName) ns in
@@ -47,7 +46,7 @@ data MethodDef typ = MethodDef
   , methodType :: typ
   } deriving (Foldable, Functor, Show, Traversable)
 
-instance (IsString v, Pretty (typ v), Monad typ) => PrettyNamed (ClassDef typ v) where
+instance (v ~ Doc, Pretty (typ v), Monad typ) => PrettyNamed (ClassDef typ v) where
   prettyNamed name (ClassDef cs) = "class" <+> name <+> "where" <$$>
     indent 2 (vcat (map (prettyM . fmap (instantiate $ pure . shower)) cs))
 

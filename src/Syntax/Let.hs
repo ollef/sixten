@@ -2,6 +2,7 @@
   DeriveFoldable,
   DeriveFunctor,
   DeriveTraversable,
+  GADTs,
   GeneralizedNewtypeDeriving,
   OverloadedStrings,
   RankNTypes,
@@ -16,7 +17,6 @@ import Data.Deriving
 import Data.Functor.Classes
 import Data.Hashable
 import Data.Maybe
-import Data.String
 import Data.Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
@@ -99,9 +99,9 @@ letAbstraction :: (Eq a, Hashable a) => Vector a -> a -> Maybe LetVar
 letAbstraction vs = fmap LetVar . hashedElemIndex vs
 
 prettyLet
-  :: (Eq1 expr, Eq v, Pretty (expr v), Monad expr, IsString v)
+  :: (Eq1 expr, Pretty (expr Doc), Monad expr)
   => Vector Name
-  -> LetRec expr v
+  -> LetRec expr Doc
   -> PrettyM Doc
 prettyLet ns (LetRec xs) = vcat $ imap go xs
   where
@@ -127,7 +127,7 @@ transverseLetBinding f (LetBinding h s t) = LetBinding h <$> transverseScope f s
 
 -------------------------------------------------------------------------------
 -- Instances
-instance (Eq1 expr, Eq v, Pretty (expr v), Monad expr, IsString v)
+instance (Eq1 expr, v ~ Doc, Pretty (expr v), Monad expr)
   => Pretty (LetRec expr v) where
   prettyM letRec = withLetHints letRec $ \ns -> prettyLet ns letRec
 

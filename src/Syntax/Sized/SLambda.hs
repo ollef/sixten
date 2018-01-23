@@ -1,10 +1,9 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, OverloadedStrings, PatternSynonyms, TemplateHaskell, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, GADTs, OverloadedStrings, PatternSynonyms, TemplateHaskell, ViewPatterns #-}
 module Syntax.Sized.SLambda where
 
 import Control.Monad
 import Data.Deriving
 import Data.Monoid
-import Data.String
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
@@ -85,8 +84,7 @@ instance GlobalBind Expr where
     Anno e t -> Anno (bind f g e) (bind f g t)
     ExternCode c -> ExternCode (bind f g <$> c)
 
-instance (Eq v, IsString v, Pretty v)
-      => Pretty (Expr v) where
+instance v ~ Doc => Pretty (Expr v) where
   prettyM expr = case expr of
     Var v -> prettyM v
     Global g -> prettyM g

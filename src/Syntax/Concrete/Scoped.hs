@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, PatternSynonyms, ViewPatterns #-}
+{-# LANGUAGE GADTs, OverloadedStrings, PatternSynonyms, ViewPatterns #-}
 module Syntax.Concrete.Scoped
   ( module Definition
   , module Pattern
@@ -15,7 +15,6 @@ import Data.Foldable as Foldable
 import Data.Functor.Classes
 import Data.HashSet(HashSet)
 import Data.Monoid
-import Data.String
 import Data.Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
@@ -144,7 +143,7 @@ instance Traversable Expr where
     SourceLoc r e -> SourceLoc r <$> traverse f e
     Wildcard -> pure Wildcard
 
-instance (Eq v, IsString v, Pretty v) => Pretty (Expr v) where
+instance v ~ Doc => Pretty (Expr v) where
   prettyM expr = case expr of
     Var v -> prettyM v
     Global g -> prettyM g

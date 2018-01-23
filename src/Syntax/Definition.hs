@@ -4,7 +4,6 @@ module Syntax.Definition where
 import Control.Monad.Morph
 import Data.Bifunctor
 import Data.Bitraversable
-import Data.String
 
 import Pretty
 import Syntax.Annotation
@@ -42,9 +41,9 @@ bitraverseDefinition
 bitraverseDefinition f g (Definition a i d) = Definition a i <$> bitraverse f g d
 bitraverseDefinition f g (DataDefinition d e) = DataDefinition <$> bitraverseDataDef f g d <*> bitraverse f g e
 
-instance (Monad expr, Pretty (expr v), IsString v) => PrettyNamed (Definition expr v) where
+instance (Monad expr, Pretty (expr v), v ~ Doc) => PrettyNamed (Definition expr v) where
   prettyNamed name (Definition a i e) = prettyM a <+> prettyM i <$$> name <+> "=" <+> prettyM e
   prettyNamed name (DataDefinition d e) = prettyNamed name d <+> "=" <+> prettyM e
 
-instance (Monad expr, Pretty (expr v), IsString v) => Pretty (Definition expr v) where
+instance (Monad expr, Pretty (expr v), v ~ Doc) => Pretty (Definition expr v) where
   prettyM = prettyNamed "_"

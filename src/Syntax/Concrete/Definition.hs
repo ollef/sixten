@@ -8,7 +8,6 @@ import Data.Deriving
 import Data.Functor.Classes
 import Data.List.NonEmpty(NonEmpty)
 import Data.Maybe
-import Data.String
 import Data.Traversable
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
@@ -75,7 +74,7 @@ instance GlobalBound PatInstanceDef where
 instance GlobalBound (Clause b) where
   bound f g (Clause pats s) = Clause (fmap (first (bound f g)) <$> pats) (bound f g s)
 
-instance (Pretty (expr v), Monad expr, IsString v, void ~ Void)
+instance (Pretty (expr v), Monad expr, v ~ Doc, void ~ Void)
   => PrettyNamed (Clause void expr v) where
   prettyNamed name (Clause pats s)
     = withNameHints (join $ nameHints . snd <$> pats) $ \ns -> do
@@ -86,15 +85,15 @@ instance (Pretty (expr v), Monad expr, IsString v, void ~ Void)
       prettyApps name (go <$> renamePatterns ns (fmap (first removeVoid) <$> pats))
         <+> "=" <+> prettyM (instantiatePattern (pure . fromName) ns $ removeVoid s)
 
-instance (Pretty (expr v), Monad expr, IsString v, void ~ Void)
+instance (Pretty (expr v), Monad expr, v ~ Doc, void ~ Void)
   => Pretty (Clause void expr v) where
   prettyM = prettyNamed "_"
 
-instance (Pretty (expr v), Monad expr, IsString v)
+instance (Pretty (expr v), Monad expr, v ~ Doc)
   => Pretty (TopLevelPatDefinition expr v) where
   prettyM = prettyNamed "_"
 
-instance (Pretty (expr v), Monad expr, IsString v)
+instance (Pretty (expr v), Monad expr, v ~ Doc)
   => PrettyNamed (TopLevelPatDefinition expr v) where
   prettyNamed name (TopLevelPatDefinition d) = prettyNamed name d
   prettyNamed name (TopLevelPatDataDefinition dataDef) = prettyNamed name dataDef
@@ -106,7 +105,7 @@ instance PrettyNamed clause => PrettyNamed (PatDefinition clause) where
 
 deriveEq1 ''PatDefinition
 
-instance (Pretty (expr v), Monad expr, IsString v) => PrettyNamed (PatInstanceDef expr v) where
+instance (Pretty (expr v), Monad expr, v ~ Doc) => PrettyNamed (PatInstanceDef expr v) where
   prettyNamed name (PatInstanceDef ms) = name <+> "=" <+> "instance" <+> "where" <$$> do
     let go (n, _, m, Nothing) = prettyNamed (prettyM n) m
         go (n, _, m, Just typ) = prettyM n <+> ":" <+> prettyM typ <$$> prettyNamed (prettyM n) m
