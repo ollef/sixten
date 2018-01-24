@@ -6,12 +6,12 @@ import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Word
-import LLVM.IRBuilder
 import qualified LLVM.AST as LLVM
 import LLVM.AST.CallingConvention as CC
 import qualified LLVM.AST.Constant as LLVM
 import qualified LLVM.AST.Type as LLVM
-import qualified LLVM.Typed as LLVM
+import qualified LLVM.AST.Typed as LLVM
+import LLVM.IRBuilder
 
 import Backend.Generate.LLVM
 import qualified Backend.Target as Target
