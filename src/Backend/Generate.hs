@@ -27,9 +27,9 @@ import qualified LLVM.AST.Global as LLVM.Global
 import qualified LLVM.AST.Linkage as LLVM
 import qualified LLVM.AST.Type as LLVM
 import qualified LLVM.AST.Type as LLVM.Type
+import qualified LLVM.AST.Typed as LLVM
 import LLVM.IRBuilder as IRBuilder
 import qualified LLVM.Pretty as LLVM
-import qualified LLVM.Typed as LLVM
 import System.IO
 
 import qualified Backend.ExtractExtern as ExtractExtern
@@ -362,7 +362,7 @@ generateGlobal g = do
   msig <- signature g
   ptrRep <- getPtrRep
   let typ = signatureType $ fromMaybe (ConstantSig Indirect) msig
-      glob = LLVM.GlobalReference (LLVM.ptr typ) $ fromQName g
+      glob = LLVM.GlobalReference typ $ fromQName g
       globOperand = LLVM.ConstantOperand glob
   case msig of
     Just (ConstantSig (Direct TypeRep.UnitRep)) -> return VoidVar
@@ -575,7 +575,7 @@ generateConstant visibility name (Constant e) = do
             Indirect -> indirectType
             Direct TypeRep.UnitRep -> indirectType
             Direct rep -> directType rep
-      let glob = LLVM.GlobalReference (LLVM.ptr typ) gname
+      let glob = LLVM.GlobalReference typ gname
       emitDefn $ LLVM.GlobalDefinition LLVM.globalVariableDefaults
         { LLVM.Global.name = gname
         , LLVM.Global.linkage = linkage
@@ -814,7 +814,7 @@ generateModule mname imports gens = do
       thisInitName = initName mname
       thisInitedName = LLVM.Name $ fromModuleName mname <> "-inited"
       thisInitedOperand
-        = LLVM.ConstantOperand $ LLVM.GlobalReference (LLVM.ptr LLVM.i1) thisInitedName
+        = LLVM.ConstantOperand $ LLVM.GlobalReference LLVM.i1 thisInitedName
       gcInitOperand = LLVM.ConstantOperand $ LLVM.GlobalReference voidFun "GC_init"
       voidFun = LLVM.FunctionType
         { LLVM.resultType = LLVM.void
@@ -877,7 +877,7 @@ generateModule mname imports gens = do
         , LLVM.Constant.isPacked = False
         , LLVM.Constant.memberValues =
           [ LLVM.Int 32 610
-          , LLVM.GlobalReference (LLVM.ptr voidFun) thisInitName
+          , LLVM.GlobalReference voidFun thisInitName
           , LLVM.Null $ LLVM.ptr LLVM.i8
           ]
         }
