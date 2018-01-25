@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Backend.Compile where
@@ -6,6 +7,7 @@ import Control.Exception
 import Control.Monad
 import Data.Char
 import Data.Foldable
+import Data.List (dropWhile, dropWhileEnd)
 import Data.Maybe
 import Data.Monoid
 import Data.Version
@@ -40,6 +42,18 @@ supportedLlvmVersions = makeVersion . (: [minorVersion]) <$> supportedMajorVersi
   where minorVersion = 0
         supportedMajorVersions = [maxLlvmVersion, maxLlvmVersion - 1 .. minLlvmVersion]
 
+-- | llvm-config is not available in current LLVM distribution for windows, so we
+-- need use @clang -print-prog-name=clang@ to get the full path of @clang@.
+--
+-- We simply assume that @clang.exe@ already exists in @%PATH%@.
+--
+clangBinPath :: IO FilePath
+clangBinPath = trim <$> checkClangExists
+  where checkClangExists =
+          handle (\(_ :: IOException) -> error "Couldn't find clang.")
+          $ readProcess "clang" ["-print-prog-name=clang"] ""
+        trim = dropWhile isSpace . dropWhileEnd isSpace
+
 llvmBinPath :: IO FilePath
 llvmBinPath = checkLlvmExists trySuffixes
   where trySuffixes = "" : fmap (('-' :) . showVersion) supportedLlvmVersions
@@ -48,12 +62,13 @@ llvmBinPath = checkLlvmExists trySuffixes
           handle (\(_ :: IOException) -> checkLlvmExists xs)
           $ readProcess ("llvm-config" ++ suffix) ["--bindir"] ""
         checkLlvmExists [] = error (
-          (printf "Couldn't find llvm-config. Currently supported versions are \
-                  \%d <= v <= %d.\n You can specify its path using the \
-                  \--llvm-config flag." minLlvmVersion maxLlvmVersion) :: String)
+          (printf ("Couldn't find llvm-config. Currently supported versions are " <>
+                   "%d <= v <= %d.\n You can specify its path using the " <>
+                   "--llvm-config flag.") minLlvmVersion maxLlvmVersion) :: String)
 
 compile :: Options -> Arguments -> IO ()
 compile opts args = do
+#ifndef mingw32_HOST_OS
   binPath <- takeWhile (not . isSpace) <$> case Options.llvmConfig opts of
     Nothing -> llvmBinPath
     Just configBin -> do
@@ -62,8 +77,8 @@ compile opts args = do
       if minLlvmVersion <= majorVersion && majorVersion <= maxLlvmVersion then
         readProcess configBin ["--bindir"] ""
       else error (
-          (printf "LLVM version out of range. Currently supported versions are \
-                  \%d <= v <= %d.\n" minLlvmVersion maxLlvmVersion) :: String)
+          (printf ("LLVM version out of range. Currently supported versions are " <>
+                   "%d <= v <= %d.\n") minLlvmVersion maxLlvmVersion) :: String)
   let opt = binPath </> "opt"
   let clang = binPath </> "clang"
   let linker = binPath </> "llvm-link"
@@ -73,7 +88,15 @@ compile opts args = do
     $ linkedLlFileName args
   optLlFile <- optimiseLlvm opt opts linkedLlFile
   objFile <- compileLlvm compiler opts (target args) optLlFile
-  assemble clang opts objFile $ outputFile args
+  assemble clang opts [objFile] $ outputFile args
+#else
+  -- In LLVM distribution for windows, @opt@, @llvm-link@ and @llc@ are not
+  -- available. We use @clang@ to link llvm files directly.
+  -- We enable @-fLTO@ in @assemble@ to perform link time optimizations.
+  clang <- clangBinPath
+  cLlFiles <- forM (cFiles args) $ compileC clang opts $ target args
+  assemble clang opts (llFiles args ++ toList cLlFiles) $ outputFile args
+#endif
 
 optimisationFlags :: Options -> [String]
 optimisationFlags opts = case Options.optimisation opts of
@@ -99,7 +122,9 @@ compileC clang opts tgt cFile = do
   callProcess clang $ optimisationFlags opts ++
     [ "-march=" <> Target.architecture tgt
     , "-fvisibility=internal"
+#ifndef mingw32_HOST_OS
     , "-fPIC"
+#endif
     , "-S"
     , "-emit-llvm"
     , cFile
@@ -130,10 +155,17 @@ compileLlvm compiler opts tgt llFile = do
   callProcess compiler $ flags "obj" objFile
   return objFile
 
-assemble :: Binary -> Options -> FilePath -> FilePath -> IO ()
-assemble clang opts objFile outFile = do
+assemble :: Binary -> Options -> [FilePath] -> FilePath -> IO ()
+assemble clang opts objFiles outFile = do
+  let extraLibDirFlag = ["-L" ++ dir | dir <- Options.extraLibDir opts]
+#ifndef mingw32_HOST_OS
   ldFlags <- readProcess "pkg-config" ["--libs", "--static", "bdw-gc"] ""
+#else
+  -- Currently the bdwgc can only output library linking with dynamic MSVCRT.
+  -- however clang will automatically pass static MSVCRT to linker.
+  let ldFlags = "-lgc-lib -fuse-ld=lld-link -Xlinker -nodefaultlib:libcmt -Xlinker -defaultlib:msvcrt.lib"
+#endif
   callProcess clang
-    $ concatMap words (lines ldFlags)
+    $ concatMap words (extraLibDirFlag ++ lines ldFlags)
     ++ optimisationFlags opts
-    ++ [objFile, "-o", outFile]
+    ++ objFiles ++ ["-o", outFile]

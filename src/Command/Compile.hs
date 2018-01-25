@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE CPP, FlexibleContexts, OverloadedStrings #-}
 module Command.Compile where
 
 import qualified Data.List.NonEmpty as NonEmpty
@@ -64,6 +64,12 @@ optionsParser = Options
     <> help "Path to the llvm-config binary."
     <> action "file"
     )
+  <*> many (strOption
+    $ long "extra-lib-dir"
+    <> metavar "DIR"
+    <> help "Path where extra libraries (gc-lib.lib, etc.) exist."
+    <> action "directory"
+    )
 
 compile
   :: Options
@@ -108,7 +114,12 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
       k dir
 
     withOutputFile Nothing k
+#ifndef mingw32_HOST_OS
       = withTempFile firstInputDir firstFileName $ \outputFile outputFileHandle -> do
+#else
+      = withTempFile firstInputDir (firstFileName <> ".exe") $ \outputFile outputFileHandle -> do
+        -- On Windows executable should have suffix @.exe@.
+#endif
         hClose outputFileHandle
         k outputFile
     withOutputFile (Just o) k = do

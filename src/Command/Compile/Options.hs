@@ -9,4 +9,5 @@ data Options = Options
   , optimisation :: Maybe String
   , assemblyDir :: Maybe FilePath
   , llvmConfig :: Maybe FilePath
+  , extraLibDir :: [FilePath]
   } deriving (Show)

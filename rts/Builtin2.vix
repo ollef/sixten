@@ -17,7 +17,13 @@ type String = MkString (Array Byte)
 
 printString : String -> Unit
 printString (MkString (MkArray len data)) = (C|
+#ifdef _WIN32
+  // In MSVC, fd `1` corresponds to `stdout`.
+  // See: https://msdn.microsoft.com/en-us/library/40bbyw78.aspx
+  _write(1, (const void*)$data, $len);
+#else
   write(STDOUT_FILENO, (const void*)$data, $len);
+#endif
 |)
 
 intToNat : Int -> Nat
