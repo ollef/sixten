@@ -47,15 +47,11 @@ supportedLlvmVersions = makeVersion . (: [minorVersion]) <$> supportedMajorVersi
 --
 -- We simply assume that @clang.exe@ already exists in @%PATH%@.
 --
-clangBinPath :: String -> IO FilePath
-clangBinPath command = trim <$> checkClangExists trySuffixes
-  where trySuffixes = "" : fmap (('-' :) . showVersion) supportedLlvmVersions
-        checkClangExists (suffix : xs) =
-          handle (\(_ :: IOException) -> checkClangExists xs)
-          $ readProcess (command ++ suffix) ["-print-prog-name=" ++ command ++ suffix] ""
-        checkClangExists [] = error (
-          (printf ("Couldn't find clang. Currently supported versions are " <>
-                   "%d <= v <= %d.") minLlvmVersion maxLlvmVersion) :: String)
+clangBinPath :: IO FilePath
+clangBinPath = trim <$> checkClangExists
+  where checkClangExists =
+          handle (\(_ :: IOException) -> error "Couldn't find clang.")
+          $ readProcess "clang" ["-print-prog-name=clang"] ""
         trim = dropWhile isSpace . dropWhileEnd isSpace
 
 llvmBinPath :: IO FilePath
@@ -97,7 +93,7 @@ compile opts args = do
   -- In LLVM distribution for windows, @opt@, @llvm-link@ and @llc@ are not
   -- available. We use @clang@ to link llvm files directly.
   -- We enable @-fLTO@ in @assemble@ to perform link time optimizations.
-  clang <- clangBinPath "clang"
+  clang <- clangBinPath
   cLlFiles <- forM (cFiles args) $ compileC clang opts $ target args
   assemble clang opts (llFiles args ++ toList cLlFiles) $ outputFile args
 #endif
