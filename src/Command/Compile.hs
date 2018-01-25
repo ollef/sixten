@@ -64,6 +64,12 @@ optionsParser = Options
     <> help "Path to the llvm-config binary."
     <> action "file"
     )
+  <*> optional (strOption
+    $ long "extra-lib-dir"
+    <> metavar "DIR"
+    <> help "Path where extra libraries (gc-lib.lib, etc.) exist."
+    <> action "directory"
+    )
 
 compile
   :: Options
