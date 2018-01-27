@@ -360,3 +360,5 @@ Please read the [code of conduct](CODE_OF_CONDUCT.md).
 [Varun Gandhi](https://github.com/theindigamer)
 
 [Brandon Hamilton](https://github.com/brandonhamilton)
+
+[He Tao](https://github.com/sighingnow)
