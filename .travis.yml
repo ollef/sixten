@@ -1,23 +1,42 @@
 sudo: false
-language: c
+language: generic
 
 matrix:
   include:
-    - env: CABALVER=1.22 GHCVER=7.10.3
-      addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.3,libgc-dev],sources: [hvr-ghc]}}
-
+    - compiler: "GHC+Stack (OSX)"
+      os: osx
+      addons: {apt: {packages: [libgc-dev, libgmp-dev]}}
+    - compiler: "GHC+Stack (Linux)"
+      addons: {apt: {packages: [libgc-dev, libgmp-dev]}}
 
 before_install:
 # stack
 - mkdir -p ~/.local/bin
 - export PATH=$HOME/.local/bin:$PATH
-- travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
+- |
+  if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+    travis_retry curl --insecure -L https://www.stackage.org/stack/osx-x86_64 | tar xz --strip-components=1 --include '*/stack' -C ~/.local/bin
+  else
+    travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
+  fi
+
+- |
+  if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+    brew install llvm bdw-gc
+  fi
+- |
+  if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+    export SIXTEN_ARGS="--llvm-config=$(brew --prefix llvm)/bin/llvm-config"
+  else
+    export SIXTEN_ARGS=""
+  fi
+
 - export STACK_FLAGS='-j 2 --no-terminal --skip-ghc-check'
 - stack ${STACK_FLAGS} setup
 
 script:
-- stack test --test-arguments "--catch-stderr"
-- stack test --test-arguments "--catch-stderr --sixten-args -O2"
+- stack test --test-arguments "--catch-stderr --sixten-args \"$SIXTEN_ARGS\""
+- stack test --test-arguments "--catch-stderr --sixten-args \"-O2 $SIXTEN_ARGS\""
 
 cache:
   directories:
