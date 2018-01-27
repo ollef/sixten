@@ -25,3 +25,7 @@ instance Monad Result where
   return = Success
   Failure errs >>= _ = Failure errs
   Success a >>= f = f a
+
+fromEither :: Either Error a -> Result a
+fromEither (Left e) = Failure [e]
+fromEither (Right a) = Success a

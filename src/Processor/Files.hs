@@ -1,11 +1,10 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Processor.Files where
 
 import Control.Monad.Except
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
-import qualified Data.List.NonEmpty as NonEmpty
 import Data.List.NonEmpty(NonEmpty)
 import Data.Semigroup
 import qualified Data.Text.Prettyprint.Doc as PP
@@ -41,46 +40,46 @@ instance Monoid ProcessFilesResult where
   mappend (ProcessFilesResult c1 l1) (ProcessFilesResult c2 l2)
     = ProcessFilesResult (mappend c1 c2) (mappend l1 l2)
 
-checkFiles :: Arguments -> IO (Result ())
-checkFiles
-  = processFilesWith
-  $ processModulesWith (File.frontend (const $ return []))
-    >=> const (return ())
-
-processFiles :: Arguments -> IO (Result ProcessFilesResult)
-processFiles args
-  = processFilesWith
-    (processModulesWith File.process >=> writeModules (assemblyDir args))
-    args
-
-processFilesWith
-  :: ([Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))] -> VIX a)
-  -> Arguments
-  -> IO (Result a)
-processFilesWith f args = do
-  builtin1File <- getDataFileName "rts/Builtin1.vix"
-  builtin2File <- getDataFileName "rts/Builtin2.vix"
-  let files = builtin1File NonEmpty.<| builtin2File NonEmpty.<| sourceFiles args
-  moduleResults <- forM files $ \sourceFile -> do
+parseFiles
+  :: NonEmpty FilePath
+  -> IO (Result [Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))])
+parseFiles srcFiles = do
+  moduleResults <- forM srcFiles $ \sourceFile -> do
     parseResult <- File.parse sourceFile
     return $ fmap (:[]) $ File.dupCheck =<< parseResult
-  let modulesResult = sconcat moduleResults
-  fmap join $ forM modulesResult $ \modules -> do
-    result <- runVIX (f modules) (target args) (logHandle args) (verbosity args)
-    return $ case result of
-      Left err -> Failure $ pure err
-      Right res -> Success res
+  return $ sconcat moduleResults
 
-processModulesWith
-  :: (Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)) -> VIX [Generate.GeneratedSubmodule])
-  -> [Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))]
-  -> VIX [Module [Generate.GeneratedSubmodule]]
-processModulesWith f (builtins1 : builtins2 : modules) = do
-  builtins <- processBuiltins builtins1 builtins2
-  let builtinModule = Module "Sixten.Builtin" AllExposed mempty builtins
+checkFiles :: Arguments -> IO (Result ())
+checkFiles args = do
+  parseResult <- parseFiles $ sourceFiles args
+  fmap join $ forM parseResult $ \modules -> do
+    let go = do
+          _ <- compileBuiltins -- Done only for the side effects
+          orderedModules <- cycleCheck modules
+          mapM_ (File.frontend $ const $ return []) orderedModules
+    fromEither <$> runVIX go (target args) (logHandle args) (verbosity args)
+
+processFiles :: Arguments -> IO (Result ProcessFilesResult)
+processFiles args = do
+  parseResult <- parseFiles $ sourceFiles args
+  fmap join $ forM parseResult $ \modules -> do
+    let go = do
+          builtins <- compileBuiltins
+          orderedModules <- cycleCheck modules
+          compiledModules <- forM orderedModules $ \modul -> do
+            compiledModule <- File.process modul
+            return $ const compiledModule <$> modul
+          writeModules (assemblyDir args) $ builtins : compiledModules
+    fromEither <$> runVIX go (target args) (logHandle args) (verbosity args)
+
+cycleCheck
+  :: (Functor t, Foldable t, MonadError Error m)
+  => t (Module contents)
+  -> m [Module contents]
+cycleCheck modules = do
   let orderedModules = moduleDependencyOrder modules
-  results <- forM orderedModules $ \moduleGroup -> case moduleGroup of
-    AcyclicSCC modul -> traverse (const $ f modul) modul
+  forM orderedModules $ \moduleGroup -> case moduleGroup of
+    AcyclicSCC modul -> return modul
     CyclicSCC ms -> throwError
       -- TODO: Could be allowed?
       -- TODO: Maybe this should be a different kind of error?
@@ -89,31 +88,39 @@ processModulesWith f (builtins1 : builtins2 : modules) = do
         PP.<+> PP.hsep (PP.punctuate PP.comma $ fromModuleName . moduleName <$> ms))
         Nothing
         mempty
-  return $ builtinModule : results
-processModulesWith _ _ = internalError "processModules"
 
-processBuiltins
-  :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
-  -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
-  -> VIX [Generate.GeneratedSubmodule]
-processBuiltins builtins1 builtins2 = do
-  tgt <- getTarget
-  let context = Builtin.context tgt
-  let builtinDefNames = HashSet.fromMap $ void context
-      builtinConstrNames = HashSet.fromList
-        [ QConstr n c
-        | (n, (DataDefinition d _, _)) <- HashMap.toList context
-        , c <- constrNames d
-        ]
-  addModule "Sixten.Builtin" $ HashSet.map Right builtinDefNames <> HashSet.map Left builtinConstrNames
-  addContext context
-  builtinResults1 <- File.process builtins1
-  let contextList = (\(n, (d, t)) -> (n, d, t)) <$> HashMap.toList context
-  contextResults <- File.backend contextList
-  addConvertedSignatures $ Builtin.convertedSignatures tgt
-  convertedResults <- File.processConvertedGroup $ HashMap.toList $ Builtin.convertedContext tgt
-  builtinResults2 <- File.process builtins2
-  return $ builtinResults1 <> contextResults <> convertedResults <> builtinResults2
+compileBuiltins :: VIX (Module [Generate.GeneratedSubmodule])
+compileBuiltins = do
+  builtin1File <- liftIO $ getDataFileName "rts/Builtin1.vix"
+  builtin2File <- liftIO $ getDataFileName "rts/Builtin2.vix"
+  let files = [builtin1File, builtin2File]
+  moduleResults <- liftIO $ forM files $ \sourceFile -> do
+    parseResult <- File.parse sourceFile
+    return $ File.dupCheck =<< parseResult
+  case sequence moduleResults of
+    Failure es -> internalError
+      $ "Error while processing builtin module:"
+      <> PP.line <> PP.vcat (pretty <$> es)
+    Success [builtins1, builtins2] -> do
+      tgt <- getTarget
+      let context = Builtin.context tgt
+      let builtinDefNames = HashSet.fromMap $ void context
+          builtinConstrNames = HashSet.fromList
+            [ QConstr n c
+            | (n, (DataDefinition d _, _)) <- HashMap.toList context
+            , c <- constrNames d
+            ]
+      addModule "Sixten.Builtin" $ HashSet.map Right builtinDefNames <> HashSet.map Left builtinConstrNames
+      addContext context
+      builtinResults1 <- File.process builtins1
+      let contextList = (\(n, (d, t)) -> (n, d, t)) <$> HashMap.toList context
+      contextResults <- File.backend contextList
+      addConvertedSignatures $ Builtin.convertedSignatures tgt
+      convertedResults <- File.processConvertedGroup $ HashMap.toList $ Builtin.convertedContext tgt
+      builtinResults2 <- File.process builtins2
+      let results = builtinResults1 <> contextResults <> convertedResults <> builtinResults2
+      return $ Module "Sixten.Builtin" AllExposed mempty results
+    Success _ -> internalError "processBuiltins wrong number of builtins"
 
 writeModules
   :: FilePath
