@@ -44,16 +44,17 @@ instance Monoid ProcessFilesResult where
 checkFiles :: Arguments -> IO (Result ())
 checkFiles
   = processFilesWith
-  $ mapM (processModulesWith (File.frontend (const $ return [])))
-    >=> return . void
+  $ processModulesWith (File.frontend (const $ return []))
+    >=> const (return ())
 
 processFiles :: Arguments -> IO (Result ProcessFilesResult)
 processFiles args
-  = processFilesWith (mapM (processModulesWith File.process)
-  >=> mapM (writeModules $ assemblyDir args)) args
+  = processFilesWith
+    (processModulesWith File.process >=> writeModules (assemblyDir args))
+    args
 
 processFilesWith
-  :: (Result [Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))] -> VIX (Result a))
+  :: ([Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))] -> VIX a)
   -> Arguments
   -> IO (Result a)
 processFilesWith f args = do
@@ -64,11 +65,11 @@ processFilesWith f args = do
     parseResult <- File.parse sourceFile
     return $ fmap (:[]) $ File.dupCheck =<< parseResult
   let modulesResult = sconcat moduleResults
-  result <- runVIX (f modulesResult) (target args) (logHandle args) (verbosity args)
-  return $ case result of
-    Left err -> Failure $ pure err
-    Right (Failure errs) -> Failure errs
-    Right (Success res) -> Success res
+  fmap join $ forM modulesResult $ \modules -> do
+    result <- runVIX (f modules) (target args) (logHandle args) (verbosity args)
+    return $ case result of
+      Left err -> Failure $ pure err
+      Right res -> Success res
 
 processModulesWith
   :: (Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)) -> VIX [Generate.GeneratedSubmodule])

@@ -44,9 +44,6 @@ import qualified Syntax.Sized.SLambda as SLambda
 import Util
 import VIX
 
--- TODO: Clean this up
-type DependencySigs = HashMap QName Text
-
 process
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [Generate.GeneratedSubmodule]

@@ -43,9 +43,8 @@ optionsParser = Options
 
 check
   :: Options
-  -> ([Error] -> IO ())
   -> IO ()
-check opts onError = withLogHandle (logFile opts) $ \logHandle -> do
+check opts = withLogHandle (logFile opts) $ \logHandle -> do
   procResult <- Processor.checkFiles Processor.Arguments
         { Processor.sourceFiles = inputFiles opts
         , Processor.assemblyDir = ""
@@ -54,13 +53,11 @@ check opts onError = withLogHandle (logFile opts) $ \logHandle -> do
         , Processor.verbosity = verbosity opts
         }
   case procResult of
-    Processor.Failure errs -> onError errs
+    Processor.Failure errs -> mapM_ printError errs
     Processor.Success _ -> Text.putStrLn "Type checking completed successfully"
   where
     withLogHandle Nothing k = k stdout
     withLogHandle (Just file) k = Util.withFile file WriteMode k
 
 command :: ParserInfo (IO ())
-command = go <$> optionsParserInfo
-  where
-    go opts = check opts (mapM_ printError)
+command = check <$> optionsParserInfo
