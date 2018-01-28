@@ -13,6 +13,7 @@ import qualified Data.Text.IO as Text
 import Options.Applicative
 import System.IO
 import Util
+import Data.Foldable
 
 import qualified Backend.Target as Target
 import Command.Check.Options
@@ -71,13 +72,18 @@ fileContents lf uri = do
         Nothing -> return "Command.LanguageServer.fileContents: file missing"
 
 hover :: TextDocumentPositionParams ~> Hover
-hover lf (TextDocumentPositionParams (TextDocumentIdentifier uri) (Position line char)) = do
+hover lf (TextDocumentPositionParams (TextDocumentIdentifier uri) p@(Position line char)) = do
+  sendNotification lf "Hovering!"
+  sendNotification lf (show uri)
+  sendNotification lf (show p)
   contents <- fileContents lf uri
   let Uri uri_text = uri
   let uri_str = T.unpack uri_text
   res <- Processor.vfsCheck (pure (uri_str, contents)) (ProbePos uri_str line char)
+  sendNotification lf (show res)
   return $ Just Hover {
-    _contents=LSP.List [ LSP.PlainString msg | (_probe_pos,msg) <- traverse res ],
+    _contents=LSP.List [ LSP.PlainString msg | (_probe_pos,msg) <- fold res ],
+    -- _contents=LSP.List [ LSP.PlainString (T.pack (show (uri,p,res))) ],
     _range=Nothing
   }
 
