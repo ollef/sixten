@@ -50,6 +50,8 @@ checkPoly expr typ = do
   return res
 
 checkPoly' :: ConcreteM -> Polytype -> Infer AbstractM
+checkPoly' (Concrete.SourceLoc loc e) polyType
+  = located loc $ checkPoly' e polyType
 checkPoly' expr@(Concrete.Lam Implicit _ _) polyType
   = checkRho expr polyType
 checkPoly' expr polyType = do
