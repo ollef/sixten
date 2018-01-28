@@ -1,7 +1,7 @@
 name:                sixten
 version:             0.1.0.0
--- synopsis:            
--- description:         
+-- synopsis:
+-- description:
 license:             BSD3
 license-file:        LICENSE
 author:              Olle Fredriksson
@@ -9,7 +9,7 @@ maintainer:          fredriksson.olle@gmail.com
 copyright:           (c) 2014-2018 Olle Fredriksson
 category:            Language
 build-type:          Simple
--- extra-source-files:  
+-- extra-source-files:
 cabal-version:       >=1.10
 data-files:
                      rts/forwarddecls.ll
@@ -49,6 +49,7 @@ executable sixten
                        Command.Check.Options
                        Command.Compile
                        Command.Compile.Options
+                       Command.LanguageServer
                        Command.Run
                        Command.Test
                        Elaboration.Constraint
@@ -120,14 +121,17 @@ executable sixten
                        Util.Tsil
                        VIX
   build-depends:
+                       aeson,
                        base >=4.8 && <4.12,
                        bound,
                        bytestring,
                        containers,
+                       data-default,
                        deriving-compat,
                        directory,
                        filepath,
                        hashable,
+                       haskell-lsp,
                        lifted-base,
                        llvm-hs-pretty,
                        llvm-hs-pure,
@@ -143,13 +147,15 @@ executable sixten
                        process,
                        protolude,
                        split,
+                       stm,
                        temporary,
                        text,
                        transformers,
                        transformers-base,
                        unordered-containers,
                        vector,
-                       void
+                       void,
+                       yi-rope
   hs-source-dirs:      src
   default-language:    Haskell2010
 
