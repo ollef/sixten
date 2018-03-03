@@ -48,12 +48,10 @@ whnf'
   => WhnfArgs m
   -> AbstractM
   -> m AbstractM
-whnf' args expr = do
-  modifyIndent succ
+whnf' args expr = indentLog $ do
   logMeta 40 "whnf e" expr
   res <- uncurry go $ appsView expr
   logMeta 40 "whnf res" res
-  modifyIndent pred
   return res
   where
     go f [] = whnfInner args f
@@ -118,8 +116,7 @@ normalise
   -> m AbstractM
 normalise expr = do
   logMeta 40 "normalise e" expr
-  modifyIndent succ
-  res <- case expr of
+  res <- indentLog $ case expr of
     Var v -> refineVar v normalise
     Global g -> do
       (d, _) <- definition g
@@ -170,7 +167,6 @@ normalise expr = do
           <*> normalise retType'
         _ -> return res
     ExternCode c retType -> ExternCode <$> mapM normalise c <*> normalise retType
-  modifyIndent pred
   logMeta 40 "normalise res" res
   return res
   where

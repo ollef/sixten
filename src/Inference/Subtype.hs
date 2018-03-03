@@ -57,12 +57,10 @@ subtype :: Polytype -> Polytype -> Infer (AbstractM -> Infer AbstractM)
 subtype typ1 typ2 = do
   logMeta 30 "subtype t1" typ1
   logMeta 30 "        t2" typ2
-  modifyIndent succ
-  typ1' <- whnf typ1
-  typ2' <- whnf typ2
-  res <- subtype' typ1' typ2'
-  modifyIndent pred
-  return res
+  indentLog $ do
+    typ1' <- whnf typ1
+    typ2' <- whnf typ2
+    subtype' typ1' typ2'
 
 subtype' :: Polytype -> Polytype -> Infer (AbstractM -> Infer AbstractM)
 subtype' (Pi h1 p1 argType1 retScope1) (Pi h2 p2 argType2 retScope2)
@@ -86,12 +84,10 @@ subtypeRho :: Polytype -> Rhotype -> InstUntil -> Infer (AbstractM -> Infer Abst
 subtypeRho typ1 typ2 instUntil = do
   logMeta 30 "subtypeRho t1" typ1
   logMeta 30 "           t2" typ2
-  modifyIndent succ
-  typ1' <- whnf typ1
-  typ2' <- whnf typ2
-  res <- subtypeRho' typ1' typ2' instUntil
-  modifyIndent pred
-  return res
+  indentLog $ do
+    typ1' <- whnf typ1
+    typ2' <- whnf typ2
+    subtypeRho' typ1' typ2' instUntil
 
 subtypeRho' :: Polytype -> Rhotype -> InstUntil -> Infer (AbstractM -> Infer AbstractM)
 subtypeRho' typ1 typ2 _ | typ1 == typ2 = return pure

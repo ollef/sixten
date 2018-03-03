@@ -126,8 +126,12 @@ log l = do
 logVerbose :: (MonadIO m, MonadVIX m) => Int -> Text -> m ()
 logVerbose v l = whenVerbose v $ VIX.log l
 
-modifyIndent :: (MonadIO m, MonadVIX m) => (Int -> Int) -> m ()
-modifyIndent f = liftVIX $ modify $ \s -> s {vixIndent = f $ vixIndent s}
+indentLog :: MonadVIX m => m a -> m a
+indentLog m = do
+  liftVIX $ modify $ \s -> s { vixIndent = vixIndent s + 1 }
+  res <- m
+  liftVIX $ modify $ \s -> s { vixIndent = vixIndent s - 1 }
+  return res
 
 logPretty :: (MonadIO m, MonadVIX m, Pretty a) => Int -> String -> a -> m ()
 logPretty v s x = whenVerbose v $ do

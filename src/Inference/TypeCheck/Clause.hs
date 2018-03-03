@@ -27,11 +27,9 @@ checkClauses
   :: NonEmpty (Concrete.Clause Void Concrete.Expr MetaA)
   -> Polytype
   -> Infer AbstractM
-checkClauses clauses polyType = do
+checkClauses clauses polyType = indentLog $ do
   forM_ clauses $ logMeta 20 "checkClauses clause"
   logMeta 20 "checkClauses typ" polyType
-
-  modifyIndent succ
 
   (rhoType, f) <- skolemise polyType $ minimum $ instUntilClause <$> clauses
 
@@ -47,7 +45,6 @@ checkClauses clauses polyType = do
 
   res <- checkClausesRho equalisedClauses rhoType
 
-  modifyIndent pred
   l <- level
   logMeta 20 ("checkClauses res " <> show l) res
 
@@ -82,9 +79,7 @@ checkClausesRho clauses rhoType = do
           Concrete.Clause ppats _ = NonEmpty.head clauses
   (argTele, returnTypeScope, fs) <- funSubtypes rhoType ps
 
-  modifyIndent succ
-
-  clauses' <- forM clauses $ \clause -> do
+  clauses' <- indentLog $ forM clauses $ \clause -> do
     let pats = Concrete.clausePatterns' clause
         bodyScope = Concrete.clauseScope' clause
     (pats', patVars) <- tcPats pats mempty argTele
@@ -93,8 +88,6 @@ checkClausesRho clauses rhoType = do
         returnType = instantiateTele id argExprs returnTypeScope
     body' <- checkRho body returnType
     return (fst3 <$> pats', body')
-
-  modifyIndent pred
 
   forM_ clauses' $ \(pats, body) -> do
     forM_ pats $ logMeta 20 "checkClausesRho clause pat" <=< bitraverse showMeta pure

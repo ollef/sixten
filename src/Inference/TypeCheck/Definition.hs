@@ -104,14 +104,12 @@ generaliseDefs
       )
     , MetaA -> MetaA
     )
-generaliseDefs mode defs = do
+generaliseDefs mode defs = indentLog $ do
   -- After type-checking we may actually be in a situation where a dependency
   -- we thought existed doesn't actually exist because of class instances being
   -- resolved (unresolved class instances are assumed to depend on all
   -- instances), so we can't be sure that we have a single cycle. Therefore we
   -- separately compute dependencies for each definition.
-  modifyIndent succ
-
   let vars = (\(v, _, _) -> v) <$> defs
 
   defFreeVars <- case mode of
@@ -176,8 +174,6 @@ generaliseDefs mode defs = do
     d' <- boundM (return . pure . newVarSub) d
     t' <- bindM (return . pure . newVarSub) t
     return (v, d', t')
-
-  modifyIndent pred
 
   return (newVarDefs, newVarSub)
   where
@@ -276,19 +272,15 @@ checkAndElabDefs
       , AbstractM
       )
     )
-checkAndElabDefs defs = do
+checkAndElabDefs defs = indentLog $ do
   forM_ defs $ \(evar, (_, def)) ->
     logMeta 20 ("checkAndElabDefs " ++ show (pretty $ fromNameHint "" id $ metaHint evar)) def
-
-  modifyIndent succ
 
   checkedDefs <- forM defs $ \(evar, (loc, def)) -> do
     (def', typ'') <- checkTopLevelDefType evar def loc $ metaType evar
     return (loc, (evar, def', typ''))
 
   elabDefs <- elabRecursiveDefs $ snd <$> checkedDefs
-
-  modifyIndent pred
 
   forM_ elabDefs $ \(evar, def, typ) -> do
     logMeta 20 ("checkAndElabDefs res " ++ show (pretty $ fromNameHint "" id $ metaHint evar)) def

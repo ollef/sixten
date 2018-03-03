@@ -125,8 +125,7 @@ elabExpr
   -> Infer AbstractM
 elabExpr mkConstraint expr = do
   logMeta 40 "elabExpr expr" expr
-  modifyIndent succ
-  result <- case expr of
+  result <- indentLog $ case expr of
     Builtin.UnsolvedConstraint typ -> do
       mresult <- elabUnsolvedConstraint mkConstraint typ
       case mresult of
@@ -142,7 +141,6 @@ elabExpr mkConstraint expr = do
     Let ds scope -> elabLet mkConstraint ds scope
     Case e brs t -> Case <$> go e <*> elabBranches mkConstraint brs <*> go t
     ExternCode ext t -> ExternCode <$> mapM go ext <*> go t
-  modifyIndent pred
   logMeta 40 "elabExpr result" result
   return result
   where

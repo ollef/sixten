@@ -43,9 +43,7 @@ checkPoly :: ConcreteM -> Polytype -> Infer AbstractM
 checkPoly expr typ = do
   logMeta 20 "checkPoly expr" expr
   logMeta 20 "checkPoly type" typ
-  modifyIndent succ
-  res <- checkPoly' expr typ
-  modifyIndent pred
+  res <- indentLog $ checkPoly' expr typ
   logMeta 20 "checkPoly res expr" res
   return res
 
@@ -85,9 +83,7 @@ checkRho :: ConcreteM -> Rhotype -> Infer AbstractM
 checkRho expr typ = do
   logMeta 20 "checkRho expr" expr
   logMeta 20 "checkRho type" typ
-  modifyIndent succ
-  res <- checkRho' expr typ
-  modifyIndent pred
+  res <- indentLog $ checkRho' expr typ
   logMeta 20 "checkRho res expr" res
   return res
 
@@ -97,9 +93,7 @@ checkRho' expr ty = tcRho expr (Check ty) (Just ty)
 inferRho :: ConcreteM -> InstUntil -> Maybe Rhotype -> Infer (AbstractM, Rhotype)
 inferRho expr instUntil expectedAppResult = do
   logMeta 20 "inferRho" expr
-  modifyIndent succ
-  (resExpr, resType) <- inferRho' expr instUntil expectedAppResult
-  modifyIndent pred
+  (resExpr, resType) <- indentLog $ inferRho' expr instUntil expectedAppResult
   logMeta 20 "inferRho res expr" resExpr
   logMeta 20 "inferRho res typ" resType
   return (resExpr, resType)

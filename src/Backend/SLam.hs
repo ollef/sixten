@@ -23,8 +23,7 @@ slamSized e = SLambda.Anno <$> slam e <*> (slam =<< whnfExpandingTypeReps =<< ty
 slam :: AbstractM -> VIX LambdaM
 slam expr = do
   logMeta 20 "slam expr" expr
-  modifyIndent succ
-  res <- case expr of
+  res <- indentLog $ case expr of
     Abstract.Var v@MetaVar { metaRef = Exists r } -> do
       sol <- solution r
       case sol of
@@ -79,7 +78,6 @@ slam expr = do
         retType' <- slam =<< whnfExpandingTypeReps retType
         c' <- slamExtern c
         return $ SLambda.Anno (SLambda.ExternCode c') retType'
-  modifyIndent pred
   logMeta 20 "slam res" res
   return res
 
@@ -88,8 +86,7 @@ slamBranches
   -> VIX (Branches () SLambda.Expr MetaA)
 slamBranches (ConBranches cbrs) = do
   logMeta 20 "slamBranches brs" $ ConBranches cbrs
-  modifyIndent succ
-  cbrs' <- forM cbrs $ \(ConBranch c tele brScope) -> do
+  cbrs' <- indentLog $ forM cbrs $ \(ConBranch c tele brScope) -> do
     tele' <- forTeleWithPrefixM tele $ \h p s tele' -> do
       let vs = fst <$> tele'
           abstr = teleAbstraction vs
@@ -104,7 +101,6 @@ slamBranches (ConBranches cbrs) = do
                $ snd <$> tele'
     brScope' <- slam $ instantiateTele pure vs brScope
     return $ ConBranch c tele'' $ abstract abstr brScope'
-  modifyIndent pred
   logMeta 20 "slamBranches res" $ ConBranches cbrs'
   return $ ConBranches cbrs'
 slamBranches (LitBranches lbrs d)

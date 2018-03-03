@@ -81,9 +81,7 @@ tcPat p pat vs expected = do
     shownPat <- bitraverse (showMeta . instantiatePattern pure vs) pure pat
     logPretty 20 "tcPat" shownPat
   logMeta 30 "tcPat vs" vs
-  modifyIndent succ
-  (pat', patExpr, vs') <- tcPat' p pat vs expected
-  modifyIndent pred
+  (pat', patExpr, vs') <- indentLog $ tcPat' p pat vs expected
   logMeta 20 "tcPat res" =<< bitraverse showMeta pure pat'
   logMeta 30 "tcPat vs res" vs'
   return (pat', patExpr, vs')
