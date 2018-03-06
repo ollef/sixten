@@ -1,6 +1,9 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 module Syntax.GlobalBind where
 
-import Bound
+import Syntax.Binds
 import Bound.Var
 import Data.Foldable
 import Data.HashSet(HashSet)
@@ -8,47 +11,25 @@ import qualified Data.HashSet as HashSet
 
 import Syntax.Module
 
-class GlobalBound t where
-  -- | Perform substitution on both variables and globals inside a structure.
-  bound
-    :: GlobalBind e
-    => (v -> e v')
-    -> (QName -> e v')
-    -> t e v
-    -> t e v'
+class (Monad m, Functor f) => BindsGlobal m f | f -> m where
+  -- | Perform substitution on globals inside a structure
+  bind :: (QName -> m a) -> f a -> f a
 
-instance GlobalBound (Scope b) where
-  bound f g (Scope s)
-    = Scope
-    $ bind
-      (unvar (pure . B) $ pure . F . bind f g)
-      (pure . F . g)
-      s
+instance (BindsGlobal m m, BindsGlobal m f) => BindsGlobal m (Scope m b f) where
+  bind f (Scope s) = Scope $ fmap (fmap $ bind f) $ bind (fmap (F . pure) . f) s
 
-class Monad e => GlobalBind e where
-  global :: QName -> e v
-  -- | Perform substitution on both variables and globals.
-  bind
-    :: (v -> e v')
-    -> (QName -> e v')
-    -> e v
-    -> e v'
+-- globals :: (Foldable e, GlobalBind e) => e v -> HashSet QName
+-- globals = fold . bind (pure . const mempty) (pure . HashSet.singleton)
 
-boundJoin :: (GlobalBind f, GlobalBound t) => t f (f a) -> t f a
-boundJoin = bound id global
+-- boundGlobals :: (Foldable (t e), GlobalBind e, GlobalBound t) => t e v -> HashSet QName
+-- boundGlobals = fold . bound (pure . const mempty) (pure . HashSet.singleton)
 
-globals :: (Foldable e, GlobalBind e) => e v -> HashSet QName
-globals = fold . bind (pure . const mempty) (pure . HashSet.singleton)
-
-boundGlobals :: (Foldable (t e), GlobalBind e, GlobalBound t) => t e v -> HashSet QName
-boundGlobals = fold . bound (pure . const mempty) (pure . HashSet.singleton)
-
-traverseGlobals
-  :: (GlobalBound t, GlobalBind e, Traversable (t e), Applicative f)
-  => (QName -> f QName)
-  -> t e a
-  -> f (t e a)
-traverseGlobals f
-  = fmap (bound (unvar pure global) global)
-  . sequenceA
-  . bound (pure . pure . B) (pure . fmap F . f)
+-- traverseGlobals
+--   :: (GlobalBound t, GlobalBind e, Traversable (t e), Applicative f)
+--   => (QName -> f QName)
+--   -> t e a
+--   -> f (t e a)
+-- traverseGlobals f
+--   = fmap (bound (unvar pure global) global)
+--   . sequenceA
+--   . bound (pure . pure . B) (pure . fmap F . f)

@@ -3,17 +3,19 @@
   DeriveFunctor,
   DeriveTraversable,
   FlexibleContexts,
+  FlexibleInstances,
   GADTs,
   GeneralizedNewtypeDeriving,
+  MultiParamTypeClasses,
   OverloadedStrings,
   Rank2Types,
+  StandaloneDeriving,
   TemplateHaskell,
+  UndecidableInstances,
   ViewPatterns
  #-}
 module Syntax.Telescope where
 
-import Bound
-import Bound.Scope
 import Bound.Var
 import Control.Monad.Morph
 import Data.Bifoldable
@@ -32,6 +34,8 @@ import Data.Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
+import Syntax.Binds
+import Syntax.GlobalBind
 import Pretty
 import Syntax.Annotation
 import Syntax.GlobalBind
@@ -46,10 +50,16 @@ unTeleVar :: TeleVar -> Int
 unTeleVar (TeleVar i) = i
 
 newtype Telescope anno expr v = Telescope (Vector (TeleArg anno expr v))
-  deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
+  deriving (Show, Foldable, Functor, Traversable)
 
-data TeleArg anno expr v = TeleArg !NameHint !anno !(Scope TeleVar expr v)
-  deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
+deriving instance (Eq anno, Eq1 expr, Binds expr expr, Eq v) => Eq (Telescope anno expr v)
+deriving instance (Ord anno, Ord1 expr, Binds expr expr, Ord v) => Ord (Telescope anno expr v)
+
+data TeleArg anno expr v = TeleArg !NameHint !anno !(Scope expr TeleVar expr v)
+  deriving (Show, Foldable, Functor, Traversable)
+
+deriving instance (Eq anno, Eq1 expr, Binds expr expr, Eq v) => Eq (TeleArg anno expr v)
+deriving instance (Ord anno, Ord1 expr, Binds expr expr, Ord v) => Ord (TeleArg anno expr v)
 
 unTelescope :: Telescope anno expr v -> Vector (TeleArg anno expr v)
 unTelescope (Telescope xs) = xs
@@ -64,7 +74,7 @@ bimapTelescope
   -> Telescope p (e a) v
   -> Telescope p (e a') v'
 bimapTelescope f g (Telescope xs)
-  = Telescope $ (\(TeleArg h p s) -> TeleArg h p (bimapScope f g s)) <$> xs
+  = Telescope $ (\(TeleArg h p s) -> TeleArg h p (bimapScope' f g s)) <$> xs
 
 bifoldMapTelescope
   :: (Bifoldable e, Monoid m)
@@ -73,7 +83,7 @@ bifoldMapTelescope
   -> Telescope p (e a) v
   -> m
 bifoldMapTelescope f g (Telescope xs)
-  = Foldable.fold $ (\(TeleArg _ _ s) -> bifoldMapScope f g s) <$> xs
+  = Foldable.fold $ (\(TeleArg _ _ s) -> bifoldMapScope' f g s) <$> xs
 
 bitraverseTelescope
   :: (Bitraversable e, Applicative f)
@@ -82,7 +92,7 @@ bitraverseTelescope
   -> Telescope p (e a) v
   -> f (Telescope p (e a') v')
 bitraverseTelescope f g (Telescope xs)
-  = Telescope <$> traverse (\(TeleArg h p s) -> TeleArg h p <$> bitraverseScope f g s) xs
+  = Telescope <$> traverse (\(TeleArg h p s) -> TeleArg h p <$> bitraverseScope' f g s) xs
 
 teleLength :: Telescope a e v -> Int
 teleLength = Vector.length . unTelescope
@@ -105,7 +115,7 @@ takeTele
 takeTele n = Telescope . Vector.take n . unTelescope
 
 instantiatePrefix
-  :: Monad expr
+  :: Binds expr expr
   => Vector (expr v)
   -> Telescope a expr v
   -> Telescope a expr v
@@ -129,7 +139,7 @@ addTeleNames (Telescope t) hs = Telescope $ Vector.imap (\i (TeleArg h a s) -> T
 teleAnnotations :: Telescope a expr v -> Vector a
 teleAnnotations (Telescope t) = (\(TeleArg _ a _) -> a) <$> t
 
-teleTypes :: Telescope a expr v -> Vector (Scope TeleVar expr v)
+teleTypes :: Telescope a expr v -> Vector (Scope expr TeleVar expr v)
 teleTypes (Telescope t) = (\(TeleArg _ _ x) -> x) <$> t
 
 quantify
@@ -139,7 +149,7 @@ quantify
                -> Scope1 expr (Var TeleVar v')
                -> expr (Var TeleVar v'))
   -> Telescope a expr v
-  -> Scope TeleVar expr v'
+  -> Scope expr TeleVar expr v'
   -> expr v'
 quantify pifun (Telescope ps) s =
    unvar err id <$> Vector.ifoldr
@@ -186,40 +196,40 @@ prettyTeleVarTypes ns (Telescope v) = hcat $ map go grouped
 forMTele
   :: Monad m
   => Telescope a expr v
-  -> (NameHint -> a -> Scope TeleVar expr v -> m v')
+  -> (NameHint -> a -> Scope expr TeleVar expr v -> m v')
   -> m (Vector v')
 forMTele (Telescope t) f = forM t $ \(TeleArg h d s) -> f h d s
 
 forTeleWithPrefixM
   :: Monad m
   => Telescope a expr v
-  -> (NameHint -> a -> Scope TeleVar expr v -> Vector v' -> m v')
+  -> (NameHint -> a -> Scope expr TeleVar expr v -> Vector v' -> m v')
   -> m (Vector v')
 forTeleWithPrefixM (Telescope t) f = mapWithPrefixM (\(TeleArg h d s) -> f h d s) t
 
 forTele
   :: Telescope a expr v
-  -> (NameHint -> a -> Scope TeleVar expr v -> v')
+  -> (NameHint -> a -> Scope expr TeleVar expr v -> v')
   -> Vector v'
 forTele (Telescope t) f = (\(TeleArg h d s) -> f h d s) <$> t
 
 iforMTele
   :: Monad m
   => Telescope a expr v
-  -> (Int -> NameHint -> a -> Scope TeleVar expr v -> m v')
+  -> (Int -> NameHint -> a -> Scope expr TeleVar expr v -> m v')
   -> m (Vector v')
 iforMTele (Telescope t) f = flip Vector.imapM t $ \i (TeleArg h d s) -> f i h d s
 
 iforTeleWithPrefixM
   :: Monad m
   => Telescope a expr v
-  -> (Int -> NameHint -> a -> Scope TeleVar expr v -> Vector v' -> m v')
+  -> (Int -> NameHint -> a -> Scope expr TeleVar expr v -> Vector v' -> m v')
   -> m (Vector v')
 iforTeleWithPrefixM (Telescope t) f = mapWithPrefixM (\(i, TeleArg h d s) -> f i h d s) $ Vector.indexed t
 
 iforTele
   :: Telescope a expr v
-  -> (Int -> NameHint -> a -> Scope TeleVar expr v -> v')
+  -> (Int -> NameHint -> a -> Scope expr TeleVar expr v -> v')
   -> Vector v'
 iforTele (Telescope t) f = (\(i, TeleArg h d s) -> f i h d s) <$> Vector.indexed t
 
@@ -227,7 +237,7 @@ instantiateTele
   :: Monad f
   => (v -> f a)
   -> Vector v
-  -> Scope TeleVar f a
+  -> Scope f TeleVar f a
   -> f a
 instantiateTele f vs
   = instantiate (f . fromMaybe (error "instantiateTele") . (vs Vector.!?) . unTeleVar)
@@ -240,7 +250,7 @@ bindingsViewM
   :: (Monad expr, Monad expr')
   => (forall v'. expr' v' -> Maybe (NameHint, a, expr v', Scope1 expr' v'))
   -> expr' v
-  -> Maybe (Telescope a expr v, Scope TeleVar expr' v)
+  -> Maybe (Telescope a expr v, Scope expr TeleVar expr' v)
 bindingsViewM f expr@(f -> Just _) = Just $ bindingsView f expr
 bindingsViewM _ _ = Nothing
 
@@ -249,7 +259,7 @@ bindingsView
   :: (Monad expr, Monad expr')
   => (forall v'. expr' v' -> Maybe (NameHint, a, expr v', Scope1 expr' v'))
   -> expr' v
-  -> (Telescope a expr v, Scope TeleVar expr' v)
+  -> (Telescope a expr v, Scope expr' TeleVar expr' v)
 bindingsView f expr = go 0 $ F <$> expr
   where
     go x (f -> Just (n, p, e, s)) = (Telescope $ pure (TeleArg n p $ toScope e) <> ns, s')
@@ -277,8 +287,8 @@ instance (a ~ Plicitness, v ~ Doc, Eq1 expr, Pretty (expr v), Monad expr)
   => Pretty (Telescope a expr v) where
   prettyM tele = withTeleHints tele $ \ns -> prettyTeleVarTypes ns tele
 
-instance GlobalBound (Telescope a) where
-  bound f g (Telescope tele)
+instance BindsGlobal expr (Telescope a expr) where
+  bind f (Telescope tele)
     = Telescope $ (\(TeleArg h a s) -> TeleArg h a $ bound f g s) <$> tele
 
 instance MFunctor (Telescope a) where

@@ -70,6 +70,7 @@ executable sixten
                        Syntax.Abstract
                        Syntax.Abstract.Pattern
                        Syntax.Annotation
+                       Syntax.Binds
                        Syntax.Branches
                        Syntax.Class
                        Syntax.Concrete.Definition

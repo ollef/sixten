@@ -80,20 +80,20 @@ subst1 v e e' = e' >>= f
     f i | i == v = e
         | otherwise = pure i
 
-bimapScope
-  :: Bifunctor f
-  => (x -> x')
-  -> (y -> y')
-  -> Scope b (f x) y
-  -> Scope b (f x') y'
-bimapScope f g (Scope s) = Scope $ bimap f (fmap (bimap f g)) s
+-- bimapScope
+--   :: Bifunctor f
+--   => (x -> x')
+--   -> (y -> y')
+--   -> Scope b (f x) y
+--   -> Scope b (f x') y'
+-- bimapScope f g (Scope s) = Scope $ bimap f (fmap (bimap f g)) s
 
-bifoldMapScope
-  :: (Bifoldable expr, Monoid m)
-  => (x -> m)
-  -> (y -> m)
-  -> Scope b (expr x) y -> m
-bifoldMapScope f g (Scope s) = bifoldMap f (unvar mempty $ bifoldMap f g) s
+-- bifoldMapScope
+--   :: (Bifoldable expr, Monoid m)
+--   => (x -> m)
+--   -> (y -> m)
+--   -> Scope b (expr x) y -> m
+-- bifoldMapScope f g (Scope s) = bifoldMap f (unvar mempty $ bifoldMap f g) s
 
 fromText :: IsString a => Text -> a
 fromText = fromString . Text.unpack
