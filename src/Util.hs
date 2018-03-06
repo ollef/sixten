@@ -9,8 +9,6 @@ import Control.Monad.Trans.Control
 import Control.Monad.Except
 import Control.Monad.ST
 import Control.Monad.State
-import Data.Bifoldable
-import Data.Bifunctor
 import Data.Bits
 import Data.Foldable
 import Data.Hashable
@@ -32,8 +30,6 @@ import qualified Data.Vector.Generic.Base as BVector
 import qualified Data.Vector.Generic.Mutable as MVector
 import System.IO
 
-type Scope1 = Scope ()
-
 unusedVar :: (Monad f, Traversable f) => f (Var b a) -> Maybe (f a)
 unusedVar = traverse $ unvar (const Nothing) pure
 
@@ -42,9 +38,6 @@ unusedScope = unusedVar . fromScope
 
 abstractNone :: Monad f => f a -> Scope b f a
 abstractNone = Scope . return . F
-
-instantiate1 :: Monad f => f a -> Scope1 f a -> f a
-instantiate1 = Bound.instantiate1
 
 rebind
   :: Monad f
@@ -79,21 +72,6 @@ subst1 v e e' = e' >>= f
   where
     f i | i == v = e
         | otherwise = pure i
-
--- bimapScope
---   :: Bifunctor f
---   => (x -> x')
---   -> (y -> y')
---   -> Scope b (f x) y
---   -> Scope b (f x') y'
--- bimapScope f g (Scope s) = Scope $ bimap f (fmap (bimap f g)) s
-
--- bifoldMapScope
---   :: (Bifoldable expr, Monoid m)
---   => (x -> m)
---   -> (y -> m)
---   -> Scope b (expr x) y -> m
--- bifoldMapScope f g (Scope s) = bifoldMap f (unvar mempty $ bifoldMap f g) s
 
 fromText :: IsString a => Text -> a
 fromText = fromString . Text.unpack

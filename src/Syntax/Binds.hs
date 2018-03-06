@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes #-}
 module Syntax.Binds where
 
 import Bound.Var
@@ -25,8 +26,13 @@ bindsJoin x = x >>>= id
 newtype Scope m b f a = Scope { unscope :: f (Var b (m a)) }
   deriving (Functor, Foldable, Traversable)
 
+type Scope1 m = Scope m ()
+
 instantiate :: Binds m f => (b -> m a) -> Scope m b f a -> f a
 instantiate f (Scope s) = s >>>= unvar f id
+
+instantiate1 :: Binds m f => m a -> Scope1 m f a -> f a
+instantiate1 x s = instantiate (\_ -> x) s
 
 abstract :: (Applicative m, Functor f) => (a -> Maybe b) -> f a -> Scope m b f a
 abstract f m = Scope $ go <$> m
@@ -40,6 +46,12 @@ fromScope (Scope s) = s >>>= unvar (pure . B) (fmap F)
 
 toScope :: Binds m f => f (Var b a) -> Scope m b f a
 toScope f = Scope $ fmap pure <$> f
+
+transverseScope
+  :: (Applicative f, Monad f, Traversable g)
+  => (forall r. g r -> f (h r))
+  -> Scope m b g a -> f (Scope m b h a)
+transverseScope f (Scope s) = Scope <$> _ s
 
 bimapScope
   :: (Bifunctor t, Functor m)

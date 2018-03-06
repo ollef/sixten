@@ -143,10 +143,10 @@ teleTypes :: Telescope a expr v -> Vector (Scope expr TeleVar expr v)
 teleTypes (Telescope t) = (\(TeleArg _ _ x) -> x) <$> t
 
 quantify
-  :: Monad expr
+  :: Binds expr expr
   => (NameHint -> a
                -> expr (Var TeleVar v)
-               -> Scope1 expr (Var TeleVar v')
+               -> Scope1 expr expr (Var TeleVar v')
                -> expr (Var TeleVar v'))
   -> Telescope a expr v
   -> Scope expr TeleVar expr v'
@@ -178,7 +178,7 @@ prettyTeleVars ns t = hsep
   ]
 
 prettyTeleVarTypes
-  :: (Eq1 expr, Pretty (expr Doc), Monad expr, PrettyAnnotation a)
+  :: (Eq1 expr, Pretty (expr Doc), Binds expr expr, PrettyAnnotation a)
   => Vector Name
   -> Telescope a expr Doc
   -> PrettyM Doc
@@ -234,7 +234,7 @@ iforTele
 iforTele (Telescope t) f = (\(i, TeleArg h d s) -> f i h d s) <$> Vector.indexed t
 
 instantiateTele
-  :: Monad f
+  :: Binds f f
   => (v -> f a)
   -> Vector v
   -> Scope f TeleVar f a
@@ -247,35 +247,35 @@ teleAbstraction vs = fmap TeleVar . hashedElemIndex vs
 
 -- | View consecutive bindings at the same time
 bindingsViewM
-  :: (Monad expr, Monad expr')
-  => (forall v'. expr' v' -> Maybe (NameHint, a, expr v', Scope1 expr' v'))
+  :: (Binds expr expr, Binds expr' expr')
+  => (forall v'. expr' v' -> Maybe (NameHint, a, expr v', Scope1 expr' expr' v'))
   -> expr' v
-  -> Maybe (Telescope a expr v, Scope expr TeleVar expr' v)
+  -> Maybe (Telescope a expr v, Scope expr' TeleVar expr' v)
 bindingsViewM f expr@(f -> Just _) = Just $ bindingsView f expr
 bindingsViewM _ _ = Nothing
 
 -- | View consecutive bindings at the same time
 bindingsView
-  :: (Monad expr, Monad expr')
-  => (forall v'. expr' v' -> Maybe (NameHint, a, expr v', Scope1 expr' v'))
+  :: (Binds expr expr, Binds expr' expr')
+  => (forall v'. expr' v' -> Maybe (NameHint, a, expr v', Scope1 expr' expr' v'))
   -> expr' v
   -> (Telescope a expr v, Scope expr' TeleVar expr' v)
 bindingsView f expr = go 0 $ F <$> expr
   where
     go x (f -> Just (n, p, e, s)) = (Telescope $ pure (TeleArg n p $ toScope e) <> ns, s')
       where
-        (Telescope ns, s') = (go $! x + 1) $ Util.instantiate1 (return $ B x) s
+        (Telescope ns, s') = (go $! x + 1) $ instantiate1 (return $ B x) s
     go _ e = (Telescope mempty, toScope e)
 
 transverseTelescope
-  :: (Monad f, Traversable expr)
+  :: (Applicative f, Binds expr expr)
   => (forall r. expr r -> f (expr' r))
   -> Telescope a expr v
   -> f (Telescope a expr' v)
 transverseTelescope f (Telescope xs) = Telescope <$> traverse (transverseTeleArg f) xs
 
 transverseTeleArg
-  :: (Monad f, Traversable expr)
+  :: (Applicative f, Binds expr expr)
   => (forall r. expr r -> f (expr' r))
   -> TeleArg a expr v
   -> f (TeleArg a expr' v)
