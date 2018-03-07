@@ -88,6 +88,7 @@ executable sixten
                        Syntax.Name
                        Syntax.NameHint
                        Syntax.Pattern
+                       Syntax.Sized.Anno
                        Syntax.Sized.Definition
                        Syntax.Sized.Extracted
                        Syntax.Sized.Lifted

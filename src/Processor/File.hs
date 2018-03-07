@@ -37,6 +37,7 @@ import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
 import qualified Syntax.Concrete.Unscoped as Unscoped
+import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Extracted as Extracted
 import qualified Syntax.Sized.Lifted as Lifted
@@ -232,19 +233,19 @@ addGroupToContext defs = do
 
 slamGroup
   :: [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
-  -> VIX [(QName, SLambda.Expr Void)]
+  -> VIX [(QName, Anno SLambda.Expr Void)]
 slamGroup defs = forM defs $ \(x, d, _t) -> do
   d' <- SLam.slamDef $ vacuous d
   d'' <- traverse (internalError . ("slamGroup" PP.<+>) . shower) d'
   return (x, d'')
 
 denatGroup
-  :: [(QName, SLambda.Expr Void)]
-  -> VIX [(QName, SLambda.Expr Void)]
-denatGroup defs = return [(n, denat def) | (n, def) <- defs]
+  :: [(QName, Anno SLambda.Expr Void)]
+  -> VIX [(QName, Anno SLambda.Expr Void)]
+denatGroup defs = return [(n, denatAnno def) | (n, def) <- defs]
 
 liftGroup
-  :: [(QName, SLambda.Expr Void)]
+  :: [(QName, Anno SLambda.Expr Void)]
   -> VIX [[(QName, Sized.Definition Lifted.Expr Void)]]
 liftGroup defs = fmap (Sized.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
   (e', fs) <- liftToDefinition name e

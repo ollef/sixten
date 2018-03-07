@@ -14,6 +14,7 @@ import Data.Void
 
 import Backend.Target
 import Syntax
+import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Extracted as Extracted
 import qualified Syntax.Sized.Lifted as Lifted
@@ -92,37 +93,38 @@ emitCallback name fun = modify $ \s -> s { extractedCallbacks = Snoc (extractedC
 type FV = FreeVar Extracted.Expr
 
 extractExpr
-  :: Maybe (Extracted.Type FV)
-  -> Lifted.Expr FV
+  :: Lifted.Expr FV
   -> Extract (Extracted.Expr FV)
-extractExpr mtype expr = case expr of
+extractExpr expr = case expr of
   Lifted.Var v -> return $ Extracted.Var v
   Lifted.Global g -> return $ Extracted.Global g
   Lifted.Lit l -> return $ Extracted.Lit l
-  Lifted.Con c es -> Extracted.Con c <$> mapM (extractExpr Nothing) es
-  Lifted.Call e es -> Extracted.Call <$> extractExpr Nothing e <*> mapM (extractExpr Nothing) es
+  Lifted.Con c es -> Extracted.Con c <$> mapM extractAnnoExpr es
+  Lifted.Call e es -> Extracted.Call <$> extractExpr e <*> mapM extractAnnoExpr es
   Lifted.PrimCall retDir e es -> Extracted.PrimCall Nothing retDir
-    <$> extractExpr Nothing e
-    <*> traverse (traverse (extractExpr Nothing)) es
-  Lifted.Let h e t s -> do
-    e' <- extractExpr Nothing e
-    t' <- extractExpr Nothing t
-    v <- freeVar h t'
+    <$> extractExpr e
+    <*> traverse (traverse extractAnnoExpr) es
+  Lifted.Let h e s -> do
+    e' <- extractAnnoExpr e
+    v <- freeVar h $ typeAnno e'
     let body = instantiate1 (pure v) s
-    body' <- extractExpr mtype body
+    body' <- extractExpr body
     let s' = abstract1 v body'
     return $ Extracted.Let h e' s'
-  Lifted.Case e brs -> Extracted.Case <$> extractExpr Nothing e <*> extractBranches mtype brs
-  Lifted.ExternCode f -> case mtype of
-    Nothing -> error "extractExpr Nothing"
-    Just typ -> extractExtern typ =<< mapM (extractExpr Nothing) f
-  Lifted.Anno e t -> do
-    t' <- extractExpr Nothing t
-    Extracted.Anno <$> extractExpr (Just t') e <*> pure t'
+  Lifted.Case e brs -> Extracted.Case <$> extractAnnoExpr e <*> extractBranches brs
+  Lifted.ExternCode f typ -> do
+    typ' <- extractExpr typ
+    f' <- mapM extractAnnoExpr f
+    extractExtern typ' f'
+
+extractAnnoExpr
+  :: Anno Lifted.Expr FV
+  -> Extract (Anno Extracted.Expr FV)
+extractAnnoExpr (Anno e t) = Anno <$> extractExpr e <*> extractExpr t
 
 extractExtern
   :: Extracted.Type FV
-  -> Extern (Extracted.Expr FV)
+  -> Extern (Anno Extracted.Expr FV)
   -> Extract (Extracted.Expr FV)
 extractExtern retType (Extern C parts) = do
   tgt <- gets target
@@ -143,10 +145,9 @@ extractExtern retType (Extern C parts) = do
 
   renderedParts <- forM parts $ \part -> case part of
     ExternPart str -> return str
-    TypeMacroPart typ -> return $ externType $ typeDirection typ
-    ExprMacroPart (Extracted.Var v) -> return $ argNamesMap HashMap.! v
-    ExprMacroPart (Extracted.Anno (Extracted.Var v) _) -> return $ argNamesMap HashMap.! v
-    ExprMacroPart expr@(Extracted.Anno _ callbackRetType) -> do
+    TypeMacroPart (Anno typ _) -> return $ externType $ typeDirection typ
+    ExprMacroPart (Anno (Extracted.Var v) _) -> return $ argNamesMap HashMap.! v
+    ExprMacroPart expr@(Anno _ callbackRetType) -> do
       let callbackFreeVars = toHashSet expr
           callbackParams = toVector $ acyclic <$> topoSortWith id varType callbackFreeVars
       callbackName <- freshName
@@ -155,19 +156,18 @@ extractExtern retType (Extern C parts) = do
           paramsTele = ensureVoid <$> varTelescope ((,) () <$> callbackParams)
           function = Sized.Function paramsTele
             $ ensureVoid
-            <$> abstract (teleAbstraction callbackParams) expr
+            <$> abstractAnno (teleAbstraction callbackParams) expr
       emitCallback callbackName function
       let callbackArgs = (typedArgsMap HashMap.!) <$> toList callbackFreeVars
           callbackArgNames = fst3 <$> callbackArgs
           callbackArgDirs = toVector $ thd3 <$> callbackArgs
-      forwardDeclare callbackName callbackRetType $ callbackArgDirs
+      forwardDeclare callbackName callbackRetType callbackArgDirs
 
       return
         $ fromName (mangle callbackName)
         <> "("
         <> Text.intercalate ", " callbackArgNames
         <> ")"
-    ExprMacroPart _ -> error "ExtractExtern expr without anno"
     TargetMacroPart PointerAlignment -> return $ shower $ ptrAlign tgt
 
   name <- mangle <$> freshName
@@ -178,7 +178,7 @@ extractExtern retType (Extern C parts) = do
         ReturnDirect rep -> (externType (Direct rep), mempty)
         ReturnIndirect Projection -> ("uint8_t*", mempty)
         ReturnIndirect OutParam -> ("void", [externType retDir <> " return_"])
-      args = toVector [(dir, pure var) | (var, (_, _, dir)) <- typedArgs]
+      args = toVector [(dir, Anno (pure var) (varType var)) | (var, (_, _, dir)) <- typedArgs]
       argDirs = fst <$> args
   emitDecl $ Extracted.Declaration name retDir' argDirs
   emitCode
@@ -238,25 +238,24 @@ externType (Direct rep) = "uint" <> shower (8 * TypeRep.size rep) <> "_t"
 externType Indirect = "uint8_t*"
 
 extractBranches
-  :: Maybe (Extracted.Type FV)
-  -> Branches () Lifted.Expr FV
+  :: Branches () Lifted.Expr FV
   -> Extract (Branches () Extracted.Expr FV)
-extractBranches mtype (ConBranches cbrs) = fmap ConBranches $
+extractBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(ConBranch qc tele brScope) -> do
     vs <- forTeleWithPrefixM tele $ \h () s vs -> do
       let e = instantiateTele pure vs s
-      e' <- extractExpr Nothing e
+      e' <- extractExpr e
       freeVar h e'
     let brExpr = instantiateTele pure vs brScope
         abstr = teleAbstraction vs
         tele'' = Telescope $ (\v -> TeleArg (varHint v) () $ abstract abstr $ varType v) <$> vs
-    brExpr' <- extractExpr mtype brExpr
+    brExpr' <- extractExpr brExpr
     let brScope' = abstract abstr brExpr'
     return $ ConBranch qc tele'' brScope'
-extractBranches mtype (LitBranches lbrs def) = LitBranches <$> sequence
-  [ LitBranch l <$> extractExpr mtype e
+extractBranches (LitBranches lbrs def) = LitBranches <$> sequence
+  [ LitBranch l <$> extractExpr e
   | LitBranch l e <- lbrs
-  ] <*> extractExpr mtype def
+  ] <*> extractExpr def
 
 extractDef
   :: Target
@@ -268,16 +267,16 @@ extractDef tgt qname@(QName mname name) def = fmap flatten $ runExtract names tg
     fmap (Sized.FunctionDef vis cl . fmap noFV) $ do
       vs <- forTeleWithPrefixM (vacuous tele) $ \h () s vs -> do
         let e = instantiateTele pure vs s
-        e' <- extractExpr Nothing e
+        e' <- extractExpr e
         freeVar h e'
-      let expr = instantiateTele pure vs $ vacuous scope
+      let expr = instantiateAnnoTele pure vs $ vacuous scope
           abstr = teleAbstraction vs
           tele'' = Telescope $ (\v -> TeleArg (varHint v) () $ abstract abstr $ varType v) <$> vs
-      expr' <- extractExpr Nothing expr
-      let scope' = abstract abstr expr'
+      expr' <- extractAnnoExpr expr
+      let scope' = abstractAnno abstr expr'
       return $ Sized.Function tele'' scope'
   Sized.ConstantDef vis (Sized.Constant e) -> Sized.ConstantDef vis . fmap noFV
-    <$> (Sized.Constant <$> extractExpr Nothing (vacuous e))
+    <$> (Sized.Constant <$> extractAnnoExpr (vacuous e))
   Sized.AliasDef -> return Sized.AliasDef
   where
     flatten (cbs, def')

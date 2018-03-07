@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, OverloadedStrings #-}
 module Syntax.Sized.Definition where
 
-import Bound
 import Control.Monad.Morph
 import Data.Monoid
 import Data.Void
@@ -11,15 +10,16 @@ import Syntax.Annotation
 import Syntax.GlobalBind
 import Syntax.Module
 import Syntax.Name
+import Syntax.Sized.Anno
 import Syntax.Telescope
 import Util.TopoSort
 
 data Function expr v
-  = Function (Telescope () expr v) (Scope TeleVar expr v)
+  = Function (Telescope () expr v) (AnnoScope TeleVar expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 newtype Constant expr v
-  = Constant (expr v)
+  = Constant (Anno expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 data IsClosure
@@ -44,7 +44,7 @@ dependencyOrder = fmap flattenSCC . topoSortWith fst (bound absurd pure . snd)
 -------------------------------------------------------------------------------
 -- Instances
 instance MFunctor Constant where
-  hoist f (Constant e) = Constant (f e)
+  hoist f (Constant e) = Constant (hoist f e)
 
 instance MFunctor Function where
   hoist f (Function tele s) = Function (hoist f tele) (hoist f s)
@@ -55,7 +55,7 @@ instance MFunctor Definition where
   hoist _ AliasDef = AliasDef
 
 instance GlobalBound Constant where
-  bound f g (Constant expr) = Constant $ bind f g expr
+  bound f g (Constant expr) = Constant $ bound f g expr
 
 instance GlobalBound Function where
   bound f g (Function args s) = Function (bound f g args) $ bound f g s
@@ -69,7 +69,7 @@ instance (v ~ Doc, Pretty (expr v), Monad expr) => Pretty (Function expr v) wher
   prettyM (Function vs s) = parens `above` absPrec $
     withNameHints (teleNames vs) $ \ns ->
       "\\" <> prettyTeleVars ns vs <> "." <+>
-      associate absPrec (prettyM $ instantiateTele (pure . fromName) ns s)
+      associate absPrec (prettyM $ instantiateAnnoTele (pure . fromName) ns s)
 
 instance PrettyAnnotation IsClosure where
   prettyAnnotation IsClosure = prettyTightApp "[]"

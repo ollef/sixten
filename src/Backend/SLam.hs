@@ -13,12 +13,13 @@ import Inference.Normalise
 import Inference.TypeOf
 import Syntax
 import qualified Syntax.Abstract as Abstract
+import Syntax.Sized.Anno
 import qualified Syntax.Sized.SLambda as SLambda
 import Util
 import VIX
 
-slamSized :: AbstractM -> VIX LambdaM
-slamSized e = SLambda.Anno <$> slam e <*> (slam =<< whnfExpandingTypeReps =<< typeOf e)
+slamAnno :: AbstractM -> VIX (Anno SLambda.Expr MetaA)
+slamAnno e = Anno <$> slam e <*> (slam =<< whnfExpandingTypeReps =<< typeOf e)
 
 slam :: AbstractM -> VIX LambdaM
 slam expr = do
@@ -39,9 +40,9 @@ slam expr = do
     Abstract.Lam h p t s -> do
       t' <- whnfExpandingTypeReps t
       v <- forall h p t'
-      e <- slamSized $ instantiate1 (pure v) s
+      e <- slamAnno $ instantiate1 (pure v) s
       rep <- slam t'
-      return $ SLambda.Lam h rep $ abstract1 v e
+      return $ SLambda.Lam h rep $ abstract1Anno v e
     (Abstract.appsView -> (Abstract.Con qc@(QConstr typeName _), es)) -> do
       (_, typeType) <- definition typeName
       n <- constrArity qc
@@ -50,7 +51,7 @@ slam expr = do
         EQ -> do
           let numParams = teleLength $ Abstract.telescope typeType
               es' = drop numParams es
-          SLambda.Con qc <$> mapM slamSized (Vector.fromList $ snd <$> es')
+          SLambda.Con qc <$> mapM slamAnno (Vector.fromList $ snd <$> es')
         LT -> do
           conType <- qconstructor qc
           let Just appliedConType = Abstract.typeApps conType $ snd <$> es
@@ -62,22 +63,22 @@ slam expr = do
             $ Vector.fromList (fmap (pure . pure) <$> es)
             <> iforTele tele (\i _ a _ -> (a, pure $ B $ TeleVar i))
     Abstract.Con _qc -> internalError "slam impossible"
-    Abstract.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamSized e2
-    Abstract.Case e brs _retType -> SLambda.Case <$> slamSized e <*> slamBranches brs
+    Abstract.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamAnno e2
+    Abstract.Case e brs _retType -> SLambda.Case <$> slamAnno e <*> slamBranches brs
     Abstract.Let ds scope -> do
       vs <- forMLet ds $ \h _ t -> forall h Explicit t
       let abstr = letAbstraction vs
       ds' <- fmap LetRec $ forMLet ds $ \h s t -> do
-        e <- slamSized $ instantiateLet pure vs s
+        e <- slam $ instantiateLet pure vs s
         t' <- slam t
         return $ LetBinding h (abstract abstr e) t'
-      body <- slamSized $ instantiateLet pure vs scope
+      body <- slam $ instantiateLet pure vs scope
       let scope' = abstract abstr body
       return $ SLambda.Let ds' scope'
     Abstract.ExternCode c retType -> do
         retType' <- slam =<< whnfExpandingTypeReps retType
         c' <- slamExtern c
-        return $ SLambda.Anno (SLambda.ExternCode c') retType'
+        return $ SLambda.ExternCode c' retType'
   logMeta 20 "slam res" res
   return res
 
@@ -110,16 +111,16 @@ slamBranches (LitBranches lbrs d)
 
 slamExtern
   :: Extern (Abstract.Expr MetaA)
-  -> VIX (Extern (SLambda.Expr MetaA))
+  -> VIX (Extern (Anno SLambda.Expr MetaA))
 slamExtern (Extern lang parts)
   = fmap (Extern lang) $ forM parts $ \part -> case part of
     ExternPart str -> return $ ExternPart str
-    ExprMacroPart e -> ExprMacroPart <$> slamSized e
-    TypeMacroPart t -> TypeMacroPart <$> (slam =<< whnfExpandingTypeReps t)
+    ExprMacroPart e -> ExprMacroPart <$> slamAnno e
+    TypeMacroPart t -> TypeMacroPart <$> (slamAnno =<< whnfExpandingTypeReps t)
     TargetMacroPart m -> return $ TargetMacroPart m
 
 slamDef
   :: Definition Abstract.Expr MetaA
-  -> VIX LambdaM
-slamDef (Definition _ _ e) = slamSized e
-slamDef (DataDefinition _ e) = slamSized e
+  -> VIX (Anno SLambda.Expr MetaA)
+slamDef (Definition _ _ e) = slamAnno e
+slamDef (DataDefinition _ e) = slamAnno e
