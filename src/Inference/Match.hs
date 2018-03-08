@@ -43,9 +43,9 @@ fatBar failVar e e' = case filter (== failVar) $ toList e of
     (Lam mempty Explicit Builtin.UnitType $ abstractNone e')
     (Pi mempty Explicit Builtin.UnitType $ abstractNone $ metaType failVar)
     $ abstract1 failVar
-    $ subst1 failVar (App (pure failVar) Explicit Builtin.MkUnit) e
+    $ substitute failVar (App (pure failVar) Explicit Builtin.MkUnit) e
   where
-    dup = subst1 failVar e' e
+    dup = substitute failVar e' e
 
 matchSingle
   :: AbstractM
@@ -56,7 +56,7 @@ matchSingle
 matchSingle expr pat innerExpr retType = do
   failVar <- forall "fail" Explicit retType
   result <- match failVar retType [expr] [([pat], innerExpr)] innerExpr
-  return $ subst1 failVar (Builtin.Fail retType) result
+  return $ substitute failVar (Builtin.Fail retType) result
 
 matchCase
   :: AbstractM
@@ -66,7 +66,7 @@ matchCase
 matchCase expr pats retType = do
   failVar <- forall "fail" Explicit retType
   result <- match failVar retType [expr] (first pure <$> pats) (pure failVar)
-  return $ subst1 failVar (Builtin.Fail retType) result
+  return $ substitute failVar (Builtin.Fail retType) result
 
 matchClauses
   :: [AbstractM]
@@ -76,7 +76,7 @@ matchClauses
 matchClauses exprs pats retType = do
   failVar <- forall "fail" Explicit retType
   result <- match failVar retType exprs pats (pure failVar)
-  return $ subst1 failVar (Builtin.Fail retType) result
+  return $ substitute failVar (Builtin.Fail retType) result
 
 type Match
   = MetaA -- ^ Failure variable
@@ -202,9 +202,9 @@ matchVar expr failVar retType exprs clauses expr0 = do
     go (VarPat _ y:ps, e) = do
       ps' <- forM ps $ flip bitraverse pure $ \t -> do
         t' <- zonk t
-        return $ subst1 y expr t'
+        return $ substitute y expr t'
       e' <- zonk e
-      return (ps', subst1 y expr e')
+      return (ps', substitute y expr e')
     go _ = error "match var"
 
 matchView :: AbstractM -> NonEmptyMatch

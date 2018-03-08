@@ -74,12 +74,6 @@ toHashSet = foldMap HashSet.singleton
 foldMapM :: (Traversable f, Monoid b, Monad m) => (a -> m b) -> f a -> m b
 foldMapM f = fmap fold . mapM f
 
-subst1 :: (Monad expr, Eq v) => v -> expr v -> expr v -> expr v
-subst1 v e e' = e' >>= f
-  where
-    f i | i == v = e
-        | otherwise = pure i
-
 bimapScope
   :: Bifunctor f
   => (x -> x')
