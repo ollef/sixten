@@ -61,10 +61,8 @@ llvmBinPath = checkLlvmExists trySuffixes
         checkLlvmExists (suffix : xs) =
           handle (\(_ :: IOException) -> checkLlvmExists xs)
           $ readProcess ("llvm-config" ++ suffix) ["--bindir"] ""
-        checkLlvmExists [] = error (
-          (printf ("Couldn't find llvm-config. Currently supported versions are " <>
-                   "%d <= v <= %d.\n You can specify its path using the " <>
-                   "--llvm-config flag.") minLlvmVersion maxLlvmVersion) :: String)
+        checkLlvmExists [] = error
+          "Couldn't find llvm-config. You can specify its path using the --llvm-config flag."
 
 compile :: Options -> Arguments -> IO ()
 compile opts args = do
