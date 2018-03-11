@@ -72,13 +72,14 @@ compile opts args = do
   binPath <- takeWhile (not . isSpace) <$> case Options.llvmConfig opts of
     Nothing -> llvmBinPath
     Just configBin -> do
-      majorVersion <- read . takeWhile (not . (== '.'))
+      majorVersion <- read . takeWhile (/= '.')
         <$> readProcess configBin ["--version"] ""
-      if minLlvmVersion <= majorVersion && majorVersion <= maxLlvmVersion then
-        readProcess configBin ["--bindir"] ""
-      else error (
-          (printf ("LLVM version out of range. Currently supported versions are " <>
-                   "%d <= v <= %d.\n") minLlvmVersion maxLlvmVersion) :: String)
+      when (majorVersion < minLlvmVersion || majorVersion > maxLlvmVersion) $
+        putStrLn $ printf
+          "Warning: LLVM version out of range. Currently supported versions are %d <= v <= %d.\n"
+          minLlvmVersion
+          maxLlvmVersion
+      readProcess configBin ["--bindir"] ""
   let opt = binPath </> "opt"
   let clang = binPath </> "clang"
   let linker = binPath </> "llvm-link"
