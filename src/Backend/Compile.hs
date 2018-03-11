@@ -32,7 +32,7 @@ minLlvmVersion :: Int
 minLlvmVersion = 4
 
 maxLlvmVersion :: Int
-maxLlvmVersion = 5
+maxLlvmVersion = 6
 
 -- See http://blog.llvm.org/2016/12/llvms-new-versioning-scheme.html
 -- Tl;dr: minor versions are fixed to 0, so only different major versions need
