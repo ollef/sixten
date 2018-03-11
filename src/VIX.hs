@@ -26,6 +26,7 @@ import System.IO
 
 import Backend.Target as Target
 import Error
+import Fresh
 import Syntax
 import Syntax.Abstract
 import qualified Syntax.Sized.Lifted as Lifted
@@ -48,7 +49,7 @@ data VIXState = VIXState
   , vixTarget :: Target
   }
 
-class Monad m => MonadVIX m where
+class MonadFresh m => MonadVIX m where
   liftVIX :: State VIXState a -> m a
 
   default liftVIX
@@ -99,11 +100,11 @@ runVIX vix target handle verbosity
   $ evalStateT (unVIX vix)
   $ emptyVIXState target handle verbosity
 
-fresh :: MonadVIX m => m Int
-fresh = liftVIX $ do
-  i <- gets vixFresh
-  modify $ \s -> s {vixFresh = i + 1}
-  return i
+instance MonadFresh VIX where
+  fresh = liftVIX $ do
+    i <- gets vixFresh
+    modify $ \s -> s {vixFresh = i + 1}
+    return i
 
 located :: MonadVIX m => SourceLoc -> m a -> m a
 located loc m = do

@@ -43,6 +43,7 @@ executable sixten
                        Command.Test
                        Error
                        FreeVar
+                       Fresh
                        Frontend.Declassify
                        Frontend.Parse
                        Frontend.ScopeCheck

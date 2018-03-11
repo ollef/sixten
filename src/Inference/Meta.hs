@@ -17,6 +17,7 @@ import Data.String
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
 
+import Fresh
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete

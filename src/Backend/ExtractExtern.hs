@@ -13,6 +13,7 @@ import qualified Data.Vector as Vector
 import Data.Void
 
 import Backend.Target
+import Fresh
 import Syntax
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
@@ -62,7 +63,7 @@ data ExtractState = ExtractState
   }
 
 newtype Extract a = Extract { unExtract :: StateT ExtractState VIX a }
-  deriving (Functor, Applicative, Monad, MonadState ExtractState, MonadVIX, MonadIO)
+  deriving (Functor, Applicative, Monad, MonadState ExtractState, MonadFresh, MonadVIX, MonadIO)
 
 runExtract :: [QName] -> Target -> Extract a -> VIX ([(QName, Sized.Function Extracted.Expr Void)], Extracted.Submodule a)
 runExtract names tgt (Extract m) = do
