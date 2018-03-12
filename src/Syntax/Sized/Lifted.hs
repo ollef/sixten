@@ -54,25 +54,35 @@ deriveOrd ''Expr
 deriveShow1 ''Expr
 deriveShow ''Expr
 
-instance GlobalBind Expr where
-  global = Global
-  bind f g expr = case expr of
-    Var v -> f v
-    Global v -> g v
-    Lit l -> Lit l
-    Con c es -> Con c (bound f g <$> es)
-    Call e es -> Call (bind f g e) (bound f g <$> es)
-    PrimCall retDir e es -> PrimCall retDir (bind f g e) (fmap (bound f g) <$> es)
-    Let h e s -> Let h (bound f g e) (bound f g s)
-    Case e brs -> Case (bound f g e) (bound f g brs)
-    ExternCode c retType -> ExternCode (bound f g <$> c) (bind f g retType)
-
 instance Applicative Expr where
   pure = Var
   (<*>) = ap
 
 instance Monad Expr where
-  expr >>= f = bind f Global expr
+  return = Var
+  expr >>= f = case expr of
+    Var v -> f v
+    Global v -> Global v
+    Lit l -> Lit l
+    Con c es -> Con c ((>>>= f) <$> es)
+    Call e es -> Call (e >>= f) ((>>>= f) <$> es)
+    PrimCall retDir e es -> PrimCall retDir (e >>= f) (fmap (>>>= f) <$> es)
+    Let h e s -> Let h (e >>>= f) (s >>>= f)
+    Case e brs -> Case (e >>>= f) (brs >>>= f)
+    ExternCode c retType -> ExternCode ((>>>= f) <$> c) (retType >>= f)
+
+instance GBind Expr where
+  global = Global
+  gbind f expr = case expr of
+    Var _ -> expr
+    Global v -> f v
+    Lit _ -> expr
+    Con c es -> Con c (gbound f <$> es)
+    Call e es -> Call (gbind f e) (gbound f <$> es)
+    PrimCall retDir e es -> PrimCall retDir (gbind f e) (fmap (gbound f) <$> es)
+    Let h e s -> Let h (gbound f e) (gbound f s)
+    Case e brs -> Case (gbound f e) (gbound f brs)
+    ExternCode c retType -> ExternCode (gbound f <$> c) (gbind f retType)
 
 instance v ~ Doc => Pretty (Expr v) where
   prettyM expr = case expr of

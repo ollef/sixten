@@ -19,8 +19,11 @@ import Util
 newtype ClassDef typ v = ClassDef { classMethods :: [MethodDef (Scope TeleVar typ v)] }
   deriving (Foldable, Functor, Show, Traversable)
 
-instance GlobalBound ClassDef where
-  bound f g (ClassDef cs) = ClassDef $ fmap (bound f g) <$> cs
+instance Bound ClassDef where
+  ClassDef cs >>>= f = ClassDef $ fmap (>>>= f) <$> cs
+
+instance GBound ClassDef where
+  gbound f (ClassDef cs) = ClassDef $ fmap (gbound f) <$> cs
 
 instance MFunctor ClassDef where
   hoist f (ClassDef cs) = ClassDef $ fmap (hoistScope f) <$> cs

@@ -107,20 +107,6 @@ prettyTypedDef name (DataDefinition d e) t = prettyDataDef name (telescope t) d 
 
 -------------------------------------------------------------------------------
 -- Instances
-instance GlobalBind Expr where
-  global = Global
-  bind f g expr = case expr of
-    Var v -> f v
-    Global v -> g v
-    Con c -> Con c
-    Lit l -> Lit l
-    Pi h a t s -> Pi h a (bind f g t) (bound f g s)
-    Lam h a t s -> Lam h a (bind f g t) (bound f g s)
-    App e1 a e2 -> App (bind f g e1) a (bind f g e2)
-    Let ds scope -> Let (bound f g ds) (bound f g scope)
-    Case e brs retType -> Case (bind f g e) (bound f g brs) (bind f g retType)
-    ExternCode c t -> ExternCode (bind f g <$> c) (bind f g t)
-
 deriveEq1 ''Expr
 deriveEq ''Expr
 deriveOrd1 ''Expr
@@ -134,7 +120,31 @@ instance Applicative Expr where
 
 instance Monad Expr where
   return = Var
-  expr >>= f = bind f Global expr
+  expr >>= f = case expr of
+    Var v -> f v
+    Global v -> Global v
+    Con c -> Con c
+    Lit l -> Lit l
+    Pi h a t s -> Pi h a (t >>= f) (s >>>= f)
+    Lam h a t s -> Lam h a (t >>= f) (s >>>= f)
+    App e1 a e2 -> App (e1 >>= f) a (e2 >>= f)
+    Let ds scope -> Let (ds >>>= f) (scope >>>= f)
+    Case e brs retType -> Case (e >>= f) (brs >>>= f) (retType >>= f)
+    ExternCode c t -> ExternCode ((>>= f) <$> c) (t >>= f)
+
+instance GBind Expr where
+  global = Global
+  gbind f expr = case expr of
+    Var _ -> expr
+    Global v -> f v
+    Con _ -> expr
+    Lit _ -> expr
+    Pi h a t s -> Pi h a (gbind f t) (gbound f s)
+    Lam h a t s -> Lam h a (gbind f t) (gbound f s)
+    App e1 a e2 -> App (gbind f e1) a (gbind f e2)
+    Let ds scope -> Let (gbound f ds) (gbound f scope)
+    Case e brs retType -> Case (gbind f e) (gbound f brs) (gbind f retType)
+    ExternCode c t -> ExternCode (gbind f <$> c) (gbind f t)
 
 instance v ~ Doc => Pretty (Expr v) where
   prettyM expr = case expr of

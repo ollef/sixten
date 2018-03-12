@@ -222,7 +222,7 @@ checkRecursiveDefs forceGeneralisation defs = do
       (genNoSigResult, noSigSub) <- generaliseDefs GeneraliseAll noSigResult
 
       subbedSigDefs <- forM sigDefs' $ \(v, (loc, def)) -> do
-        let def' = bound (pure . noSigSub) global def
+        let def' = def >>>= pure . noSigSub
         return (v, (loc, def'))
 
       sigResult <- checkAndElabDefs subbedSigDefs
@@ -335,7 +335,7 @@ checkTopLevelRecursiveDefs defs = do
             $ evars Vector.!? index
 
     let exposedDefs = flip fmap defs $ \(_, loc, def, mtyp) ->
-          (loc, bound absurd expose def, bind absurd expose <$> mtyp)
+          (loc, gbound expose $ vacuous def, gbind expose . vacuous <$> mtyp)
 
     checkRecursiveDefs True (Vector.zip evars exposedDefs)
 

@@ -131,9 +131,13 @@ instance (Eq1 expr, v ~ Doc, Pretty (expr v), Monad expr)
   => Pretty (LetRec expr v) where
   prettyM letRec = withLetHints letRec $ \ns -> prettyLet ns letRec
 
-instance GlobalBound LetRec where
-  bound f g (LetRec xs)
-    = LetRec $ (\(LetBinding h s t) -> LetBinding h (bound f g s) (bind f g t)) <$> xs
+instance Bound LetRec where
+  LetRec xs >>>= f
+    = LetRec $ (\(LetBinding h s t) -> LetBinding h (s >>>= f) (t >>= f)) <$> xs
+
+instance GBound LetRec where
+  gbound f (LetRec xs)
+    = LetRec $ (\(LetBinding h s t) -> LetBinding h (gbound f s) (gbind f t)) <$> xs
 
 instance MFunctor LetRec where
   hoist f (LetRec xs)

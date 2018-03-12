@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, OverloadedStrings #-}
 module Syntax.Sized.Definition where
 
+import Bound
 import Control.Monad.Morph
 import Data.Monoid
 import Data.Void
@@ -36,10 +37,10 @@ data Definition expr v
 -------------------------------------------------------------------------------
 -- Helpers
 dependencyOrder
-  :: (GlobalBind expr, Foldable expr)
+  :: (GBind expr, Foldable expr)
   => [(QName, Definition expr Void)]
   -> [[(QName, Definition expr Void)]]
-dependencyOrder = fmap flattenSCC . topoSortWith fst (bound absurd pure . snd)
+dependencyOrder = fmap flattenSCC . topoSortWith fst (gbound pure . vacuous . snd)
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -54,16 +55,27 @@ instance MFunctor Definition where
   hoist f (ConstantDef vis cdef) = ConstantDef vis $ hoist f cdef
   hoist _ AliasDef = AliasDef
 
-instance GlobalBound Constant where
-  bound f g (Constant expr) = Constant $ bound f g expr
+instance Bound Constant where
+  Constant expr >>>= f = Constant $ expr >>>= f
 
-instance GlobalBound Function where
-  bound f g (Function args s) = Function (bound f g args) $ bound f g s
+instance GBound Constant where
+  gbound f (Constant expr) = Constant $ gbound f expr
 
-instance GlobalBound Definition where
-  bound f g (FunctionDef vis cl fdef) = FunctionDef vis cl $ bound f g fdef
-  bound f g (ConstantDef vis cdef) = ConstantDef vis $ bound f g cdef
-  bound _ _ AliasDef = AliasDef
+instance Bound Function where
+  Function args s >>>= f = Function (args >>>= f) (s >>>= f)
+
+instance GBound Function where
+  gbound f (Function args s) = Function (gbound f args) $ gbound f s
+
+instance Bound Definition where
+  FunctionDef vis cl fdef >>>= f = FunctionDef vis cl $ fdef >>>= f
+  ConstantDef vis cdef >>>= f = ConstantDef vis $ cdef >>>= f
+  AliasDef >>>= _ = AliasDef
+
+instance GBound Definition where
+  gbound f (FunctionDef vis cl fdef) = FunctionDef vis cl $ gbound f fdef
+  gbound f (ConstantDef vis cdef) = ConstantDef vis $ gbound f cdef
+  gbound _ AliasDef = AliasDef
 
 instance (v ~ Doc, Pretty (expr v), Monad expr) => Pretty (Function expr v) where
   prettyM (Function vs s) = parens `above` absPrec $

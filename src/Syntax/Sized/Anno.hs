@@ -102,11 +102,17 @@ instance MFunctor Anno where
 instance MFunctor (AnnoScope b) where
   hoist f (AnnoScope s t) = AnnoScope (hoist f s) (hoist f t)
 
-instance GlobalBound Anno where
-  bound f g (Anno e t) = Anno (bind f g e) (bind f g t)
+instance Bound Anno where
+  Anno e t >>>= f = Anno (e >>= f) (t >>= f)
 
-instance GlobalBound (AnnoScope b) where
-  bound f g (AnnoScope e t) = AnnoScope (bound f g e) (bound f g t)
+instance GBound Anno where
+  gbound f (Anno e t) = Anno (gbind f e) (gbind f t)
+
+instance Bound (AnnoScope b) where
+  AnnoScope e t >>>= f = AnnoScope (e >>>= f) (t >>>= f)
+
+instance GBound (AnnoScope b) where
+  gbound f (AnnoScope e t) = AnnoScope (gbound f e) (gbound f t)
 
 instance (Eq b, Eq1 expr, Monad expr) => Eq1 (AnnoScope b expr) where
   liftEq = $(makeLiftEq ''AnnoScope)

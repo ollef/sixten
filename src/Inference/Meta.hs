@@ -229,7 +229,7 @@ bindM f = fmap join . traverse go
     go v = f v
 
 boundM
-  :: (GlobalBound b, GlobalBind e, Traversable e, Traversable (b e), MonadIO m)
+  :: (GBound b, GBind e, Traversable e, Traversable (b e), MonadIO m)
   => (MetaVar d e -> m (e (MetaVar d e)))
   -> b e (MetaVar d e)
   -> m (b e (MetaVar d e))

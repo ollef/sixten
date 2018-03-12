@@ -99,29 +99,41 @@ instance Eq1 Expr where
 instance Eq v => Eq (Expr v) where
   (==) = liftEq (==)
 
-instance GlobalBind Expr where
-  global = Global
-  bind f g expr = case expr of
-    Var v -> f v
-    Global v -> g v
-    Lit l -> Lit l
-    Con c -> Con c
-    Pi p pat s -> Pi p (first (bound f g) pat) (bound f g s)
-    Lam p pat s -> Lam p (first (bound f g) pat) (bound f g s)
-    App e1 p e2 -> App (bind f g e1) p (bind f g e2)
-    Let tele s -> Let ((\(loc, h, pd, mt) -> (loc, h, bound f g <$> pd, bound f g <$> mt)) <$> tele) (bound f g s)
-    Case e brs -> Case (bind f g e) (bimap (first (bound f g)) (bound f g) <$> brs)
-    ExternCode c -> ExternCode (bind f g <$> c)
-    Wildcard -> Wildcard
-    SourceLoc r e -> SourceLoc r (bind f g e)
-
 instance Applicative Expr where
   pure = return
   (<*>) = ap
 
 instance Monad Expr where
   return = Var
-  expr >>= f = bind f Global expr
+  expr >>= f = case expr of
+    Var v -> f v
+    Global v -> Global v
+    Lit l -> Lit l
+    Con c -> Con c
+    Pi p pat s -> Pi p (first (>>>= f) pat) ((>>>= f) s)
+    Lam p pat s -> Lam p (first (>>>= f) pat) ((>>>= f) s)
+    App e1 p e2 -> App (e1 >>= f) p (e2 >>= f)
+    Let tele s -> Let ((\(loc, h, pd, mt) -> (loc, h, (>>>= f) <$> pd, (>>>= f) <$> mt)) <$> tele) (s >>>= f)
+    Case e brs -> Case (e >>= f) (bimap (first (>>>= f)) (>>>= f) <$> brs)
+    ExternCode c -> ExternCode ((>>= f) <$> c)
+    Wildcard -> Wildcard
+    SourceLoc r e -> SourceLoc r (e >>= f)
+
+instance GBind Expr where
+  global = Global
+  gbind f expr = case expr of
+    Var _ -> expr
+    Global v -> f v
+    Lit _ -> expr
+    Con _ -> expr
+    Pi p pat s -> Pi p (first (gbound f) pat) (gbound f s)
+    Lam p pat s -> Lam p (first (gbound f) pat) (gbound f s)
+    App e1 p e2 -> App (gbind f e1) p (gbind f e2)
+    Let tele s -> Let ((\(loc, h, pd, mt) -> (loc, h, gbound f <$> pd, gbound f <$> mt)) <$> tele) (gbound f s)
+    Case e brs -> Case (gbind f e) (bimap (first (gbound f)) (gbound f) <$> brs)
+    ExternCode c -> ExternCode (gbind f <$> c)
+    Wildcard -> Wildcard
+    SourceLoc r e -> SourceLoc r (gbind f e)
 
 instance Functor Expr where fmap = fmapDefault
 instance Foldable Expr where foldMap = foldMapDefault

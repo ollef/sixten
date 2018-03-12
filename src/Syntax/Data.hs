@@ -19,8 +19,11 @@ import Util
 newtype DataDef typ v = DataDef { dataConstructors :: [ConstrDef (Scope TeleVar typ v)] }
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-instance GlobalBound DataDef where
-  bound f g (DataDef cs) = DataDef $ fmap (bound f g) <$> cs
+instance Bound DataDef where
+  DataDef cs >>>= f = DataDef $ fmap (>>>= f) <$> cs
+
+instance GBound DataDef where
+  gbound f (DataDef cs) = DataDef $ fmap (gbound f) <$> cs
 
 instance MFunctor DataDef where
   hoist f (DataDef cs) = DataDef $ fmap (hoistScope f) <$> cs

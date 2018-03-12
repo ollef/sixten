@@ -8,47 +8,38 @@ import qualified Data.HashSet as HashSet
 
 import Syntax.Module
 
-class GlobalBound t where
-  -- | Perform substitution on both variables and globals inside a structure.
-  bound
-    :: GlobalBind e
-    => (v -> e v')
-    -> (QName -> e v')
-    -> t e v
-    -> t e v'
+class Bound t => GBound t where
+  -- | Perform substitution on globals inside a structure.
+  gbound :: GBind e => (QName -> e v) -> t e v -> t e v
 
-instance GlobalBound (Scope b) where
-  bound f g (Scope s)
-    = Scope
-    $ bind
-      (unvar (pure . B) $ pure . F . bind f g)
-      (pure . F . g)
-      s
-
-class Monad e => GlobalBind e where
+class Monad e => GBind e where
   global :: QName -> e v
-  -- | Perform substitution on both variables and globals.
-  bind
-    :: (v -> e v')
-    -> (QName -> e v')
-    -> e v
-    -> e v'
+  -- | Perform substitution on globals.
+  gbind :: (QName -> e v) -> e v -> e v
 
-boundJoin :: (GlobalBind f, GlobalBound t) => t f (f a) -> t f a
-boundJoin = bound id global
+instance GBound (Scope b) where
+  gbound f (Scope s)
+    = Scope $ gbind (pure . F . f) $ fmap (gbind f) <$> s
 
-globals :: (Foldable e, GlobalBind e) => e v -> HashSet QName
-globals = fold . bind (pure . const mempty) (pure . HashSet.singleton)
+boundJoin :: (Monad f, Bound t) => t f (f a) -> t f a
+boundJoin = (>>>= id)
 
-boundGlobals :: (Foldable (t e), GlobalBind e, GlobalBound t) => t e v -> HashSet QName
-boundGlobals = fold . bound (pure . const mempty) (pure . HashSet.singleton)
+globals :: (Foldable e, GBind e) => e v -> HashSet QName
+globals = fold . gbind (pure . HashSet.singleton) . fmap (const mempty)
+
+boundGlobals
+  :: (Functor (t e), Foldable (t e), GBind e, GBound t)
+  => t e v
+  -> HashSet QName
+boundGlobals = fold . gbound (pure . HashSet.singleton) . fmap (const mempty)
 
 traverseGlobals
-  :: (GlobalBound t, GlobalBind e, Traversable (t e), Applicative f)
+  :: (GBound t, GBind e, Traversable (t e), Applicative f)
   => (QName -> f QName)
   -> t e a
   -> f (t e a)
 traverseGlobals f
-  = fmap (bound (unvar pure global) global)
+  = fmap (>>>= unvar pure global)
   . sequenceA
-  . bound (pure . pure . B) (pure . fmap F . f)
+  . gbound (pure . fmap F . f)
+  . fmap (pure . B)

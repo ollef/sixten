@@ -179,10 +179,10 @@ liftLet ds scope = do
         Nothing -> pure v
       subBind e
         | Vector.null subVec = e
-        | otherwise = bind go global e
+        | otherwise = e >>= go
       subBound e
         | Vector.null subVec = e
-        | otherwise = bound go global e
+        | otherwise = e >>>= go
 
   liftedDs <- forM instantiatedDs $ \(v, body) ->
     case body of

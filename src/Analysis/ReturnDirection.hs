@@ -274,7 +274,7 @@ inferRecursiveDefs defs = do
           $ evars Vector.!? index
 
   let exposedDefs = flip Vector.map defs $ \(_, e) ->
-        bound absurd expose e
+        gbound expose $ vacuous e
 
   inferredDefs <- Vector.forM (Vector.zip evars exposedDefs) $ \(v, d) -> do
     logPretty 30 "InferDirection.inferRecursiveDefs 2" (show v, shower <$> d)
@@ -292,6 +292,6 @@ inferRecursiveDefs defs = do
       vf v = internalError $ "inferRecursiveDefs" PP.<+> shower v
 
   forM (Vector.zip names genDefs) $ \(name, (def ,sig)) -> do
-    let unexposedDef = bound unexpose global def
+    let unexposedDef = def >>>= unexpose
     unexposedDef' <- traverse vf unexposedDef
     return (name, unexposedDef', sig)

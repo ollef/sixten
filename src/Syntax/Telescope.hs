@@ -277,9 +277,13 @@ instance (a ~ Plicitness, v ~ Doc, Eq1 expr, Pretty (expr v), Monad expr)
   => Pretty (Telescope a expr v) where
   prettyM tele = withTeleHints tele $ \ns -> prettyTeleVarTypes ns tele
 
-instance GlobalBound (Telescope a) where
-  bound f g (Telescope tele)
-    = Telescope $ (\(TeleArg h a s) -> TeleArg h a $ bound f g s) <$> tele
+instance Bound (Telescope a) where
+  Telescope tele >>>= f
+    = Telescope $ (\(TeleArg h a s) -> TeleArg h a $ s >>>= f) <$> tele
+
+instance GBound (Telescope a) where
+  gbound f (Telescope tele)
+    = Telescope $ (\(TeleArg h a s) -> TeleArg h a $ gbound f s) <$> tele
 
 instance MFunctor (Telescope a) where
   hoist f (Telescope xs)

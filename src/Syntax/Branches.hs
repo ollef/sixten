@@ -77,16 +77,27 @@ instance MFunctor (Branches p) where
   hoist f (LitBranches lbrs def)
     = LitBranches [LitBranch l (f e) | LitBranch l e <- lbrs] $ f def
 
-instance GlobalBound (Branches a) where
-  bound f g (ConBranches cbrs) = ConBranches $ bound f g <$> cbrs
-  bound f g (LitBranches lbrs def) = LitBranches
-    (bound f g <$> lbrs)
-    (bind f g def)
+instance Bound (Branches a) where
+  ConBranches cbrs >>>= f = ConBranches $ (>>>= f) <$> cbrs
+  LitBranches lbrs def >>>= f = LitBranches
+    ((>>>= f) <$> lbrs)
+    (def >>= f)
 
-instance GlobalBound (ConBranch a) where
-  bound f g (ConBranch c a s) = ConBranch c (bound f g a) (bound f g s)
-instance GlobalBound LitBranch where
-  bound f g (LitBranch l s) = LitBranch l (bind f g s)
+instance GBound (Branches a) where
+  gbound f (ConBranches cbrs) = ConBranches $ gbound f <$> cbrs
+  gbound f (LitBranches lbrs def) = LitBranches
+    (gbound f <$> lbrs)
+    (gbind f def)
+
+instance Bound (ConBranch a) where
+  ConBranch c a s >>>= f = ConBranch c (a >>>= f) (s >>>= f)
+instance Bound LitBranch where
+  LitBranch l s >>>= f = LitBranch l (s >>= f)
+
+instance GBound (ConBranch a) where
+  gbound f (ConBranch c a s) = ConBranch c (gbound f a) (gbound f s)
+instance GBound LitBranch where
+  gbound f (LitBranch l s) = LitBranch l (gbind f s)
 
 $(return mempty)
 

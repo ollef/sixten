@@ -94,7 +94,7 @@ scopeCheckModule modul = do
   resolvedDefs <- forM checkedDefs $ \(n, (loc, def, mtyp)) -> do
     def' <- traverse lookupAlias def
     mtyp' <- traverse (traverse lookupAlias) mtyp
-    return (n, (loc, bound global global def', bind global global <$> mtyp'))
+    return (n, (loc, def' >>>= global, (>>= global) <$> mtyp'))
 
 
   -- Each _usage_ of a class (potentially) depends on all its instances.

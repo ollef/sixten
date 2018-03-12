@@ -59,23 +59,32 @@ instance Applicative Expr where
 
 instance Monad Expr where
   return = Var
-  expr >>= f = bind f Global expr
+  expr >>= f = case expr of
+    Var v -> f v
+    Global v -> Global v
+    Lit l -> Lit l
+    Con qc es -> Con qc ((>>>= f) <$> es)
+    Lam h e s -> Lam h (e >>= f) (s >>>= f)
+    App e1 e2 -> App (e1 >>= f) (e2 >>>= f)
+    Let ds s -> Let (ds >>>= f) (s >>>= f)
+    Case e brs -> Case (e >>>= f) (brs >>>= f)
+    ExternCode c retType -> ExternCode ((>>>= f) <$> c) (retType >>= f)
 
 pattern Lams :: Telescope () Expr v -> AnnoScope TeleVar Expr v -> Expr v
 pattern Lams tele s <- (annoBindingsViewM lamView -> Just (tele, s))
 
-instance GlobalBind Expr where
+instance GBind Expr where
   global = Global
-  bind f g expr = case expr of
-    Var v -> f v
-    Global v -> g v
-    Lit l -> Lit l
-    Con qc es -> Con qc (bound f g <$> es)
-    Lam h e s -> Lam h (bind f g e) (bound f g s)
-    App e1 e2 -> App (bind f g e1) (bound f g e2)
-    Let ds s -> Let (bound f g ds) (bound f g s)
-    Case e brs -> Case (bound f g e) (bound f g brs)
-    ExternCode c retType -> ExternCode (bound f g <$> c) (bind f g retType)
+  gbind f expr = case expr of
+    Var _ -> expr
+    Global v -> f v
+    Lit _ -> expr
+    Con qc es -> Con qc (gbound f <$> es)
+    Lam h e s -> Lam h (gbind f e) (gbound f s)
+    App e1 e2 -> App (gbind f e1) (gbound f e2)
+    Let ds s -> Let (gbound f ds) (gbound f s)
+    Case e brs -> Case (gbound f e) (gbound f brs)
+    ExternCode c retType -> ExternCode (gbound f <$> c) (gbind f retType)
 
 instance v ~ Doc => Pretty (Expr v) where
   prettyM expr = case expr of

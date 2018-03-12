@@ -62,17 +62,29 @@ instance Traversable expr => Traversable (Clause b expr) where
 instance (Eq1 expr, Monad expr, Eq b) => Eq1 (Clause b expr) where
   liftEq f (Clause ps1 s1) (Clause ps2 s2) = liftEq (\(p1, pat1) (p2, pat2) -> p1 == p2 && liftPatEq (liftEq f) (==) pat1 pat2) ps1 ps2 && liftEq f s1 s2
 
-instance GlobalBound TopLevelPatDefinition where
-  bound f g (TopLevelPatDefinition d) = TopLevelPatDefinition $ bound f g <$> d
-  bound f g (TopLevelPatDataDefinition dataDef) = TopLevelPatDataDefinition $ bound f g dataDef
-  bound f g (TopLevelPatClassDefinition classDef) = TopLevelPatClassDefinition $ bound f g classDef
-  bound f g (TopLevelPatInstanceDefinition instanceDef) = TopLevelPatInstanceDefinition $ bound f g instanceDef
+instance Bound TopLevelPatDefinition where
+  TopLevelPatDefinition d >>>= f = TopLevelPatDefinition $ (>>>= f) <$> d
+  TopLevelPatDataDefinition dataDef >>>= f = TopLevelPatDataDefinition $ dataDef >>>= f
+  TopLevelPatClassDefinition classDef >>>= f = TopLevelPatClassDefinition $ classDef >>>= f
+  TopLevelPatInstanceDefinition instanceDef >>>= f = TopLevelPatInstanceDefinition $ instanceDef >>>= f
 
-instance GlobalBound PatInstanceDef where
-  bound f g (PatInstanceDef ms) = PatInstanceDef $ (\(name, loc, def, mtyp) -> (name, loc, bound f g <$> def, bind f g <$> mtyp)) <$> ms
+instance GBound TopLevelPatDefinition where
+  gbound f (TopLevelPatDefinition d) = TopLevelPatDefinition $ gbound f <$> d
+  gbound f (TopLevelPatDataDefinition dataDef) = TopLevelPatDataDefinition $ gbound f dataDef
+  gbound f (TopLevelPatClassDefinition classDef) = TopLevelPatClassDefinition $ gbound f classDef
+  gbound f (TopLevelPatInstanceDefinition instanceDef) = TopLevelPatInstanceDefinition $ gbound f instanceDef
 
-instance GlobalBound (Clause b) where
-  bound f g (Clause pats s) = Clause (fmap (first (bound f g)) <$> pats) (bound f g s)
+instance Bound PatInstanceDef where
+  PatInstanceDef ms >>>= f = PatInstanceDef $ (\(name, loc, def, mtyp) -> (name, loc, (>>>= f) <$> def, (>>= f) <$> mtyp)) <$> ms
+
+instance GBound PatInstanceDef where
+  gbound f (PatInstanceDef ms) = PatInstanceDef $ (\(name, loc, def, mtyp) -> (name, loc, gbound f <$> def, gbind f <$> mtyp)) <$> ms
+
+instance Bound (Clause b) where
+  Clause pats s >>>= f = Clause (fmap (first (>>>= f)) <$> pats) (s >>>= f)
+
+instance GBound (Clause b) where
+  gbound f (Clause pats s) = Clause (fmap (first (gbound f)) <$> pats) (gbound f s)
 
 instance (Pretty (expr v), Monad expr, v ~ Doc, void ~ Void)
   => PrettyNamed (Clause void expr v) where

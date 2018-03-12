@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, Rank2Types, OverloadedStrings #-}
 module Syntax.Definition where
 
+import Bound
 import Control.Monad.Morph
 import Data.Bifunctor
 import Data.Bitraversable
@@ -19,9 +20,13 @@ instance MFunctor Definition where
   hoist f (Definition a i e) = Definition a i $ f e
   hoist f (DataDefinition d e) = DataDefinition (hoist f d) (f e)
 
-instance GlobalBound Definition where
-  bound f g (Definition a i e) = Definition a i $ bind f g e
-  bound f g (DataDefinition d e) = DataDefinition (bound f g d) (bind f g e)
+instance Bound Definition where
+  Definition a i e >>>= f = Definition a i $ e >>= f
+  DataDefinition d e >>>= f = DataDefinition (d >>>= f) (e >>= f)
+
+instance GBound Definition where
+  gbound f (Definition a i e) = Definition a i $ gbind f e
+  gbound f (DataDefinition d e) = DataDefinition (gbound f d) (gbind f e)
 
 bimapDefinition
   :: Bifunctor expr
