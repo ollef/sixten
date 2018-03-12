@@ -14,11 +14,13 @@ import Data.Void
 
 import Backend.Target(Target)
 import Builtin.Names
+import Fresh
 import Syntax
 import Syntax.Abstract as Abstract
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Lifted as Lifted
+import TypedFreeVar
 import qualified TypeRep
 import Util
 
@@ -82,93 +84,113 @@ maxArity :: Num n => n
 maxArity = 6
 
 apply :: Target -> Int -> Sized.Definition Lifted.Expr Void
-apply target numArgs
-  = Sized.FunctionDef Public Sized.NonClosure
-  $ Sized.Function
-    (Telescope
-    $ Vector.cons (TeleArg "this" () $ Scope ptrRep)
-    $ (\n -> TeleArg (fromText $ "type" <> shower (unTeleVar n)) () $ Scope typeRep) <$> Vector.enumFromN 0 numArgs
-    <|> (\n -> TeleArg (fromText $ "x" <> shower (unTeleVar n)) () $ Scope $ pure $ B $ 1 + n) <$> Vector.enumFromN 0 numArgs)
-  $ toAnnoScope
-  $ flip Anno unknownSize
-  $ Lifted.Case (Anno (deref $ pure $ B 0) unknownSize)
-  $ ConBranches
-  $ pure
-  $ ConBranch
-    Closure
-    (Telescope $ Vector.fromList
-      [TeleArg "f_unknown" () $ Scope ptrRep, TeleArg "n" () $ Scope intRep])
-    (toScope
-      $ Lifted.Case (Anno (pure $ B 1) unknownSize)
-      $ LitBranches
-        [LitBranch (Integer $ fromIntegral arity) $ br arity | arity <- 1 :| [2..maxArity]]
-        $ Lifted.Call (global FailName) $ pure $ Anno unitRep typeRep)
+apply target numArgs = evalFresh $ do
+  this <- freeVar "this" ptrRep
+  argTypes <- Vector.forM (Vector.enumFromN 0 numArgs) $ \i ->
+    freeVar ("x" <> shower (i :: Int) <> "type") typeRep
+  args <- iforM argTypes $ \i argType ->
+    freeVar ("x" <> shower i) $ pure argType
+
+  let funArgs = pure this <> argTypes <> args
+      funAbstr = teleAbstraction funArgs
+      funTele = varTelescope $ (,) () <$> funArgs
+
+  funknown <- freeVar "funknown" piRep
+  farity <- freeVar "arity" intRep
+
+  let clArgs = pure funknown <> pure farity
+      clAbstr = teleAbstraction clArgs
+      clTele = varTelescope $ (,) () <$> clArgs
+
+      callfunknown argTypes' args' =
+        Lifted.PrimCall (ReturnIndirect OutParam) (pure funknown)
+        $ Vector.cons (directPtr, varAnno this)
+        $ (\v -> (directType, varAnno v)) <$> argTypes'
+        <|> (\v -> (Indirect, varAnno v)) <$> args'
+
+      br :: Int -> Lifted.Expr (FreeVar Lifted.Expr)
+      br arity
+        | numArgs < arity
+          = Lifted.Con Ref
+          $ pure
+          $ sizedCon target (Lifted.MkType TypeRep.UnitRep) Closure
+          $ Vector.cons (Anno (global $ papName (arity - numArgs) numArgs) piRep)
+          $ Vector.cons (Anno (Lifted.Lit $ Integer $ fromIntegral $ arity - numArgs) intRep)
+          $ varAnno <$> pure this <> argTypes <> args
+        | numArgs == arity = callfunknown argTypes args
+        | otherwise
+          = Lifted.Call (global $ applyName $ numArgs - arity)
+          $ Vector.cons
+            (flip Anno ptrRep $ callfunknown preArgTypes preArgs)
+          $ varAnno <$> postArgTypes <> postArgs
+          where
+            (preArgTypes, postArgTypes) = Vector.splitAt arity argTypes
+            (preArgs, postArgs) = Vector.splitAt arity args
+
+  return
+    $ fmap (error "Builtin.apply")
+    $ Sized.FunctionDef Public Sized.NonClosure
+    $ Sized.Function funTele
+    $ abstractAnno funAbstr
+    $ flip Anno unknownSize
+    $ Lifted.Case (Anno (deref $ pure this) unknownSize)
+    $ ConBranches
+    $ pure
+    $ ConBranch Closure clTele
+    $ abstract clAbstr
+    $ Lifted.Case (varAnno farity)
+    $ LitBranches
+      [LitBranch (Integer arity) $ br $ fromIntegral arity | arity <- 1 :| [2..maxArity]]
+      (Lifted.Call (global FailName) $ pure $ Anno unitRep typeRep)
+
   where
+    varAnno v = Anno (pure v) (varType v)
     unitRep = Lifted.MkType TypeRep.UnitRep
     intRep = Lifted.MkType $ TypeRep.intRep target
     ptrRep = Lifted.MkType $ TypeRep.ptrRep target
     typeRep = Lifted.MkType $ TypeRep.typeRep target
+    piRep = Lifted.MkType $ TypeRep.piRep target
     unknownSize = global "Sixten.Builtin.apply.unknownSize"
 
     directPtr = Direct $ TypeRep.ptrRep target
     directType = Direct $ TypeRep.typeRep target
 
-    br :: Int -> Lifted.Expr (Var TeleVar (Var TeleVar Void))
-    br arity
-      | numArgs < arity
-        = Lifted.Con Ref
-        $ pure
-        $ sizedCon target (Lifted.MkType TypeRep.UnitRep) Closure
-        $ Vector.cons (Anno (global $ papName (arity - numArgs) numArgs) ptrRep)
-        $ Vector.cons (Anno (Lifted.Lit $ Integer $ fromIntegral $ arity - numArgs) intRep)
-        $ Vector.cons (Anno (pure $ F $ B 0) ptrRep)
-        $ (\n -> Anno (pure $ F $ B $ 1 + n) typeRep) <$> Vector.enumFromN 0 numArgs
-        <|> (\n -> Anno (pure $ F $ B $ 1 + TeleVar numArgs + n) (pure $ F $ B $ 1 + n)) <$> Vector.enumFromN 0 numArgs
-      | numArgs == arity
-        = Lifted.PrimCall (ReturnIndirect OutParam) (pure $ B 0)
-        $ Vector.cons (directPtr, Anno (pure $ F $ B 0) ptrRep)
-        $ (\n -> (directType, Anno (pure $ F $ B $ 1 + n) typeRep)) <$> Vector.enumFromN 0 numArgs
-        <|> (\n -> (Indirect, Anno (pure $ F $ B $ 1 + TeleVar numArgs + n) (pure $ F $ B $ 1 + n))) <$> Vector.enumFromN 0 numArgs
-      | otherwise
-        = Lifted.Call (global $ applyName $ numArgs - arity)
-        $ Vector.cons
-          (flip Anno ptrRep
-          $ Lifted.PrimCall (ReturnIndirect OutParam) (pure $ B 0)
-          $ Vector.cons (directPtr, Anno (pure $ F $ B 0) ptrRep)
-          $ (\n -> (directType, Anno (pure $ F $ B $ 1 + n) typeRep)) <$> Vector.enumFromN 0 arity
-          <|> (\n -> (Indirect, Anno (pure $ F $ B $ 1 + fromIntegral numArgs + n) (pure $ F $ B $ 1 + n))) <$> Vector.enumFromN 0 arity)
-        $ (\n -> Anno (pure $ F $ B $ 1 + n) typeRep) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
-        <|> (\n -> Anno (pure $ F $ B $ 1 + fromIntegral numArgs + n) (pure $ F $ B $ 1 + n)) <$> Vector.enumFromN (fromIntegral arity) (numArgs - arity)
-
 pap :: Target -> Int -> Int -> Sized.Definition Lifted.Expr Void
-pap target k m
-  = Sized.FunctionDef Public Sized.NonClosure
-  $ Sized.Function
-    (Telescope
-    $ Vector.cons (TeleArg "this" () $ Scope ptrRep)
-    $ (\n -> TeleArg (fromText $ "type" <> shower (unTeleVar n)) () $ Scope typeRep) <$> Vector.enumFromN 0 k
-    <|> (\n -> TeleArg (fromText $ "x" <> shower (unTeleVar n)) () $ Scope $ pure $ B $ 1 + n) <$> Vector.enumFromN 0 k)
-  $ toAnnoScope
-  $ flip Anno unknownSize
-  $ Lifted.Case (Anno (deref $ pure $ B 0) unknownSize)
-  $ ConBranches
-  $ pure
-  $ ConBranch
-    Closure
-    (Telescope
-      $ Vector.cons (TeleArg "_" () $ Scope ptrRep)
-      $ Vector.cons (TeleArg "_" () $ Scope intRep)
-      $ Vector.cons (TeleArg "that" () $ Scope ptrRep)
-      $ (\n -> TeleArg (fromText $ "type" <> shower (unTeleVar n)) () $ Scope typeRep) <$> Vector.enumFromN 0 m
-      <|> (\n -> TeleArg (fromText $ "y" <> shower (unTeleVar n)) () $ Scope $ pure $ B $ 3 + n) <$> Vector.enumFromN 0 m)
-    (toScope
+pap target k m = evalFresh $ do
+  this <- freeVar "this" ptrRep
+  argTypes <- Vector.forM (Vector.enumFromN 0 k) $ \i ->
+    freeVar ("x" <> shower (i :: Int) <> "type") typeRep
+  args <- iforM argTypes $ \i argType ->
+    freeVar ("x" <> shower i) $ pure argType
+
+  let funArgs = pure this <> argTypes <> args
+      funAbstr = teleAbstraction funArgs
+      funTele = varTelescope $ (,) () <$> funArgs
+
+  unused1 <- freeVar "_" ptrRep
+  unused2 <- freeVar "_" intRep
+  that <- freeVar "that" ptrRep
+  clArgTypes <- Vector.forM (Vector.enumFromN 0 m) $ \i ->
+    freeVar ("y" <> shower (i :: Int) <> "type") typeRep
+  clArgs <- iforM clArgTypes $ \i argType ->
+    freeVar ("y" <> shower i) $ pure argType
+
+  let clArgs' = pure unused1 <> pure unused2 <> pure that <> clArgTypes <> clArgs
+      clAbstr = teleAbstraction clArgs'
+      clTele = varTelescope $ (,) () <$> clArgs'
+
+  return
+    $ fmap (error "Builtin.pap")
+    $ Sized.FunctionDef Public Sized.NonClosure
+    $ Sized.Function funTele
+    $ abstractAnno funAbstr
+    $ flip Anno unknownSize
+    $ Lifted.Case (Anno (deref $ pure this) unknownSize)
+    $ ConBranches $ pure $ ConBranch Closure
+      clTele
+      $ abstract clAbstr
       $ Lifted.Call (global $ applyName $ m + k)
-      $ Vector.cons (Anno (pure $ B 2) ptrRep)
-      $ (\n -> Anno (pure $ B $ 3 + n) typeRep) <$> Vector.enumFromN 0 m
-      <|> (\n -> Anno (pure $ F $ B $ 1 + n) typeRep) <$> Vector.enumFromN 0 k
-      <|> (\n -> Anno (pure $ B $ 3 + TeleVar m + n) (pure $ B $ 3 + n)) <$> Vector.enumFromN 0 m
-      <|> (\n -> Anno (pure $ F $ B $ 1 + TeleVar k + n) (pure $ F $ B $ 1 + n)) <$> Vector.enumFromN 0 k
-    )
+      $ (\v -> Anno (pure v) (varType v)) <$> pure that <> clArgTypes <> argTypes <> clArgs <> args
   where
     unknownSize = global "Sixten.Builtin.pap.unknownSize"
     intRep = Lifted.MkType $ TypeRep.intRep target

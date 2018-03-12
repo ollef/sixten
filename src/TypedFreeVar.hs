@@ -12,6 +12,7 @@ import Data.Monoid
 import Data.String
 import Data.Vector(Vector)
 
+import Fresh
 import Pretty
 import Syntax.Name
 import Syntax.NameHint
@@ -40,7 +41,7 @@ instance Hashable (FreeVar d) where
   hashWithSalt s = hashWithSalt s . varId
 
 freeVar
-  :: (MonadVIX m, MonadIO m)
+  :: MonadFresh m
   => NameHint
   -> d (FreeVar d)
   -> m (FreeVar d)
