@@ -5,6 +5,7 @@ import qualified Data.Vector as Vector
 
 import Builtin.Names
 import Syntax
+import Syntax.Sized.Anno
 import Syntax.Sized.SLambda
 
 denat :: Expr v -> Expr v
@@ -13,23 +14,27 @@ denat expr = case expr of
   Global _ -> expr
   Lit _ -> expr
   Con ZeroConstr _ -> Lit $ Integer 0
-  Con SuccConstr xs -> App (App (global AddIntName) (Anno (Lit $ Integer 1) (global IntName))) (denat $ Vector.head xs)
-  Con c es -> Con c $ denat <$> es
+  Con SuccConstr xs -> App (App (global AddIntName) (Anno (Lit $ Integer 1) (global IntName))) (denatAnno $ Vector.head xs)
+  Con c es -> Con c $ denatAnno <$> es
   Lam h t e -> Lam h (denat t) (hoist denat e)
-  App e1 e2 -> App (denat e1) (denat e2)
+  App e1 e2 -> App (denat e1) (denatAnno e2)
   Let ds s -> Let (hoist denat ds) (hoist denat s)
-  Case e brs -> denatCase (denat e) brs
-  Anno e t -> Anno (denat e) (denat t)
-  ExternCode c -> ExternCode (denat <$> c)
+  Case e brs -> denatCase (denatAnno e) brs
+  ExternCode c retType -> ExternCode (denatAnno <$> c) (denat retType)
+
+denatAnno
+  :: Anno Expr v
+  -> Anno Expr v
+denatAnno (Anno e t) = Anno (denat e) (denat t)
 
 denatCase
-  :: Expr v
+  :: Anno Expr v
   -> Branches () Expr v
   -> Expr v
-denatCase expr (ConBranches [ConBranch ZeroConstr _ztele zs, ConBranch SuccConstr _stele ss])
+denatCase (Anno expr _) (ConBranches [ConBranch ZeroConstr _ztele zs, ConBranch SuccConstr _stele ss])
   = let_ mempty expr (global NatName)
   $ toScope
-  $ Case (pure $ B ())
+  $ Case (Anno (pure $ B ()) (global NatName))
     (LitBranches
       (pure (LitBranch (Integer 0) $ F <$> instantiate (error "denatCase zs") (hoist denat zs)))
       (let_

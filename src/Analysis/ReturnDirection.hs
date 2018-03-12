@@ -14,6 +14,7 @@ import Data.Void
 
 import FreeVar
 import Syntax hiding (Definition, bitraverseDefinition)
+import Syntax.Sized.Anno
 import Syntax.Sized.Definition
 import Syntax.Sized.Lifted
 import Util
@@ -107,7 +108,7 @@ infer expr = case expr of
   Global _ -> return (expr, MProjection)
   Lit _ -> return (expr, MOutParam)
   Con c es -> do
-    es' <- mapM infer es
+    es' <- mapM inferAnno es
     return (Con c $ fst <$> es', MOutParam)
   Call f es -> do
     (f', (retDir, argDirs)) <- inferFunction f
@@ -120,40 +121,43 @@ infer expr = case expr of
       argDirs
       f
       args
-  Let h e t s -> do
-    (e', eloc) <- infer e
+  Let h e s -> do
+    (e', eloc) <- inferAnno e
     v <- exists h eloc Nothing
     (s', sloc) <- infer $ instantiate1 (pure v) s
-    return (Let h e' t $ abstract1 v s', sloc)
+    return (Let h e' $ abstract1 v s', sloc)
   Case e brs -> do
-    (e', eloc) <- infer e
+    (e', eloc) <- inferAnno e
     (brs', loc) <- inferBranches eloc brs
     return (Case e' brs', loc)
-  Anno e t -> do
-    (e', eLoc) <- infer e
-    (t', _tLoc) <- infer t
-    return (Anno e' t', eLoc)
-  ExternCode c -> do
-    c' <- mapM (fmap fst . infer) c
-    return (ExternCode c', MOutParam)
+  ExternCode c retType -> do
+    (retType', _) <- infer retType
+    c' <- mapM (fmap fst . inferAnno) c
+    return (ExternCode c' retType', MOutParam)
+
+inferAnno :: Anno Expr MetaVar -> VIX (Anno Expr MetaVar, Location)
+inferAnno (Anno e t) = do
+  (e', loc) <- infer e
+  (t', _) <- infer t
+  return (Anno e' t', loc)
 
 inferCall
-  :: (Expr MetaVar -> Vector (Expr MetaVar) -> Expr MetaVar)
+  :: (Expr MetaVar -> Vector (Anno Expr MetaVar) -> Expr MetaVar)
   -> ReturnDirection MetaReturnIndirect
   -> Vector Direction
   -> Expr MetaVar
-  -> Vector (Expr MetaVar)
+  -> Vector (Anno Expr MetaVar)
   -> VIX (Expr MetaVar, MetaReturnIndirect)
 inferCall con (ReturnIndirect mretIndirect) argDirs f es = do
   (f', _) <- infer f
-  locatedEs <- mapM infer es
+  locatedEs <- mapM inferAnno es
   let es' = fst <$> locatedEs
       locs = [l | ((_, l), Indirect) <- Vector.zip locatedEs argDirs]
   loc <- foldM maxMetaReturnIndirect mretIndirect locs
   return (con f' es', loc)
 inferCall con _ _ f es = do
   (f', _) <- infer f
-  locatedEs <- mapM infer es
+  locatedEs <- mapM inferAnno es
   let es' = fst <$> locatedEs
   return (con f' es', MOutParam)
 
@@ -215,20 +219,20 @@ inferDefinition FreeVar {varData = MetaData {metaFunSig = Just (retDir, argDirs)
     (sz', _szLoc) <- infer sz
     let szScope' = abstract abstr sz'
     return $ TeleArg h d szScope'
-  let e = instantiateTele pure vs s
-  (e', loc) <- infer e
+  let e = instantiateAnnoTele pure vs s
+  (e', loc) <- inferAnno e
   case retDir of
     ReturnIndirect m -> do
       glbdir <- maxMetaReturnIndirect loc m
       unifyMetaReturnIndirect glbdir m
     ReturnDirect _ -> return ()
-  let s' = abstract abstr e'
+  let s' = abstractAnno abstr e'
   return (FunctionDef vis cl $ Function (Telescope args') s', FunctionSig SixtenCompatible retDir argDirs)
 inferDefinition _ (ConstantDef _ (Constant (Anno (Global glob) _))) =
   return (AliasDef, AliasSig glob)
 inferDefinition _ (ConstantDef vis (Constant e)) = do
-  (e', _loc) <- infer e
-  return (ConstantDef vis $ Constant e', ConstantSig $ typeDir $ typeOf e)
+  (e', _loc) <- inferAnno e
+  return (ConstantDef vis $ Constant e', ConstantSig $ typeDir $ typeAnno e)
 inferDefinition _ _ = error "ReturnDirection.inferDefinition"
 
 generaliseDefs
@@ -254,7 +258,7 @@ inferRecursiveDefs defs = do
               , forTele args $ \_ _ s' -> typeDir $ fromScope s'
               )
             where
-              returnDir = case (cl, fromScope s) of
+              returnDir = case (cl, fromAnnoScope s) of
                 (NonClosure, Anno _ t) -> toReturnDirection Nothing $ typeDir t
                 _ -> ReturnIndirect (Just MOutParam)
           ConstantDef {} -> Nothing
