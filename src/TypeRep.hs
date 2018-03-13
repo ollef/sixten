@@ -9,13 +9,9 @@ newtype TypeRep = TypeRep
   } deriving (Eq, Ord, Show)
 
 product :: TypeRep -> TypeRep -> TypeRep
-product a UnitRep = a
-product UnitRep b = b
 product (TypeRep aSize) (TypeRep bSize) = TypeRep $ aSize + bSize
 
 sum :: TypeRep -> TypeRep -> TypeRep
-sum a UnitRep = a
-sum UnitRep b = b
 sum (TypeRep aSize) (TypeRep bSize) = TypeRep $ max aSize bSize
 
 pattern UnitRep :: TypeRep
