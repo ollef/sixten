@@ -192,10 +192,7 @@ scopeCheckProgram modul = do
         | (QName n _, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList $ moduleContents modul
         , m <- methodName <$> ms
         ]
-  addModule (moduleName modul)
-    $ HashSet.map Right defnames
-    <> HashSet.map Left connames
-    <> HashSet.map Right methods
+  addModule (moduleName modul) connames $ defnames <> methods
   return res
 
 declassifyGroup

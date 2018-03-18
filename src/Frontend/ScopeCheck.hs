@@ -28,53 +28,32 @@ newtype ScopeEnv = ScopeEnv
   { scopeConstrs :: QName -> HashSet QConstr
   }
 
-type ScopeCheck = RWS ScopeEnv () (HashSet QName)
+type ScopeCheck = RWST ScopeEnv () (HashSet QName) VIX
 
-runScopeCheck :: ScopeCheck a -> ScopeEnv -> (a, HashSet QName)
-runScopeCheck m env = (a, s)
-  where
-    (a, s, ~()) = runRWS m env mempty
+runScopeCheck :: ScopeCheck a -> ScopeEnv -> VIX (a, HashSet QName)
+runScopeCheck m env = do
+  (a, s, ~()) <- runRWST m env mempty
+  return (a, s)
 
--- TODO split into several functions
 -- TODO use plain Name for unresolved names
 scopeCheckModule
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [[(QName, SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void, Maybe (Scoped.Type void))]]
 scopeCheckModule modul = do
-  otherNames <- liftVIX $ gets vixModuleNames
+  let imports
+        = Import Builtin.BuiltinModuleName Builtin.BuiltinModuleName AllExposed
+        : moduleImports modul
 
-  let env = ScopeEnv lookupConstr
-      lookupConstr c = MultiHashMap.lookup c constrs
-      constrs = MultiHashMap.fromList
-        [ (QName mempty $ fromConstr c, QConstr n c)
-        | (n, (_, Unscoped.TopLevelDataDefinition _ _ d)) <- HashMap.toList $ moduleContents modul
-        , c <- constrName <$> d
-        ] `MultiHashMap.union`
-        importedConstrAliases
-      imports = Import Builtin.BuiltinModuleName Builtin.BuiltinModuleName AllExposed : moduleImports modul
-      importAliases = MultiHashMap.unions $ importedAliases otherNames <$> imports
+  (importedConstrAliases, importedNameAliases) <- mconcat <$> mapM importedAliases imports
+  let env = ScopeEnv
+        $ flip MultiHashMap.lookup
+        $ localConstrAliases (moduleContents modul) <> importedConstrAliases
 
-      checkedDefDeps = for (HashMap.toList $ moduleContents modul) $ \(n, (loc, def)) -> do
-        let ((def', mtyp'), deps) = runScopeCheck (scopeCheckTopLevelDefinition def) env
-        (n, (loc, def', mtyp'), toHashSet def' <> foldMap toHashSet mtyp' <> deps)
+  checkedDefDeps <- forM (HashMap.toList $ moduleContents modul) $ \(n, (loc, def)) -> do
+    ((def', mtyp'), deps) <- runScopeCheck (scopeCheckTopLevelDefinition def) env
+    return (n, (loc, def', mtyp'), toHashSet def' <> foldMap toHashSet mtyp' <> deps)
 
-      defDeps = for checkedDefDeps $ \(n, _, deps) -> (n, deps)
-      checkedDefs = for checkedDefDeps $ \(n, def, _) -> (n, def)
-
-      importedNameAliases = MultiHashMap.mapMaybe (either (const Nothing) Just) importAliases
-      importedConstrAliases = MultiHashMap.mapMaybe (either Just $ const Nothing) importAliases
-
-      localNames = HashMap.keys $ moduleContents modul
-      localAliases = MultiHashMap.fromList
-        [ (unqualified $ qnameName qn, qn)
-        | qn <- localNames
-        ] `MultiHashMap.union` localMethods
-      localMethods = MultiHashMap.fromList
-        [ (QName mempty m, QName modName m)
-        | (m, QName modName _) <- methodClasses
-        ]
-
-      aliases = localAliases `MultiHashMap.union` importedNameAliases
+  let aliases = localAliases (moduleContents modul) <> importedNameAliases
       lookupAlias qname
         | HashSet.size candidates == 1 = return $ head $ HashSet.toList candidates
         -- TODO: Error message, duplicate checking, tests
@@ -82,53 +61,103 @@ scopeCheckModule modul = do
         where
           candidates = MultiHashMap.lookupDefault (HashSet.singleton qname) qname aliases
 
-      methodClasses =
-        [ (m, n)
-        | (n, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList $ moduleContents modul
-        , m <- methodName <$> ms
-        ]
-      methodDeps = MultiHashMap.fromList [(QName mempty m, n) | (m, n) <- methodClasses]
-      depAliases = aliases `MultiHashMap.union` methodDeps
-      lookupAliasDep qname = MultiHashMap.lookupDefault (HashSet.singleton qname) qname depAliases
-
-  resolvedDefs <- forM checkedDefs $ \(n, (loc, def, mtyp)) -> do
+  resolvedDefs <- forM checkedDefDeps $ \(n, (loc, def, mtyp), deps) -> do
     def' <- traverse lookupAlias def
     mtyp' <- traverse (traverse lookupAlias) mtyp
-    return (n, (loc, def' >>>= global, (>>= global) <$> mtyp'))
-
+    return (n, (loc, def' >>>= global, (>>= global) <$> mtyp'), deps)
 
   -- Each _usage_ of a class (potentially) depends on all its instances.
   -- But the class itself doesn't (necessarily).
   --
-  -- So, create an extraDeps table: For each definition that's an instance i of
-  -- class c, add a vertex c -> i, and map the extraDeps table over all _dependencies_.
-  extraDeps <- instances resolvedDefs
-  let addInstanceDeps dep = HashSet.insert dep $ MultiHashMap.lookup dep extraDeps
-
-  let resolvedDefDeps = for defDeps $ \(n, deps) -> do
+  -- So, create an instanceDeps table: For each definition that's an instance i of
+  -- class c, add a vertex c -> i, and map the instanceDeps table over all _dependencies_.
+  instanceDeps <- instances resolvedDefs
+  let depAliases = aliases <> methodClasses (moduleContents modul)
+      lookupAliasDep qname = MultiHashMap.lookupDefault (HashSet.singleton qname) qname depAliases
+      addInstanceDeps dep = HashSet.insert dep $ MultiHashMap.lookup dep instanceDeps
+      addExtraDeps deps = do
         let deps' = lookupAliasDep <$> HashSet.toList deps
-            deps'' = addInstanceDeps <$> HashSet.toList (HashSet.unions deps')
-        (n, HashSet.unions deps'')
+            deps'' = addInstanceDeps <$> HashSet.toList (mconcat deps')
+        mconcat deps''
 
-  let resolvedDefsMap = HashMap.fromList resolvedDefs
-      -- TODO use topoSortWith
-      sortedDeps = flattenSCC <$> topoSort resolvedDefDeps
-  return $ for sortedDeps $ \ns -> for ns $ \n -> do
-    let (loc, def, typ) = resolvedDefsMap HashMap.! n
-    (n, loc, def, typ)
+  let sortedDefGroups = flattenSCC <$> topoSortWith fst3 (addExtraDeps . thd3) resolvedDefs
 
+  return [[(n, loc, def, typ) | (n, (loc, def, typ), _) <- defs] | defs <- sortedDefGroups]
+
+localConstrAliases
+  :: HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
+  -> MultiHashMap QName QConstr
+localConstrAliases contents = MultiHashMap.fromList
+  [ (QName mempty $ fromConstr c, QConstr n c)
+  | (n, (_, Unscoped.TopLevelDataDefinition _ _ d)) <- HashMap.toList contents
+  , c <- constrName <$> d
+  ]
+
+localAliases
+  :: HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
+  -> MultiHashMap QName QName
+localAliases contents = MultiHashMap.fromList
+  [ (unqualified $ qnameName qn, qn)
+  | qn <- HashMap.keys contents
+  ] <> localMethods
   where
-    for = flip map
+    localMethods
+      = MultiHashMap.mapWithKey
+        (\(QName _ m) (QName modName _) -> QName modName m)
+        $ methodClasses contents
+
+methodClasses
+  :: HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
+  -> MultiHashMap QName QName
+methodClasses contents = MultiHashMap.fromList
+  [ (unqualified m, n)
+  | (n, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList contents
+  , m <- methodName <$> ms
+  ]
 
 instances
-  :: [(QName, (SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void, Maybe (Scoped.Expr void)))]
+  :: [(QName, (SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void, Maybe (Scoped.Expr void)), a)]
   -> VIX (MultiHashMap QName QName)
-instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, (_, def, mtyp)) -> case (def, mtyp) of
+instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, (_, def, mtyp), _) -> case (def, mtyp) of
   (Scoped.TopLevelPatInstanceDefinition _, Just typ) -> do
     c <- Declassify.getClass typ
     return [(c, name)]
   _ -> return mempty
 
+-- TODO add test for imports of empty modules
+importedAliases
+  :: Import
+  -> VIX (MultiHashMap QName QConstr, MultiHashMap QName QName)
+importedAliases (Import modName asName exposed) = do
+  otherConstrs <- liftVIX $ gets vixModuleConstrs
+  otherNames <- liftVIX $ gets vixModuleNames
+  let
+    constrs
+      = MultiHashMap.fromList
+      $ fmap (\c -> (fromConstr $ qconstrConstr c, c))
+      $ HashSet.toList
+      $ MultiHashMap.lookup modName otherConstrs
+
+    names
+      = MultiHashMap.fromList
+      $ fmap (\n -> (qnameName n, n))
+      $ HashSet.toList
+      $ MultiHashMap.lookup modName otherNames
+
+    exposedConstrs = case exposed of
+      AllExposed -> constrs
+      Exposed ns -> MultiHashMap.setIntersection constrs ns
+
+    exposedNames = case exposed of
+      AllExposed -> names
+      Exposed ns -> MultiHashMap.setIntersection names ns
+
+  return
+    ( MultiHashMap.mapKeys unqualified exposedConstrs <> MultiHashMap.mapKeys (QName asName) constrs
+    , MultiHashMap.mapKeys unqualified exposedNames <> MultiHashMap.mapKeys (QName asName) names
+    )
+
+-- | Distinguish variables from constructors, resolve scopes
 scopeCheckTopLevelDefinition
   :: Unscoped.TopLevelDefinition
   -> ScopeCheck (Scoped.TopLevelPatDefinition Scoped.Expr QName, Maybe (Scoped.Type QName))
@@ -266,7 +295,7 @@ scopeCheckPat pat = case pat of
       constrCandidates <- asks (($ qconName) . scopeConstrs)
       forM_ constrCandidates $ \(QConstr def _) -> modify $ HashSet.insert def
       return constrCandidates
-    ConPat (HashSet.unions conss) <$> mapM (\(p, pat') -> (,) p <$> scopeCheckPat pat') ps
+    ConPat (mconcat conss) <$> mapM (\(p, pat') -> (,) p <$> scopeCheckPat pat') ps
   AnnoPat p t -> AnnoPat <$> scopeCheckPat p <*> scopeCheckExpr t
   ViewPat t p -> ViewPat <$> scopeCheckExpr t <*> scopeCheckPat p
   PatLoc loc p -> PatLoc loc <$> scopeCheckPat p

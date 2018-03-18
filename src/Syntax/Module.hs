@@ -4,7 +4,6 @@ module Syntax.Module where
 import Data.Foldable(toList)
 import Data.Hashable
 import Data.HashSet(HashSet)
-import qualified Data.HashSet as HashSet
 import Data.List(intersperse, intercalate)
 import Data.List.Split
 import Data.Monoid
@@ -16,8 +15,6 @@ import GHC.Generics(Generic)
 import Pretty
 import Syntax.Name
 import Util
-import Util.MultiHashMap(MultiHashMap)
-import qualified Util.MultiHashMap as MultiHashMap
 import Util.TopoSort
 
 data QName = QName !ModuleName !Name
@@ -128,31 +125,6 @@ instance Monoid ExposedNames where
   mappend AllExposed _ = AllExposed
   mappend _ AllExposed = AllExposed
   mappend (Exposed xs) (Exposed ys) = Exposed $ xs `mappend` ys
-
-------------------------------------------------------------------------------
--- Imports
-importedAliases
-  :: MultiHashMap ModuleName (Either QConstr QName)
-  -> Import
-  -> MultiHashMap QName (Either QConstr QName)
-importedAliases modules (Import modName asName exposed)
-  = MultiHashMap.mapKeys unqualified expNames
-  `MultiHashMap.union`
-  MultiHashMap.mapKeys (QName asName) modContents
-  where
-    modContents :: MultiHashMap Name (Either QConstr QName)
-    modContents = MultiHashMap.fromList
-      $ either
-        (\c -> (fromConstr $ qconstrConstr c, Left c))
-        (\d -> (qnameName d, Right d))
-      <$> HashSet.toList names
-      where
-        names = MultiHashMap.lookupDefault (error $ "Can't find " <> show modName) modName modules
-
-    expNames :: MultiHashMap Name (Either QConstr QName)
-    expNames = case exposed of
-      AllExposed -> modContents
-      Exposed names -> MultiHashMap.setIntersection modContents names
 
 moduleDependencyOrder
   :: (Foldable t, Functor t)
