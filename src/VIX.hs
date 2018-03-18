@@ -76,7 +76,7 @@ emptyVIXState target handle verbosity = VIXState
   , vixTarget = target
   }
 
-newtype VIX a = VIX (StateT VIXState (ExceptT Error IO) a)
+newtype VIX a = VIX { unVIX :: StateT VIXState (ExceptT Error IO) a }
   deriving (Functor, Applicative, Monad, MonadFix, MonadError Error, MonadIO, MonadBase IO, MonadBaseControl IO)
 
 instance MonadVIX VIX where
@@ -84,11 +84,6 @@ instance MonadVIX VIX where
 
 liftST :: MonadIO m => ST RealWorld a -> m a
 liftST = liftIO . stToIO
-
-unVIX
-  :: VIX a
-  -> StateT VIXState (ExceptT Error IO) a
-unVIX (VIX x) = x
 
 -- TODO vixFresh should probably be a mutable variable
 runVIX
