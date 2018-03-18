@@ -137,3 +137,10 @@ mapKeys
   -> MultiHashMap k v
   -> MultiHashMap k' v
 mapKeys f = fromMultiList . Prelude.map (first f) . toMultiList
+
+mapWithKey
+  :: (Eq v', Hashable v')
+  => (k -> v -> v')
+  -> MultiHashMap k v
+  -> MultiHashMap k v'
+mapWithKey f (MultiHashMap m) = MultiHashMap $ HashMap.mapWithKey (HashSet.map . f) m
