@@ -46,7 +46,7 @@ executable sixten
                        Fresh
                        Frontend.Declassify
                        Frontend.Parse
-                       Frontend.ScopeCheck
+                       Frontend.ResolveNames
                        Inference.Constraint
                        Inference.Constructor
                        Inference.Cycle

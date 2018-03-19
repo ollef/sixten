@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, MonadComprehensions, OverloadedStrings #-}
-module Frontend.ScopeCheck where
+module Frontend.ResolveNames where
 
 import Control.Monad.Except
 import Control.Monad.RWS
@@ -24,40 +24,40 @@ import qualified Util.MultiHashMap as MultiHashMap
 import Util.TopoSort
 import VIX
 
-newtype ScopeEnv = ScopeEnv
+newtype Env = Env
   { scopeConstrs :: QName -> HashSet QConstr
   }
 
-type ScopeCheck = RWST ScopeEnv () (HashSet QName) VIX
+type ResolveNames = RWST Env () (HashSet QName) VIX
 
-runScopeCheck :: ScopeCheck a -> ScopeEnv -> VIX (a, HashSet QName)
-runScopeCheck m env = do
+runResolveNames :: ResolveNames a -> Env -> VIX (a, HashSet QName)
+runResolveNames m env = do
   (a, s, ~()) <- runRWST m env mempty
   return (a, s)
 
 -- TODO use plain Name for unresolved names
-scopeCheckModule
+resolveModule
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [[(QName, SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void, Maybe (Scoped.Type void))]]
-scopeCheckModule modul = do
+resolveModule modul = do
   let imports
         = Import Builtin.BuiltinModuleName Builtin.BuiltinModuleName AllExposed
         : moduleImports modul
 
   (importedConstrAliases, importedNameAliases) <- mconcat <$> mapM importedAliases imports
-  let env = ScopeEnv
+  let env = Env
         $ flip MultiHashMap.lookup
         $ localConstrAliases (moduleContents modul) <> importedConstrAliases
 
   checkedDefDeps <- forM (HashMap.toList $ moduleContents modul) $ \(n, (loc, def)) -> do
-    ((def', mtyp'), deps) <- runScopeCheck (scopeCheckTopLevelDefinition def) env
+    ((def', mtyp'), deps) <- runResolveNames (resolveTopLevelDefinition def) env
     return (n, (loc, def', mtyp'), toHashSet def' <> foldMap toHashSet mtyp' <> deps)
 
   let aliases = localAliases (moduleContents modul) <> importedNameAliases
       lookupAlias qname
         | HashSet.size candidates == 1 = return $ head $ HashSet.toList candidates
         -- TODO: Error message, duplicate checking, tests
-        | otherwise = throwError $ TypeError ("scopeCheckModule ambiguous" PP.<+> shower candidates) Nothing mempty
+        | otherwise = throwError $ TypeError ("resolveModule ambiguous" PP.<+> shower candidates) Nothing mempty
         where
           candidates = MultiHashMap.lookupDefault (HashSet.singleton qname) qname aliases
 
@@ -158,24 +158,24 @@ importedAliases (Import modName asName exposed) = do
     )
 
 -- | Distinguish variables from constructors, resolve scopes
-scopeCheckTopLevelDefinition
+resolveTopLevelDefinition
   :: Unscoped.TopLevelDefinition
-  -> ScopeCheck (Scoped.TopLevelPatDefinition Scoped.Expr QName, Maybe (Scoped.Type QName))
-scopeCheckTopLevelDefinition (Unscoped.TopLevelDefinition d) =
-  first Scoped.TopLevelPatDefinition . snd <$> scopeCheckDefinition d
-scopeCheckTopLevelDefinition (Unscoped.TopLevelDataDefinition _name params cs) = do
-  (typ, abstr) <- scopeCheckParamsType params $ Unscoped.Var Builtin.TypeName
-  cs' <- mapM (mapM (fmap abstr . scopeCheckExpr)) cs
+  -> ResolveNames (Scoped.TopLevelPatDefinition Scoped.Expr QName, Maybe (Scoped.Type QName))
+resolveTopLevelDefinition (Unscoped.TopLevelDefinition d) =
+  first Scoped.TopLevelPatDefinition . snd <$> resolveDefinition d
+resolveTopLevelDefinition (Unscoped.TopLevelDataDefinition _name params cs) = do
+  (typ, abstr) <- resolveParamsType params $ Unscoped.Var Builtin.TypeName
+  cs' <- mapM (mapM (fmap abstr . resolveExpr)) cs
   let res = Scoped.TopLevelPatDataDefinition $ DataDef cs'
   return (res, Just typ)
-scopeCheckTopLevelDefinition (Unscoped.TopLevelClassDefinition _name params ms) = do
-  (typ, abstr) <- scopeCheckParamsType params $ Unscoped.Var Builtin.TypeName
-  ms' <- mapM (mapM (fmap abstr . scopeCheckExpr)) ms
+resolveTopLevelDefinition (Unscoped.TopLevelClassDefinition _name params ms) = do
+  (typ, abstr) <- resolveParamsType params $ Unscoped.Var Builtin.TypeName
+  ms' <- mapM (mapM (fmap abstr . resolveExpr)) ms
   let res = Scoped.TopLevelPatClassDefinition $ ClassDef ms'
   return (res, Just typ)
-scopeCheckTopLevelDefinition (Unscoped.TopLevelInstanceDefinition typ ms) = do
-  typ' <- scopeCheckExpr typ
-  ms' <- mapM (\(loc, m) -> (,) loc <$> scopeCheckDefinition m) ms
+resolveTopLevelDefinition (Unscoped.TopLevelInstanceDefinition typ ms) = do
+  typ' <- resolveExpr typ
+  ms' <- mapM (\(loc, m) -> (,) loc <$> resolveDefinition m) ms
   let res = Scoped.TopLevelPatInstanceDefinition
         $ Scoped.PatInstanceDef
         $ Vector.fromList
@@ -183,13 +183,13 @@ scopeCheckTopLevelDefinition (Unscoped.TopLevelInstanceDefinition typ ms) = do
         <$> ms'
   return (res, Just typ')
 
-scopeCheckParamsType
+resolveParamsType
   :: Monad f
   => [(Plicitness, Name, Unscoped.Type)]
   -> Unscoped.Expr
-  -> ScopeCheck (Scoped.Expr QName, f QName -> Scope TeleVar f QName)
-scopeCheckParamsType params kind = do
-  typ' <- scopeCheckExpr typ
+  -> ResolveNames (Scoped.Expr QName, f QName -> Scope TeleVar f QName)
+resolveParamsType params kind = do
+  typ' <- resolveExpr typ
   return (typ', abstr)
   where
     pats = (\(p, n, t) -> (p, AnnoPat (VarPat (NameHint n) $ unqualified n) t)) <$> params
@@ -197,30 +197,30 @@ scopeCheckParamsType params kind = do
     paramNames = (\(_, n, _) -> unqualified n) <$> params
     abstr = abstract $ teleAbstraction $ Vector.fromList paramNames
 
-scopeCheckDefinition
+resolveDefinition
   :: Unscoped.Definition Unscoped.Expr
-  -> ScopeCheck (Name, (Scoped.PatDefinition (Scoped.Clause void Scoped.Expr QName), Maybe (Scoped.Type QName)))
-scopeCheckDefinition (Unscoped.Definition name a clauses mtyp) = do
-  res <- Scoped.PatDefinition a IsOrdinaryDefinition <$> mapM scopeCheckClause clauses
-  mtyp' <- forM mtyp scopeCheckExpr
+  -> ResolveNames (Name, (Scoped.PatDefinition (Scoped.Clause void Scoped.Expr QName), Maybe (Scoped.Type QName)))
+resolveDefinition (Unscoped.Definition name a clauses mtyp) = do
+  res <- Scoped.PatDefinition a IsOrdinaryDefinition <$> mapM resolveClause clauses
+  mtyp' <- forM mtyp resolveExpr
   return (name, (res, mtyp'))
 
-scopeCheckClause
+resolveClause
   :: Unscoped.Clause Unscoped.Expr
-  -> ScopeCheck (Scoped.Clause void Scoped.Expr QName)
-scopeCheckClause (Unscoped.Clause plicitPats e) = do
-  plicitPats' <- traverse (traverse scopeCheckPat) plicitPats
+  -> ResolveNames (Scoped.Clause void Scoped.Expr QName)
+resolveClause (Unscoped.Clause plicitPats e) = do
+  plicitPats' <- traverse (traverse resolvePat) plicitPats
 
   let pats = snd <$> plicitPats'
       vars = join (toVector <$> pats)
       typedPats'' = second (void . first (mapBound B)) <$> abstractPatternsTypes vars plicitPats'
 
-  Scoped.Clause typedPats'' . abstract (fmap B . patternAbstraction vars) <$> scopeCheckExpr e
+  Scoped.Clause typedPats'' . abstract (fmap B . patternAbstraction vars) <$> resolveExpr e
 
-scopeCheckExpr
+resolveExpr
   :: Unscoped.Expr
-  -> ScopeCheck (Scoped.Expr QName)
-scopeCheckExpr expr = case expr of
+  -> ResolveNames (Scoped.Expr QName)
+resolveExpr expr = case expr of
   Unscoped.Var v -> do
     constrCandidates <- asks (($ v) . scopeConstrs)
     if HashSet.null constrCandidates then
@@ -231,22 +231,22 @@ scopeCheckExpr expr = case expr of
       return $ Scoped.Con constrCandidates
   Unscoped.Lit l -> return $ Scoped.Lit l
   Unscoped.Pi p pat e -> do
-    pat' <- scopeCheckPat pat
+    pat' <- resolvePat pat
     let vs = toVector pat'
     Scoped.Pi p (void $ abstractPatternTypes vs pat')
-      . abstract (patternAbstraction vs) <$> scopeCheckExpr e
+      . abstract (patternAbstraction vs) <$> resolveExpr e
   Unscoped.Lam p pat e -> do
-    pat' <- scopeCheckPat pat
+    pat' <- resolvePat pat
     let vs = toVector pat'
     Scoped.Lam p (void $ abstractPatternTypes vs pat')
-      . abstract (patternAbstraction vs) <$> scopeCheckExpr e
+      . abstract (patternAbstraction vs) <$> resolveExpr e
   Unscoped.App e1 p e2 -> Scoped.App
-    <$> scopeCheckExpr e1
+    <$> resolveExpr e1
     <*> pure p
-    <*> scopeCheckExpr e2
+    <*> resolveExpr e2
   Unscoped.Let defs body -> do
-    defs' <- traverse (bitraverse pure scopeCheckDefinition) defs
-    body' <- scopeCheckExpr body
+    defs' <- traverse (bitraverse pure resolveDefinition) defs
+    body' <- resolveExpr body
     let sortedDefs = topoSortWith
           (\(_, (name, _)) -> fromName name)
           (\(_, (_, (d, mt))) -> foldMap toHashSet d <> foldMap toHashSet mt)
@@ -261,25 +261,25 @@ scopeCheckExpr expr = case expr of
 
     return $ foldr go body' $ flattenSCC <$> sortedDefs
   Unscoped.Case e pats -> Scoped.Case
-    <$> scopeCheckExpr e
-    <*> mapM (uncurry scopeCheckBranch) pats
-  Unscoped.ExternCode c -> Scoped.ExternCode <$> mapM scopeCheckExpr c
+    <$> resolveExpr e
+    <*> mapM (uncurry resolveBranch) pats
+  Unscoped.ExternCode c -> Scoped.ExternCode <$> mapM resolveExpr c
   Unscoped.Wildcard -> return Scoped.Wildcard
-  Unscoped.SourceLoc loc e -> Scoped.SourceLoc loc <$> scopeCheckExpr e
+  Unscoped.SourceLoc loc e -> Scoped.SourceLoc loc <$> resolveExpr e
 
-scopeCheckBranch
+resolveBranch
   :: Pat Unscoped.Expr QName
   -> Unscoped.Expr
-  -> ScopeCheck (Pat (PatternScope Scoped.Expr QName) (), PatternScope Scoped.Expr QName)
-scopeCheckBranch pat e = do
-  pat' <- scopeCheckPat pat
+  -> ResolveNames (Pat (PatternScope Scoped.Expr QName) (), PatternScope Scoped.Expr QName)
+resolveBranch pat e = do
+  pat' <- resolvePat pat
   let vs = toVector pat'
-  (,) (void $ abstractPatternTypes vs pat') . abstract (patternAbstraction vs) <$> scopeCheckExpr e
+  (,) (void $ abstractPatternTypes vs pat') . abstract (patternAbstraction vs) <$> resolveExpr e
 
-scopeCheckPat
+resolvePat
   :: Pat Unscoped.Expr QName
-  -> ScopeCheck (Pat (Scoped.Expr QName) QName)
-scopeCheckPat pat = case pat of
+  -> ResolveNames (Pat (Scoped.Expr QName) QName)
+resolvePat pat = case pat of
   VarPat h v -> do
     constrCandidates <- asks (($ v) . scopeConstrs)
     if HashSet.null constrCandidates then
@@ -295,7 +295,7 @@ scopeCheckPat pat = case pat of
       constrCandidates <- asks (($ qconName) . scopeConstrs)
       forM_ constrCandidates $ \(QConstr def _) -> modify $ HashSet.insert def
       return constrCandidates
-    ConPat (mconcat conss) <$> mapM (\(p, pat') -> (,) p <$> scopeCheckPat pat') ps
-  AnnoPat p t -> AnnoPat <$> scopeCheckPat p <*> scopeCheckExpr t
-  ViewPat t p -> ViewPat <$> scopeCheckExpr t <*> scopeCheckPat p
-  PatLoc loc p -> PatLoc loc <$> scopeCheckPat p
+    ConPat (mconcat conss) <$> mapM (\(p, pat') -> (,) p <$> resolvePat pat') ps
+  AnnoPat p t -> AnnoPat <$> resolvePat p <*> resolveExpr t
+  ViewPat t p -> ViewPat <$> resolveExpr t <*> resolvePat p
+  PatLoc loc p -> PatLoc loc <$> resolvePat p

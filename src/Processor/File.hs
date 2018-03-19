@@ -29,7 +29,7 @@ import qualified Backend.SLam as SLam
 import Backend.Target
 import qualified Frontend.Declassify as Declassify
 import qualified Frontend.Parse as Parse
-import qualified Frontend.ScopeCheck as ScopeCheck
+import qualified Frontend.ResolveNames as ResolveNames
 import qualified Inference.Monad as TypeCheck
 import qualified Inference.TypeCheck.Definition as TypeCheck
 import Processor.Result
@@ -55,7 +55,7 @@ frontend
   -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [k]
 frontend k
-  = scopeCheckProgram
+  = resolveProgramNames
   >>=> prettyConcreteGroup "Concrete syntax" absurd
 
   >=> declassifyGroup
@@ -176,11 +176,11 @@ prettyGroup str f defs = do
       VIX.log ""
   return defs
 
-scopeCheckProgram
+resolveProgramNames
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [[(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Maybe (Concrete.Type Void))]]
-scopeCheckProgram modul = do
-  res <- ScopeCheck.scopeCheckModule modul
+resolveProgramNames modul = do
+  res <- ResolveNames.resolveModule modul
   let defnames = HashSet.fromMap $ void $ moduleContents modul
       connames = HashSet.fromList
         [ QConstr n c
