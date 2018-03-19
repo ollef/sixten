@@ -136,6 +136,8 @@ compileC clang opts tgt cFile = do
     , "-fvisibility=internal"
 #ifndef mingw32_HOST_OS
     , "-fPIC"
+#else
+    , "-target", "x86_64-pc-windows-gnu"
 #endif
     , "-S"
     , "-emit-llvm"
@@ -170,14 +172,12 @@ compileLlvm compiler opts tgt llFile = do
 assemble :: Binary -> Options -> [FilePath] -> FilePath -> IO ()
 assemble clang opts objFiles outFile = do
   let extraLibDirFlags = ["-L" ++ dir | dir <- Options.extraLibDirs opts]
-#ifndef mingw32_HOST_OS
   ldFlags <- readProcess "pkg-config" ["--libs", "--static", "bdw-gc"] ""
-#else
-  -- Currently the bdwgc can only output library linking with dynamic MSVCRT.
-  -- however clang will automatically pass static MSVCRT to linker.
-  let ldFlags = "-lgc-lib -fuse-ld=lld-link -Xlinker -nodefaultlib:libcmt -Xlinker -defaultlib:msvcrt.lib"
-#endif
   callProcess clang
-    $ concatMap words (extraLibDirFlags ++ lines ldFlags)
+    $ extraLibDirFlags
+    ++ words ldFlags
+#ifdef mingw32_HOST_OS
+    ++ ["-target", "x86_64-pc-windows-gnu"]
+#endif
     ++ optimisationFlags opts
     ++ objFiles ++ ["-o", outFile]

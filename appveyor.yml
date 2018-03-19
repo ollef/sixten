@@ -1,0 +1,33 @@
+cache:
+- "c:\\sr" # stack root
+
+build: off
+
+before_build:
+# http://help.appveyor.com/discussions/problems/6312-curl-command-not-found
+- set PATH=C:\Program Files\Git\mingw64\bin;%PATH%
+- set PATH=C:\Users\appveyor\AppData\Roaming\local\bin;%PATH%
+- set PATH=C:\msys64\usr\bin;%PATH%
+- SET PKG_CONFIG_PATH=C:\msys64\mingw64\lib\pkgconfig
+
+- curl -sS -ostack.zip -L --insecure http://www.stackage.org/stack/windows-i386
+- 7z x stack.zip stack.exe
+
+- pacman -Ss pkg-config
+- pacman -S mingw-w64-x86_64-pkg-config mingw64/mingw-w64-x86_64-gc --needed --noconfirm --noprogressbar
+- pkg-config --libs --static bdw-gc
+
+clone_folder: "c:\\stack"
+environment:
+  global:
+    STACK_ROOT: "c:\\sr"
+
+build_script:
+- stack setup > nul
+- stack install > nul
+
+test_script:
+# The ugly echo "" hack is to avoid complaints about 0 being an invalid file
+# descriptor
+- sixten run tests/success/00-basics/ADT.vix
+- echo "" | stack --no-terminal test
