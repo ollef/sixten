@@ -308,6 +308,7 @@ writeModule modul llOutputFile externOutputFiles = do
         [] -> return Nothing
         externCode -> Util.withFile outFile WriteMode $ \handle -> do
           -- TODO this is C specific
+          Text.hPutStrLn handle "#include <inttypes.h>"
           Text.hPutStrLn handle "#include <stdint.h>"
           Text.hPutStrLn handle "#include <stdio.h>"
           Text.hPutStrLn handle "#include <stdlib.h>"
