@@ -124,7 +124,6 @@ instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, (_,
     return [(c, name)]
   _ -> return mempty
 
--- TODO add test for imports of empty modules
 importedAliases
   :: Import
   -> VIX (MultiHashMap QName QConstr, MultiHashMap QName QName)
