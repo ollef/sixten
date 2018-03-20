@@ -110,7 +110,7 @@ compileBuiltins = do
             | (n, (DataDefinition d _, _)) <- HashMap.toList context
             , c <- constrNames d
             ]
-      addModule "Sixten.Builtin" $ HashSet.map Right builtinDefNames <> HashSet.map Left builtinConstrNames
+      addModule "Sixten.Builtin" builtinConstrNames builtinDefNames
       addContext context
       builtinResults1 <- File.process builtins1
       let contextList = (\(n, (d, t)) -> (n, d, t)) <$> HashMap.toList context

@@ -37,7 +37,8 @@ import qualified Util.MultiHashMap as MultiHashMap
 data VIXState = VIXState
   { vixLocation :: Maybe SourceLoc
   , vixContext :: HashMap QName (Definition Expr Void, Type Void)
-  , vixModuleNames :: MultiHashMap ModuleName (Either QConstr QName)
+  , vixModuleConstrs :: MultiHashMap ModuleName QConstr
+  , vixModuleNames :: MultiHashMap ModuleName QName
   , vixConvertedSignatures :: HashMap QName Lifted.FunSignature
   , vixSignatures :: HashMap QName (Signature ReturnIndirect)
   , vixClassMethods :: HashMap QName (Vector Name)
@@ -62,6 +63,7 @@ emptyVIXState :: Target -> Handle -> Int -> VIXState
 emptyVIXState target handle verbosity = VIXState
   { vixLocation = Nothing
   , vixContext = mempty
+  , vixModuleConstrs = mempty
   , vixModuleNames = mempty
   , vixConvertedSignatures = mempty
   , vixSignatures = mempty
@@ -74,7 +76,7 @@ emptyVIXState target handle verbosity = VIXState
   , vixTarget = target
   }
 
-newtype VIX a = VIX (StateT VIXState (ExceptT Error IO) a)
+newtype VIX a = VIX { unVIX :: StateT VIXState (ExceptT Error IO) a }
   deriving (Functor, Applicative, Monad, MonadFix, MonadError Error, MonadIO, MonadBase IO, MonadBaseControl IO)
 
 instance MonadVIX VIX where
@@ -82,11 +84,6 @@ instance MonadVIX VIX where
 
 liftST :: MonadIO m => ST RealWorld a -> m a
 liftST = liftIO . stToIO
-
-unVIX
-  :: VIX a
-  -> StateT VIXState (ExceptT Error IO) a
-unVIX (VIX x) = x
 
 -- TODO vixFresh should probably be a mutable variable
 runVIX
@@ -192,10 +189,12 @@ definition name = do
 addModule
   :: MonadVIX m
   => ModuleName
-  -> HashSet (Either QConstr QName)
+  -> HashSet QConstr
+  -> HashSet QName
   -> m ()
-addModule m names = liftVIX $ modify $ \s -> s
-  { vixModuleNames = MultiHashMap.inserts m names $ vixModuleNames s
+addModule m constrs names = liftVIX $ modify $ \s -> s
+  { vixModuleConstrs = MultiHashMap.inserts m constrs $ vixModuleConstrs s
+  , vixModuleNames = MultiHashMap.inserts m names $ vixModuleNames s
   }
 
 qconstructor :: (MonadVIX m, MonadError Error m) => QConstr -> m (Type v)

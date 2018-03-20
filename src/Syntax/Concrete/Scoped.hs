@@ -30,11 +30,11 @@ data Expr v
   | Global QName
   | Lit Literal
   | Con (HashSet QConstr)
-  | Pi !Plicitness (Pat (PatternScope Type v) ()) (PatternScope Expr v)
-  | Lam !Plicitness (Pat (PatternScope Type v) ()) (PatternScope Expr v)
+  | Pi !Plicitness (Pat (HashSet QConstr) (PatternScope Type v) ()) (PatternScope Expr v)
+  | Lam !Plicitness (Pat (HashSet QConstr) (PatternScope Type v) ()) (PatternScope Expr v)
   | App (Expr v) !Plicitness (Expr v)
   | Let (Vector (SourceLoc, NameHint, PatDefinition (Clause LetVar Expr v), Maybe (Scope LetVar Type v))) (Scope LetVar Expr v)
-  | Case (Expr v) [(Pat (PatternScope Type v) (), PatternScope Expr v)]
+  | Case (Expr v) [(Pat (HashSet QConstr) (PatternScope Type v) (), PatternScope Expr v)]
   | ExternCode (Extern (Expr v))
   | Wildcard
   | SourceLoc !SourceLoc (Expr v)
@@ -44,7 +44,7 @@ type Type = Expr
 
 -------------------------------------------------------------------------------
 -- Helpers
-piView :: Expr v -> Maybe (Plicitness, Pat (PatternScope Type v) (), PatternScope Expr v)
+piView :: Expr v -> Maybe (Plicitness, Pat (HashSet QConstr) (PatternScope Type v) (), PatternScope Expr v)
 piView (Pi p pat s) = Just (p, pat, s)
 piView _ = Nothing
 
@@ -59,8 +59,8 @@ appsView = second toList . go
     go e = (e, Nil)
 
 annoPatView
-  :: Pat (Scope b Expr a) t
-  -> (Pat (Scope b Expr a) t, Scope b Expr a)
+  :: Pat (HashSet QConstr) (Scope b Expr a) t
+  -> (Pat (HashSet QConstr) (Scope b Expr a) t, Scope b Expr a)
 annoPatView (PatLoc _ p) = annoPatView p
 annoPatView (AnnoPat p t) = (p, t)
 annoPatView p = (p, Scope Wildcard)
@@ -83,13 +83,13 @@ instance Eq1 Expr where
   liftEq _ (Global g1) (Global g2) = g1 == g2
   liftEq _ (Lit l1) (Lit l2) = l1 == l2
   liftEq _ (Con c1) (Con c2) = c1 == c2
-  liftEq f (Pi p1 pat1 s1) (Pi p2 pat2 s2) = p1 == p2 && liftPatEq (liftEq f) (==) pat1 pat2 && liftEq f s1 s2
-  liftEq f (Lam p1 pat1 s1) (Lam p2 pat2 s2) = p1 == p2 && liftPatEq (liftEq f) (==) pat1 pat2 && liftEq f s1 s2
+  liftEq f (Pi p1 pat1 s1) (Pi p2 pat2 s2) = p1 == p2 && liftPatEq (==) (liftEq f) (==) pat1 pat2 && liftEq f s1 s2
+  liftEq f (Lam p1 pat1 s1) (Lam p2 pat2 s2) = p1 == p2 && liftPatEq (==) (liftEq f) (==) pat1 pat2 && liftEq f s1 s2
   liftEq f (App e1 p1 e1') (App e2 p2 e2') = liftEq f e1 e2 && p1 == p2 && liftEq f e1' e2'
   liftEq f (Let tele1 s1) (Let tele2 s2) = liftEq (\(_, _, d1, mt1) (_, _, d2, mt2) -> liftEq (liftEq f) d1 d2 && liftEq (liftEq f) mt1 mt2) tele1 tele2 && liftEq f s1 s2
   liftEq f (Case e1 brs1) (Case e2 brs2)
     = liftEq f e1 e2
-    && liftEq (\(pat1, s1) (pat2, s2) -> liftPatEq (liftEq f) (==) pat1 pat2 && liftEq f s1 s2) brs1 brs2
+    && liftEq (\(pat1, s1) (pat2, s2) -> liftPatEq (==) (liftEq f) (==) pat1 pat2 && liftEq f s1 s2) brs1 brs2
   liftEq f (ExternCode c) (ExternCode c') = liftEq (liftEq f) c c'
   liftEq _ Wildcard Wildcard = True
   liftEq f (SourceLoc _ e1) e2 = liftEq f e1 e2

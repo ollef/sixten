@@ -6,6 +6,7 @@ import Control.Monad.Except
 import Control.Monad.ST
 import Data.Bifunctor
 import Data.Bitraversable
+import Data.HashSet(HashSet)
 import Data.Monoid
 import Data.STRef
 import qualified Data.Text.Prettyprint.Doc as PP
@@ -32,7 +33,7 @@ data ExpectedPat
 
 checkPat
   :: Plicitness
-  -> Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
+  -> Concrete.Pat (HashSet QConstr) (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
   -> Polytype
   -> Infer (Abstract.Pat AbstractM MetaA, AbstractM, Vector MetaA)
@@ -40,7 +41,7 @@ checkPat p pat vs expectedType = tcPat p pat vs $ CheckPat expectedType
 
 inferPat
   :: Plicitness
-  -> Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
+  -> Concrete.Pat (HashSet QConstr) (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
   -> Infer (Abstract.Pat AbstractM MetaA, AbstractM, Vector MetaA, Polytype)
 inferPat p pat vs = do
@@ -50,7 +51,7 @@ inferPat p pat vs = do
   return (pat', patExpr, vs', t)
 
 tcPats
-  :: Vector (Plicitness, Concrete.Pat (PatternScope Concrete.Expr MetaA) ())
+  :: Vector (Plicitness, Concrete.Pat (HashSet QConstr) (PatternScope Concrete.Expr MetaA) ())
   -> Vector MetaA
   -> Telescope Plicitness Abstract.Expr MetaA
   -> Infer (Vector (Abstract.Pat AbstractM MetaA, AbstractM, AbstractM), Vector MetaA)
@@ -72,7 +73,7 @@ tcPats pats vs tele = do
 
 tcPat
   :: Plicitness
-  -> Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
+  -> Concrete.Pat (HashSet QConstr) (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
   -> ExpectedPat
   -> Infer (Abstract.Pat AbstractM MetaA, AbstractM, Vector MetaA)
@@ -88,7 +89,7 @@ tcPat p pat vs expected = do
 
 tcPat'
   :: Plicitness
-  -> Concrete.Pat (PatternScope Concrete.Expr MetaA) ()
+  -> Concrete.Pat (HashSet QConstr) (PatternScope Concrete.Expr MetaA) ()
   -> Vector MetaA
   -> ExpectedPat
   -> Infer (Abstract.Pat AbstractM MetaA, AbstractM, Vector MetaA)
@@ -206,10 +207,10 @@ patToTerm pat = case pat of
 -- "Equalisation" -- making the patterns match a list of parameter plicitnesses
 -- by adding implicits
 exactlyEqualisePats
-  :: Pretty v
+  :: (Pretty v, Pretty c)
   => [Plicitness]
-  -> [(Plicitness, Concrete.Pat e v)]
-  -> Infer [(Plicitness, Concrete.Pat e v)]
+  -> [(Plicitness, Concrete.Pat c e v)]
+  -> Infer [(Plicitness, Concrete.Pat c e v)]
 exactlyEqualisePats [] [] = return []
 exactlyEqualisePats [] ((p, pat):_)
   = throwLocated
@@ -241,10 +242,10 @@ exactlyEqualisePats (Explicit:_) []
     ]
 
 equalisePats
-  :: Pretty v
+  :: (Pretty v, Pretty c)
   => [Plicitness]
-  -> [(Plicitness, Concrete.Pat e v)]
-  -> Infer [(Plicitness, Concrete.Pat e v)]
+  -> [(Plicitness, Concrete.Pat c e v)]
+  -> Infer [(Plicitness, Concrete.Pat c e v)]
 equalisePats _ [] = return []
 equalisePats [] pats = return pats
 equalisePats (Constraint:ps) ((Constraint, pat):pats)
@@ -262,7 +263,7 @@ equalisePats (Explicit:_) ((Implicit, pat):_)
 equalisePats (Explicit:_) ((Constraint, pat):_)
   = throwExpectedExplicit pat
 
-throwExpectedExplicit :: Pretty v => Concrete.Pat e v -> Infer a
+throwExpectedExplicit :: (Pretty v, Pretty c) => Concrete.Pat c e v -> Infer a
 throwExpectedExplicit pat
   = throwLocated
   $ PP.vcat

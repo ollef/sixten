@@ -4,19 +4,20 @@ import Control.Monad.Except
 import Data.Bifunctor
 import Data.Bitraversable
 import Data.Foldable as Foldable
+import Data.HashSet(HashSet)
 import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Monoid
 import qualified Data.Vector as Vector
 import Data.Void
 
+import {-# SOURCE #-} Inference.TypeCheck.Expr
 import Inference.Constraint
 import Inference.Match as Match
 import Inference.Meta
 import Inference.Monad
 import Inference.Subtype
 import Inference.TypeCheck.Pattern
-import {-# SOURCE #-} Inference.TypeCheck.Expr
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
@@ -127,8 +128,8 @@ equaliseClauses clauses
     (Concrete.clauseScope <$> clauses)
   where
     go
-      :: NonEmpty [(Plicitness, Concrete.Pat (Scope b expr v) ())]
-      -> NonEmpty ([(Plicitness, Concrete.Pat (Scope b expr v) ())], [Plicitness])
+      :: NonEmpty [(Plicitness, Concrete.Pat c (Scope b expr v) ())]
+      -> NonEmpty ([(Plicitness, Concrete.Pat c (Scope b expr v) ())], [Plicitness])
     go clausePats
       | numEx == 0 && numIm == 0 = (\pats -> (pats, mempty)) <$> clausePats
       | numEx == len = NonEmpty.zipWith (first . (:)) heads $ go tails
@@ -143,15 +144,15 @@ equaliseClauses clauses
         tails = tail <$> clausePats
         len = length clausePats
     go'
-      :: NonEmpty ([(Plicitness, Concrete.Pat (Scope b expr v) ())], [Plicitness])
-      -> NonEmpty ([(Plicitness, Concrete.Pat (Scope b expr v) ())], [Plicitness])
+      :: NonEmpty ([(Plicitness, Concrete.Pat c (Scope b expr v) ())], [Plicitness])
+      -> NonEmpty ([(Plicitness, Concrete.Pat c (Scope b expr v) ())], [Plicitness])
     go' clausePats
       = NonEmpty.zipWith
         (\ps (pats, ps') -> (pats, ps ++ ps'))
         (snd <$> clausePats)
         (go $ fst <$> clausePats)
 
-    numExplicit, numImplicit :: NonEmpty [(Plicitness, Concrete.Pat (Scope b expr v) ())] -> Int
+    numExplicit, numImplicit :: NonEmpty [(Plicitness, Concrete.Pat c (Scope b expr v) ())] -> Int
     numExplicit = length . NonEmpty.filter (\xs -> case xs of
       (Explicit, _):_ -> True
       _ -> False)
@@ -161,8 +162,8 @@ equaliseClauses clauses
       _ -> False)
 
     addImplicit, addExplicit
-      :: [(Plicitness, Concrete.Pat (Scope b expr v) ())]
-      -> ([(Plicitness, Concrete.Pat (Scope b expr v) ())], [Plicitness])
+      :: [(Plicitness, Concrete.Pat c (Scope b expr v) ())]
+      -> ([(Plicitness, Concrete.Pat c (Scope b expr v) ())], [Plicitness])
     addImplicit pats@((Implicit, _):_) = (pats, mempty)
     addImplicit pats = ((Implicit, Concrete.WildcardPat) : pats, mempty)
 
@@ -170,7 +171,7 @@ equaliseClauses clauses
     addExplicit pats = ((Explicit, Concrete.VarPat mempty ()) : pats, pure Explicit)
 
 etaClause
-  :: [(Plicitness, Concrete.Pat (Scope (Var PatternVar b) Concrete.Expr v) ())]
+  :: [(Plicitness, Concrete.Pat (HashSet QConstr) (Scope (Var PatternVar b) Concrete.Expr v) ())]
   -> [Plicitness]
   -> Scope (Var PatternVar b) Concrete.Expr v
   -> Concrete.Clause b Concrete.Expr v

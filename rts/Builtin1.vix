@@ -33,7 +33,7 @@ maxInt x y = (C|
 abstract
 printInt : Int -> Int
 printInt x = (C|
-  printf("%zd\n", $x);
+  printf("%" PRId64 "\n", $x);
   return 0;
 |)
 

@@ -29,7 +29,7 @@ import qualified Backend.SLam as SLam
 import Backend.Target
 import qualified Frontend.Declassify as Declassify
 import qualified Frontend.Parse as Parse
-import qualified Frontend.ScopeCheck as ScopeCheck
+import qualified Frontend.ResolveNames as ResolveNames
 import qualified Inference.Monad as TypeCheck
 import qualified Inference.TypeCheck.Definition as TypeCheck
 import Processor.Result
@@ -55,7 +55,7 @@ frontend
   -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [k]
 frontend k
-  = scopeCheckProgram
+  = resolveProgramNames
   >>=> prettyConcreteGroup "Concrete syntax" absurd
 
   >=> declassifyGroup
@@ -176,11 +176,11 @@ prettyGroup str f defs = do
       VIX.log ""
   return defs
 
-scopeCheckProgram
+resolveProgramNames
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [[(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Maybe (Concrete.Type Void))]]
-scopeCheckProgram modul = do
-  res <- ScopeCheck.scopeCheckModule modul
+resolveProgramNames modul = do
+  res <- ResolveNames.resolveModule modul
   let defnames = HashSet.fromMap $ void $ moduleContents modul
       connames = HashSet.fromList
         [ QConstr n c
@@ -192,10 +192,7 @@ scopeCheckProgram modul = do
         | (QName n _, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList $ moduleContents modul
         , m <- methodName <$> ms
         ]
-  addModule (moduleName modul)
-    $ HashSet.map Right defnames
-    <> HashSet.map Left connames
-    <> HashSet.map Right methods
+  addModule (moduleName modul) connames $ defnames <> methods
   return res
 
 declassifyGroup
@@ -311,6 +308,7 @@ writeModule modul llOutputFile externOutputFiles = do
         [] -> return Nothing
         externCode -> Util.withFile outFile WriteMode $ \handle -> do
           -- TODO this is C specific
+          Text.hPutStrLn handle "#include <inttypes.h>"
           Text.hPutStrLn handle "#include <stdint.h>"
           Text.hPutStrLn handle "#include <stdio.h>"
           Text.hPutStrLn handle "#include <stdlib.h>"

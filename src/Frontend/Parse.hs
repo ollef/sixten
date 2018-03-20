@@ -185,7 +185,7 @@ qidStyle = Parsix.IdentifierStyle "identifier" idStart qidLetter reservedIds Hig
 name :: Parser Name
 name = Parsix.ident idStyle
 
-qname :: Parser QName
+qname :: Parser PreName
 qname = Parsix.ident qidStyle
 
 constructor :: Parser Constr
@@ -193,7 +193,7 @@ constructor
   = Parsix.highlight Highlight.Constructor
   $ Parsix.ident idStyle
 
-qconstructor :: Parser QConstr
+qconstructor :: Parser PreName
 qconstructor
   = Parsix.highlight Highlight.Constructor
   $ Parsix.ident qidStyle
@@ -228,32 +228,32 @@ located p = do
 
 -------------------------------------------------------------------------------
 -- * Patterns
-locatedPat :: Parser (Pat typ v) -> Parser (Pat typ v)
+locatedPat :: Parser (Pat c typ v) -> Parser (Pat c typ v)
 locatedPat p = uncurry PatLoc <$> located p
 
-pattern :: Parser (Pat Type QName)
+pattern :: Parser (Pat PreName Type PreName)
 pattern = locatedPat $
-  ( Parsix.try (ConPat <$> (HashSet.singleton <$> qconstructor) <*> (Vector.fromList <$> someSI plicitPattern))
+  ( Parsix.try (ConPat <$> qconstructor <*> (Vector.fromList <$> someSI plicitPattern))
     <|> atomicPattern
   ) <**>
   ( flip AnnoPat <$% symbol ":" <*> expr
     <|> pure id
   ) <?> "pattern"
 
-plicitPattern :: Parser (Plicitness, Pat Type QName)
+plicitPattern :: Parser (Plicitness, Pat PreName Type PreName)
 plicitPattern = (,) Implicit <$ symbol "@" <*>% atomicPattern
   <|> (,) Explicit <$> atomicPattern
   <?> "explicit or implicit pattern"
 
-atomicPattern :: Parser (Pat Type QName)
+atomicPattern :: Parser (Pat PreName Type PreName)
 atomicPattern = locatedPat
   $ symbol "(" *>% pattern <*% symbol ")"
-  <|> (\v -> VarPat (fromQName v) v) <$> qname
+  <|> (\v -> VarPat (fromPreName v) v) <$> qname
   <|> WildcardPat <$ wildcard
   <|> literalPat
   <?> "atomic pattern"
 
-plicitPatternBinding :: Parser [(Plicitness, Pat Type QName)]
+plicitPatternBinding :: Parser [(Plicitness, Pat PreName Type PreName)]
 plicitPatternBinding
   = go Implicit <$ symbol "@" <*% symbol "(" <*> someSI atomicPattern <*% symbol ":" <*>% expr <*% symbol ")"
   <|> go Explicit <$ symbol "(" <*> someSI atomicPattern <*% symbol ":" <*>% expr <*% symbol ")"
@@ -261,26 +261,26 @@ plicitPatternBinding
   where
     go p pats t = [(p, AnnoPat pat t) | pat <- pats]
 
-patternBinding :: Parser [(Pat Type QName)]
+patternBinding :: Parser [(Pat PreName Type PreName)]
 patternBinding
   = go <$ symbol "(" <*> someSI atomicPattern <*% symbol ":" <*>% expr <*% symbol ")"
   <?> "typed pattern"
   where
     go pats t = [AnnoPat pat t | pat <- pats]
 
-somePlicitPatternBindings :: Parser [(Plicitness, Pat Type QName)]
+somePlicitPatternBindings :: Parser [(Plicitness, Pat PreName Type PreName)]
 somePlicitPatternBindings
   = concat <$> someSI plicitPatternBinding
 
-somePlicitPatterns :: Parser [(Plicitness, Pat Type QName)]
+somePlicitPatterns :: Parser [(Plicitness, Pat PreName Type PreName)]
 somePlicitPatterns
   = concat <$> someSI (Parsix.try plicitPatternBinding <|> pure <$> plicitPattern)
 
-somePatterns :: Parser [(Pat Type QName)]
+somePatterns :: Parser [(Pat PreName Type PreName)]
 somePatterns
   = concat <$> someSI (Parsix.try patternBinding <|> pure <$> atomicPattern)
 
-manyPlicitPatterns :: Parser [(Plicitness, Pat Type QName)]
+manyPlicitPatterns :: Parser [(Plicitness, Pat PreName Type PreName)]
 manyPlicitPatterns
   = concat <$> manySI (Parsix.try plicitPatternBinding <|> pure <$> plicitPattern)
 
@@ -333,7 +333,7 @@ atomicExpr = locatedExpr
       where
         mkLet xs = Let $ Vector.fromList xs
 
-branches :: Parser [(Pat Type QName, Expr)]
+branches :: Parser [(Pat PreName Type PreName, Expr)]
 branches = manyIndentedOrSameCol branch
   where
     branch = (,) <$> pattern <*% symbol "->" <*>% expr
@@ -396,7 +396,7 @@ literal
   = Lit . Integer <$> integer
   <|> string <$> Parsix.stringLiteral
 
-literalPat :: Parser (Pat t n)
+literalPat :: Parser (Pat PreName t n)
 literalPat
   = LitPat . Integer <$> integer
   <|> stringPat <$> Parsix.stringLiteral

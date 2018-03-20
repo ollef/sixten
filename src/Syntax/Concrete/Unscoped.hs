@@ -12,13 +12,13 @@ import Syntax.Concrete.Pattern
 type Con = Either Constr QConstr
 
 data Expr
-  = Var QName
+  = Var PreName
   | Lit Literal
-  | Pi !Plicitness (Pat Type QName) Expr
-  | Lam !Plicitness (Pat Type QName) Expr
+  | Pi !Plicitness (Pat PreName Type PreName) Expr
+  | Lam !Plicitness (Pat PreName Type PreName) Expr
   | App Expr !Plicitness Expr
   | Let (Vector (SourceLoc, Definition Expr)) Expr
-  | Case Expr [(Pat Expr QName, Expr)]
+  | Case Expr [(Pat PreName Expr PreName, Expr)]
   | ExternCode (Extern Expr)
   | Wildcard
   | SourceLoc !SourceLoc Type
@@ -40,19 +40,19 @@ data TopLevelDefinition
   | TopLevelInstanceDefinition Type [(SourceLoc, Definition Expr)]
   deriving (Show)
 
-data Clause e = Clause (Vector (Plicitness, Pat e QName)) e
+data Clause e = Clause (Vector (Plicitness, Pat PreName e PreName)) e
   deriving (Show)
 
 -------------------------------------------------------------------------------
 -- Smart constructors
 pis
-  :: [(Plicitness, Pat Type QName)]
+  :: [(Plicitness, Pat PreName Type PreName)]
   -> Expr
   -> Expr
 pis ps e = foldr (uncurry Pi) e ps
 
 lams
-  :: [(Plicitness, Pat Type QName)]
+  :: [(Plicitness, Pat PreName Type PreName)]
   -> Expr
   -> Expr
 lams ps e = foldr (uncurry Lam)  e ps
