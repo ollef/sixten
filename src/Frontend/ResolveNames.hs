@@ -35,7 +35,6 @@ runResolveNames m env = do
   (a, s, ~()) <- runRWST m env mempty
   return (a, s)
 
--- TODO use plain Name for unresolved names
 resolveModule
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [[(QName, SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void, Maybe (Scoped.Type void))]]
