@@ -55,14 +55,27 @@ clangBinPath = trim <$> checkClangExists
         trim = dropWhile isSpace . dropWhileEnd isSpace
 
 llvmBinPath :: IO FilePath
-llvmBinPath = checkLlvmExists trySuffixes
-  where trySuffixes = "" : fmap (('-' :) . showVersion) supportedLlvmVersions
-        checkLlvmExists :: [String] -> IO String
-        checkLlvmExists (suffix : xs) =
-          handle (\(_ :: IOException) -> checkLlvmExists xs)
-          $ readProcess ("llvm-config" ++ suffix) ["--bindir"] ""
-        checkLlvmExists [] = error
-          "Couldn't find llvm-config. You can specify its path using the --llvm-config flag."
+llvmBinPath = checkLlvmExists candidates
+  where
+    suffixes
+      = ""
+      -- The naming scheme on e.g. Ubuntu:
+      : fmap (('-' :) . showVersion) supportedLlvmVersions
+    prefixes
+      = ""
+      -- The installation path of Brew on Mac:
+      : "/usr/local/opt/llvm/bin/"
+      : []
+    candidates
+      = ["llvm-config" ++ suffix | suffix <- suffixes]
+      ++ [prefix ++ "llvm-config" | prefix <- prefixes]
+
+    checkLlvmExists :: [String] -> IO String
+    checkLlvmExists (path : xs) =
+      handle (\(_ :: IOException) -> checkLlvmExists xs)
+      $ readProcess path ["--bindir"] ""
+    checkLlvmExists [] = error
+      "Couldn't find llvm-config. You can specify its path using the --llvm-config flag."
 
 compile :: Options -> Arguments -> IO ()
 compile opts args = do
