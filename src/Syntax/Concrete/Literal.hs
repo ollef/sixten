@@ -2,7 +2,6 @@
 module Syntax.Concrete.Literal where
 
 import Data.ByteString as ByteString
-import qualified Data.HashSet as HashSet
 import Data.Text(Text)
 import Data.Text.Encoding as Encoding
 import qualified Data.Vector as Vector
@@ -15,53 +14,53 @@ import qualified Builtin.Names as Builtin
 
 string :: Text -> Expr
 string
-  = App (Var $ QName "Sixten.Builtin" $ fromConstr Builtin.MkStringName) Explicit
+  = App (Var $ fromQName $ QName "Sixten.Builtin" $ fromConstr Builtin.MkStringName) Explicit
   . byteArray
   . Encoding.encodeUtf8
 
 byteArray :: ByteString -> Expr
 byteArray bs
-  = Unscoped.apps (Var $ unqualified $ constrToName Builtin.MkArrayName)
+  = Unscoped.apps (Var $ fromQConstr Builtin.MkArrayConstr)
   [ (Explicit, nat $ ByteString.length bs)
   , ( Explicit
-    , App (Var $ unqualified $ constrToName Builtin.RefName) Explicit
+    , App (Var $ fromQConstr Builtin.Ref) Explicit
     $ ByteString.foldr
-      (\byte rest -> Unscoped.apps (Var $ unqualified $ constrToName Builtin.MkPairName) [(Explicit, Lit $ Byte byte), (Explicit, rest)])
-      (Var $ unqualified $ constrToName Builtin.MkUnitConstrName)
+      (\byte rest -> Unscoped.apps (Var $ fromQConstr Builtin.MkPairConstr) [(Explicit, Lit $ Byte byte), (Explicit, rest)])
+      (Var $ fromQConstr Builtin.MkUnitConstr)
       bs
     )
   ]
 
 nat :: (Eq a, Num a) => a -> Expr
-nat 0 = Var $ unqualified $ constrToName Builtin.ZeroName
-nat n = App (Var $ unqualified $ constrToName Builtin.SuccName) Explicit (nat (n - 1))
+nat 0 = Var $ fromQConstr Builtin.ZeroConstr
+nat n = App (Var $ fromQConstr Builtin.SuccConstr) Explicit (nat (n - 1))
 
-stringPat :: Text -> Pat t v
+stringPat :: Text -> Pat PreName t v
 stringPat
-  = ConPat (HashSet.singleton Builtin.MkStringConstr)
+  = ConPat (fromQConstr Builtin.MkStringConstr)
   . pure
   . (,) Explicit
   . byteArrayPat
   . Encoding.encodeUtf8
 
-byteArrayPat :: ByteString -> Pat t v
-byteArrayPat bs = ConPat (HashSet.singleton Builtin.MkArrayConstr)
+byteArrayPat :: ByteString -> Pat PreName t v
+byteArrayPat bs = ConPat (fromQConstr Builtin.MkArrayConstr)
   $ Vector.fromList
   [ (Explicit, natPat $ ByteString.length bs)
   , (Explicit
-    , ConPat (HashSet.singleton Builtin.Ref)
+    , ConPat (fromQConstr Builtin.Ref)
     $ pure
     ( Explicit
     , ByteString.foldr
       (\byte rest -> ConPat
-        (HashSet.singleton Builtin.MkPairConstr)
+        (fromQConstr Builtin.MkPairConstr)
         $ Vector.fromList [(Explicit, LitPat $ Byte byte), (Explicit, rest)])
-      (ConPat (HashSet.singleton Builtin.MkUnitConstr) mempty)
+      (ConPat (fromQConstr Builtin.MkUnitConstr) mempty)
       bs
     )
     )
   ]
 
-natPat :: (Eq a, Num a) => a -> Pat t v
-natPat 0 = ConPat (HashSet.singleton Builtin.ZeroConstr) mempty
-natPat n = ConPat (HashSet.singleton Builtin.SuccConstr) $ pure (Explicit, natPat (n - 1))
+natPat :: (Eq a, Num a) => a -> Pat PreName t v
+natPat 0 = ConPat (fromQConstr Builtin.ZeroConstr) mempty
+natPat n = ConPat (fromQConstr Builtin.SuccConstr) $ pure (Explicit, natPat (n - 1))

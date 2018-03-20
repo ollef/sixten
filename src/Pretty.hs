@@ -211,6 +211,7 @@ instance Pretty Float  where pretty = fromString . show
 instance Pretty Double where pretty = fromString . show
 instance a ~ AnsiStyle => Pretty (PP.Doc a) where pretty = id
 instance Pretty Text where pretty = fromString . Text.unpack
+instance Pretty PreName where pretty (PreName n) = pretty n
 instance Pretty Name where pretty (Name n) = pretty n
 instance Pretty Constr where pretty (Constr c) = pretty c
 instance Pretty Void where pretty = absurd
@@ -244,6 +245,10 @@ instance (Pretty a, Pretty b, Pretty c) => Pretty (a, b, c) where
     <*> prettyM c
     where
       f x y z = PP.tupled [x, y, z]
+
+instance Pretty a => Pretty (HashSet a) where
+  prettyM s
+    = PP.encloseSep PP.lbrace PP.rbrace PP.comma <$> mapM (inviolable . prettyM) (HashSet.toList s)
 
 instance Pretty (Proxy a) where
   prettyM Proxy = "Proxy"

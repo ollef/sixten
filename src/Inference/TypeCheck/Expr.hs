@@ -3,6 +3,7 @@ module Inference.TypeCheck.Expr where
 
 import Control.Monad.Except
 import Control.Monad.ST
+import Data.HashSet(HashSet)
 import Data.Monoid
 import Data.STRef
 import qualified Data.Vector as Vector
@@ -211,7 +212,7 @@ tcRho expr expected expectedAppResult = case expr of
 
 tcBranches
   :: ConcreteM
-  -> [(Concrete.Pat (PatternScope Concrete.Expr MetaA) (), PatternScope Concrete.Expr MetaA)]
+  -> [(Concrete.Pat (HashSet QConstr) (PatternScope Concrete.Expr MetaA) (), PatternScope Concrete.Expr MetaA)]
   -> Expected Rhotype
   -> Maybe Rhotype
   -> Infer AbstractM

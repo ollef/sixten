@@ -6,6 +6,7 @@ import Data.Bifunctor
 import Data.Bitraversable
 import Data.Deriving
 import Data.Functor.Classes
+import Data.HashSet(HashSet)
 import Data.List.NonEmpty(NonEmpty)
 import Data.Maybe
 import Data.Traversable
@@ -32,14 +33,14 @@ data PatInstanceDef expr v = PatInstanceDef (Vector (Name, SourceLoc, PatDefinit
   deriving (Foldable, Functor, Show, Traversable)
 
 data Clause b expr v = Clause
-  { clausePatterns :: Vector (Plicitness, Pat (Scope (Var PatternVar b) expr v) ())
+  { clausePatterns :: Vector (Plicitness, Pat (HashSet QConstr) (Scope (Var PatternVar b) expr v) ())
   , clauseScope :: Scope (Var PatternVar b) expr v
   } deriving (Show)
 
 clausePatterns'
   :: Functor expr
   => Clause Void expr v
-  -> Vector (Plicitness, Pat (Scope PatternVar expr v) ())
+  -> Vector (Plicitness, Pat (HashSet QConstr) (Scope PatternVar expr v) ())
 clausePatterns' (Clause pats _) = fmap (first $ mapBound $ unvar id absurd) <$> pats
 
 clauseScope'
@@ -60,7 +61,7 @@ instance Traversable expr => Traversable (Clause b expr) where
     <*> traverse f s
 
 instance (Eq1 expr, Monad expr, Eq b) => Eq1 (Clause b expr) where
-  liftEq f (Clause ps1 s1) (Clause ps2 s2) = liftEq (\(p1, pat1) (p2, pat2) -> p1 == p2 && liftPatEq (liftEq f) (==) pat1 pat2) ps1 ps2 && liftEq f s1 s2
+  liftEq f (Clause ps1 s1) (Clause ps2 s2) = liftEq (\(p1, pat1) (p2, pat2) -> p1 == p2 && liftPatEq (==) (liftEq f) (==) pat1 pat2) ps1 ps2 && liftEq f s1 s2
 
 instance Bound TopLevelPatDefinition where
   TopLevelPatDefinition d >>>= f = TopLevelPatDefinition $ (>>>= f) <$> d

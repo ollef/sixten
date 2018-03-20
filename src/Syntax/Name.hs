@@ -7,6 +7,13 @@ import Data.Hashable
 
 import Util
 
+-- | An unresolved name
+newtype PreName = PreName Text
+  deriving (Eq, Hashable, Ord, Show, IsString, Monoid)
+
+fromPreName :: IsString a => PreName -> a
+fromPreName (PreName t) = fromText t
+
 newtype Name = Name Text
   deriving (Eq, Hashable, Ord, Show, IsString, Monoid)
 
@@ -18,9 +25,3 @@ newtype Constr = Constr Text
 
 fromConstr :: IsString a => Constr -> a
 fromConstr (Constr t) = fromText t
-
-constrToName :: Constr -> Name
-constrToName (Constr c) = Name c
-
-nameToConstr :: Name -> Constr
-nameToConstr (Name n) = Constr n

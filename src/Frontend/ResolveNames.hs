@@ -25,7 +25,7 @@ import Util.TopoSort
 import VIX
 
 newtype Env = Env
-  { scopeConstrs :: QName -> HashSet QConstr
+  { scopeConstrs :: PreName -> HashSet QConstr
   }
 
 type ResolveNames = RWST Env () (HashSet QName) VIX
@@ -51,33 +51,37 @@ resolveModule modul = do
 
   checkedDefDeps <- forM (HashMap.toList $ moduleContents modul) $ \(n, (loc, def)) -> do
     ((def', mtyp'), deps) <- runResolveNames (resolveTopLevelDefinition def) env
-    return (n, (loc, def', mtyp'), toHashSet def' <> foldMap toHashSet mtyp' <> deps)
+    return (n, (loc, def', mtyp'), deps)
 
   let aliases = localAliases (moduleContents modul) <> importedNameAliases
-      lookupAlias qname
+      lookupAlias preName
         | HashSet.size candidates == 1 = return $ head $ HashSet.toList candidates
         -- TODO: Error message, duplicate checking, tests
         | otherwise = throwError $ TypeError ("resolveModule ambiguous" PP.<+> shower candidates) Nothing mempty
         where
-          candidates = MultiHashMap.lookupDefault (HashSet.singleton qname) qname aliases
+          candidates = MultiHashMap.lookupDefault (HashSet.singleton $ fromPreName preName) preName aliases
 
   resolvedDefs <- forM checkedDefDeps $ \(n, (loc, def, mtyp), deps) -> do
     def' <- traverse lookupAlias def
     mtyp' <- traverse (traverse lookupAlias) mtyp
-    return (n, (loc, def' >>>= global, (>>= global) <$> mtyp'), deps)
+    return (n, (loc, def' >>>= global, (>>= global) <$> mtyp'), toHashSet def' <> foldMap toHashSet mtyp' <> deps)
 
   -- Each _usage_ of a class (potentially) depends on all its instances.
   -- But the class itself doesn't (necessarily).
   --
   -- So, create an instanceDeps table: For each definition that's an instance i of
   -- class c, add a vertex c -> i, and map the instanceDeps table over all _dependencies_.
+  --
+  -- We also add a dependency from method to class for all methods
   instanceDeps <- instances resolvedDefs
-  let depAliases = aliases <> methodClasses (moduleContents modul)
-      lookupAliasDep qname = MultiHashMap.lookupDefault (HashSet.singleton qname) qname depAliases
+  let methodDeps = methodClasses $ moduleContents modul
+      addMethodDeps dep
+        = maybe (HashSet.singleton dep) (HashSet.insert dep . HashSet.singleton)
+        $ HashMap.lookup dep methodDeps
       addInstanceDeps dep = HashSet.insert dep $ MultiHashMap.lookup dep instanceDeps
       addExtraDeps deps = do
-        let deps' = lookupAliasDep <$> HashSet.toList deps
-            deps'' = addInstanceDeps <$> HashSet.toList (mconcat deps')
+        let deps' = mconcat $ addMethodDeps <$> HashSet.toList deps
+            deps'' = addInstanceDeps <$> HashSet.toList deps'
         mconcat deps''
 
   let sortedDefGroups = flattenSCC <$> topoSortWith fst3 (addExtraDeps . thd3) resolvedDefs
@@ -86,31 +90,33 @@ resolveModule modul = do
 
 localConstrAliases
   :: HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
-  -> MultiHashMap QName QConstr
+  -> MultiHashMap PreName QConstr
 localConstrAliases contents = MultiHashMap.fromList
-  [ (QName mempty $ fromConstr c, QConstr n c)
+  [ (fromConstr c, QConstr n c)
   | (n, (_, Unscoped.TopLevelDataDefinition _ _ d)) <- HashMap.toList contents
   , c <- constrName <$> d
   ]
 
 localAliases
   :: HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
-  -> MultiHashMap QName QName
+  -> MultiHashMap PreName QName
 localAliases contents = MultiHashMap.fromList
-  [ (unqualified $ qnameName qn, qn)
+  [ (fromName $ qnameName qn, qn)
   | qn <- HashMap.keys contents
   ] <> localMethods
   where
     localMethods
-      = MultiHashMap.mapWithKey
-        (\(QName _ m) (QName modName _) -> QName modName m)
-        $ methodClasses contents
+      = MultiHashMap.fromList
+      [ (fromName m, QName (qnameModule n) m)
+      | (n, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList contents
+      , m <- methodName <$> ms
+      ]
 
 methodClasses
   :: HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
-  -> MultiHashMap QName QName
-methodClasses contents = MultiHashMap.fromList
-  [ (unqualified m, n)
+  -> HashMap QName QName
+methodClasses contents = HashMap.fromList
+  [ (QName (qnameModule n) m, n)
   | (n, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList contents
   , m <- methodName <$> ms
   ]
@@ -126,49 +132,52 @@ instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, (_,
 
 importedAliases
   :: Import
-  -> VIX (MultiHashMap QName QConstr, MultiHashMap QName QName)
+  -> VIX (MultiHashMap PreName QConstr, MultiHashMap PreName QName)
 importedAliases (Import modName asName exposed) = do
   otherConstrs <- liftVIX $ gets vixModuleConstrs
   otherNames <- liftVIX $ gets vixModuleNames
   let
     constrs
       = MultiHashMap.fromList
-      $ fmap (\c -> (fromConstr $ qconstrConstr c, c))
-      $ HashSet.toList
-      $ MultiHashMap.lookup modName otherConstrs
+      $ concat
+      [ [ (fromConstr $ qconstrConstr c, c)
+        , (fromName (qnameName $ qconstrTypeName c) <> "." <> fromConstr (qconstrConstr c), c)
+        ]
+      | c <- HashSet.toList $ MultiHashMap.lookup modName otherConstrs
+      ]
 
     names
       = MultiHashMap.fromList
-      $ fmap (\n -> (qnameName n, n))
+      $ fmap (\n -> (fromName $ qnameName n :: PreName, n))
       $ HashSet.toList
       $ MultiHashMap.lookup modName otherNames
 
     exposedConstrs = case exposed of
       AllExposed -> constrs
-      Exposed ns -> MultiHashMap.setIntersection constrs ns
+      Exposed ns -> MultiHashMap.setIntersection constrs $ HashSet.map fromName ns
 
     exposedNames = case exposed of
       AllExposed -> names
-      Exposed ns -> MultiHashMap.setIntersection names ns
+      Exposed ns -> MultiHashMap.setIntersection names $ HashSet.map fromName ns
 
   return
-    ( MultiHashMap.mapKeys unqualified exposedConstrs <> MultiHashMap.mapKeys (QName asName) constrs
-    , MultiHashMap.mapKeys unqualified exposedNames <> MultiHashMap.mapKeys (QName asName) names
+    ( exposedConstrs <> MultiHashMap.mapKeys (fromQName . QName asName . fromPreName) constrs
+    , exposedNames <> MultiHashMap.mapKeys (fromQName . QName asName . fromPreName) names
     )
 
 -- | Distinguish variables from constructors, resolve scopes
 resolveTopLevelDefinition
   :: Unscoped.TopLevelDefinition
-  -> ResolveNames (Scoped.TopLevelPatDefinition Scoped.Expr QName, Maybe (Scoped.Type QName))
+  -> ResolveNames (Scoped.TopLevelPatDefinition Scoped.Expr PreName, Maybe (Scoped.Type PreName))
 resolveTopLevelDefinition (Unscoped.TopLevelDefinition d) =
   first Scoped.TopLevelPatDefinition . snd <$> resolveDefinition d
 resolveTopLevelDefinition (Unscoped.TopLevelDataDefinition _name params cs) = do
-  (typ, abstr) <- resolveParamsType params $ Unscoped.Var Builtin.TypeName
+  (typ, abstr) <- resolveParamsType params $ Unscoped.Var $ fromQName Builtin.TypeName
   cs' <- mapM (mapM (fmap abstr . resolveExpr)) cs
   let res = Scoped.TopLevelPatDataDefinition $ DataDef cs'
   return (res, Just typ)
 resolveTopLevelDefinition (Unscoped.TopLevelClassDefinition _name params ms) = do
-  (typ, abstr) <- resolveParamsType params $ Unscoped.Var Builtin.TypeName
+  (typ, abstr) <- resolveParamsType params $ Unscoped.Var $ fromQName Builtin.TypeName
   ms' <- mapM (mapM (fmap abstr . resolveExpr)) ms
   let res = Scoped.TopLevelPatClassDefinition $ ClassDef ms'
   return (res, Just typ)
@@ -186,19 +195,19 @@ resolveParamsType
   :: Monad f
   => [(Plicitness, Name, Unscoped.Type)]
   -> Unscoped.Expr
-  -> ResolveNames (Scoped.Expr QName, f QName -> Scope TeleVar f QName)
+  -> ResolveNames (Scoped.Expr PreName, f PreName -> Scope TeleVar f PreName)
 resolveParamsType params kind = do
   typ' <- resolveExpr typ
   return (typ', abstr)
   where
-    pats = (\(p, n, t) -> (p, AnnoPat (VarPat (NameHint n) $ unqualified n) t)) <$> params
+    pats = (\(p, n, t) -> (p, AnnoPat (VarPat (NameHint n) $ fromName n) t)) <$> params
     typ = Unscoped.pis pats kind
-    paramNames = (\(_, n, _) -> unqualified n) <$> params
+    paramNames = (\(_, n, _) -> fromName n) <$> params
     abstr = abstract $ teleAbstraction $ Vector.fromList paramNames
 
 resolveDefinition
   :: Unscoped.Definition Unscoped.Expr
-  -> ResolveNames (Name, (Scoped.PatDefinition (Scoped.Clause void Scoped.Expr QName), Maybe (Scoped.Type QName)))
+  -> ResolveNames (Name, (Scoped.PatDefinition (Scoped.Clause void Scoped.Expr PreName), Maybe (Scoped.Type PreName)))
 resolveDefinition (Unscoped.Definition name a clauses mtyp) = do
   res <- Scoped.PatDefinition a IsOrdinaryDefinition <$> mapM resolveClause clauses
   mtyp' <- forM mtyp resolveExpr
@@ -206,7 +215,7 @@ resolveDefinition (Unscoped.Definition name a clauses mtyp) = do
 
 resolveClause
   :: Unscoped.Clause Unscoped.Expr
-  -> ResolveNames (Scoped.Clause void Scoped.Expr QName)
+  -> ResolveNames (Scoped.Clause void Scoped.Expr PreName)
 resolveClause (Unscoped.Clause plicitPats e) = do
   plicitPats' <- traverse (traverse resolvePat) plicitPats
 
@@ -218,7 +227,7 @@ resolveClause (Unscoped.Clause plicitPats e) = do
 
 resolveExpr
   :: Unscoped.Expr
-  -> ResolveNames (Scoped.Expr QName)
+  -> ResolveNames (Scoped.Expr PreName)
 resolveExpr expr = case expr of
   Unscoped.Var v -> do
     constrCandidates <- asks (($ v) . scopeConstrs)
@@ -267,17 +276,17 @@ resolveExpr expr = case expr of
   Unscoped.SourceLoc loc e -> Scoped.SourceLoc loc <$> resolveExpr e
 
 resolveBranch
-  :: Pat Unscoped.Expr QName
+  :: Pat PreName Unscoped.Expr PreName
   -> Unscoped.Expr
-  -> ResolveNames (Pat (PatternScope Scoped.Expr QName) (), PatternScope Scoped.Expr QName)
+  -> ResolveNames (Pat (HashSet QConstr) (PatternScope Scoped.Expr PreName) (), PatternScope Scoped.Expr PreName)
 resolveBranch pat e = do
   pat' <- resolvePat pat
   let vs = toVector pat'
   (,) (void $ abstractPatternTypes vs pat') . abstract (patternAbstraction vs) <$> resolveExpr e
 
 resolvePat
-  :: Pat Unscoped.Expr QName
-  -> ResolveNames (Pat (Scoped.Expr QName) QName)
+  :: Pat PreName Unscoped.Expr PreName
+  -> ResolveNames (Pat (HashSet QConstr) (Scoped.Expr PreName) PreName)
 resolvePat pat = case pat of
   VarPat h v -> do
     constrCandidates <- asks (($ v) . scopeConstrs)
@@ -288,13 +297,10 @@ resolvePat pat = case pat of
       return $ ConPat constrCandidates mempty
   WildcardPat -> return WildcardPat
   LitPat l -> return $ LitPat l
-  ConPat cons ps -> do
-    conss <- forM (HashSet.toList cons) $ \(QConstr (QName mname _tname) cname) -> do
-      let qconName = QName mname $ fromConstr cname
-      constrCandidates <- asks (($ qconName) . scopeConstrs)
-      forM_ constrCandidates $ \(QConstr def _) -> modify $ HashSet.insert def
-      return constrCandidates
-    ConPat (mconcat conss) <$> mapM (\(p, pat') -> (,) p <$> resolvePat pat') ps
+  ConPat con ps -> do
+    cons <- asks (($ con) . scopeConstrs)
+    forM_ cons $ \(QConstr def _) -> modify $ HashSet.insert def
+    ConPat cons <$> mapM (\(p, pat') -> (,) p <$> resolvePat pat') ps
   AnnoPat p t -> AnnoPat <$> resolvePat p <*> resolveExpr t
   ViewPat t p -> ViewPat <$> resolveExpr t <*> resolvePat p
   PatLoc loc p -> PatLoc loc <$> resolvePat p
