@@ -1,0 +1,3 @@
+test =
+  let _ = printString "aaa"
+  fail Unit
