@@ -403,6 +403,7 @@ literalPat
 
 -------------------------------------------------------------------------------
 -- * Definitions
+-- | A definition or type declaration on the top-level
 topLevel :: Parser (SourceLoc, TopLevelDefinition)
 topLevel = located
   $ dataDef
@@ -454,7 +455,6 @@ instanceDef = TopLevelInstanceDefinition <$ reserved "instance" <*>% exprWithout
 
 -------------------------------------------------------------------------------
 -- * Module
--- | A definition or type declaration on the top-level
 modul :: Parser (Module [(SourceLoc, Unscoped.TopLevelDefinition)])
 modul = Parsix.whiteSpace >> dropAnchor
   ((Module <$ reserved "module" <*>% modulName <*% reserved "exposing" <*>% exposedNames
