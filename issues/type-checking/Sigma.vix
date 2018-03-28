@@ -1,0 +1,12 @@
+type Sigma (A : Type) (B : A -> Type) where
+  MkSigma : (a : A) -> (b : Ptr (B a)) -> Sigma A B
+
+test : Sigma Nat (\n. Vector n Int)
+test = MkSigma (Succ Zero) (Ref (MkPair 610 MkUnit))
+
+mapVec : forall a b. (a -> b) -> (n : _) -> Vector n a -> Vector n b
+mapVec f Zero MkUnit = MkUnit
+mapVec f (Succ n) (MkPair a as) = MkPair (f a) (mapVec f n as)
+
+test2 = case test of
+  MkSigma n (Ref v) -> mapVec printInt n v
