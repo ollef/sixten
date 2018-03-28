@@ -29,3 +29,15 @@ printString (MkString (MkArray len data)) = (C|
 intToNat : Int -> Nat
 intToNat 0 = Zero
 intToNat n = Succ (intToNat (subInt n 1))
+
+abstract
+StaticError : forall T. String -> T
+StaticError str =
+  let x = printString str
+  fail _
+
+abstract
+UnsolvedConstraint : (T : Type) -> T
+UnsolvedConstraint T =
+  let x = printString "unsolved constraint"
+  fail _

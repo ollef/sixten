@@ -165,6 +165,20 @@ p *>% q = p *> (sameLineOrIndented >> q)
 p <**>% q = p <**> (sameLineOrIndented >> q)
 
 -------------------------------------------------------------------------------
+-- * Error recovery
+recover :: (Error -> a) -> Parsix.ErrorInfo -> Parser a
+recover k errInfo = do
+  (loc, _) <- located skipToAnchorLevel
+  let reason = pretty $ fromMaybe mempty $ Parsix.errorInfoReason errInfo
+      expected = case Set.toList $ Parsix.errorInfoExpected errInfo of
+        [] -> mempty
+        xs -> "expected:" PP.<+> PP.hsep (PP.punctuate PP.comma $ PP.pretty <$> xs)
+  return $ k $ SyntaxError reason (Just loc) expected
+
+skipToAnchorLevel :: Parser ()
+skipToAnchorLevel = Parsix.skipMany (sameLineOrIndented >> Parsix.anyChar)
+
+-------------------------------------------------------------------------------
 -- * Tokens
 idStart, idLetter, qidLetter :: Parser Char
 idStart = Parsix.satisfy isAlpha <|> Parsix.oneOf "_"
@@ -346,6 +360,9 @@ expr = exprWithoutWhere <**>
   where
     mkLet xs = Let $ Vector.fromList xs
 
+exprWithRecoverySI :: Parser Expr
+exprWithRecoverySI = Parsix.withRecovery (recover Unscoped.Error) (sameLineOrIndented >> expr)
+
 exprWithoutWhere :: Parser Expr
 exprWithoutWhere
   = locatedExpr
@@ -422,14 +439,14 @@ def = do
     let namedClause
           = dropAnchor
           $ (wildcard <|> void (reserved $ fromName n))
-          *>% clause
+          *>% clause -- Parsix.withRecovery (recover $ Unscoped.Clause mempty . Unscoped.Error) clause
     (mtyp, clauses)
       <- (,) . Just <$> typeSig <*> someSameCol namedClause
       <|> (,) Nothing <$> ((:) <$> clause <*> manySameCol namedClause)
     return (Unscoped.Definition n abstr (NonEmpty.fromList clauses) mtyp)
   where
-    typeSig = symbol ":" *>% expr
-    clause = Clause <$> (Vector.fromList <$> manyPlicitPatterns) <*% symbol "=" <*>% expr
+    typeSig = symbol ":" *> exprWithRecoverySI
+    clause = Clause <$> (Vector.fromList <$> manyPlicitPatterns) <*% symbol "=" <*> exprWithRecoverySI
 
 dataDef :: Parser TopLevelDefinition
 dataDef = TopLevelDataDefinition <$ reserved "type" <*>% name <*> manyTypedBindings <*>%

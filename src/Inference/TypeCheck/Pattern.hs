@@ -83,7 +83,9 @@ tcPat p pat vs expected = do
     logPretty 20 "tcPat" shownPat
   logMeta 30 "tcPat vs" vs
   (pat', patExpr, vs') <- indentLog $ tcPat' p pat vs expected
-  logMeta 20 "tcPat res" =<< bitraverse showMeta pure pat'
+  whenVerbose 20 $ do
+    shownPat' <- bitraverse (pure . show) pure pat'
+    logMeta 20 "tcPat res" shownPat'
   logMeta 30 "tcPat vs res" vs'
   return (pat', patExpr, vs')
 

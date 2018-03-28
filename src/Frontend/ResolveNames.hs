@@ -15,6 +15,7 @@ import qualified Data.Vector as Vector
 import qualified Builtin.Names as Builtin
 import qualified Frontend.Declassify as Declassify
 import Syntax
+import qualified Syntax.Concrete.Literal as Literal
 import Syntax.Concrete.Pattern
 import qualified Syntax.Concrete.Scoped as Scoped
 import qualified Syntax.Concrete.Unscoped as Unscoped
@@ -279,6 +280,15 @@ resolveExpr expr = case expr of
   Unscoped.ExternCode c -> Scoped.ExternCode <$> mapM resolveExpr c
   Unscoped.Wildcard -> return Scoped.Wildcard
   Unscoped.SourceLoc loc e -> Scoped.SourceLoc loc <$> resolveExpr e
+  Unscoped.Error e -> do
+    report e
+    resolveExpr
+      $ Unscoped.App
+        (Unscoped.Var $ fromQName Builtin.StaticErrorName)
+        Explicit
+        (Literal.string "error\n")
+        -- TODO use the actual error when strings are faster:
+        -- (Literal.string $ shower $ pretty e)
 
 resolveBranch
   :: Pat PreName Unscoped.Expr PreName

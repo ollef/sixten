@@ -341,10 +341,11 @@ checkTopLevelRecursiveDefs defs = do
 
   let evars' = (\(v, _, _) -> v) <$> checkedDefs
 
+  l <- level
   let varIndex = hashedElemIndex evars'
       unexpose v = fromMaybe (pure v) $ (fmap global . (names Vector.!?)) =<< varIndex v
       vf :: MetaA -> Infer b
-      vf v = internalError $ "checkTopLevelRecursiveDefs" PP.<+> shower v
+      vf v = internalError $ "checkTopLevelRecursiveDefs" PP.<+> shower v PP.<+> shower l
 
   forM (Vector.zip names checkedDefs) $ \(name, (_, def, typ)) -> do
     unexposedDef <- boundM (pure . unexpose) def
@@ -354,4 +355,3 @@ checkTopLevelRecursiveDefs defs = do
     unexposedDef' <- traverse vf unexposedDef
     unexposedTyp' <- traverse vf unexposedTyp
     return (name, unexposedDef', unexposedTyp')
-

@@ -14,7 +14,7 @@ import qualified Builtin.Names as Builtin
 
 string :: Text -> Expr
 string
-  = App (Var $ fromQName $ QName "Sixten.Builtin" $ fromConstr Builtin.MkStringName) Explicit
+  = App (Var $ fromQConstr Builtin.MkStringConstr) Explicit
   . byteArray
   . Encoding.encodeUtf8
 

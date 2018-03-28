@@ -3,10 +3,6 @@ module Sixten.Builtin exposing (..)
 type Bool = False | True
 
 abstract
-UnsolvedConstraint : (T : Type) -> T
-UnsolvedConstraint T = UnsolvedConstraint T
-
-abstract
 eqInt : Int -> Int -> Bool
 eqInt x y = (C|
   return $x == $y ? $True : $False;

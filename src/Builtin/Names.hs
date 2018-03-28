@@ -18,6 +18,9 @@ pattern UnsolvedConstraintName <- ((==) "Sixten.Builtin.UnsolvedConstraint" -> T
 pattern UnsolvedConstraint :: Expr v -> Expr v
 pattern UnsolvedConstraint typ = App (Global UnsolvedConstraintName) Explicit typ
 
+pattern StaticErrorName :: QName
+pattern StaticErrorName <- ((==) "Sixten.Builtin.StaticError" -> True) where StaticErrorName = "Sixten.Builtin.StaticError"
+
 pattern IntName :: QName
 pattern IntName <- ((==) "Sixten.Builtin.Int" -> True) where IntName = "Sixten.Builtin.Int"
 pattern IntType :: Expr t

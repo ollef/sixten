@@ -49,7 +49,7 @@ parseFiles srcFiles = do
     return $ fmap (:[]) $ File.dupCheck =<< parseResult
   return $ sconcat moduleResults
 
-checkFiles :: Arguments -> IO (Result ())
+checkFiles :: Arguments -> IO (Result [Error])
 checkFiles args = do
   parseResult <- parseFiles $ sourceFiles args
   fmap join $ forM parseResult $ \modules -> do
@@ -57,9 +57,9 @@ checkFiles args = do
           _ <- compileBuiltins -- Done only for the side effects
           orderedModules <- cycleCheck modules
           mapM_ (File.frontend $ const $ return []) orderedModules
-    fromEither <$> runVIX go (target args) (logHandle args) (verbosity args)
+    fmap snd <$> runVIX go (target args) (logHandle args) (verbosity args)
 
-processFiles :: Arguments -> IO (Result ProcessFilesResult)
+processFiles :: Arguments -> IO (Result (ProcessFilesResult, [Error]))
 processFiles args = do
   parseResult <- parseFiles $ sourceFiles args
   fmap join $ forM parseResult $ \modules -> do
@@ -70,7 +70,7 @@ processFiles args = do
             compiledModule <- File.process modul
             return $ const compiledModule <$> modul
           writeModules (assemblyDir args) $ builtins : compiledModules
-    fromEither <$> runVIX go (target args) (logHandle args) (verbosity args)
+    runVIX go (target args) (logHandle args) (verbosity args)
 
 cycleCheck
   :: (Functor t, Foldable t, MonadError Error m)

@@ -12,6 +12,7 @@ import qualified Command.Check.Options as Check
 import qualified Command.Compile as Compile
 import qualified Command.Compile.Options as Compile
 import Error
+import qualified Processor.Result as Processor
 
 data Options = Options
   { expectedOutputFile :: Maybe FilePath
@@ -46,7 +47,10 @@ optionsParser = Options
   <*> Compile.optionsParser
 
 test :: Options -> IO ()
-test opts = Compile.compile (compileOptions opts) onCompileError onCompileSuccess
+test opts = Compile.compile (compileOptions opts) $ \res -> case res of
+  Processor.Failure errs -> onCompileError errs
+  Processor.Success (_, errs@(_:_)) -> onCompileError errs
+  Processor.Success (fp, []) -> onCompileSuccess fp
   where
     onCompileError errs = case errs of
       SyntaxError {}:_

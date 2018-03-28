@@ -22,6 +22,7 @@ data Expr
   | ExternCode (Extern Expr)
   | Wildcard
   | SourceLoc !SourceLoc Type
+  | Error Error
   deriving Show
 
 type Type = Expr
@@ -40,7 +41,8 @@ data TopLevelDefinition
   | TopLevelInstanceDefinition Type [(SourceLoc, Definition Expr)]
   deriving (Show)
 
-data Clause e = Clause (Vector (Plicitness, Pat PreName e PreName)) e
+data Clause e
+  = Clause (Vector (Plicitness, Pat PreName e PreName)) e
   deriving (Show)
 
 -------------------------------------------------------------------------------
@@ -83,6 +85,7 @@ instance Pretty Expr where
     ExternCode c -> prettyM c
     Wildcard -> "_"
     SourceLoc _ e -> prettyM e
+    Syntax.Concrete.Unscoped.Error e -> prettyM e
 
 instance Pretty e => Pretty (Definition e) where
   prettyM (Definition name a cls Nothing)

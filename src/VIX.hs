@@ -27,6 +27,7 @@ import System.IO
 import Backend.Target as Target
 import Error
 import Fresh
+import Processor.Result
 import Syntax
 import Syntax.Abstract
 import qualified Syntax.Sized.Lifted as Lifted
@@ -48,6 +49,7 @@ data VIXState = VIXState
   , vixLogHandle :: !Handle
   , vixVerbosity :: !Int
   , vixTarget :: Target
+  , vixErrors :: [Error]
   }
 
 class MonadFresh m => MonadVIX m where
@@ -58,6 +60,9 @@ class MonadFresh m => MonadVIX m where
     => State VIXState a
     -> m a
   liftVIX = lift . liftVIX
+
+instance MonadReport VIX where
+  report e = liftVIX $ modify $ \s -> s { vixErrors = e : vixErrors s }
 
 emptyVIXState :: Target -> Handle -> Int -> VIXState
 emptyVIXState target handle verbosity = VIXState
@@ -74,6 +79,7 @@ emptyVIXState target handle verbosity = VIXState
   , vixLogHandle = handle
   , vixVerbosity = verbosity
   , vixTarget = target
+  , vixErrors = mempty
   }
 
 newtype VIX a = VIX { unVIX :: StateT VIXState (ExceptT Error IO) a }
@@ -85,17 +91,19 @@ instance MonadVIX VIX where
 liftST :: MonadIO m => ST RealWorld a -> m a
 liftST = liftIO . stToIO
 
--- TODO vixFresh should probably be a mutable variable
 runVIX
   :: VIX a
   -> Target
   -> Handle
   -> Int
-  -> IO (Either Error a)
-runVIX vix target handle verbosity
-  = runExceptT
-  $ evalStateT (unVIX vix)
-  $ emptyVIXState target handle verbosity
+  -> IO (Result (a, [Error]))
+runVIX vix target handle verbosity = do
+  result <- runExceptT
+    $ runStateT (unVIX vix)
+    $ emptyVIXState target handle verbosity
+  return $ case result of
+    Left err -> Failure [err]
+    Right (a, s) -> pure (a, reverse $ vixErrors s)
 
 instance MonadFresh VIX where
   fresh = liftVIX $ do

@@ -73,11 +73,10 @@ optionsParser = Options
 
 compile
   :: Options
-  -> ([Error] -> IO a)
-  -> (FilePath -> IO a)
-  -> IO a
-compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.findTarget $ target opts of
-  Left err -> onError $ pure err
+  -> (Processor.Result (FilePath, [Error]) -> IO k)
+  -> IO k
+compile opts onResult = case maybe (Right Target.defaultTarget) Target.findTarget $ target opts of
+  Left err -> onResult $ Processor.Failure $ pure err
   Right tgt ->
     withAssemblyDir (assemblyDir opts) $ \asmDir ->
     withOutputFile (maybeOutputFile opts) $ \outputFile ->
@@ -91,8 +90,8 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
         , Processor.verbosity = Check.verbosity . checkOptions $ opts
         }
       case procResult of
-        Processor.Failure errs -> onError errs
-        Processor.Success result -> do
+        Processor.Failure errs -> onResult $ Processor.Failure errs
+        Processor.Success (result, errs) -> do
           Compile.compile opts Compile.Arguments
             { Compile.cFiles = [cFile | (C, cFile) <- Processor.externFiles result]
             , Compile.llFiles = Processor.llFiles result
@@ -100,7 +99,7 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
             , Compile.target = tgt
             , Compile.outputFile = outputFile
             }
-          onSuccess outputFile
+          onResult $ Processor.Success (outputFile, errs)
   where
     -- TODO should use the main file instead
     firstInputFile = case inputFiles of
@@ -134,4 +133,6 @@ compile opts onError onSuccess = case maybe (Right Target.defaultTarget) Target.
 command :: ParserInfo (IO ())
 command = go <$> optionsParserInfo
   where
-    go opts = compile opts (mapM_ printError) (const $ return ())
+    go opts = compile opts $ \res -> case res of
+      Processor.Failure errs -> mapM_ printError errs
+      Processor.Success (_fp, errs) -> mapM_ printError errs
