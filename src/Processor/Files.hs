@@ -28,6 +28,7 @@ data Arguments = Arguments
   , target :: !Target
   , logHandle :: !Handle
   , verbosity :: !Int
+  , silentErrors :: !Bool
   } deriving (Eq, Show)
 
 data ProcessFilesResult = ProcessFilesResult
@@ -57,7 +58,7 @@ checkFiles args = do
           _ <- compileBuiltins -- Done only for the side effects
           orderedModules <- cycleCheck modules
           mapM_ (File.frontend $ const $ return []) orderedModules
-    fmap snd <$> runVIX go (target args) (logHandle args) (verbosity args)
+    fmap snd <$> runVIX go (target args) (logHandle args) (verbosity args) (silentErrors args)
 
 processFiles :: Arguments -> IO (Result (ProcessFilesResult, [Error]))
 processFiles args = do
@@ -70,7 +71,7 @@ processFiles args = do
             compiledModule <- File.process modul
             return $ const compiledModule <$> modul
           writeModules (assemblyDir args) $ builtins : compiledModules
-    runVIX go (target args) (logHandle args) (verbosity args)
+    runVIX go (target args) (logHandle args) (verbosity args) (silentErrors args)
 
 cycleCheck
   :: (Functor t, Foldable t, MonadError Error m)

@@ -73,9 +73,10 @@ optionsParser = Options
 
 compile
   :: Options
+  -> Bool
   -> (Processor.Result (FilePath, [Error]) -> IO k)
   -> IO k
-compile opts onResult = case maybe (Right Target.defaultTarget) Target.findTarget $ target opts of
+compile opts silent onResult = case maybe (Right Target.defaultTarget) Target.findTarget $ target opts of
   Left err -> onResult $ Processor.Failure $ pure err
   Right tgt ->
     withAssemblyDir (assemblyDir opts) $ \asmDir ->
@@ -88,6 +89,7 @@ compile opts onResult = case maybe (Right Target.defaultTarget) Target.findTarge
         , Processor.target = tgt
         , Processor.logHandle = logHandle
         , Processor.verbosity = Check.verbosity . checkOptions $ opts
+        , Processor.silentErrors = silent
         }
       case procResult of
         Processor.Failure errs -> onResult $ Processor.Failure errs
@@ -133,6 +135,6 @@ compile opts onResult = case maybe (Right Target.defaultTarget) Target.findTarge
 command :: ParserInfo (IO ())
 command = go <$> optionsParserInfo
   where
-    go opts = compile opts $ \res -> case res of
+    go opts = compile opts False $ \res -> case res of
       Processor.Failure errs -> mapM_ printError errs
-      Processor.Success (_fp, errs) -> mapM_ printError errs
+      Processor.Success (_fp, _) -> return ()

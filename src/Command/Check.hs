@@ -9,7 +9,6 @@ import Util
 
 import qualified Backend.Target as Target
 import Command.Check.Options
-import Error
 import qualified Processor.Files as Processor
 import qualified Processor.Result as Processor
 
@@ -51,10 +50,12 @@ check opts = withLogHandle (logFile opts) $ \logHandle -> do
         , Processor.target = Target.defaultTarget
         , Processor.logHandle = logHandle
         , Processor.verbosity = verbosity opts
+        , Processor.silentErrors = False
         }
   case procResult of
-    Processor.Failure errs -> mapM_ printError errs
-    Processor.Success _ -> Text.putStrLn "Type checking completed successfully"
+    Processor.Failure _ -> Text.putStrLn "Type checking failed"
+    Processor.Success [] -> Text.putStrLn "Type checking completed successfully"
+    Processor.Success (_:_) -> Text.putStrLn "Type checking failed"
   where
     withLogHandle Nothing k = k stdout
     withLogHandle (Just file) k = Util.withFile file WriteMode k

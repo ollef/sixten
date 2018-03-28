@@ -49,6 +49,7 @@ data VIXState = VIXState
   , vixLogHandle :: !Handle
   , vixVerbosity :: !Int
   , vixTarget :: Target
+  , vixSilentErrors :: !Bool
   , vixErrors :: [Error]
   }
 
@@ -62,10 +63,13 @@ class MonadFresh m => MonadVIX m where
   liftVIX = lift . liftVIX
 
 instance MonadReport VIX where
-  report e = liftVIX $ modify $ \s -> s { vixErrors = e : vixErrors s }
+  report e = do
+    silent <- liftVIX $ gets vixSilentErrors
+    unless silent $ liftIO $ printError e
+    liftVIX $ modify $ \s -> s { vixErrors = e : vixErrors s }
 
-emptyVIXState :: Target -> Handle -> Int -> VIXState
-emptyVIXState target handle verbosity = VIXState
+emptyVIXState :: Target -> Handle -> Int -> Bool -> VIXState
+emptyVIXState target handle verbosity silent = VIXState
   { vixLocation = Nothing
   , vixContext = mempty
   , vixModuleConstrs = mempty
@@ -79,6 +83,7 @@ emptyVIXState target handle verbosity = VIXState
   , vixLogHandle = handle
   , vixVerbosity = verbosity
   , vixTarget = target
+  , vixSilentErrors = silent
   , vixErrors = mempty
   }
 
@@ -96,11 +101,12 @@ runVIX
   -> Target
   -> Handle
   -> Int
+  -> Bool
   -> IO (Result (a, [Error]))
-runVIX vix target handle verbosity = do
+runVIX vix target handle verbosity silent = do
   result <- runExceptT
     $ runStateT (unVIX vix)
-    $ emptyVIXState target handle verbosity
+    $ emptyVIXState target handle verbosity silent
   return $ case result of
     Left err -> Failure [err]
     Right (a, s) -> pure (a, reverse $ vixErrors s)

@@ -47,7 +47,7 @@ optionsParser = Options
   <*> Compile.optionsParser
 
 test :: Options -> IO ()
-test opts = Compile.compile (compileOptions opts) $ \res -> case res of
+test opts = Compile.compile (compileOptions opts) True $ \res -> case res of
   Processor.Failure errs -> onCompileError errs
   Processor.Success (_, errs@(_:_)) -> onCompileError errs
   Processor.Success (fp, []) -> onCompileSuccess fp

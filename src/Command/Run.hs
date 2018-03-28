@@ -30,11 +30,9 @@ optionsParser = Options
     )
 
 run :: Options -> IO ()
-run opts = Compile.compile (compileOptions opts) $ \res -> case res of
+run opts = Compile.compile (compileOptions opts) False $ \res -> case res of
   Processor.Failure errs -> mapM_ printError errs
-  Processor.Success (f, errs) -> do
-    mapM_ printError errs
-    callProcess f $ maybe [] words $ commandLineArguments opts
+  Processor.Success (f, _) -> callProcess f $ maybe [] words $ commandLineArguments opts
 
 command :: ParserInfo (IO ())
 command = run <$> optionsParserInfo
