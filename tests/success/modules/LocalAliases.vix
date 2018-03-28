@@ -1,0 +1,19 @@
+test = 123
+
+localtest = test
+
+qualifiedtest = Main.test
+
+type Test = Con
+
+localTest = Test
+
+qualifiedTest = Main.Test
+
+localCon = Con
+
+typeQualifiedCon = Test.Con
+
+qualifiedCon = Main.Con
+
+fullyQualifiedCon = Main.Test.Con

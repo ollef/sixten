@@ -90,10 +90,15 @@ resolveModule modul = do
 localConstrAliases
   :: HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
   -> MultiHashMap PreName QConstr
-localConstrAliases contents = MultiHashMap.fromList
-  [ (fromConstr c, QConstr n c)
+localConstrAliases contents = MultiHashMap.fromList $ concat
+  [ [ (k, QConstr n c)
+    , (fromName (qnameName n) <> "." <> k, QConstr n c)
+    , (fromModuleName (qnameModule n) <> "." <> k, QConstr n c)
+    , (fromQName n <> "." <> k, QConstr n c)
+    ]
   | (n, (_, Unscoped.TopLevelDataDefinition _ _ d)) <- HashMap.toList contents
   , c <- constrName <$> d
+  , let k = fromConstr c
   ]
 
 localAliases
@@ -139,10 +144,11 @@ importedAliases (Import modName asName exposed) = do
     constrs
       = MultiHashMap.fromList
       $ concat
-      [ [ (fromConstr $ qconstrConstr c, c)
-        , (fromName (qnameName $ qconstrTypeName c) <> "." <> fromConstr (qconstrConstr c), c)
+      [ [ (k, c)
+        , (fromName (qnameName $ qconstrTypeName c) <> "." <> k, c)
         ]
       | c <- HashSet.toList $ MultiHashMap.lookup modName otherConstrs
+      , let k = fromConstr $ qconstrConstr c
       ]
 
     names
