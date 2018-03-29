@@ -14,13 +14,17 @@ denat expr = case expr of
   Global _ -> expr
   Lit _ -> expr
   Con ZeroConstr _ -> Lit $ Integer 0
-  Con SuccConstr xs -> App (App (global AddIntName) (Anno (Lit $ Integer 1) (global IntName))) (denatAnno $ Vector.head xs)
+  Con SuccConstr xs -> succInt $ denatAnno $ Vector.head xs
   Con c es -> Con c $ denatAnno <$> es
   Lam h t e -> Lam h (denat t) (hoist denat e)
   App e1 e2 -> App (denat e1) (denatAnno e2)
   Let ds s -> Let (hoist denat ds) (hoist denat s)
   Case e brs -> denatCase (denatAnno e) brs
   ExternCode c retType -> ExternCode (denatAnno <$> c) (denat retType)
+
+succInt :: Anno Expr v -> Expr v
+succInt (Anno (Lit (Integer n)) _) = Lit $ Integer $! n + 1
+succInt expr = App (App (global AddIntName) (Anno (Lit $ Integer 1) (global IntName))) expr
 
 denatAnno
   :: Anno Expr v
