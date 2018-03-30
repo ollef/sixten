@@ -36,10 +36,8 @@ withVar
   :: MetaA
   -> Infer a
   -> Infer a
-withVar v
-  | isConstraintVar v = local $ \env ->
-    env { constraints = (pure v, metaType v) : constraints env }
-  | otherwise = id
+withVar v = local $ \env ->
+  env { localVariables = v : localVariables env }
 
 withVars
   :: Vector MetaA
@@ -57,10 +55,10 @@ elabUnsolvedConstraint mkConstraint typ = case typ of
     (uniType, uniVarMap) <- universalise typ
     -- Try subsumption on all instances of the class until a match is found
     globalClassInstances <- liftVIX $ gets $ HashMap.lookupDefault mempty className . vixClassInstances
-    -- TODO universalise localInstances
-    localInstances <- asks constraints
+    localVars <- asks localVariables
     let candidates = [(Global g, vacuous t) | (g, t) <- globalClassInstances]
-          <> localInstances
+          -- TODO universalise types
+          <> [(pure v, metaType v) | v <- localVars, isConstraintVar v]
     matchingInstances <- forM candidates $ \(inst, instType) -> tryMaybe $ do
       f <- subtype instType uniType
       f inst

@@ -19,10 +19,8 @@ shouldInst _ (InstUntil Explicit) = True
 shouldInst p (InstUntil p') | p == p' = False
 shouldInst _ _ = True
 
-type Witness = AbstractM
-
 data InferEnv = InferEnv
-  { constraints :: [(Witness, AbstractM)]
+  { localVariables :: [MetaA]
   , inferLevel :: !Level
   }
 
@@ -30,7 +28,7 @@ type Infer = ReaderT InferEnv VIX
 
 runInfer :: Infer a -> VIX a
 runInfer i = runReaderT i InferEnv
-  { constraints = mempty
+  { localVariables = mempty
   , inferLevel = 1
   }
 
