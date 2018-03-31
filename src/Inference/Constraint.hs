@@ -226,7 +226,7 @@ elabRecursiveDefs defs
     return (v, def', typ')
 
 mkConstraintVar :: AbstractM -> Infer AbstractM
-mkConstraintVar = fmap pure . exists mempty Constraint
+mkConstraintVar = exists mempty Constraint
 
 mergeConstraintVars
   :: HashSet MetaA

@@ -5,6 +5,7 @@ import Control.Monad.Reader
 import qualified Builtin.Names as Builtin
 import Inference.Meta
 import Syntax
+import qualified Syntax.Abstract as Abstract
 import VIX
 
 type Polytype = AbstractM
@@ -40,16 +41,15 @@ enterLevel = local $ \e -> e { inferLevel = inferLevel e + 1 }
 
 exists
   :: NameHint
-  -> d
-  -> e (MetaVar d e)
-  -> Infer (MetaVar d e)
-exists hint d typ = existsAtLevel hint d typ =<< level
+  -> Plicitness
+  -> Abstract.Expr (MetaVar Plicitness Abstract.Expr)
+  -> Infer AbstractM
+exists hint d typ = pure <$> (existsAtLevel hint d typ =<< level)
 
 existsType
-  :: Applicative e
-  => NameHint
-  -> Infer (e MetaA)
-existsType n = pure <$> exists n Explicit Builtin.Type
+  :: NameHint
+  -> Infer AbstractM
+existsType n = exists n Explicit Builtin.Type
 
 existsVar
   :: NameHint
@@ -57,5 +57,5 @@ existsVar
   -> AbstractM
   -> Infer AbstractM
 existsVar _ Constraint typ = return $ Builtin.UnsolvedConstraint typ
-existsVar h Implicit typ = pure <$> exists h Implicit typ
-existsVar h Explicit typ = pure <$> exists h Explicit typ
+existsVar h Implicit typ = exists h Implicit typ
+existsVar h Explicit typ = exists h Explicit typ
