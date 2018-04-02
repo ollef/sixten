@@ -1,0 +1,4 @@
+apply : forall f a b. (f a -> b) -> f a -> b
+apply f x = apply1 f x
+
+apply1 f x = apply f x

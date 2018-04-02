@@ -1,12 +1,24 @@
+{-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving, MultiParamTypeClasses, OverloadedStrings, TypeSynonymInstances #-}
 module Inference.Monad where
 
+import Control.Monad.Except
 import Control.Monad.Reader
+import Data.Foldable
 
 import qualified Builtin.Names as Builtin
-import Inference.Meta
+import Inference.MetaVar
+import MonadContext
+import MonadFresh
 import Syntax
 import qualified Syntax.Abstract as Abstract
+import qualified Syntax.Concrete.Scoped as Concrete
+import TypedFreeVar
+import Util
+import Util.Tsil(Tsil)
 import VIX
+
+type ConcreteM = Concrete.Expr FreeV
+type AbstractM = Abstract.Expr MetaVar FreeV
 
 type Polytype = AbstractM
 type Rhotype = AbstractM -- No top-level foralls
@@ -21,41 +33,65 @@ shouldInst p (InstUntil p') | p == p' = False
 shouldInst _ _ = True
 
 data InferEnv = InferEnv
-  { localVariables :: [MetaA]
+  { localVariables :: Tsil FreeV
   , inferLevel :: !Level
+  , inferTouchables :: !(MetaVar -> Bool)
   }
 
-type Infer = ReaderT InferEnv VIX
+newtype Infer a = InferMonad (ReaderT InferEnv VIX a)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadFix, MonadError Error, MonadFresh, MonadReport, MonadVIX)
 
 runInfer :: Infer a -> VIX a
-runInfer i = runReaderT i InferEnv
+runInfer (InferMonad i) = runReaderT i InferEnv
   { localVariables = mempty
   , inferLevel = 1
+  , inferTouchables = const True
   }
 
+instance MonadContext FreeV Infer where
+  localVars = InferMonad $ asks localVariables
+
+  inUpdatedContext f (InferMonad m) = do
+    InferMonad $ do
+      vs <- asks localVariables
+      let vs' = f vs
+      logShow 30 "local variable scope" (varId <$> toList vs)
+      indentLog $ do
+        local
+          (\env -> env { localVariables = vs' })
+          m
+
 level :: Infer Level
-level = asks inferLevel
+level = InferMonad $ asks inferLevel
 
 enterLevel :: Infer a -> Infer a
-enterLevel = local $ \e -> e { inferLevel = inferLevel e + 1 }
+enterLevel (InferMonad m) = InferMonad $ local (\e -> e { inferLevel = inferLevel e + 1 }) m
 
 exists
   :: NameHint
   -> Plicitness
-  -> Abstract.Expr (MetaVar Plicitness Abstract.Expr)
+  -> AbstractM
   -> Infer AbstractM
-exists hint d typ = pure <$> (existsAtLevel hint d typ =<< level)
+exists hint d typ = do
+  locals <- toVector <$> localVars
+  let tele = varTelescope locals
+      abstr = teleAbstraction locals
+      typ' = Abstract.pis tele $ abstract abstr typ
+  logMeta 30 "exists typ" typ
+  typ'' <- traverse (error "exists not closed") typ'
+  loc <- currentLocation
+  v <- existsAtLevel hint d typ'' (teleLength tele) loc =<< level
+  return $ Abstract.Meta v $ (\fv -> (varData fv, pure fv)) <$> locals
 
 existsType
   :: NameHint
   -> Infer AbstractM
 existsType n = exists n Explicit Builtin.Type
 
-existsVar
-  :: NameHint
-  -> Plicitness
-  -> AbstractM
-  -> Infer AbstractM
-existsVar _ Constraint typ = return $ Builtin.UnsolvedConstraint typ
-existsVar h Implicit typ = exists h Implicit typ
-existsVar h Explicit typ = exists h Explicit typ
+getTouchable :: Infer (MetaVar -> Bool)
+getTouchable = InferMonad $ asks inferTouchables
+
+untouchable :: Infer a -> Infer a
+untouchable (InferMonad i) = do
+  v <- fresh
+  InferMonad $ local (\s -> s { inferTouchables = \m -> inferTouchables s m && metaId m > v }) i

@@ -13,6 +13,7 @@ module Syntax.Let where
 import Bound
 import Bound.Scope
 import Control.Monad.Morph
+import Data.Bitraversable
 import Data.Deriving
 import Data.Functor.Classes
 import Data.Hashable
@@ -23,8 +24,8 @@ import qualified Data.Vector as Vector
 
 import Pretty
 import Syntax.GlobalBind
-import Syntax.NameHint
 import Syntax.Name
+import Syntax.NameHint
 import Util
 
 newtype LetVar = LetVar Int
@@ -110,6 +111,18 @@ prettyLet ns (LetRec xs) = vcat $ imap go xs
       <$$> n <+> "=" <+> prettyM (instantiateLet (pure . fromName) ns s)
       where
         n = prettyM $ ns Vector.! i
+
+bitraverseLet
+  :: (Bitraversable t, Applicative f)
+  => (a -> f a')
+  -> (b -> f b')
+  -> LetRec (t a) b
+  -> f (LetRec (t a') b')
+bitraverseLet f g (LetRec xs)
+  = LetRec
+  <$> traverse
+    (\(LetBinding h s t) -> LetBinding h <$> bitraverseScope f g s <*> bitraverse f g t)
+    xs
 
 transverseLet
   :: (Monad f, Traversable expr)

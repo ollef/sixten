@@ -13,7 +13,7 @@ import qualified Data.Vector as Vector
 import Data.Void
 
 import Backend.Target
-import Fresh
+import MonadFresh
 import Syntax
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
@@ -91,7 +91,7 @@ emitCallback
   -> Extract ()
 emitCallback name fun = modify $ \s -> s { extractedCallbacks = Snoc (extractedCallbacks s) (name, fun) }
 
-type FV = FreeVar Extracted.Expr
+type FV = FreeVar () Extracted.Expr
 
 extractExpr
   :: Lifted.Expr FV
@@ -107,7 +107,7 @@ extractExpr expr = case expr of
     <*> traverse (traverse extractAnnoExpr) es
   Lifted.Let h e s -> do
     e' <- extractAnnoExpr e
-    v <- freeVar h $ typeAnno e'
+    v <- freeVar h () $ typeAnno e'
     let body = instantiate1 (pure v) s
     body' <- extractExpr body
     let s' = abstract1 v body'
@@ -130,7 +130,7 @@ extractExtern
 extractExtern retType (Extern C parts) = do
   tgt <- gets target
 
-  let freeVars = foldMap (foldMap $ foldMap HashSet.singleton) parts
+  let freeVars = foldMap (foldMap toHashSet) parts
       argNames =
         [ (v, "extern_arg_" <> shower n <> fromNameHint mempty (("_" <>) . fromName) (varHint v))
         | (v, n) <- zip (HashSet.toList freeVars) [(0 :: Int)..]
@@ -154,7 +154,7 @@ extractExtern retType (Extern C parts) = do
       callbackName <- freshName
       let ensureVoid :: FV -> Void
           ensureVoid = error "ExtractExtern: non-void"
-          paramsTele = ensureVoid <$> varTelescope ((,) () <$> callbackParams)
+          paramsTele = ensureVoid <$> varTelescope callbackParams
           function = Sized.Function paramsTele
             $ ensureVoid
             <$> abstractAnno (teleAbstraction callbackParams) expr
@@ -246,7 +246,7 @@ extractBranches (ConBranches cbrs) = fmap ConBranches $
     vs <- forTeleWithPrefixM tele $ \h () s vs -> do
       let e = instantiateTele pure vs s
       e' <- extractExpr e
-      freeVar h e'
+      freeVar h () e'
     let brExpr = instantiateTele pure vs brScope
         abstr = teleAbstraction vs
         tele'' = Telescope $ (\v -> TeleArg (varHint v) () $ abstract abstr $ varType v) <$> vs
@@ -269,7 +269,7 @@ extractDef tgt qname@(QName mname name) def = fmap flatten $ runExtract names tg
       vs <- forTeleWithPrefixM (vacuous tele) $ \h () s vs -> do
         let e = instantiateTele pure vs s
         e' <- extractExpr e
-        freeVar h e'
+        freeVar h () e'
       let expr = instantiateAnnoTele pure vs $ vacuous scope
           abstr = teleAbstraction vs
           tele'' = Telescope $ (\v -> TeleArg (varHint v) () $ abstract abstr $ varType v) <$> vs

@@ -14,42 +14,43 @@ import Data.Void
 import {-# SOURCE #-} Inference.TypeCheck.Expr
 import Inference.Constraint
 import Inference.Match as Match
-import Inference.Meta
+import Inference.MetaVar
 import Inference.Monad
 import Inference.Subtype
 import Inference.TypeCheck.Pattern
+import MonadContext
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
+import TypedFreeVar
 import Util
 import VIX
 
 checkClauses
-  :: NonEmpty (Concrete.Clause Void Concrete.Expr MetaA)
+  :: NonEmpty (Concrete.Clause Void Concrete.Expr FreeV)
   -> Polytype
   -> Infer AbstractM
 checkClauses clauses polyType = indentLog $ do
-  forM_ clauses $ logMeta 20 "checkClauses clause"
+  forM_ clauses $ \clause -> logPretty 20 "checkClauses clause" $ pretty <$> clause
   logMeta 20 "checkClauses typ" polyType
 
-  (rhoType, f) <- skolemise polyType $ minimum $ instUntilClause <$> clauses
+  skolemise polyType (minimum $ instUntilClause <$> clauses) $ \rhoType f -> do
+    ps <- piPlicitnesses rhoType
 
-  ps <- piPlicitnesses rhoType
+    clauses' <- forM clauses $ \(Concrete.Clause pats body) -> do
+      pats' <- equalisePats ps $ Vector.toList pats
+      return $ Concrete.Clause (Vector.fromList pats') body
 
-  clauses' <- forM clauses $ \(Concrete.Clause pats body) -> do
-    pats' <- equalisePats ps $ Vector.toList pats
-    return $ Concrete.Clause (Vector.fromList pats') body
+    let equalisedClauses = equaliseClauses clauses'
 
-  let equalisedClauses = equaliseClauses clauses'
+    forM_ equalisedClauses $ \clause -> logPretty 20 "checkClauses equalisedClause" $ pretty <$> clause
 
-  forM_ equalisedClauses $ logMeta 20 "checkClauses equalisedClause"
+    res <- checkClausesRho equalisedClauses rhoType
 
-  res <- checkClausesRho equalisedClauses rhoType
+    l <- level
+    logMeta 20 ("checkClauses res " <> show l) res
 
-  l <- level
-  logMeta 20 ("checkClauses res " <> show l) res
-
-  f res
+    f res
   where
     instUntilClause :: Concrete.Clause Void Concrete.Expr v -> InstUntil
     instUntilClause (Concrete.Clause pats s)
@@ -68,11 +69,11 @@ checkClauses clauses polyType = indentLog $ do
     piPlicitnesses' _ = return mempty
 
 checkClausesRho
-  :: NonEmpty (Concrete.Clause Void Concrete.Expr MetaA)
+  :: NonEmpty (Concrete.Clause Void Concrete.Expr FreeV)
   -> Rhotype
   -> Infer AbstractM
 checkClausesRho clauses rhoType = do
-  forM_ clauses $ logMeta 20 "checkClausesRho clause"
+  forM_ clauses $ \clause -> logPretty 20 "checkClausesRho clause" $ pretty <$> clause
   logMeta 20 "checkClausesRho type" rhoType
 
   let (ps, firstPats) = Vector.unzip ppats
@@ -84,36 +85,37 @@ checkClausesRho clauses rhoType = do
     let pats = Concrete.clausePatterns' clause
         bodyScope = Concrete.clauseScope' clause
     (pats', patVars) <- tcPats pats mempty argTele
-    let body = instantiatePattern pure patVars bodyScope
+    let body = instantiatePattern pure (boundPatVars patVars) bodyScope
         argExprs = snd3 <$> pats'
         returnType = instantiateTele id argExprs returnTypeScope
-    body' <- checkRho body returnType
+    body' <- withPatVars patVars $ checkRho body returnType
     return (fst3 <$> pats', body')
 
   forM_ clauses' $ \(pats, body) -> do
-    forM_ pats $ logMeta 20 "checkClausesRho clause pat" <=< bitraverse showMeta pure
+    forM_ pats $ logPretty 20 "checkClausesRho clause pat" <=< bitraverse prettyMeta (pure . pretty)
     logMeta 20 "checkClausesRho clause body" body
 
   argVars <- forTeleWithPrefixM (addTeleNames argTele $ Concrete.patternHint <$> firstPats) $ \h p s argVars ->
     forall h p $ instantiateTele pure argVars s
 
-  let returnType = instantiateTele pure argVars returnTypeScope
+  withVars argVars $ do
+    let returnType = instantiateTele pure argVars returnTypeScope
 
-  body <- matchClauses
-    (Vector.toList $ pure <$> argVars)
-    (NonEmpty.toList $ first Vector.toList <$> clauses')
-    returnType
+    body <- matchClauses
+      (Vector.toList $ pure <$> argVars)
+      (NonEmpty.toList $ first Vector.toList <$> clauses')
+      returnType
 
-  logMeta 25 "checkClausesRho body res" body
+    logMeta 25 "checkClausesRho body res" body
 
-  result <- foldrM
-    (\(p, (f, v)) e ->
-      f =<< Abstract.Lam (metaHint v) p (metaType v) <$> abstract1M v e)
-    body
-    (Vector.zip ps $ Vector.zip fs argVars)
+    result <- foldrM
+      (\(f, v) e ->
+        f $ Abstract.Lam (varHint v) (varData v) (varType v) $ abstract1 v e)
+      body
+      (Vector.zip fs argVars)
 
-  logMeta 20 "checkClausesRho res" result
-  return result
+    logMeta 20 "checkClausesRho res" result
+    return result
 
 --------------------------------------------------------------------------------
 -- "Equalisation" -- making the clauses' number of patterns match eachother

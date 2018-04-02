@@ -310,7 +310,7 @@ resolvePat pat = case pat of
     else do
       modify $ mappend $ HashSet.map qconstrTypeName constrCandidates
       return $ ConPat constrCandidates mempty
-  WildcardPat -> return WildcardPat
+  WildcardPat-> return WildcardPat
   LitPat l -> return $ LitPat l
   ConPat con ps -> do
     cons <- asks (($ con) . scopeConstrs)

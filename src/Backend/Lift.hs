@@ -12,7 +12,7 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
 
-import Fresh
+import MonadFresh
 import Syntax
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
@@ -67,7 +67,7 @@ runLift (QName mname name) (Lift l)
   , liftedThings = mempty
   }
 
-type FV = FreeVar Lifted.Expr
+type FV = FreeVar () Lifted.Expr
 
 type LambdaLift = Lift (Sized.Function Lifted.Expr Void) VIX
 
@@ -121,7 +121,7 @@ closeLambda tele lamScope sortedFvs = do
   vs <- forTeleWithPrefixM tele $ \h () s vs -> do
     let e = instantiateTele pure vs s
     e' <- liftExpr e
-    freeVar h e'
+    freeVar h () e'
 
   let lamExpr = instantiateAnnoTele pure vs lamScope
       vs' = sortedFvs <> vs
@@ -155,7 +155,7 @@ liftLet
 liftLet ds scope = do
   vs <- forMLet ds $ \h _ t -> do
     t' <- liftExpr t
-    freeVar h t'
+    freeVar h () t'
 
   let instantiatedDs = Vector.zip vs $ instantiateLet pure vs <$> letBodies ds
       dsToLift = [(v, body) | (v, body@(SLambda.lamView -> Just _)) <- instantiatedDs]
@@ -209,7 +209,7 @@ liftBranches (ConBranches cbrs) = fmap ConBranches $
     vs <- forTeleWithPrefixM tele $ \h () s vs -> do
       let e = instantiateTele pure vs s
       e' <- liftExpr e
-      freeVar h e'
+      freeVar h () e'
     let brExpr = instantiateTele pure vs brScope
         abstr = teleAbstraction vs
         tele'' = Telescope $ (\v -> TeleArg (varHint v) () $ abstract abstr $ varType v) <$> vs
@@ -235,7 +235,7 @@ liftToDefinitionM (Anno (SLambda.Lams tele bodyScope) _) = do
   vs <- forTeleWithPrefixM tele $ \h () s vs -> do
     let e = instantiateTele pure vs $ vacuous s
     e' <- liftExpr e
-    freeVar h e'
+    freeVar h () e'
   let body = instantiateAnnoTele pure vs $ vacuous bodyScope
       abstr = teleAbstraction vs
       tele' = Telescope $ (\v -> TeleArg (varHint v) () $ abstract abstr $ varType v) <$> vs

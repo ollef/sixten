@@ -15,15 +15,17 @@ import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 
 import Error
-import Inference.Meta
+import Inference.MetaVar
+import Inference.MetaVar.Zonk
 import Inference.Monad
 import Syntax
 import Syntax.Abstract
+import TypedFreeVar
 import Util
 import Util.TopoSort
 
 detectTypeRepCycles
-  :: Vector (SourceLoc, (MetaA, Definition Expr MetaA, AbstractM))
+  :: Vector (SourceLoc, (FreeV, Definition (Expr MetaVar) FreeV, AbstractM))
   -> Infer ()
 detectTypeRepCycles defs = do
   reps <- traverse
@@ -34,10 +36,9 @@ detectTypeRepCycles defs = do
     firstCycle:_ -> do
       let headVar = head firstCycle
           loc = locMap HashMap.! headVar
-          showVar v = showMeta (pure v :: AbstractM)
-      printedHeadVar <- showVar headVar
-      printedCycle <- mapM showVar $ drop 1 firstCycle ++ [headVar]
-      throwError
+      let printedHeadVar = pretty headVar
+          printedCycle = map pretty $ drop 1 firstCycle ++ [headVar]
+      report
         $ TypeError
           "Type has potentially infinite memory representation"
           (Just loc)
@@ -84,7 +85,7 @@ detectTypeRepCycles defs = do
 -- We also peel off any lets at the top-level of all definitions and include
 -- them in the analysis.
 detectDefCycles
-  :: Vector (SourceLoc, (MetaA, Definition Expr MetaA, AbstractM))
+  :: Vector (SourceLoc, (FreeV, Definition (Expr MetaVar) FreeV, AbstractM))
   -> Infer ()
 detectDefCycles defs = do
   (peeledDefExprs, locMap) <- peelLets [(loc, v, e) | (loc, (v, Definition _ _ e, _)) <- Vector.toList defs]
@@ -99,14 +100,13 @@ detectDefCycles defs = do
         Lam {} -> return ()
         _ -> do
           let loc = locMap HashMap.! var
-              showVar v = showMeta (pure v :: AbstractM)
               constantsInAllOccs = toHashSet expr `HashSet.intersection` constants
               functionsInImmAppOccs = possiblyImmediatelyAppliedVars expr `HashSet.intersection` functions
               circularOccs = constantsInAllOccs <> functionsInImmAppOccs
           unless (HashSet.null circularOccs) $ do
-            printedVar <- showVar var
-            printedOccs <- mapM showVar $ HashSet.toList circularOccs
-            throwError
+            let printedVar = pretty var
+                printedOccs = map pretty $ HashSet.toList circularOccs
+            report
               $ TypeError
                 "Circular definition"
                 (Just loc)
@@ -116,13 +116,13 @@ detectDefCycles defs = do
                   ]
 
 peelLets
-  :: [(SourceLoc, MetaA, AbstractM)]
-  -> Infer ([(MetaA, AbstractM)], HashMap MetaA SourceLoc)
+  :: [(SourceLoc, FreeV, AbstractM)]
+  -> Infer ([(FreeV, AbstractM)], HashMap FreeV SourceLoc)
 peelLets = fmap fold . mapM go
   where
     go
-     :: (SourceLoc, MetaA, Expr MetaA)
-     -> Infer ([(MetaA, Expr MetaA)], HashMap MetaA SourceLoc)
+     :: (SourceLoc, FreeV, AbstractM)
+     -> Infer ([(FreeV, AbstractM)], HashMap FreeV SourceLoc)
     go (loc, v, e) = do
       e' <- zonk e
       case e' of
@@ -138,7 +138,7 @@ peelLets = fmap fold . mapM go
 
 possiblyImmediatelyAppliedVars
   :: (Eq v, Hashable v)
-  => Expr v
+  => Expr m v
   -> HashSet v
 possiblyImmediatelyAppliedVars = go
   where

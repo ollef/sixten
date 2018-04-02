@@ -8,10 +8,10 @@ import Data.Monoid
 import qualified Data.Text.Prettyprint.Doc as PP
 
 import Inference.Constraint
-import Inference.Meta
 import Inference.Monad
 import Syntax
 import qualified Syntax.Abstract as Abstract
+import TypedFreeVar
 import Util
 import VIX
 
@@ -54,7 +54,7 @@ resolveConstr cs expected = do
       typ' <- whnf typ
       case typ' of
         Abstract.Pi h p t s -> do
-          v <- forall h p t
+          v <- freeVar h p t
           findExpectedDataType $ Util.instantiate1 (pure v) s
         Abstract.App t1 _ _ -> findExpectedDataType t1
         Abstract.Global v -> do

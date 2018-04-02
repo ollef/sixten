@@ -4,15 +4,17 @@ module TypedFreeVar where
 import Bound
 import Control.Monad.IO.Class
 import Control.Monad.State
+import Data.Char
 import Data.Function
 import Data.Functor.Classes
 import Data.Hashable
 import qualified Data.HashSet as HashSet
 import Data.Monoid
 import Data.String
+import qualified Data.Text as Text
 import Data.Vector(Vector)
 
-import Fresh
+import MonadFresh
 import Pretty
 import Syntax.Name
 import Syntax.NameHint
@@ -20,55 +22,90 @@ import Syntax.Telescope
 import Util
 import VIX
 
-data FreeVar d = FreeVar
+data FreeVar d e = FreeVar
   { varId :: !Int
   , varHint :: !NameHint
-  , varType :: d (FreeVar d)
+  , varData :: d
+  , varValue :: Maybe (e (FreeVar d e))
+  , varType :: e (FreeVar d e)
   }
 
-instance Show1 d => Show (FreeVar d) where
-  showsPrec d (FreeVar i h t) = showParen (d > 10) $
-    showString "FreeVar" . showChar ' ' . showsPrec 11 i .
-    showChar ' ' . showsPrec 11 h . showChar ' ' . showsPrec1 11 t
+instance (Show d, Show1 e) => Show (FreeVar d e) where
+  showsPrec d (FreeVar i h p _ t) = showParen (d > 10) $
+    showString "FreeVar" .
+    showChar ' ' . showsPrec 11 i .
+    showChar ' ' . showsPrec 11 h .
+    showChar ' ' . showsPrec 11 p .
+    showChar ' ' . showsPrec1 11 t
 
-instance Eq (FreeVar d) where
+instance Eq (FreeVar d e) where
   (==) = (==) `on` varId
 
-instance Ord (FreeVar d) where
+instance Ord (FreeVar d e) where
   compare = compare `on` varId
 
-instance Hashable (FreeVar d) where
+instance Hashable (FreeVar d e) where
   hashWithSalt s = hashWithSalt s . varId
+
+instance Pretty (FreeVar d e) where
+  pretty (FreeVar i h _ _ _)
+    | Text.null hintText = "$" <> shower i
+    | isDigit (Text.last hintText) = "$" <> hint <> "-" <> shower i
+    | otherwise = "$" <> hint <> shower i
+    where
+      hintText = fromNameHint mempty fromName h
+      hint = pretty hintText
 
 freeVar
   :: MonadFresh m
   => NameHint
-  -> d (FreeVar d)
-  -> m (FreeVar d)
-freeVar h d = do
+  -> d
+  -> e (FreeVar d e)
+  -> m (FreeVar d e)
+freeVar h d t = do
   i <- fresh
-  return $ FreeVar i h d
+  return $ FreeVar i h d Nothing t
+
+letVar
+  :: MonadFresh m
+  => NameHint
+  -> d
+  -> e (FreeVar d e)
+  -> e (FreeVar d e)
+  -> m (FreeVar d e)
+letVar h d e t = do
+  i <- fresh
+  return $ FreeVar i h d (Just e) t
+
+-- | Like freeVar, but with logging
+forall
+  :: (MonadFresh m, MonadVIX m, MonadIO m)
+  => NameHint
+  -> d
+  -> e (FreeVar d e)
+  -> m (FreeVar d e)
+forall h p t = do
+  v <- freeVar h p t
+  logVerbose 20 $ "forall: " <> shower (varId v)
+  return v
 
 showFreeVar
-  :: (Functor d, Functor f, Foldable f, Pretty (f Doc), Pretty (d Doc))
-  => f (FreeVar d)
+  :: (Functor e, Functor f, Foldable f, Pretty (f Doc), Pretty (e Doc))
+  => f (FreeVar d e)
   -> Doc
 showFreeVar x = do
-  let vs = foldMap HashSet.singleton x
-  let showVar :: FreeVar d -> Doc
-      showVar v = "$" <> fromNameHint "" fromName (varHint v)
-          <> shower (varId v)
-  let shownVars = [(showVar v, pretty $ showVar <$> varType v) | v <- HashSet.toList vs]
-  pretty (showVar <$> x)
+  let vs = toHashSet x
+  let shownVars = [(pretty v, pretty $ pretty <$> varType v) | v <- HashSet.toList vs]
+  pretty (pretty <$> x)
     <> if null shownVars
       then mempty
       else ", free vars: " <> pretty shownVars
 
 logFreeVar
-  :: (Functor d, Functor f, Foldable f, Pretty (f Doc), Pretty (d Doc), MonadVIX m, MonadIO m)
+  :: (Functor e, Functor f, Foldable f, Pretty (f Doc), Pretty (e Doc), MonadVIX m, MonadIO m)
   => Int
   -> String
-  -> f (FreeVar d)
+  -> f (FreeVar d e)
   -> m ()
 logFreeVar v s x = whenVerbose v $ do
   i <- liftVIX $ gets vixIndent
@@ -77,11 +114,22 @@ logFreeVar v s x = whenVerbose v $ do
 
 varTelescope
   :: Monad e
-  => Vector (a, FreeVar e)
-  -> Telescope a e (FreeVar e)
+  => Vector (FreeVar d e)
+  -> Telescope d e (FreeVar d e)
 varTelescope vs =
   Telescope
-  $ (\(a, v) -> TeleArg (varHint v) a $ abstract abstr $ varType v)
+  $ (\v -> TeleArg (varHint v) (varData v) $ abstract abstr $ varType v)
   <$> vs
   where
-    abstr = teleAbstraction $ snd <$> vs
+    abstr = teleAbstraction vs
+
+varTelescope'
+  :: Monad e
+  => Vector (d, FreeVar d' e)
+  -> Telescope d e (FreeVar d' e)
+varTelescope' vs =
+  Telescope
+  $ (\(d, v) -> TeleArg (varHint v) d $ abstract abstr $ varType v)
+  <$> vs
+  where
+    abstr = teleAbstraction (snd <$> vs)

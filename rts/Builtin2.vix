@@ -35,9 +35,3 @@ StaticError : forall T. String -> T
 StaticError str =
   let x = printString str
   fail _
-
-abstract
-UnsolvedConstraint : (T : Type) -> T
-UnsolvedConstraint T =
-  let x = printString "unsolved constraint"
-  fail _

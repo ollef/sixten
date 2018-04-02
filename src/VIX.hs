@@ -26,24 +26,25 @@ import System.IO
 
 import Backend.Target as Target
 import Error
-import Fresh
+import MonadFresh
 import Processor.Result
 import Syntax
 import Syntax.Abstract
 import qualified Syntax.Sized.Lifted as Lifted
 import TypeRep
+import Util
 import Util.MultiHashMap(MultiHashMap)
 import qualified Util.MultiHashMap as MultiHashMap
 
 data VIXState = VIXState
   { vixLocation :: Maybe SourceLoc
-  , vixContext :: HashMap QName (Definition Expr Void, Type Void)
+  , vixContext :: HashMap QName (Definition (Expr Void) Void, Type Void Void)
   , vixModuleConstrs :: MultiHashMap ModuleName QConstr
   , vixModuleNames :: MultiHashMap ModuleName QName
   , vixConvertedSignatures :: HashMap QName Lifted.FunSignature
   , vixSignatures :: HashMap QName (Signature ReturnIndirect)
   , vixClassMethods :: HashMap QName (Vector Name)
-  , vixClassInstances :: HashMap QName [(QName, Type Void)]
+  , vixClassInstances :: HashMap QName [(QName, Type Void Void)]
   , vixIndent :: !Int
   , vixFresh :: !Int
   , vixLogHandle :: !Handle
@@ -162,7 +163,7 @@ whenVerbose i m = do
 
 -------------------------------------------------------------------------------
 -- Working with abstract syntax
-addContext :: MonadVIX m => HashMap QName (Definition Expr Void, Type Void) -> m ()
+addContext :: MonadVIX m => HashMap QName (Definition (Expr Void) Void, Type Void Void) -> m ()
 addContext prog = liftVIX $ modify $ \s -> s
   { vixContext = prog <> vixContext s
   , vixClassInstances = HashMap.unionWith (<>) instances $ vixClassInstances s
@@ -193,11 +194,11 @@ internalError d = throwError $ InternalError d Nothing mempty
 definition
   :: (MonadVIX m, MonadError Error m)
   => QName
-  -> m (Definition Expr v, Expr v)
+  -> m (Definition (Expr meta) v, Expr meta v)
 definition name = do
   mres <- liftVIX $ gets $ HashMap.lookup name . vixContext
   maybe (throwLocated $ "Not in scope: " <> pretty name)
-        (return . bimap vacuous vacuous)
+        (return . bimap (bimapDefinition absurd absurd) bivacuous)
         mres
 
 addModule
@@ -211,7 +212,7 @@ addModule m constrs names = liftVIX $ modify $ \s -> s
   , vixModuleNames = MultiHashMap.inserts m names $ vixModuleNames s
   }
 
-qconstructor :: (MonadVIX m, MonadError Error m) => QConstr -> m (Type v)
+qconstructor :: (MonadVIX m, MonadError Error m) => QConstr -> m (Type meta v)
 qconstructor qc@(QConstr n c) = do
   (def, typ) <- definition n
   case def of

@@ -44,6 +44,13 @@ bitraverseDataDef
   -> f (DataDef (typ a') b')
 bitraverseDataDef f g (DataDef cs) = DataDef <$> traverse (traverse $ bitraverseScope f g) cs
 
+transverseDataDef
+  :: (Traversable typ, Monad f)
+  => (forall r. typ r -> f (typ' r))
+  -> DataDef typ a
+  -> f (DataDef typ' a)
+transverseDataDef f (DataDef cs) = DataDef <$> traverse (traverse $ transverseScope f) cs
+
 constrNames :: DataDef typ v -> [Constr]
 constrNames = map constrName . dataConstructors
 

@@ -14,7 +14,7 @@ import Data.Void
 
 import Backend.Target(Target)
 import Builtin.Names
-import Fresh
+import MonadFresh
 import Syntax
 import Syntax.Abstract as Abstract
 import Syntax.Sized.Anno
@@ -24,7 +24,7 @@ import TypedFreeVar
 import qualified TypeRep
 import Util
 
-context :: Target -> HashMap QName (Definition Expr Void, Type Void)
+context :: Target -> HashMap QName (Definition (Expr Void) Void, Type Void Void)
 context target = HashMap.fromList
   [ (TypeName, dataType typeRep Type [])
   , (PtrName, dataType
@@ -85,22 +85,22 @@ maxArity = 6
 
 apply :: Target -> Int -> Sized.Definition Lifted.Expr Void
 apply target numArgs = evalFresh $ do
-  this <- freeVar "this" ptrRep
+  this <- freeVar "this" () ptrRep
   argTypes <- Vector.forM (Vector.enumFromN 0 numArgs) $ \i ->
-    freeVar ("x" <> shower (i :: Int) <> "type") typeRep
+    freeVar ("x" <> shower (i :: Int) <> "type") () typeRep
   args <- iforM argTypes $ \i argType ->
-    freeVar ("x" <> shower i) $ pure argType
+    freeVar ("x" <> shower i) () $ pure argType
 
   let funArgs = pure this <> argTypes <> args
       funAbstr = teleAbstraction funArgs
-      funTele = varTelescope $ (,) () <$> funArgs
+      funTele = varTelescope funArgs
 
-  funknown <- freeVar "funknown" piRep
-  farity <- freeVar "arity" intRep
+  funknown <- freeVar "funknown" () piRep
+  farity <- freeVar "arity" () intRep
 
   let clArgs = pure funknown <> pure farity
       clAbstr = teleAbstraction clArgs
-      clTele = varTelescope $ (,) () <$> clArgs
+      clTele = varTelescope clArgs
 
       callfunknown argTypes' args' =
         Lifted.PrimCall (ReturnIndirect OutParam) (pure funknown)
@@ -108,7 +108,7 @@ apply target numArgs = evalFresh $ do
         $ (\v -> (directType, varAnno v)) <$> argTypes'
         <|> (\v -> (Indirect, varAnno v)) <$> args'
 
-      br :: Int -> Lifted.Expr (FreeVar Lifted.Expr)
+      br :: Int -> Lifted.Expr (FreeVar () Lifted.Expr)
       br arity
         | numArgs < arity
           = Lifted.Con Ref
@@ -157,27 +157,27 @@ apply target numArgs = evalFresh $ do
 
 pap :: Target -> Int -> Int -> Sized.Definition Lifted.Expr Void
 pap target k m = evalFresh $ do
-  this <- freeVar "this" ptrRep
+  this <- freeVar "this" () ptrRep
   argTypes <- Vector.forM (Vector.enumFromN 0 k) $ \i ->
-    freeVar ("x" <> shower (i :: Int) <> "type") typeRep
+    freeVar ("x" <> shower (i :: Int) <> "type") () typeRep
   args <- iforM argTypes $ \i argType ->
-    freeVar ("x" <> shower i) $ pure argType
+    freeVar ("x" <> shower i) () $ pure argType
 
   let funArgs = pure this <> argTypes <> args
       funAbstr = teleAbstraction funArgs
-      funTele = varTelescope $ (,) () <$> funArgs
+      funTele = varTelescope funArgs
 
-  unused1 <- freeVar "_" ptrRep
-  unused2 <- freeVar "_" intRep
-  that <- freeVar "that" ptrRep
+  unused1 <- freeVar "_" () ptrRep
+  unused2 <- freeVar "_" () intRep
+  that <- freeVar "that" () ptrRep
   clArgTypes <- Vector.forM (Vector.enumFromN 0 m) $ \i ->
-    freeVar ("y" <> shower (i :: Int) <> "type") typeRep
+    freeVar ("y" <> shower (i :: Int) <> "type") () typeRep
   clArgs <- iforM clArgTypes $ \i argType ->
-    freeVar ("y" <> shower i) $ pure argType
+    freeVar ("y" <> shower i) () $ pure argType
 
   let clArgs' = pure unused1 <> pure unused2 <> pure that <> clArgTypes <> clArgs
       clAbstr = teleAbstraction clArgs'
-      clTele = varTelescope $ (,) () <$> clArgs'
+      clTele = varTelescope clArgs'
 
   return
     $ fmap (error "Builtin.pap")
