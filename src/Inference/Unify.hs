@@ -45,6 +45,7 @@ occurs cxt l tv expr = traverse_ go expr
         printedExpr <- showMeta expr'
         throwLocated
           $ "Cannot construct the infinite type"
+          <> PP.line
           <> PP.vcat
             ([ dullBlue printedTv
             , "="
