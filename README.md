@@ -134,7 +134,7 @@ sum : (n : Nat) -> Vector n Int -> Int
 
 ### Type inference
 
-Sixten's type inference is based on
+Sixten's type inference is inspired by
 [Practical type inference for arbitrary-rank types](https://www.microsoft.com/en-us/research/publication/practical-type-inference-for-arbitrary-rank-types/).
 
 ### Classes
