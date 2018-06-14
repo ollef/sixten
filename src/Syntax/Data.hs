@@ -56,10 +56,10 @@ constrNames = map constrName . dataConstructors
 
 prettyDataDef
   :: (Eq1 typ, Pretty (typ Doc), Monad typ)
-  => PrettyM Doc
+  => PrettyDoc
   -> Telescope Plicitness typ Doc
   -> DataDef typ Doc
-  -> PrettyM Doc
+  -> PrettyDoc
 prettyDataDef name ps (DataDef cs) = "type" <+> name <+> withTeleHints ps (\ns ->
     let inst = instantiateTele (pure . fromName) ns in
         prettyTeleVarTypes ns ps <+> "where" <$$>

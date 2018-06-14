@@ -33,10 +33,10 @@ methodNames = map methodName . classMethods
 
 prettyClassDef
   :: (Eq1 typ, Monad typ, Pretty (typ Doc))
-  => PrettyM Doc
+  => PrettyDoc
   -> Telescope Plicitness typ Doc
   -> ClassDef typ Doc
-  -> PrettyM Doc
+  -> PrettyDoc
 prettyClassDef name ps (ClassDef cs) = "class" <+> name <+> withTeleHints ps (\ns ->
     let inst = instantiateTele (pure . fromName) ns in
         prettyTeleVarTypes ns ps <+> "where" <$$>

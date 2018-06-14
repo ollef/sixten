@@ -153,15 +153,15 @@ quantify pifun (Telescope ps) s =
 
 withTeleHints
   :: Telescope a expr v
-  -> (Vector Name -> PrettyM p)
-  -> PrettyM p
+  -> (Vector Name -> PrettyDoc)
+  -> PrettyDoc
 withTeleHints = withNameHints . teleNames
 
 prettyTeleVars
   :: PrettyAnnotation a
   => Vector Name
   -> Telescope a expr v
-  -> PrettyM Doc
+  -> PrettyDoc
 prettyTeleVars ns t = hsep
   [ prettyAnnotation a $ prettyM $ ns Vector.! i
   | (i, a) <- zip [0..] $ Vector.toList $ teleAnnotations t
@@ -171,7 +171,7 @@ prettyTeleVarTypes
   :: (Eq1 expr, Pretty (expr Doc), Monad expr, PrettyAnnotation a)
   => Vector Name
   -> Telescope a expr Doc
-  -> PrettyM Doc
+  -> PrettyDoc
 prettyTeleVarTypes ns (Telescope v) = hcat $ map go grouped
   where
     inst = instantiateTele (pure . fromName) ns

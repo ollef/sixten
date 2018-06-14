@@ -6,8 +6,8 @@ import Data.Hashable
 import Pretty
 
 class Eq a => PrettyAnnotation a where
-  prettyAnnotation :: a -> PrettyM Doc -> PrettyM Doc
-  prettyAnnotationParens :: a -> PrettyM Doc -> PrettyM Doc
+  prettyAnnotation :: a -> PrettyDoc -> PrettyDoc
+  prettyAnnotationParens :: a -> PrettyDoc -> PrettyDoc
   prettyAnnotationParens p = prettyAnnotation p . parens
 
 instance PrettyAnnotation () where

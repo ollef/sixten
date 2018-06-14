@@ -130,11 +130,11 @@ prettyConcreteGroup str f defs = do
         let t' = toDoc . f <$> t
         VIX.log
           $ showWide
-          $ runPrettyM
+          $ pretty
           $ prettyM n <+> ":" <+> prettyM t'
       VIX.log
         $ showWide
-        $ runPrettyM
+        $ pretty
         $ prettyNamed (prettyM n) (toDoc . f <$> d)
       VIX.log ""
   return defs
@@ -152,11 +152,11 @@ prettyTypedGroup v str f defs = do
       let t' = fromQName . f <$> t
       VIX.log
         $ showWide
-        $ runPrettyM
+        $ pretty
         $ prettyM n <+> ":" <+> prettyM t'
       VIX.log
         $ showWide
-        $ runPrettyM
+        $ pretty
         $ Abstract.prettyTypedDef (prettyM n) (fromQName . f <$> d) t'
       VIX.log ""
   return defs
@@ -173,7 +173,7 @@ prettyGroup str f defs = do
     forM_ defs $ \(n, d) -> do
       VIX.log
         $ showWide
-        $ runPrettyM
+        $ pretty
         $ prettyM n <+> "=" <+> prettyM (f d)
       VIX.log ""
   return defs

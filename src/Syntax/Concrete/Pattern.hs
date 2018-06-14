@@ -114,7 +114,7 @@ prettyPattern
   :: (Pretty con, Pretty typ)
   => Vector Name
   -> Pat con typ b
-  -> PrettyM Doc
+  -> PrettyDoc
 prettyPattern names = prettyM . fmap ((names Vector.!) . fst) . indexed
 
 instance (Pretty con, Pretty typ, Pretty b) => Pretty (Pat con typ b) where

@@ -83,8 +83,8 @@ letNames (LetRec xs) = (\(LetBinding name _ _) -> name) <$> xs
 
 withLetHints
   :: LetRec expr v
-  -> (Vector Name -> PrettyM p)
-  -> PrettyM p
+  -> (Vector Name -> PrettyDoc)
+  -> PrettyDoc
 withLetHints = withNameHints . letNames
 
 instantiateLet
@@ -103,7 +103,7 @@ prettyLet
   :: (Eq1 expr, Pretty (expr Doc), Monad expr)
   => Vector Name
   -> LetRec expr Doc
-  -> PrettyM Doc
+  -> PrettyDoc
 prettyLet ns (LetRec xs) = vcat $ imap go xs
   where
     go i (LetBinding _ s t)

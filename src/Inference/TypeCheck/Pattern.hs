@@ -234,7 +234,7 @@ exactlyEqualisePats [] ((p, pat):_)
   = throwLocated
   $ PP.vcat
     [ "Too many patterns for type"
-    , "Found the pattern:" PP.<+> red (runPrettyM $ prettyAnnotation p (prettyM $ first (const ()) pat)) <> "."
+    , "Found the pattern:" PP.<+> red (pretty $ prettyAnnotation p (prettyM $ first (const ()) pat)) <> "."
     , bold "Expected:" PP.<+> "no more patterns."
     ]
 exactlyEqualisePats (Constraint:ps) ((Constraint, pat):pats)
@@ -286,6 +286,6 @@ throwExpectedExplicit pat
   = throwLocated
   $ PP.vcat
     [ "Explicit/implicit mismatch"
-    , "Found the implicit pattern:" PP.<+> red (runPrettyM $ prettyAnnotation Implicit (prettyM $ first (const ()) pat)) <> "."
+    , "Found the implicit pattern:" PP.<+> red (pretty $ prettyAnnotation Implicit (prettyM $ first (const ()) pat)) <> "."
     , bold "Expected:" PP.<+> "an" PP.<+> dullGreen "explicit" PP.<+> "pattern."
     ]

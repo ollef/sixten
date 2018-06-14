@@ -1,9 +1,8 @@
-{-# LANGUAGE GADTs, GeneralizedNewtypeDeriving, OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances, GADTs, GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module Pretty
   ( AnsiStyle, bold, italicized, underlined, red, dullGreen, dullBlue
   , Doc
-  , Pretty, PrettyM, PrettyNamed
-  , runPrettyM
+  , Pretty, PrettyDoc, PrettyEnv, PrettyNamed
   , (<+>), (<$$>)
   , align, indent, hcat, vcat, hsep
   , absPrec, annoPrec, appPrec, arrPrec, casePrec, letPrec
@@ -48,8 +47,7 @@ infixr 6 <+>
 -------------------------------------------------------------------------------
 -- * The pretty type and class
 -------------------------------------------------------------------------------
-newtype PrettyM a = PrettyM (PrettyEnv -> a)
-  deriving (Functor, Applicative, Monad, MonadReader PrettyEnv, Monoid)
+type PrettyDoc = PrettyEnv -> Doc
 
 type Doc = PP.Doc AnsiStyle
 
@@ -59,19 +57,8 @@ data PrettyEnv = PrettyEnv
   , freeNames :: [Name]
   }
 
-class Pretty a where
-  pretty :: a -> Doc
-  pretty = runPrettyM . prettyM
-  prettyM :: a -> PrettyM Doc
-  prettyM = return . pretty
-  prettyList :: [a] -> PrettyM Doc
-  prettyList xs = PP.list <$> mapM (inviolable . prettyM) xs
-
-class PrettyNamed a where
-  prettyNamed :: PrettyM Doc -> a -> PrettyM Doc
-
-runPrettyM :: PrettyM a -> a
-runPrettyM (PrettyM p) = p PrettyEnv
+defaultPrettyEnv :: PrettyEnv
+defaultPrettyEnv = PrettyEnv
   { precedence = -1
   , boundNames = mempty
   , freeNames = do
@@ -80,26 +67,37 @@ runPrettyM (PrettyM p) = p PrettyEnv
     return $ fromString $ c : if n == 0 then "" else show n
   }
 
+class Pretty a where
+  pretty :: a -> Doc
+  pretty = ($ defaultPrettyEnv) . prettyM
+  prettyM :: a -> PrettyDoc
+  prettyM = return . pretty
+  prettyList :: [a] -> PrettyDoc
+  prettyList xs = PP.list <$> mapM (inviolable . prettyM) xs
+
+class PrettyNamed a where
+  prettyNamed :: PrettyDoc -> a -> PrettyDoc
+
 -------------------------------------------------------------------------------
 -- * Doc helpers
 -------------------------------------------------------------------------------
-(<+>), (<$$>) :: PrettyM Doc -> PrettyM Doc -> PrettyM Doc
+(<+>), (<$$>) :: PrettyDoc -> PrettyDoc -> PrettyDoc
 a <+> b = (PP.<+>) <$> a <*> b
 a <$$> b = (\x y -> x <> PP.line <> y) <$> a <*> b
 
-vcat :: Foldable f => f (PrettyM Doc) -> PrettyM Doc
+vcat :: Foldable f => f (PrettyDoc) -> PrettyDoc
 vcat xs = PP.vcat <$> sequence (Foldable.toList xs)
 
-hcat :: Foldable f => f (PrettyM Doc) -> PrettyM Doc
+hcat :: Foldable f => f (PrettyDoc) -> PrettyDoc
 hcat xs = PP.hcat <$> sequence (Foldable.toList xs)
 
-hsep :: Foldable f => f (PrettyM Doc) -> PrettyM Doc
+hsep :: Foldable f => f (PrettyDoc) -> PrettyDoc
 hsep xs = PP.hsep <$> sequence (Foldable.toList xs)
 
-align :: PrettyM Doc -> PrettyM Doc
+align :: PrettyDoc -> PrettyDoc
 align = fmap PP.align
 
-indent :: Int -> PrettyM Doc -> PrettyM Doc
+indent :: Int -> PrettyDoc -> PrettyDoc
 indent n = fmap $ PP.indent n
 
 showWide :: Doc -> Text
@@ -108,7 +106,7 @@ showWide d = RenderText.renderStrict $ PP.layoutSmart opts d
     opts = PP.defaultLayoutOptions
       { PP.layoutPageWidth = PP.Unbounded }
 
-prettyHumanListM :: Pretty a => Text -> [a] -> PrettyM Doc
+prettyHumanListM :: Pretty a => Text -> [a] -> PrettyDoc
 prettyHumanListM conjunct [x, y] = prettyM x <+> prettyM conjunct <+> prettyM y
 prettyHumanListM conjunct xs = go xs
   where
@@ -118,7 +116,7 @@ prettyHumanListM conjunct xs = go xs
     go (x:xs') = prettyM x <> "," <+> go xs'
 
 prettyHumanList :: Pretty a => Text -> [a] -> Doc
-prettyHumanList conjunct = runPrettyM . prettyHumanListM conjunct
+prettyHumanList conjunct = pretty . prettyHumanListM conjunct
 
 bold, italicized, underlined, red, dullBlue, dullGreen :: Doc -> Doc
 bold = PP.annotate PP.bold
@@ -131,12 +129,12 @@ dullGreen = PP.annotate $ PP.colorDull PP.Green
 -------------------------------------------------------------------------------
 -- * Working with names
 -------------------------------------------------------------------------------
-withName :: (Name -> PrettyM a) -> PrettyM a
+withName :: (Name -> PrettyDoc) -> PrettyDoc
 withName k = do
   name:fnames <- asks freeNames
   local (\env -> env {freeNames = fnames}) $ withHint name k
 
-withHint :: Name -> (Name -> PrettyM a) -> PrettyM a
+withHint :: Name -> (Name -> PrettyDoc) -> PrettyDoc
 withHint name k = do
   bnames <- asks boundNames
   let candidates = name : [name <> fromString (show n) | n <- [(1 :: Int)..]]
@@ -144,14 +142,14 @@ withHint name k = do
       bnames' = HashSet.insert actualName bnames
   local (\env -> env {boundNames = bnames'}) $ k actualName
 
-withNameHint :: NameHint -> (Name -> PrettyM a) -> PrettyM a
+withNameHint :: NameHint -> (Name -> PrettyDoc) -> PrettyDoc
 withNameHint (NameHint name) = withHint name
 withNameHint NoHint = withName
 
-withNameHints :: Vector NameHint -> (Vector Name -> PrettyM a) -> PrettyM a
+withNameHints :: Vector NameHint -> (Vector Name -> PrettyDoc) -> PrettyDoc
 withNameHints v k = go (Vector.toList v) $ k . Vector.fromList
   where
-    go :: [NameHint] -> ([Name] -> PrettyM a) -> PrettyM a
+    go :: [NameHint] -> ([Name] -> PrettyDoc) -> PrettyDoc
     go [] k' = k' []
     go (hint:hints) k' =
       withNameHint hint (\name -> go hints (\names -> k' (name : names)))
@@ -168,27 +166,27 @@ arrPrec  = 1
 casePrec = 1
 letPrec  = 1
 
-above :: (PrettyM a -> PrettyM a) -> Int -> PrettyM a -> PrettyM a
+above :: (PrettyDoc -> PrettyDoc) -> Int -> PrettyDoc -> PrettyDoc
 above f p' m = do
   p <- asks precedence
   (if p > p' then f else id) $ associate (p' + 1) m
 
-prettyApp :: PrettyM Doc -> PrettyM Doc -> PrettyM Doc
+prettyApp :: PrettyDoc -> PrettyDoc -> PrettyDoc
 prettyApp p q = parens `above` appPrec $ associate appPrec p <+> q
 
-prettyApps :: Foldable t => PrettyM Doc -> t (PrettyM Doc) -> PrettyM Doc
+prettyApps :: Foldable t => PrettyDoc -> t (PrettyDoc) -> PrettyDoc
 prettyApps = foldl prettyApp
 
-prettyTightApp :: PrettyM Doc -> PrettyM Doc -> PrettyM Doc
+prettyTightApp :: PrettyDoc -> PrettyDoc -> PrettyDoc
 prettyTightApp p q = parens `above` tightAppPrec $ associate tightAppPrec p <> q
 
-associate :: Int -> PrettyM a -> PrettyM a
+associate :: Int -> PrettyDoc -> PrettyDoc
 associate p = local $ \s -> s {precedence = p}
 
-inviolable :: PrettyM a -> PrettyM a
+inviolable :: PrettyDoc -> PrettyDoc
 inviolable = local $ \s -> s {precedence = -1}
 
-angles, braces, brackets, parens :: PrettyM Doc -> PrettyM Doc
+angles, braces, brackets, parens :: PrettyDoc -> PrettyDoc
 angles = fmap PP.angles . inviolable
 braces = fmap PP.braces . inviolable
 brackets = fmap PP.brackets . inviolable
@@ -197,8 +195,11 @@ parens = fmap PP.parens . inviolable
 -------------------------------------------------------------------------------
 -- * Instances
 -------------------------------------------------------------------------------
-instance a ~ Doc => IsString (PrettyM a) where
-  fromString = PrettyM . const . fromString
+instance a ~ Doc => IsString (PrettyEnv -> a) where
+  fromString = const . fromString
+
+instance a ~ Doc => Pretty (PrettyEnv -> a) where
+  prettyM = id
 
 instance Pretty Bool where pretty = fromString . show
 instance Pretty Char where

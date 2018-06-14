@@ -103,10 +103,10 @@ quantifiedConstrTypes (DataDef cs) typ anno = map (fmap $ pis ps) cs
 
 prettyTypedDef
   :: (Eq m, Pretty m)
-  => PrettyM Doc
+  => PrettyDoc
   -> Definition (Expr m) Doc
   -> Expr m Doc
-  -> PrettyM Doc
+  -> PrettyDoc
 prettyTypedDef name (Definition a i d) _ = prettyM a <+> prettyM i <$$> name <+> "=" <+> prettyM d
 prettyTypedDef name (DataDefinition d e) t = prettyDataDef name (telescope t) d <+> "=" <+> prettyM e
 
