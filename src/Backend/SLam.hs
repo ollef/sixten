@@ -1,4 +1,4 @@
-{-# LANGUAGE MonadComprehensions, OverloadedStrings, ViewPatterns #-}
+{-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving, MonadComprehensions, MultiParamTypeClasses, OverloadedStrings, TypeSynonymInstances, ViewPatterns #-}
 module Backend.SLam where
 
 import Bound.Scope hiding (instantiate1)
@@ -8,30 +8,37 @@ import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
-import Inference.Meta
+import Inference.MetaVar
+import Inference.Monad
 import Inference.Normalise
 import Inference.TypeOf
+import MonadContext
+import MonadFresh
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.SLambda as SLambda
+import TypedFreeVar
 import Util
 import VIX
 
-slamAnno :: AbstractM -> VIX (Anno SLambda.Expr MetaA)
+newtype SLam a = SLam { runSlam :: VIX a }
+  deriving (Functor, Applicative, Monad, MonadFix, MonadIO, MonadVIX, MonadFresh, MonadError Error)
+
+-- | Dummy instance, since we don't use the context
+instance MonadContext FreeV SLam where
+  localVars = return mempty
+  inUpdatedContext _ m = m
+
+slamAnno :: AbstractM -> SLam (Anno SLambda.Expr FreeV)
 slamAnno e = Anno <$> slam e <*> (slam =<< whnfExpandingTypeReps =<< typeOf e)
 
-slam :: AbstractM -> VIX LambdaM
+slam :: AbstractM -> SLam (SLambda.Expr FreeV)
 slam expr = do
   logMeta 20 "slam expr" expr
   res <- indentLog $ case expr of
-    Abstract.Var v@MetaVar { metaRef = Exists r } -> do
-      sol <- solution r
-      case sol of
-        Left _ -> return $ SLambda.Var v
-        Right expr' -> slam expr'
-    Abstract.Var v@MetaVar { metaRef = Forall } -> return $ SLambda.Var v
-    Abstract.Var v@MetaVar { metaRef = LetRef {} } -> return $ SLambda.Var v
+    Abstract.Var v -> return $ SLambda.Var v
+    Abstract.Meta _ _ -> error "slam Meta"
     Abstract.Global g -> return $ SLambda.Global g
     Abstract.Lit l -> return $ SLambda.Lit l
     Abstract.Pi {} -> do
@@ -39,7 +46,7 @@ slam expr = do
       slam t
     Abstract.Lam h p t s -> do
       t' <- whnfExpandingTypeReps t
-      v <- forall h p t'
+      v <- freeVar h p t'
       e <- slamAnno $ instantiate1 (pure v) s
       rep <- slam t'
       return $ SLambda.Lam h rep $ abstract1Anno v e
@@ -54,7 +61,7 @@ slam expr = do
           SLambda.Con qc <$> mapM slamAnno (Vector.fromList $ snd <$> es')
         LT -> do
           conType <- qconstructor qc
-          let Just appliedConType = Abstract.typeApps conType $ snd <$> es
+          let Just appliedConType = Abstract.typeApps conType es
               tele = Abstract.telescope appliedConType
           slam
             $ Abstract.lams tele
@@ -66,7 +73,7 @@ slam expr = do
     Abstract.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamAnno e2
     Abstract.Case e brs _retType -> SLambda.Case <$> slamAnno e <*> slamBranches brs
     Abstract.Let ds scope -> do
-      vs <- forMLet ds $ \h _ t -> forall h Explicit t
+      vs <- forMLet ds $ \h _ t -> freeVar h Explicit t
       let abstr = letAbstraction vs
       ds' <- fmap LetRec $ forMLet ds $ \h s t -> do
         e <- slam $ instantiateLet pure vs s
@@ -79,21 +86,22 @@ slam expr = do
         retType' <- slam =<< whnfExpandingTypeReps retType
         c' <- slamExtern c
         return $ SLambda.ExternCode c' retType'
-  logMeta 20 "slam res" res
+  logPretty 20 "slam res" $ pretty <$> res
   return res
 
 slamBranches
-  :: Branches Plicitness Abstract.Expr MetaA
-  -> VIX (Branches () SLambda.Expr MetaA)
+  :: Branches Plicitness (Abstract.Expr MetaVar) FreeV
+  -> SLam (Branches () SLambda.Expr FreeV)
 slamBranches (ConBranches cbrs) = do
-  logMeta 20 "slamBranches brs" $ ConBranches cbrs
+  -- TODO
+  -- logPretty 20 "slamBranches brs" $ pretty <$> ConBranches cbrs
   cbrs' <- indentLog $ forM cbrs $ \(ConBranch c tele brScope) -> do
     tele' <- forTeleWithPrefixM tele $ \h p s tele' -> do
       let vs = fst <$> tele'
           abstr = teleAbstraction vs
           t = instantiateTele pure vs s
       trep <- slam =<< whnfExpandingTypeReps t
-      v <- forall h p t
+      v <- freeVar h p t
       return (v, TeleArg h p $ abstract abstr trep)
     let vs = fst <$> tele'
         abstr = teleAbstraction vs
@@ -102,7 +110,7 @@ slamBranches (ConBranches cbrs) = do
                $ snd <$> tele'
     brScope' <- slam $ instantiateTele pure vs brScope
     return $ ConBranch c tele'' $ abstract abstr brScope'
-  logMeta 20 "slamBranches res" $ ConBranches cbrs'
+  logPretty 20 "slamBranches res" $ pretty <$> ConBranches cbrs'
   return $ ConBranches cbrs'
 slamBranches (LitBranches lbrs d)
   = LitBranches
@@ -110,8 +118,8 @@ slamBranches (LitBranches lbrs d)
     <*> slam d
 
 slamExtern
-  :: Extern (Abstract.Expr MetaA)
-  -> VIX (Extern (Anno SLambda.Expr MetaA))
+  :: Extern AbstractM
+  -> SLam (Extern (Anno SLambda.Expr FreeV))
 slamExtern (Extern lang parts)
   = fmap (Extern lang) $ forM parts $ \part -> case part of
     ExternPart str -> return $ ExternPart str
@@ -120,7 +128,7 @@ slamExtern (Extern lang parts)
     TargetMacroPart m -> return $ TargetMacroPart m
 
 slamDef
-  :: Definition Abstract.Expr MetaA
-  -> VIX (Anno SLambda.Expr MetaA)
+  :: Definition (Abstract.Expr MetaVar) FreeV
+  -> SLam (Anno SLambda.Expr FreeV)
 slamDef (Definition _ _ e) = slamAnno e
 slamDef (DataDefinition _ e) = slamAnno e

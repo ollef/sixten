@@ -1,7 +1,7 @@
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-module Fresh where
+module MonadFresh where
 
 import Control.Monad.Reader
 import Control.Monad.State
@@ -17,7 +17,6 @@ class Monad m => MonadFresh m where
     :: (MonadTrans t, MonadFresh m1, m ~ t m1)
     => m Int
   fresh = lift fresh
-
 
 newtype Fresh a = Fresh (State Int a)
   deriving (Functor, Applicative, Monad, MonadState Int)

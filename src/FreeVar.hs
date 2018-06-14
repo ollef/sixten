@@ -1,11 +1,14 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module FreeVar where
 
 import Data.Function
 import Data.Hashable
+import Data.Monoid
 
-import Fresh
-import Syntax.NameHint
+import MonadFresh
+import Pretty
+import Syntax
+import Util
 
 data FreeVar d = FreeVar
   { varId :: !Int
@@ -21,6 +24,9 @@ instance Ord (FreeVar d) where
 
 instance Hashable (FreeVar d) where
   hashWithSalt s = hashWithSalt s . varId
+
+instance Pretty (FreeVar d) where
+  pretty (FreeVar i h _) = "$" <> shower i <> fromNameHint mempty fromName h
 
 freeVar
   :: MonadFresh m

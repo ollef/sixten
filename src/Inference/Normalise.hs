@@ -1,50 +1,64 @@
-{-# LANGUAGE FlexibleContexts, MonadComprehensions, ViewPatterns, RecursiveDo #-}
+{-# LANGUAGE ConstraintKinds, FlexibleContexts, MonadComprehensions, ViewPatterns, RecursiveDo #-}
 module Inference.Normalise where
 
 import Control.Monad.Except
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Vector as Vector
+import Data.Void
 
 import qualified Builtin.Names as Builtin
-import Inference.Meta
+import Inference.MetaVar
+import Inference.Monad
+import MonadContext
 import Syntax
 import Syntax.Abstract
+import TypedFreeVar
 import TypeRep(TypeRep)
 import qualified TypeRep
 import Util
 import VIX
 
+type MonadNormalise m = (MonadIO m, MonadVIX m, MonadContext FreeV m, MonadError Error m, MonadFix m)
+
 -------------------------------------------------------------------------------
 -- * Weak head normal forms
 whnf
-  :: (MonadIO m, MonadVIX m, MonadError Error m, MonadFix m)
+  :: MonadNormalise m
   => AbstractM
   -> m AbstractM
 whnf = whnf' WhnfArgs
   { expandTypeReps = False
-  , handleUnsolvedConstraint = const $ return Nothing
+  , handleMetaVar = \m -> do
+    sol <- solution m
+    case sol of
+      Left _ -> return Nothing
+      Right e -> return $ Just e
   }
 
 whnfExpandingTypeReps
-  :: (MonadIO m, MonadVIX m, MonadError Error m, MonadFix m)
+  :: MonadNormalise m
   => AbstractM
   -> m AbstractM
 whnfExpandingTypeReps = whnf' WhnfArgs
   { expandTypeReps = True
-  , handleUnsolvedConstraint = const $ return Nothing
+  , handleMetaVar = \m -> do
+    sol <- solution m
+    case sol of
+      Left _ -> return Nothing
+      Right e -> return $ Just e
   }
 
 data WhnfArgs m = WhnfArgs
   { expandTypeReps :: !Bool
     -- ^ Should types be reduced to type representations (i.e. forget what the
     -- type is and only remember its representation)?
-  , handleUnsolvedConstraint :: !(AbstractM -> m (Maybe AbstractM))
-    -- ^ Allows whnf to try to solve an unsolved class constraint when they're
+  , handleMetaVar :: !(MetaVar -> m (Maybe (Expr MetaVar Void)))
+    -- ^ Allows whnf to try to solve unsolved class constraints when they're
     -- encountered.
   }
 
 whnf'
-  :: (MonadIO m, MonadVIX m, MonadError Error m, MonadFix m)
+  :: MonadNormalise m
   => WhnfArgs m
   -> AbstractM
   -> m AbstractM
@@ -58,9 +72,9 @@ whnf' args expr = indentLog $ do
     go f es@((p, e):es') = do
       f' <- whnfInner args f
       case f' of
-        Lam h p' t s | p == p' -> do
-          eVar <- shared h p e t
-          go (Util.instantiate1 (pure eVar) s) es'
+        Lam _ p' _ s | p == p' -> do
+          -- TODO sharing?
+          go (Util.instantiate1 e s) es'
         _ -> case apps f' es of
           Builtin.ProductTypeRep x y -> typeRepBinOp
             (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
@@ -73,20 +87,21 @@ whnf' args expr = indentLog $ do
           Builtin.SubInt x y -> binOp Nothing (Just 0) (-) Builtin.SubInt (whnf' args) x y
           Builtin.AddInt x y -> binOp (Just 0) (Just 0) (+) Builtin.AddInt (whnf' args) x y
           Builtin.MaxInt x y -> binOp (Just 0) (Just 0) max Builtin.MaxInt (whnf' args) x y
-          expr'@(Builtin.UnsolvedConstraint typ) -> do
-            msolution <- handleUnsolvedConstraint args typ
-            case msolution of
-              Nothing -> return expr'
-              Just sol -> whnf' args sol
           expr' -> return expr'
 
 whnfInner
-  :: (MonadIO m, MonadVIX m, MonadError Error m, MonadFix m)
+  :: MonadNormalise m
   => WhnfArgs m
   -> AbstractM
   -> m AbstractM
 whnfInner args expr = case expr of
-  Var v -> refineVar v $ whnf' args
+  Var (FreeVar { varValue = Just e }) -> whnf' args e
+  Var (FreeVar { varValue = Nothing }) -> return expr
+  Meta m es -> do
+    sol <- handleMetaVar args m
+    case sol of
+      Nothing -> return expr
+      Just e -> whnf' args $ apps (vacuous e) es
   Global g -> do
     (d, _) <- definition g
     case d of
@@ -96,7 +111,6 @@ whnfInner args expr = case expr of
   Con _ -> return expr
   Lit _ -> return expr
   Pi {} -> return expr
-  (etaReduce -> Just expr') -> whnf' args expr'
   Lam {} -> return expr
   App {} -> return expr
   Let ds scope -> do
@@ -111,13 +125,15 @@ whnfInner args expr = case expr of
     <*> whnf' args retType
 
 normalise
-  :: (MonadIO m, MonadVIX m, MonadError Error m, MonadFix m)
+  :: MonadNormalise m
   => AbstractM
   -> m AbstractM
 normalise expr = do
   logMeta 40 "normalise e" expr
   res <- indentLog $ case expr of
-    Var v -> refineVar v normalise
+    Var (FreeVar { varValue = Just e }) -> normalise e
+    Var (FreeVar { varValue = Nothing }) -> return expr
+    Meta m es -> traverseMetaSolution normalise m es
     Global g -> do
       (d, _) <- definition g
       case d of
@@ -126,7 +142,6 @@ normalise expr = do
     Con _ -> return expr
     Lit _ -> return expr
     Pi n p a s -> normaliseScope n p (Pi n p) a s
-    (etaReduce -> Just expr') -> normalise expr'
     Lam n p a s -> normaliseScope n p (Lam n p) a s
     Builtin.ProductTypeRep x y -> typeRepBinOp
       (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
@@ -142,9 +157,9 @@ normalise expr = do
     App e1 p e2 -> do
       e1' <- normalise e1
       case e1' of
-        Lam h p' t s | p == p' -> do
-          e2Var <- shared h p e2 t
-          normalise $ Util.instantiate1 (pure e2Var) s
+        -- TODO sharing?
+        Lam _ p' _ s | p == p' ->
+          normalise $ Util.instantiate1 e2 s
         _ -> do
           e2' <- normalise e2
           return $ App e1' p e2'
@@ -152,7 +167,7 @@ normalise expr = do
       e <- instantiateLetM ds scope
       normalise e
     Case e brs retType -> do
-      e' <- whnf e
+      e' <- normalise e
       res <- chooseBranch e' brs retType normalise
       case res of
         Case e'' brs' retType' -> Case e'' <$> (case brs' of
@@ -171,35 +186,33 @@ normalise expr = do
   return res
   where
     normaliseTelescope tele scope = do
-      pvs <- forTeleWithPrefixM tele $ \h p s avs -> do
-        t' <- normalise $ instantiateTele pure (snd <$> avs) s
-        v <- forall h p t'
-        return (p, v)
+      vs <- forTeleWithPrefixM tele $ \h p s vs -> do
+        t' <- normalise $ instantiateTele pure vs s
+        forall h p t'
 
-      let vs = snd <$> pvs
-          abstr = teleAbstraction vs
-      e' <- normalise $ instantiateTele pure vs scope
-      scope' <- abstractM abstr e'
-      tele' <- forM pvs $ \(p, v) -> do
-        s <- abstractM abstr $ metaType v
-        return $ TeleArg (metaHint v) p s
+      let abstr = teleAbstraction vs
+      e' <- withVars vs $ normalise $ instantiateTele pure vs scope
+      let scope' = abstract abstr e'
+      tele' <- forM vs $ \v -> do
+        let s = abstract abstr $ varType v
+        return $ TeleArg (varHint v) (varData v) s
       return (Telescope tele', scope')
     normaliseScope h p c t s = do
       t' <- normalise t
       x <- forall h p t'
-      ns <- normalise $ Util.instantiate1 (pure x) s
-      c t' <$> abstract1M x ns
+      ns <- withVar x $ normalise $ Util.instantiate1 (pure x) s
+      return $ c t' $ abstract1 x ns
 
 binOp
   :: Monad m
   => Maybe Integer
   -> Maybe Integer
   -> (Integer -> Integer -> Integer)
-  -> (Expr v -> Expr v -> Expr v)
-  -> (Expr v -> m (Expr v))
-  -> Expr v
-  -> Expr v
-  -> m (Expr v)
+  -> (Expr meta v -> Expr meta v -> Expr meta v)
+  -> (Expr meta v -> m (Expr meta v))
+  -> Expr meta v
+  -> Expr meta v
+  -> m (Expr meta v)
 binOp lzero rzero op cop norm x y = do
     x' <- norm x
     y' <- norm y
@@ -214,11 +227,11 @@ typeRepBinOp
   => Maybe TypeRep
   -> Maybe TypeRep
   -> (TypeRep -> TypeRep -> TypeRep)
-  -> (Expr v -> Expr v -> Expr v)
-  -> (Expr v -> m (Expr v))
-  -> Expr v
-  -> Expr v
-  -> m (Expr v)
+  -> (Expr meta v -> Expr meta v -> Expr meta v)
+  -> (Expr meta v -> m (Expr meta v))
+  -> Expr meta v
+  -> Expr meta v
+  -> m (Expr meta v)
 typeRepBinOp lzero rzero op cop norm x y = do
     x' <- norm x
     y' <- norm y
@@ -230,11 +243,11 @@ typeRepBinOp lzero rzero op cop norm x y = do
 
 chooseBranch
   :: Monad m
-  => Expr v
-  -> Branches Plicitness Expr v
-  -> Expr v
-  -> (Expr v -> m (Expr v))
-  -> m (Expr v)
+  => Expr meta v
+  -> Branches Plicitness (Expr meta) v
+  -> Expr meta v
+  -> (Expr meta v -> m (Expr meta v))
+  -> m (Expr meta v)
 chooseBranch (Lit l) (LitBranches lbrs def) _ k = k chosenBranch
   where
     chosenBranch = head $ [br | LitBranch l' br <- NonEmpty.toList lbrs, l == l'] ++ [def]
@@ -249,14 +262,14 @@ chooseBranch e brs retType _ = return $ Case e brs retType
 
 instantiateLetM
   :: (MonadFix m, MonadIO m, MonadVIX m)
-  => LetRec Expr MetaA
-  -> Scope LetVar Expr MetaA
+  => LetRec (Expr MetaVar) FreeV
+  -> Scope LetVar (Expr MetaVar) FreeV
   -> m AbstractM
 instantiateLetM ds scope = mdo
-  vs <- forMLet ds $ \h s t -> shared h Explicit (instantiateLet pure vs s) t
+  vs <- forMLet ds $ \h s t -> letVar h Explicit (instantiateLet pure vs s) t
   return $ instantiateLet pure vs scope
 
-etaReduce :: Expr v -> Maybe (Expr v)
+etaReduce :: Expr meta v -> Maybe (Expr meta v)
 etaReduce (Lam _ p _ (Scope (App e1scope p' (Var (B ())))))
   | p == p', Just e1' <- unusedScope $ Scope e1scope = Just e1'
 etaReduce _ = Nothing

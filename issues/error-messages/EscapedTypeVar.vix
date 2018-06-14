@@ -11,9 +11,9 @@ if : forall (a : Type). Bool' -> a -> a -> a
 if b = b
 
 and : Bool' -> Bool' -> Bool'
-and b1 b2 = if @Bool' b1 b2 False'
+and b1 b2 = if b1 b2 False'
 
 or : Bool' -> Bool' -> Bool'
-or b1 b2 = if @Bool' b1 True' b2
+or b1 b2 = if b1 True' b2
 
 main1 = printInt (if (or False' (and True' False')) 12 13)

@@ -2,8 +2,10 @@
 module Processor.File where
 
 import Control.Monad.Except
+import Control.Monad.Identity
 import Control.Monad.State
 import Data.Bifunctor
+import Data.Char
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
@@ -51,7 +53,7 @@ process
 process = frontend backend
 
 frontend
-  :: ([(QName, Definition Abstract.Expr Void, Abstract.Expr Void)] -> VIX [k])
+  :: ([(QName, Definition (Abstract.Expr Void) Void, Abstract.Expr Void Void)] -> VIX [k])
   -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [k]
 frontend k
@@ -72,7 +74,7 @@ frontend k
   >=> k
 
 backend
-  :: [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  :: [(QName, Definition (Abstract.Expr Void) Void, Abstract.Expr Void Void)]
   -> VIX [Generate.GeneratedSubmodule]
 backend
   = slamGroup
@@ -141,8 +143,8 @@ prettyTypedGroup
   :: Int
   -> Text
   -> (v -> QName)
-  -> [(QName, Definition Abstract.Expr v, Abstract.Expr v)]
-  -> VIX [(QName, Definition Abstract.Expr v, Abstract.Expr v)]
+  -> [(QName, Definition (Abstract.Expr Void) v, Abstract.Expr Void v)]
+  -> VIX [(QName, Definition (Abstract.Expr Void) v, Abstract.Expr Void v)]
 prettyTypedGroup v str f defs = do
   whenVerbose v $ do
     VIX.log $ "----- " <> str <> " -----"
@@ -208,13 +210,13 @@ declassifyGroup xs = do
 
 typeCheckGroup
   :: [(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Maybe (Concrete.Expr Void))]
-  -> VIX [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  -> VIX [(QName, Definition (Abstract.Expr Void) Void, Abstract.Expr Void Void)]
 typeCheckGroup
   = fmap Vector.toList . TypeCheck.runInfer . TypeCheck.checkTopLevelRecursiveDefs . Vector.fromList
 
 simplifyGroup
-  :: [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
-  -> VIX [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  :: [(QName, Definition (Abstract.Expr Void) Void, Abstract.Expr Void Void)]
+  -> VIX [(QName, Definition (Abstract.Expr Void) Void, Abstract.Expr Void Void)]
 simplifyGroup defs = forM defs $ \(x, def, typ) ->
   return (x, simplifyDef globTerm def, simplifyExpr globTerm 0 typ)
   where
@@ -222,17 +224,17 @@ simplifyGroup defs = forM defs $ \(x, def, typ) ->
     names = HashSet.fromList $ fst3 <$> defs
 
 addGroupToContext
-  :: [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
-  -> VIX [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  :: [(QName, Definition (Abstract.Expr Void) Void, Abstract.Expr Void Void)]
+  -> VIX [(QName, Definition (Abstract.Expr Void) Void, Abstract.Expr Void Void)]
 addGroupToContext defs = do
   addContext $ HashMap.fromList $ (\(n, d, t) -> (n, (d, t))) <$> defs
   return defs
 
 slamGroup
-  :: [(QName, Definition Abstract.Expr Void, Abstract.Expr Void)]
+  :: [(QName, Definition (Abstract.Expr Void) Void, Abstract.Expr Void Void)]
   -> VIX [(QName, Anno SLambda.Expr Void)]
 slamGroup defs = forM defs $ \(x, d, _t) -> do
-  d' <- SLam.slamDef $ vacuous d
+  d' <- SLam.runSlam $ SLam.slamDef $ hoist (runIdentity . Abstract.hoistMetas absurd) $ vacuous d
   d'' <- traverse (internalError . ("slamGroup" PP.<+>) . shower) d'
   return (x, d'')
 
@@ -341,7 +343,7 @@ dupCheck m = forM m $ flip evalStateT (0 :: Int) . foldM go mempty
         Unscoped.TopLevelInstanceDefinition typ _ -> do
           i <- get
           put $! i + 1
-          return $ "instance-" <> shower i <> "-" <> replaceSpaces (shower $ pretty typ)
+          return $ "instance-" <> shower i <> instanceNameEnding (shower $ pretty typ)
       let qname = QName (moduleName m) name
       if HashMap.member qname defs then do
         let (prevLoc, _) = defs HashMap.! qname
@@ -356,6 +358,8 @@ dupCheck m = forM m $ flip evalStateT (0 :: Int) . foldM go mempty
               ]
       else return $ HashMap.insert qname (loc, def) defs
       where
-        replaceSpaces (Name n) = Name $ Text.map replaceSpace n
+        instanceNameEnding n
+          | Text.all (\b -> isAlphaNum b || isSpace b) n = Name $ "-" <> Text.map replaceSpace n
+          | otherwise = ""
         replaceSpace ' ' = '-'
         replaceSpace c = c

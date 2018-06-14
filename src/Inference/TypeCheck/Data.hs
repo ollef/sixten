@@ -1,19 +1,21 @@
 module Inference.TypeCheck.Data where
 
 import Control.Monad.Except
-import Data.Bifunctor
 import Data.Foldable as Foldable
 
 import {-# SOURCE #-} Inference.TypeCheck.Expr
 import qualified Builtin.Names as Builtin
 import Inference.Constraint as Constraint
-import Inference.Meta
+import Inference.MetaVar
+import Inference.MetaVar.Zonk
 import Inference.Monad
 import Inference.TypeOf
 import Inference.Unify
+import MonadContext
 import Syntax
 import qualified Syntax.Abstract as Abstract
 import qualified Syntax.Concrete.Scoped as Concrete
+import TypedFreeVar
 import qualified TypeRep
 import VIX
 
@@ -27,6 +29,7 @@ checkConstrDef (ConstrDef c typ) = do
   return (ConstrDef c typ', ret, size)
   where
     go :: AbstractM -> Infer ([AbstractM], AbstractM)
+    -- TODO: Check for escaping type variables?
     go (Abstract.Pi h p t s) = do
       v <- forall h p t
       (sizes, ret) <- go $ instantiate1 (pure v) s
@@ -34,63 +37,62 @@ checkConstrDef (ConstrDef c typ) = do
     go ret = return ([], ret)
 
 checkDataType
-  :: MetaA
-  -> DataDef Concrete.Expr MetaA
+  :: FreeV
+  -> DataDef Concrete.Expr FreeV
   -> AbstractM
-  -> Infer (Definition Abstract.Expr MetaA, AbstractM)
+  -> Infer (Definition (Abstract.Expr MetaVar) FreeV, AbstractM)
 checkDataType name (DataDef cs) typ = do
   typ' <- zonk typ
   logMeta 20 "checkDataType t" typ'
 
-  ps' <- forTeleWithPrefixM (Abstract.telescope typ') $ \h p s ps' -> do
-    let is = instantiateTele pure (snd <$> ps') s
-    v <- forall h p is
-    return (p, v)
+  vs <- forTeleWithPrefixM (Abstract.telescope typ') $ \h p s vs -> do
+    let is = instantiateTele pure vs s
+    forall h p is
 
-  let vs = snd <$> ps'
-      constrRetType = Abstract.apps (pure name) $ second pure <$> ps'
+  let constrRetType = Abstract.apps (pure name) $ (\v -> (varData v, pure v)) <$> vs
       abstr = teleAbstraction vs
 
-  (cs', rets, sizes) <- fmap unzip3 $ forM cs $ \(ConstrDef c t) ->
-    checkConstrDef $ ConstrDef c $ instantiateTele pure vs t
+  withVars vs $ do
+    (cs', rets, sizes) <- fmap unzip3 $ forM cs $ \(ConstrDef c t) ->
+      checkConstrDef $ ConstrDef c $ instantiateTele pure vs t
 
-  mapM_ (unify [] constrRetType) rets
+    mapM_ (unify [] constrRetType) rets
 
-  intRep <- getIntRep
+    intRep <- getIntRep
 
-  let tagRep = case cs of
-        [] -> TypeRep.UnitRep
-        [_] -> TypeRep.UnitRep
-        _ -> intRep
+    let tagRep = case cs of
+          [] -> TypeRep.UnitRep
+          [_] -> TypeRep.UnitRep
+          _ -> intRep
 
-      typeRep
-        = productType (Abstract.MkType tagRep)
-        $ foldl' sumType (Abstract.MkType TypeRep.UnitRep) sizes
+        typeRep
+          = productType (Abstract.MkType tagRep)
+          $ foldl' sumType (Abstract.MkType TypeRep.UnitRep) sizes
 
-  unify [] Builtin.Type =<< typeOfM constrRetType
+    unify [] Builtin.Type =<< typeOf constrRetType
 
-  abstractedCs <- forM cs' $ \c@(ConstrDef qc e) -> do
-    logMeta 20 ("checkDataType res " ++ show qc) e
-    traverse (abstractM abstr) c
+    abstractedCs <- forM cs' $ \c@(ConstrDef qc e) -> do
+      logMeta 20 ("checkDataType res " ++ show qc) e
+      return $ abstract abstr <$> c
 
-  params <- metaTelescopeM ps'
-  let typ'' = Abstract.pis params $ Scope Builtin.Type
+    let params = varTelescope vs
+        typ'' = Abstract.pis params $ Scope Builtin.Type
 
-  typeRep' <- whnfExpandingTypeReps typeRep
-  abstractedTypeRep <- abstractM abstr typeRep'
-  logMeta 20 "checkDataType typeRep" typeRep'
+    typeRep' <- whnfExpandingTypeReps typeRep
+    let abstractedTypeRep = abstract abstr typeRep'
+    logMeta 20 "checkDataType typeRep" typeRep'
 
-  return (DataDefinition (DataDef abstractedCs) $ Abstract.lams params abstractedTypeRep, typ'')
+    return (DataDefinition (DataDef abstractedCs) $ Abstract.lams params abstractedTypeRep, typ'')
 
 -------------------------------------------------------------------------------
 -- Type helpers
-productType :: Abstract.Expr v -> Abstract.Expr v -> Abstract.Expr v
+productType :: Abstract.Expr m v -> Abstract.Expr m v -> Abstract.Expr m v
 productType (Abstract.MkType TypeRep.UnitRep) e = e
 productType e (Abstract.MkType TypeRep.UnitRep) = e
 productType (Abstract.MkType a) (Abstract.MkType b) = Abstract.MkType $ TypeRep.product a b
 productType a b = Builtin.ProductTypeRep a b
 
-sumType :: Abstract.Expr v -> Abstract.Expr v -> Abstract.Expr v
+sumType :: Abstract.Expr m v -> Abstract.Expr m v -> Abstract.Expr m v
 sumType (Abstract.MkType TypeRep.UnitRep) e = e
 sumType e (Abstract.MkType TypeRep.UnitRep) = e
 sumType (Abstract.MkType a) (Abstract.MkType b) = Abstract.MkType $ TypeRep.sum a b

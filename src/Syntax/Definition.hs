@@ -46,6 +46,14 @@ bitraverseDefinition
 bitraverseDefinition f g (Definition a i d) = Definition a i <$> bitraverse f g d
 bitraverseDefinition f g (DataDefinition d e) = DataDefinition <$> bitraverseDataDef f g d <*> bitraverse f g e
 
+transverseDefinition
+  :: (Traversable expr, Monad f)
+  => (forall r. expr r -> f (expr' r))
+  -> Definition expr a
+  -> f (Definition expr' a)
+transverseDefinition f (Definition a i e) = Definition a i <$> f e
+transverseDefinition f (DataDefinition d t) = DataDefinition <$> transverseDataDef f d <*> f t
+
 instance (Monad expr, Pretty (expr v), v ~ Doc) => PrettyNamed (Definition expr v) where
   prettyNamed name (Definition a i e) = prettyM a <+> prettyM i <$$> name <+> "=" <+> prettyM e
   prettyNamed name (DataDefinition d e) = prettyNamed name d <+> "=" <+> prettyM e

@@ -1,6 +1,8 @@
-{-# LANGUAGE PatternSynonyms, PolyKinds, TypeFamilies, OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric, PatternSynonyms, PolyKinds, TypeFamilies, OverloadedStrings #-}
 module Syntax.Annotation where
 
+import GHC.Generics
+import Data.Hashable
 import Pretty
 
 class Eq a => PrettyAnnotation a where
@@ -12,12 +14,14 @@ instance PrettyAnnotation () where
   prettyAnnotation _ = id
 
 data Plicitness = Constraint | Implicit | Explicit
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Generic)
 
 implicitise :: Plicitness -> Plicitness
 implicitise Constraint = Constraint
 implicitise Implicit = Implicit
 implicitise Explicit = Implicit
+
+instance Hashable Plicitness where
 
 instance Show Plicitness where
   show Constraint = "Co"

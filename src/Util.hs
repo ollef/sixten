@@ -5,15 +5,16 @@ import Bound
 import Bound.Var
 import Control.Applicative
 import Control.Exception.Lifted
-import Control.Monad.Trans.Control
 import Control.Monad.Except
 import Control.Monad.ST
 import Control.Monad.State
+import Control.Monad.Trans.Control
 import Data.Bifoldable
 import Data.Bifunctor
 import Data.Bits
 import Data.Foldable
 import Data.Hashable
+import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
@@ -30,6 +31,7 @@ import qualified Data.Vector as Vector
 import qualified Data.Vector.Generic as GVector
 import qualified Data.Vector.Generic.Base as BVector
 import qualified Data.Vector.Generic.Mutable as MVector
+import Data.Void
 import System.IO
 
 type Scope1 = Scope ()
@@ -68,8 +70,11 @@ toSet = foldMap Set.singleton
 toVector :: Foldable f => f a -> Vector a
 toVector = Vector.fromList . toList
 
-toHashSet ::  (Eq a, Foldable f, Hashable a) => f a -> HashSet a
+toHashSet ::  (Eq a, Hashable a, Foldable f) => f a -> HashSet a
 toHashSet = foldMap HashSet.singleton
+
+toHashMap :: (Eq a, Hashable a, Foldable f) => f (a, b) -> HashMap a b
+toHashMap = foldMap (uncurry HashMap.singleton)
 
 foldMapM :: (Traversable f, Monoid b, Monad m) => (a -> m b) -> f a -> m b
 foldMapM f = fmap fold . mapM f
@@ -236,5 +241,17 @@ saturate
   -> HashSet a
 saturate f = fixPoint $ \s -> HashSet.unions $ s : map f (HashSet.toList s)
 
+filterMSet
+  :: (Applicative f, Eq a, Hashable a)
+  => (a -> f Bool)
+  -> HashSet a
+  -> f (HashSet a)
+filterMSet f s  
+  = HashSet.fromMap . void . HashMap.filter id
+  <$> HashMap.traverseWithKey (\a _ -> f a) (HashSet.toMap s)
+
 withFile :: MonadBaseControl IO m => FilePath -> IOMode -> (Handle -> m r) -> m r
 withFile name mode = liftBaseOp $ bracket (openFile name mode) hClose
+
+bivacuous :: Bifunctor f => f Void Void -> f a b
+bivacuous = bimap absurd absurd

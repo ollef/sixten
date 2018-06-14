@@ -1,29 +1,33 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings, PatternSynonyms, TemplateHaskell, TypeFamilies, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings, PatternSynonyms, RankNTypes, TemplateHaskell, TypeFamilies, ViewPatterns #-}
 module Syntax.Abstract where
 
 import Control.Monad
+import Data.Bifoldable
 import Data.Bifunctor
+import Data.Bitraversable
 import Data.Deriving
 import Data.Foldable as Foldable
 import Data.Monoid
+import Data.Vector(Vector)
 
 import Syntax
 import TypeRep(TypeRep)
 import Util
 import Util.Tsil
 
--- | Expressions with variables of type @v@.
-data Expr v
+-- | Expressions with meta-variables of type @m@ and variables of type @v@.
+data Expr m v
   = Var v
+  | Meta m (Vector (Plicitness, Expr m v))
   | Global QName
   | Con QConstr
   | Lit Literal
-  | Pi !NameHint !Plicitness (Type v) (Scope1 Expr v)
-  | Lam !NameHint !Plicitness (Type v) (Scope1 Expr v)
-  | App (Expr v) !Plicitness (Expr v)
-  | Let (LetRec Expr v) (Scope LetVar Expr v)
-  | Case (Expr v) (Branches Plicitness Expr v) (Type v)
-  | ExternCode (Extern (Expr v)) (Type v)
+  | Pi !NameHint !Plicitness (Type m v) (Scope1 (Expr m) v)
+  | Lam !NameHint !Plicitness (Type m v) (Scope1 (Expr m) v)
+  | App (Expr m v) !Plicitness (Expr m v)
+  | Let (LetRec (Expr m) v) (Scope LetVar (Expr m) v)
+  | Case (Expr m v) (Branches Plicitness (Expr m) v) (Type m v)
+  | ExternCode (Extern (Expr m v)) (Type m v)
   deriving (Foldable, Functor, Traversable)
 
 -- | Synonym for documentation purposes
@@ -31,76 +35,77 @@ type Type = Expr
 
 -------------------------------------------------------------------------------
 -- Helpers
-pattern MkType :: TypeRep -> Expr v
+pattern MkType :: TypeRep -> Expr m v
 pattern MkType rep = Lit (TypeRep rep)
 
-let_ :: NameHint -> Expr v -> Type v -> Scope1 Expr v -> Expr v
+let_ :: NameHint -> Expr m v -> Type m v -> Scope1 (Expr m) v -> Expr m v
 let_ h e t s = Let (LetRec $ pure $ LetBinding h (abstractNone e) t) (mapBound (\() -> 0) s)
 
-apps :: Foldable t => Expr v -> t (Plicitness, Expr v) -> Expr v
+apps :: Foldable t => Expr m v -> t (Plicitness, Expr m v) -> Expr m v
 apps = Foldable.foldl' (uncurry . App)
 
-appsView :: Expr v -> (Expr v, [(Plicitness, Expr v)])
+appsView :: Expr m v -> (Expr m v, [(Plicitness, Expr m v)])
 appsView = second toList . go
   where
     go (App e1 p e2) = second (`Snoc` (p, e2)) $ go e1
     go e = (e, Nil)
 
-piView :: Expr v -> Maybe (NameHint, Plicitness, Type v, Scope1 Expr v)
+piView :: Expr m v -> Maybe (NameHint, Plicitness, Type m v, Scope1 (Expr m) v)
 piView (Pi h a t s) = Just (h, a, t, s)
 piView _ = Nothing
 
-lamView :: Expr v -> Maybe (NameHint, Plicitness, Type v, Scope1 Expr v)
+lamView :: Expr m v -> Maybe (NameHint, Plicitness, Type m v, Scope1 (Expr m) v)
 lamView (Lam h a t s) = Just (h, a, t, s)
 lamView _ = Nothing
 
-typeApp :: Expr v -> Expr v -> Maybe (Expr v)
-typeApp (Pi _ _ _ s) e = Just $ Util.instantiate1 e s
-typeApp _ _ = Nothing
+typeApp :: Expr m v -> Plicitness -> Expr m v -> Maybe (Expr m v)
+typeApp (Pi _ p _ s) p' e | p == p' = Just $ Util.instantiate1 e s
+typeApp _ _ _ = Nothing
 
-typeApps :: Foldable t => Expr v -> t (Expr v) -> Maybe (Expr v)
-typeApps = foldlM typeApp
+typeApps :: Foldable t => Expr m v -> t (Plicitness, Expr m v) -> Maybe (Expr m v)
+typeApps = foldlM (\e (p, e') -> typeApp e p e')
 
 usedPiView
-  :: Expr v
-  -> Maybe (NameHint, Plicitness, Expr v, Scope1 Expr v)
+  :: Expr m v
+  -> Maybe (NameHint, Plicitness, Expr m v, Scope1 (Expr m) v)
 usedPiView (Pi n p e s@(unusedScope -> Nothing)) = Just (n, p, e, s)
 usedPiView _ = Nothing
 
-usedPisViewM :: Expr v -> Maybe (Telescope Plicitness Expr v, Scope TeleVar Expr v)
+usedPisViewM :: Expr m v -> Maybe (Telescope Plicitness (Expr m) v, Scope TeleVar (Expr m) v)
 usedPisViewM = bindingsViewM usedPiView
 
-telescope :: Expr v -> Telescope Plicitness Expr v
+telescope :: Expr m v -> Telescope Plicitness (Expr m) v
 telescope (pisView -> (tele, _)) = tele
 
-pisView :: Expr v -> (Telescope Plicitness Expr v, Scope TeleVar Expr v)
+pisView :: Expr m v -> (Telescope Plicitness (Expr m) v, Scope TeleVar (Expr m) v)
 pisView = bindingsView piView
 
-lamsViewM :: Expr v -> Maybe (Telescope Plicitness Expr v, Scope TeleVar Expr v)
+lamsViewM :: Expr m v -> Maybe (Telescope Plicitness (Expr m) v, Scope TeleVar (Expr m) v)
 lamsViewM = bindingsViewM lamView
 
-lams :: Telescope Plicitness Expr v -> Scope TeleVar Expr v -> Expr v
+lams :: Telescope Plicitness (Expr m) v -> Scope TeleVar (Expr m) v -> Expr m v
 lams = quantify Lam
 
-pis :: Telescope Plicitness Expr v -> Scope TeleVar Expr v -> Expr v
+pis :: Telescope Plicitness (Expr m) v -> Scope TeleVar (Expr m) v -> Expr m v
 pis = quantify Pi
 
-arrow :: Plicitness -> Expr v -> Expr v -> Expr v
+arrow :: Plicitness -> Expr m v -> Expr m v -> Expr m v
 arrow p a b = Pi mempty p a $ Scope $ pure $ F b
 
 quantifiedConstrTypes
-  :: DataDef Type v
-  -> Type v
+  :: DataDef (Type m) v
+  -> Type m v
   -> (Plicitness -> Plicitness)
-  -> [ConstrDef (Type v)]
+  -> [ConstrDef (Type m v)]
 quantifiedConstrTypes (DataDef cs) typ anno = map (fmap $ pis ps) cs
   where
     ps = mapAnnotations anno $ telescope typ
 
 prettyTypedDef
-  :: PrettyM Doc
-  -> Definition Expr Doc
-  -> Expr Doc
+  :: (Eq m, Pretty m)
+  => PrettyM Doc
+  -> Definition (Expr m) Doc
+  -> Expr m Doc
   -> PrettyM Doc
 prettyTypedDef name (Definition a i d) _ = prettyM a <+> prettyM i <$$> name <+> "=" <+> prettyM d
 prettyTypedDef name (DataDefinition d e) t = prettyDataDef name (telescope t) d <+> "=" <+> prettyM e
@@ -114,14 +119,15 @@ deriveOrd ''Expr
 deriveShow1 ''Expr
 deriveShow ''Expr
 
-instance Applicative Expr where
+instance Applicative (Expr m) where
   pure = return
   (<*>) = ap
 
-instance Monad Expr where
+instance Monad (Expr m) where
   return = Var
   expr >>= f = case expr of
     Var v -> f v
+    Meta m vs -> Meta m $ second (>>= f) <$> vs
     Global v -> Global v
     Con c -> Con c
     Lit l -> Lit l
@@ -132,10 +138,11 @@ instance Monad Expr where
     Case e brs retType -> Case (e >>= f) (brs >>>= f) (retType >>= f)
     ExternCode c t -> ExternCode ((>>= f) <$> c) (t >>= f)
 
-instance GBind Expr where
+instance GBind (Expr m) where
   global = Global
   gbind f expr = case expr of
     Var _ -> expr
+    Meta m es -> Meta m (second (gbind f) <$> es)
     Global v -> f v
     Con _ -> expr
     Lit _ -> expr
@@ -146,9 +153,51 @@ instance GBind Expr where
     Case e brs retType -> Case (gbind f e) (gbound f brs) (gbind f retType)
     ExternCode c t -> ExternCode (gbind f <$> c) (gbind f t)
 
-instance v ~ Doc => Pretty (Expr v) where
+instance Bifunctor Expr where bimap = bimapDefault
+instance Bifoldable Expr where bifoldMap = bifoldMapDefault
+instance Bitraversable Expr where
+  bitraverse f g expr = case expr of
+    Var v -> Var <$> g v
+    Meta m es -> Meta <$> f m <*> traverse (traverse $ bitraverse f g) es
+    Global v -> pure $ Global v
+    Con c -> pure $ Con c
+    Lit l -> pure $ Lit l
+    Pi h a t s -> Pi h a <$> bitraverse f g t <*> bitraverseScope f g s
+    Lam h a t s -> Lam h a <$> bitraverse f g t <*> bitraverseScope f g s
+    App e1 a e2 -> App <$> bitraverse f g e1 <*> pure a <*> bitraverse f g e2
+    Let ds scope -> Let <$> bitraverseLet f g ds <*> bitraverseScope f g scope
+    Case e brs retType -> Case <$> bitraverse f g e <*> bitraverseBranches f g brs <*> bitraverse f g retType
+    ExternCode c t -> ExternCode <$> traverse (bitraverse f g) c <*> bitraverse f g t
+
+hoistMetas
+  :: Monad f
+  => (forall a. meta -> Vector (Plicitness, Expr meta' a) -> f (Expr meta' a))
+  -> Expr meta v
+  -> f (Expr meta' v)
+hoistMetas f expr = case expr of
+  Var v -> pure $ Var v
+  Meta m es -> f m =<< traverse (traverse $ hoistMetas f) es
+  Global v -> pure $ Global v
+  Con c -> pure $ Con c
+  Lit l -> pure $ Lit l
+  Pi h a t s -> Pi h a <$> hoistMetas f t <*> transverseScope (hoistMetas f) s
+  Lam h a t s -> Lam h a <$> hoistMetas f t <*> transverseScope (hoistMetas f) s
+  App e1 a e2 -> App <$> hoistMetas f e1 <*> pure a <*> hoistMetas f e2
+  Let ds scope -> Let <$> transverseLet (hoistMetas f) ds <*> transverseScope (hoistMetas f) scope
+  Case e brs retType -> Case <$> hoistMetas f e <*> transverseBranches (hoistMetas f) brs <*> hoistMetas f retType
+  ExternCode c t -> ExternCode <$> traverse (hoistMetas f) c <*> hoistMetas f t
+
+hoistMetas_
+  :: Monad f
+  => (meta -> f ())
+  -> Expr meta v
+  -> f ()
+hoistMetas_ f = void . hoistMetas (\m es -> const (Meta m es) <$> f m)
+
+instance (v ~ Doc, Pretty m, Eq m) => Pretty (Expr m v) where
   prettyM expr = case expr of
     Var v -> prettyM v
+    Meta m es -> prettyApps (prettyM m) ((\(p, e) -> prettyAnnotation p $ prettyM e) <$> es)
     Global g -> prettyM g
     Con c -> prettyM c
     Lit l -> prettyM l

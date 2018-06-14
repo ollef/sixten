@@ -43,7 +43,6 @@ executable sixten
                        Command.Test
                        Error
                        FreeVar
-                       Fresh
                        Frontend.Declassify
                        Frontend.Parse
                        Frontend.ResolveNames
@@ -51,7 +50,8 @@ executable sixten
                        Inference.Constructor
                        Inference.Cycle
                        Inference.Match
-                       Inference.Meta
+                       Inference.MetaVar
+                       Inference.MetaVar.Zonk
                        Inference.Monad
                        Inference.Normalise
                        Inference.Subtype
@@ -62,6 +62,8 @@ executable sixten
                        Inference.TypeCheck.Pattern
                        Inference.TypeOf
                        Inference.Unify
+                       MonadContext
+                       MonadFresh
                        Paths_sixten
                        Pretty
                        Processor.File
@@ -104,7 +106,6 @@ executable sixten
                        Util.Tsil
   build-depends:
                        base >=4.8 && <4.11,
-                       bifunctors,
                        bound,
                        bytestring,
                        containers,

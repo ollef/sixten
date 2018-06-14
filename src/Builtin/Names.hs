@@ -13,52 +13,47 @@ import Util
 pattern BuiltinModuleName :: ModuleName
 pattern BuiltinModuleName <- ((==) "Sixten.Builtin" -> True) where BuiltinModuleName = "Sixten.Builtin"
 
-pattern UnsolvedConstraintName :: QName
-pattern UnsolvedConstraintName <- ((==) "Sixten.Builtin.UnsolvedConstraint" -> True) where UnsolvedConstraintName = "Sixten.Builtin.UnsolvedConstraint"
-pattern UnsolvedConstraint :: Expr v -> Expr v
-pattern UnsolvedConstraint typ = App (Global UnsolvedConstraintName) Explicit typ
-
 pattern StaticErrorName :: QName
 pattern StaticErrorName <- ((==) "Sixten.Builtin.StaticError" -> True) where StaticErrorName = "Sixten.Builtin.StaticError"
 
 pattern IntName :: QName
 pattern IntName <- ((==) "Sixten.Builtin.Int" -> True) where IntName = "Sixten.Builtin.Int"
-pattern IntType :: Expr t
+pattern IntType :: Expr m t
 pattern IntType = Global IntName
 
 pattern ByteName :: QName
 pattern ByteName <- ((==) "Sixten.Builtin.Byte" -> True) where ByteName = "Sixten.Builtin.Byte"
-pattern ByteType :: Expr t
+pattern ByteType :: Expr m t
 pattern ByteType = Global ByteName
 
 pattern AddIntName :: QName
 pattern AddIntName <- ((==) "Sixten.Builtin.addInt" -> True) where AddIntName = "Sixten.Builtin.addInt"
-pattern AddInt :: Expr t -> Expr t -> Expr t
+pattern AddInt :: Expr m t -> Expr m t -> Expr m t
 pattern AddInt e1 e2 = App (App (Global AddIntName) Explicit e1) Explicit e2
 
 pattern SubIntName :: QName
 pattern SubIntName <- ((==) "Sixten.Builtin.subInt" -> True) where SubIntName = "Sixten.Builtin.subInt"
-pattern SubInt :: Expr t -> Expr t -> Expr t
+pattern SubInt :: Expr m t -> Expr m t -> Expr m t
 pattern SubInt e1 e2 = App (App (Global SubIntName) Explicit e1) Explicit e2
 
 pattern MaxIntName :: QName
 pattern MaxIntName <- ((==) "Sixten.Builtin.maxInt" -> True) where MaxIntName = "Sixten.Builtin.maxInt"
-pattern MaxInt :: Expr t -> Expr t -> Expr t
+pattern MaxInt :: Expr m t -> Expr m t -> Expr m t
 pattern MaxInt e1 e2 = App (App (Global MaxIntName) Explicit e1) Explicit e2
 
 pattern TypeName :: QName
 pattern TypeName <- ((==) "Sixten.Builtin.Type" -> True) where TypeName = "Sixten.Builtin.Type"
-pattern Type :: Expr t
+pattern Type :: Expr m t
 pattern Type = Global TypeName
 
 pattern ProductTypeRepName :: QName
 pattern ProductTypeRepName <- ((==) "Sixten.Builtin.productTypeRep" -> True) where ProductTypeRepName = "Sixten.Builtin.productTypeRep"
-pattern ProductTypeRep :: Expr t -> Expr t -> Expr t
+pattern ProductTypeRep :: Expr m t -> Expr m t -> Expr m t
 pattern ProductTypeRep e1 e2 = App (App (Global ProductTypeRepName) Explicit e1) Explicit e2
 
 pattern SumTypeRepName :: QName
 pattern SumTypeRepName <- ((==) "Sixten.Builtin.sumTypeRep" -> True) where SumTypeRepName = "Sixten.Builtin.sumTypeRep"
-pattern SumTypeRep :: Expr t -> Expr t -> Expr t
+pattern SumTypeRep :: Expr m t -> Expr m t -> Expr m t
 pattern SumTypeRep e1 e2 = App (App (Global SumTypeRepName) Explicit e1) Explicit e2
 
 pattern SizeOfName :: QName
@@ -73,13 +68,13 @@ pattern Ref = QConstr PtrName RefName
 
 pattern UnitName :: QName
 pattern UnitName <- ((==) "Sixten.Builtin.Unit" -> True) where UnitName = "Sixten.Builtin.Unit"
-pattern UnitType :: Expr t
+pattern UnitType :: Expr m t
 pattern UnitType = Global UnitName
 pattern MkUnitConstrName :: Constr
 pattern MkUnitConstrName <- ((==) "MkUnit" -> True) where MkUnitConstrName = "MkUnit"
 pattern MkUnitConstr :: QConstr
 pattern MkUnitConstr = QConstr UnitName MkUnitConstrName
-pattern MkUnit :: Expr t
+pattern MkUnit :: Expr m t
 pattern MkUnit = Con MkUnitConstr
 
 pattern Closure :: QConstr
@@ -87,7 +82,7 @@ pattern Closure <- ((== "Sixten.Builtin.Closure.MkClosure") -> True) where Closu
 
 pattern FailName :: QName
 pattern FailName <- ((==) "Sixten.Builtin.fail" -> True) where FailName = "Sixten.Builtin.fail"
-pattern Fail :: Expr t -> Expr t
+pattern Fail :: Expr m t -> Expr m t
 pattern Fail t = App (Global FailName) Explicit t
 
 pattern PiTypeName :: QName
@@ -95,21 +90,21 @@ pattern PiTypeName <- ((==) "Sixten.Builtin.Pi_" -> True) where PiTypeName = "Si
 
 pattern NatName :: QName
 pattern NatName <- ((==) "Sixten.Builtin.Nat" -> True) where NatName = "Sixten.Builtin.Nat"
-pattern Nat :: Expr t
+pattern Nat :: Expr m t
 pattern Nat = Global NatName
 
 pattern ZeroName :: Constr
 pattern ZeroName <- ((==) "Zero" -> True) where ZeroName = "Zero"
 pattern ZeroConstr :: QConstr
 pattern ZeroConstr = QConstr NatName ZeroName
-pattern Zero :: Expr t
+pattern Zero :: Expr m t
 pattern Zero = Con ZeroConstr
 
 pattern SuccName :: Constr
 pattern SuccName <- ((==) "Succ" -> True) where SuccName = "Succ"
 pattern SuccConstr :: QConstr
 pattern SuccConstr = QConstr NatName SuccName
-pattern Succ :: Expr t -> Expr t
+pattern Succ :: Expr m t -> Expr m t
 pattern Succ x = App (Con SuccConstr) Explicit x
 
 pattern StringName :: QName
@@ -128,13 +123,13 @@ pattern MkArrayConstr = QConstr ArrayName MkArrayName
 
 pattern PairName :: QName
 pattern PairName <- ((==) "Sixten.Builtin.Pair" -> True) where PairName = "Sixten.Builtin.Pair"
-pattern Pair :: Expr t
+pattern Pair :: Expr m t
 pattern Pair = Global PairName
 pattern MkPairName :: Constr
 pattern MkPairName <- ((==) "MkPair" -> True) where MkPairName = "MkPair"
 pattern MkPairConstr :: QConstr
 pattern MkPairConstr = QConstr PairName MkPairName
-pattern MkPair :: Expr t -> Expr t -> Expr t
+pattern MkPair :: Expr m t -> Expr m t -> Expr m t
 pattern MkPair a b = App (App (Con MkPairConstr) Explicit a) Explicit b
 
 applyName :: Int -> QName

@@ -69,6 +69,19 @@ bitraverseBranches f g (ConBranches cbrs)
 bitraverseBranches f g (LitBranches lbrs def)
   = LitBranches <$> traverse (\(LitBranch l br) -> LitBranch l <$> bitraverse f g br) lbrs <*> bitraverse f g def
 
+transverseBranches
+  :: (Monad f, Traversable expr)
+  => (forall r. expr r -> f (expr' r))
+  -> Branches p expr a
+  -> f (Branches p expr' a)
+transverseBranches f (ConBranches cbrs) = ConBranches
+  <$> traverse
+    (\(ConBranch c tele br) -> ConBranch c <$> transverseTelescope f tele <*> transverseScope f br)
+    cbrs
+transverseBranches f (LitBranches lbrs def) = LitBranches
+  <$> traverse (\(LitBranch l br) -> LitBranch l <$> f br) lbrs
+  <*> f def
+
 -------------------------------------------------------------------------------
 -- Instances
 instance MFunctor (Branches p) where
