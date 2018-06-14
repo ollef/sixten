@@ -33,32 +33,32 @@ import Inference.Unify
 import MonadContext
 import Syntax
 import qualified Syntax.Core as Core
-import qualified Syntax.Concrete.Scoped as Concrete
+import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import Util
 import Util.TopoSort
 import VIX
 
 checkDefType
-  :: Concrete.PatDefinition (Concrete.Clause Void Concrete.Expr FreeV)
+  :: Pre.PatDefinition (Pre.Clause Void Pre.Expr FreeV)
   -> CoreM
   -> Infer (Definition (Core.Expr MetaVar) FreeV, CoreM)
-checkDefType (Concrete.PatDefinition a i clauses) typ = do
+checkDefType (Pre.PatDefinition a i clauses) typ = do
   e' <- checkClauses clauses typ
   return (Definition a i e', typ)
 
 checkTopLevelDefType
   :: FreeV
-  -> Concrete.TopLevelPatDefinition Concrete.Expr FreeV
+  -> Pre.TopLevelPatDefinition Pre.Expr FreeV
   -> SourceLoc
   -> CoreM
   -> Infer (Definition (Core.Expr MetaVar) FreeV, CoreM)
 checkTopLevelDefType v def loc typ = located loc $ case def of
-  Concrete.TopLevelPatDefinition def' -> checkDefType def' typ
-  Concrete.TopLevelPatDataDefinition d -> checkDataType v d typ
+  Pre.TopLevelPatDefinition def' -> checkDefType def' typ
+  Pre.TopLevelPatDataDefinition d -> checkDataType v d typ
   -- Should be removed by Declassify:
-  Concrete.TopLevelPatClassDefinition _ -> error "checkTopLevelDefType class"
-  Concrete.TopLevelPatInstanceDefinition _ -> error "checkTopLevelDefType instance"
+  Pre.TopLevelPatClassDefinition _ -> error "checkTopLevelDefType class"
+  Pre.TopLevelPatInstanceDefinition _ -> error "checkTopLevelDefType instance"
 
 abstractDefImplicits
   :: Foldable t
@@ -317,8 +317,8 @@ checkRecursiveDefs
   -> Vector
     ( FreeV
     , ( SourceLoc
-      , Concrete.TopLevelPatDefinition Concrete.Expr FreeV
-      , Maybe ConcreteM
+      , Pre.TopLevelPatDefinition Pre.Expr FreeV
+      , Maybe PreM
       )
     )
   -> Infer
@@ -393,7 +393,7 @@ checkTopLevelDefs
   :: Vector
     ( FreeV
     , ( SourceLoc
-      , Concrete.TopLevelPatDefinition Concrete.Expr FreeV
+      , Pre.TopLevelPatDefinition Pre.Expr FreeV
       )
     )
   -> Infer
@@ -421,33 +421,33 @@ shouldGeneralise
   :: Vector
     ( FreeV
     , ( SourceLoc
-      , Concrete.TopLevelPatDefinition Concrete.Expr FreeV
-      , Maybe ConcreteM
+      , Pre.TopLevelPatDefinition Pre.Expr FreeV
+      , Maybe PreM
       )
     )
   -> Bool
 shouldGeneralise = all (\(_, (_, def, _)) -> shouldGeneraliseDef def)
   where
-    shouldGeneraliseDef (Concrete.TopLevelPatDefinition (Concrete.PatDefinition _ _ (Concrete.Clause ps _ NonEmpty.:| _))) = Vector.length ps > 0
-    shouldGeneraliseDef Concrete.TopLevelPatDataDefinition {} = True
-    shouldGeneraliseDef Concrete.TopLevelPatClassDefinition {} = True
-    shouldGeneraliseDef Concrete.TopLevelPatInstanceDefinition {} = True
+    shouldGeneraliseDef (Pre.TopLevelPatDefinition (Pre.PatDefinition _ _ (Pre.Clause ps _ NonEmpty.:| _))) = Vector.length ps > 0
+    shouldGeneraliseDef Pre.TopLevelPatDataDefinition {} = True
+    shouldGeneraliseDef Pre.TopLevelPatClassDefinition {} = True
+    shouldGeneraliseDef Pre.TopLevelPatInstanceDefinition {} = True
 
 defPlicitness
-  :: Concrete.TopLevelPatDefinition e v
+  :: Pre.TopLevelPatDefinition e v
   -> Plicitness
-defPlicitness (Concrete.TopLevelPatDefinition (Concrete.PatDefinition _ IsInstance _)) = Constraint
-defPlicitness Concrete.TopLevelPatDefinition {} = Explicit
-defPlicitness Concrete.TopLevelPatDataDefinition {} = Explicit
-defPlicitness Concrete.TopLevelPatClassDefinition {} = Explicit
-defPlicitness Concrete.TopLevelPatInstanceDefinition {} = Explicit
+defPlicitness (Pre.TopLevelPatDefinition (Pre.PatDefinition _ IsInstance _)) = Constraint
+defPlicitness Pre.TopLevelPatDefinition {} = Explicit
+defPlicitness Pre.TopLevelPatDataDefinition {} = Explicit
+defPlicitness Pre.TopLevelPatClassDefinition {} = Explicit
+defPlicitness Pre.TopLevelPatInstanceDefinition {} = Explicit
 
 checkTopLevelRecursiveDefs
   :: Vector
     ( QName
     , SourceLoc
-    , Concrete.TopLevelPatDefinition Concrete.Expr Void
-    , Maybe (Concrete.Type Void)
+    , Pre.TopLevelPatDefinition Pre.Expr Void
+    , Maybe (Pre.Type Void)
     )
   -> Infer
     (Vector

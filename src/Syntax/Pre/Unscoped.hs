@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Syntax.Concrete.Unscoped where
+module Syntax.Pre.Unscoped where
 
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.List.NonEmpty(NonEmpty)
@@ -7,7 +7,7 @@ import Data.Monoid
 import Data.Vector(Vector)
 
 import Syntax hiding (Definition)
-import Syntax.Concrete.Pattern
+import Syntax.Pre.Pattern
 
 type Con = Either Constr QConstr
 
@@ -85,7 +85,7 @@ instance Pretty Expr where
     ExternCode c -> prettyM c
     Wildcard -> "_"
     SourceLoc _ e -> prettyM e
-    Syntax.Concrete.Unscoped.Error e -> prettyM e
+    Syntax.Pre.Unscoped.Error e -> prettyM e
 
 instance Pretty e => Pretty (Definition e) where
   prettyM (Definition name a cls Nothing)

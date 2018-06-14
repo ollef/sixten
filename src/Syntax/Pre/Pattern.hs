@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, MonadComprehensions, OverloadedStrings #-}
-module Syntax.Concrete.Pattern where
+module Syntax.Pre.Pattern where
 
 import Control.Monad
 import Data.Bifoldable

@@ -11,13 +11,13 @@ import MonadContext
 import MonadFresh
 import Syntax
 import qualified Syntax.Core as Core
-import qualified Syntax.Concrete.Scoped as Concrete
+import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import Util
 import Util.Tsil(Tsil)
 import VIX
 
-type ConcreteM = Concrete.Expr FreeV
+type PreM = Pre.Expr FreeV
 type CoreM = Core.Expr MetaVar FreeV
 
 type Polytype = CoreM

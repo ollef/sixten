@@ -2,5 +2,5 @@ module Inference.TypeCheck.Expr where
 
 import Inference.Monad
 
-checkPoly :: ConcreteM -> Polytype -> Infer CoreM
-checkRho :: ConcreteM -> Rhotype -> Infer CoreM
+checkPoly :: PreM -> Polytype -> Infer CoreM
+checkRho :: PreM -> Rhotype -> Infer CoreM

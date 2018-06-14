@@ -14,7 +14,7 @@ import Data.Void
 
 import Error
 import Syntax
-import Syntax.Concrete.Scoped
+import Syntax.Pre.Scoped
 import Util
 import VIX
 

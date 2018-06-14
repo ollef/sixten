@@ -12,7 +12,7 @@ import Inference.Unify
 import MonadContext
 import Syntax
 import Syntax.Core as Core
-import qualified Syntax.Concrete.Scoped as Concrete
+import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import Util
 import Util.Tsil
@@ -48,8 +48,8 @@ skolemise' (Pi h p t resScope) instUntil k
       k resType' f'
 skolemise' typ _ k = k typ id
 
-instUntilExpr :: Concrete.Expr v -> InstUntil
-instUntilExpr (Concrete.Lam p _ _) = InstUntil p
+instUntilExpr :: Pre.Expr v -> InstUntil
+instUntilExpr (Pre.Lam p _ _) = InstUntil p
 instUntilExpr _ = InstUntil Explicit
 
 --------------------------------------------------------------------------------

@@ -18,7 +18,7 @@ import Paths_sixten(getDataFileName)
 import qualified Processor.File as File
 import Processor.Result
 import Syntax
-import qualified Syntax.Concrete.Unscoped as Unscoped
+import qualified Syntax.Pre.Unscoped as Unscoped
 import Util.TopoSort
 import VIX
 

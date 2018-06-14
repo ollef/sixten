@@ -24,9 +24,9 @@ import Text.Parsix(Position(Position, visualRow, visualColumn), (<?>))
 import Error
 import Processor.Result
 import Syntax
-import Syntax.Concrete.Literal
-import Syntax.Concrete.Pattern
-import Syntax.Concrete.Unscoped as Unscoped
+import Syntax.Pre.Literal
+import Syntax.Pre.Pattern
+import Syntax.Pre.Unscoped as Unscoped
 
 data ParseEnv = ParseEnv
   { parseEnvIndentAnchor :: !Position

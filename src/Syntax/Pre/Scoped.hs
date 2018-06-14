@@ -1,5 +1,5 @@
 {-# LANGUAGE GADTs, OverloadedStrings, PatternSynonyms, ViewPatterns #-}
-module Syntax.Concrete.Scoped
+module Syntax.Pre.Scoped
   ( module Definition
   , module Pattern
   , Expr(..), Type
@@ -20,8 +20,8 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import Syntax
-import Syntax.Concrete.Definition as Definition
-import Syntax.Concrete.Pattern as Pattern
+import Syntax.Pre.Definition as Definition
+import Syntax.Pre.Pattern as Pattern
 import Util
 import Util.Tsil
 

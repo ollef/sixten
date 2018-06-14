@@ -14,13 +14,13 @@ import Inference.Unify
 import MonadContext
 import Syntax
 import qualified Syntax.Core as Core
-import qualified Syntax.Concrete.Scoped as Concrete
+import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import qualified TypeRep
 import VIX
 
 checkConstrDef
-  :: ConstrDef ConcreteM
+  :: ConstrDef PreM
   -> Infer (ConstrDef CoreM, CoreM, CoreM)
 checkConstrDef (ConstrDef c typ) = do
   typ' <- zonk =<< checkPoly typ Builtin.Type
@@ -38,7 +38,7 @@ checkConstrDef (ConstrDef c typ) = do
 
 checkDataType
   :: FreeV
-  -> DataDef Concrete.Expr FreeV
+  -> DataDef Pre.Expr FreeV
   -> CoreM
   -> Infer (Definition (Core.Expr MetaVar) FreeV, CoreM)
 checkDataType name (DataDef cs) typ = do

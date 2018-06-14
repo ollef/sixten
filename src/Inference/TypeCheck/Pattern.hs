@@ -23,7 +23,7 @@ import MonadContext
 import Syntax
 import qualified Syntax.Core as Core
 import Syntax.Core.Pattern as Core
-import qualified Syntax.Concrete.Scoped as Concrete
+import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import Util
 import VIX
@@ -48,7 +48,7 @@ withPatVars vs = withVars $ snd <$> vs
 
 checkPat
   :: Plicitness
-  -> Concrete.Pat (HashSet QConstr) (PatternScope Concrete.Expr FreeV) ()
+  -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
   -> BoundPatVars
   -> Polytype
   -> Infer (Core.Pat CoreM FreeV, CoreM, PatVars)
@@ -56,7 +56,7 @@ checkPat p pat vs expectedType = tcPat p pat vs $ CheckPat expectedType
 
 inferPat
   :: Plicitness
-  -> Concrete.Pat (HashSet QConstr) (PatternScope Concrete.Expr FreeV) ()
+  -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
   -> BoundPatVars
   -> Infer (Core.Pat CoreM FreeV, CoreM, PatVars, Polytype)
 inferPat p pat vs = do
@@ -66,7 +66,7 @@ inferPat p pat vs = do
   return (pat', patExpr, vs', t)
 
 tcPats
-  :: Vector (Plicitness, Concrete.Pat (HashSet QConstr) (PatternScope Concrete.Expr FreeV) ())
+  :: Vector (Plicitness, Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ())
   -> BoundPatVars
   -> Telescope Plicitness (Core.Expr MetaVar) FreeV
   -> Infer (Vector (Core.Pat CoreM FreeV, CoreM, CoreM), PatVars)
@@ -89,7 +89,7 @@ tcPats pats vs tele = do
 
 tcPat
   :: Plicitness
-  -> Concrete.Pat (HashSet QConstr) (PatternScope Concrete.Expr FreeV) ()
+  -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
   -> BoundPatVars
   -> ExpectedPat
   -> Infer (Core.Pat CoreM FreeV, CoreM, PatVars)
@@ -107,12 +107,12 @@ tcPat p pat vs expected = do
 
 tcPat'
   :: Plicitness
-  -> Concrete.Pat (HashSet QConstr) (PatternScope Concrete.Expr FreeV) ()
+  -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
   -> BoundPatVars
   -> ExpectedPat
   -> Infer (Core.Pat CoreM FreeV, CoreM, PatVars)
 tcPat' p pat vs expected = case pat of
-  Concrete.VarPat h () -> do
+  Pre.VarPat h () -> do
     expectedType <- case expected of
       InferPat ref -> do
         expectedType <- existsType h
@@ -121,7 +121,7 @@ tcPat' p pat vs expected = case pat of
       CheckPat expectedType -> return expectedType
     v <- forall h p expectedType
     return (Core.VarPat h v, pure v, pure (VarBinding, v))
-  Concrete.WildcardPat -> do
+  Pre.WildcardPat -> do
     expectedType <- case expected of
       InferPat ref -> do
         expectedType <- existsType "_"
@@ -130,14 +130,14 @@ tcPat' p pat vs expected = case pat of
       CheckPat expectedType -> return expectedType
     v <- forall "_" p expectedType
     return (Core.VarPat "_" v, pure v, pure (WildcardBinding, v))
-  Concrete.LitPat lit -> do
+  Pre.LitPat lit -> do
     (pat', expr) <- instPatExpected
       expected
       (typeOfLiteral lit)
       (LitPat lit)
       (Core.Lit lit)
     return (pat', expr, mempty)
-  Concrete.ConPat cons pats -> do
+  Pre.ConPat cons pats -> do
     qc@(QConstr typeName _) <- resolveConstr cons $ case expected of
       CheckPat expectedType -> Just expectedType
       InferPat _ -> Nothing
@@ -170,14 +170,14 @@ tcPat' p pat vs expected = case pat of
     (pat', patExpr') <- instPatExpected expected retType (Core.ConPat qc params pats''') patExpr
 
     return (pat', patExpr', vs')
-  Concrete.AnnoPat pat' s -> do
+  Pre.AnnoPat pat' s -> do
     let patType = instantiatePattern pure vs s
     patType' <- checkPoly patType Builtin.Type
     (pat'', patExpr, vs') <- checkPat p pat' vs patType'
     (pat''', patExpr') <- instPatExpected expected patType' pat'' patExpr
     return (pat''', patExpr', vs')
-  Concrete.ViewPat _ _ -> internalError "tcPat ViewPat undefined TODO"
-  Concrete.PatLoc loc pat' -> located loc $ tcPat' p pat' vs expected
+  Pre.ViewPat _ _ -> internalError "tcPat ViewPat undefined TODO"
+  Pre.PatLoc loc pat' -> located loc $ tcPat' p pat' vs expected
 
 instPatExpected
   :: ExpectedPat
@@ -227,8 +227,8 @@ patToTerm pat = case pat of
 exactlyEqualisePats
   :: Pretty c
   => [Plicitness]
-  -> [(Plicitness, Concrete.Pat c e ())]
-  -> Infer [(Plicitness, Concrete.Pat c e ())]
+  -> [(Plicitness, Pre.Pat c e ())]
+  -> Infer [(Plicitness, Pre.Pat c e ())]
 exactlyEqualisePats [] [] = return []
 exactlyEqualisePats [] ((p, pat):_)
   = throwLocated
@@ -244,9 +244,9 @@ exactlyEqualisePats (Implicit:ps) ((Implicit, pat):pats)
 exactlyEqualisePats (Explicit:ps) ((Explicit, pat):pats)
   = (:) (Explicit, pat) <$> exactlyEqualisePats ps pats
 exactlyEqualisePats (Constraint:ps) pats
-  = (:) (Constraint, Concrete.WildcardPat) <$> exactlyEqualisePats ps pats
+  = (:) (Constraint, Pre.WildcardPat) <$> exactlyEqualisePats ps pats
 exactlyEqualisePats (Implicit:ps) pats
-  = (:) (Implicit, Concrete.WildcardPat) <$> exactlyEqualisePats ps pats
+  = (:) (Implicit, Pre.WildcardPat) <$> exactlyEqualisePats ps pats
 exactlyEqualisePats (Explicit:_) ((Constraint, pat):_)
   = throwExpectedExplicit pat
 exactlyEqualisePats (Explicit:_) ((Implicit, pat):_)
@@ -262,8 +262,8 @@ exactlyEqualisePats (Explicit:_) []
 equalisePats
   :: (Pretty c)
   => [Plicitness]
-  -> [(Plicitness, Concrete.Pat c e ())]
-  -> Infer [(Plicitness, Concrete.Pat c e ())]
+  -> [(Plicitness, Pre.Pat c e ())]
+  -> Infer [(Plicitness, Pre.Pat c e ())]
 equalisePats _ [] = return []
 equalisePats [] pats = return pats
 equalisePats (Constraint:ps) ((Constraint, pat):pats)
@@ -273,15 +273,15 @@ equalisePats (Implicit:ps) ((Implicit, pat):pats)
 equalisePats (Explicit:ps) ((Explicit, pat):pats)
   = (:) (Explicit, pat) <$> equalisePats ps pats
 equalisePats (Constraint:ps) pats
-  = (:) (Constraint, Concrete.WildcardPat) <$> equalisePats ps pats
+  = (:) (Constraint, Pre.WildcardPat) <$> equalisePats ps pats
 equalisePats (Implicit:ps) pats
-  = (:) (Implicit, Concrete.WildcardPat) <$> equalisePats ps pats
+  = (:) (Implicit, Pre.WildcardPat) <$> equalisePats ps pats
 equalisePats (Explicit:_) ((Implicit, pat):_)
   = throwExpectedExplicit pat
 equalisePats (Explicit:_) ((Constraint, pat):_)
   = throwExpectedExplicit pat
 
-throwExpectedExplicit :: (Pretty v, Pretty c) => Concrete.Pat c e v -> Infer a
+throwExpectedExplicit :: (Pretty v, Pretty c) => Pre.Pat c e v -> Infer a
 throwExpectedExplicit pat
   = throwLocated
   $ PP.vcat
