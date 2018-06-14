@@ -881,7 +881,7 @@ generateModule mname imports gens = do
     }
 
   when (mname == "Main") $ void $
-    function "main" [] LLVM.i32 $ \_ ->
+    IRBuilder.function "main" [] LLVM.i32 $ \_ ->
       ret $ LLVM.ConstantOperand $ LLVM.Int 32 0
 
 writeLlvmModule

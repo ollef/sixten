@@ -136,8 +136,8 @@ normalise expr = do
         _ -> return expr
     Con _ -> return expr
     Lit _ -> return expr
-    Pi n p a s -> normaliseScope n p (Pi n p) a s
-    Lam n p a s -> normaliseScope n p (Lam n p) a s
+    Pi h p t s -> normaliseScope pi_ h p t s
+    Lam h p t s -> normaliseScope lam h p t s
     Builtin.ProductTypeRep x y -> typeRepBinOp
       (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
       TypeRep.product Builtin.ProductTypeRep
@@ -168,7 +168,7 @@ normalise expr = do
         Case e'' brs' retType' -> Case e'' <$> (case brs' of
           ConBranches cbrs -> ConBranches
             <$> sequence
-              [ uncurry (ConBranch qc) <$> normaliseTelescope tele s
+              [ normaliseConBranch qc tele s
               | ConBranch qc tele s <- cbrs
               ]
           LitBranches lbrs def -> LitBranches
@@ -180,23 +180,17 @@ normalise expr = do
   logMeta 40 "normalise res" res
   return res
   where
-    normaliseTelescope tele scope = do
+    normaliseConBranch qc tele scope = do
       vs <- forTeleWithPrefixM tele $ \h p s vs -> do
         t' <- normalise $ instantiateTele pure vs s
         forall h p t'
-
-      let abstr = teleAbstraction vs
       e' <- withVars vs $ normalise $ instantiateTele pure vs scope
-      let scope' = abstract abstr e'
-      tele' <- forM vs $ \v -> do
-        let s = abstract abstr $ varType v
-        return $ TeleArg (varHint v) (varData v) s
-      return (Telescope tele', scope')
-    normaliseScope h p c t s = do
+      return $ conBranchTyped qc vs e'
+    normaliseScope c h p t s = do
       t' <- normalise t
       x <- forall h p t'
-      ns <- withVar x $ normalise $ Util.instantiate1 (pure x) s
-      return $ c t' $ abstract1 x ns
+      e <- withVar x $ normalise $ Util.instantiate1 (pure x) s
+      return $ c x e
 
 binOp
   :: Monad m
@@ -209,13 +203,13 @@ binOp
   -> Expr meta v
   -> m (Expr meta v)
 binOp lzero rzero op cop norm x y = do
-    x' <- norm x
-    y' <- norm y
-    case (x', y') of
-      (Lit (Integer m), _) | Just m == lzero -> return y'
-      (_, Lit (Integer n)) | Just n == rzero -> return x'
-      (Lit (Integer m), Lit (Integer n)) -> return $ Lit $ Integer $ op m n
-      _ -> return $ cop x' y'
+  x' <- norm x
+  y' <- norm y
+  case (x', y') of
+    (Lit (Integer m), _) | Just m == lzero -> return y'
+    (_, Lit (Integer n)) | Just n == rzero -> return x'
+    (Lit (Integer m), Lit (Integer n)) -> return $ Lit $ Integer $ op m n
+    _ -> return $ cop x' y'
 
 typeRepBinOp
   :: Monad m
@@ -228,13 +222,13 @@ typeRepBinOp
   -> Expr meta v
   -> m (Expr meta v)
 typeRepBinOp lzero rzero op cop norm x y = do
-    x' <- norm x
-    y' <- norm y
-    case (x', y') of
-      (MkType m, _) | Just m == lzero -> return y'
-      (_, MkType n) | Just n == rzero -> return x'
-      (MkType m, MkType n) -> return $ MkType $ op m n
-      _ -> return $ cop x' y'
+  x' <- norm x
+  y' <- norm y
+  case (x', y') of
+    (MkType m, _) | Just m == lzero -> return y'
+    (_, MkType n) | Just n == rzero -> return x'
+    (MkType m, MkType n) -> return $ MkType $ op m n
+    _ -> return $ cop x' y'
 
 chooseBranch
   :: Monad m

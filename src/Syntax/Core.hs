@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, OverloadedStrings, PatternSynonyms, RankNTypes, TemplateHaskell, TypeFamilies, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, MonadComprehensions, OverloadedStrings, PatternSynonyms, RankNTypes, TemplateHaskell, TypeFamilies, ViewPatterns #-}
 module Syntax.Core where
 
 import Control.Monad
@@ -14,6 +14,7 @@ import Syntax
 import TypeRep(TypeRep)
 import Util
 import Util.Tsil
+import TypedFreeVar
 
 -- | Expressions with meta-variables of type @m@ and variables of type @v@.
 data Expr m v
@@ -35,11 +36,34 @@ type Type = Expr
 
 -------------------------------------------------------------------------------
 -- Helpers
+type FreeExprVar m = FreeVar Plicitness (Expr m)
+
+lam :: FreeExprVar m -> Expr m (FreeExprVar m) -> Expr m (FreeExprVar m)
+lam v e = Lam (varHint v) (varData v) (varType v) $ abstract1 v e
+
+pi_ :: FreeExprVar m -> Expr m (FreeExprVar m) -> Expr m (FreeExprVar m)
+pi_ v e = Pi (varHint v) (varData v) (varType v) $ abstract1 v e
+
+lams :: Foldable t => t (FreeExprVar m) -> Expr m (FreeExprVar m) -> Expr m (FreeExprVar m)
+lams xs e = foldr lam e xs
+
+pis :: Foldable t => t (FreeExprVar m) -> Expr m (FreeExprVar m) -> Expr m (FreeExprVar m)
+pis xs e = foldr pi_ e xs
+
+let_
+  :: Vector (FreeExprVar m, Expr m (FreeExprVar m))
+  -> Expr m (FreeExprVar m)
+  -> Expr m (FreeExprVar m)
+let_ ds body = do
+  let abstr = letAbstraction $ fst <$> ds
+      ds' = LetRec
+        [ LetBinding (varHint v) (abstract abstr e) (varType v)
+        | (v, e) <- ds
+        ]
+  Let ds' $ abstract abstr body
+
 pattern MkType :: TypeRep -> Expr m v
 pattern MkType rep = Lit (TypeRep rep)
-
-let_ :: NameHint -> Expr m v -> Type m v -> Scope1 (Expr m) v -> Expr m v
-let_ h e t s = Let (LetRec $ pure $ LetBinding h (abstractNone e) t) (mapBound (\() -> 0) s)
 
 apps :: Foldable t => Expr m v -> t (Plicitness, Expr m v) -> Expr m v
 apps = Foldable.foldl' (uncurry . App)
@@ -83,21 +107,15 @@ pisView = bindingsView piView
 lamsViewM :: Expr m v -> Maybe (Telescope Plicitness (Expr m) v, Scope TeleVar (Expr m) v)
 lamsViewM = bindingsViewM lamView
 
-lams :: Telescope Plicitness (Expr m) v -> Scope TeleVar (Expr m) v -> Expr m v
-lams = quantify Lam
-
-pis :: Telescope Plicitness (Expr m) v -> Scope TeleVar (Expr m) v -> Expr m v
-pis = quantify Pi
-
 arrow :: Plicitness -> Expr m v -> Expr m v -> Expr m v
-arrow p a b = Pi mempty p a $ Scope $ pure $ F b
+arrow p a b = Pi mempty p a $ abstractNone b
 
 quantifiedConstrTypes
   :: DataDef (Type m) v
   -> Type m v
   -> (Plicitness -> Plicitness)
   -> [ConstrDef (Type m v)]
-quantifiedConstrTypes (DataDef cs) typ anno = map (fmap $ pis ps) cs
+quantifiedConstrTypes (DataDef cs) typ anno = map (fmap $ quantify Pi ps) cs
   where
     ps = mapAnnotations anno $ telescope typ
 

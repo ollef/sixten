@@ -50,7 +50,6 @@ checkDataType name (DataDef cs) typ = do
     forall h p is
 
   let constrRetType = Core.apps (pure name) $ (\v -> (varData v, pure v)) <$> vs
-      abstr = teleAbstraction vs
 
   withVars vs $ do
     (cs', rets, sizes) <- fmap unzip3 $ forM cs $ \(ConstrDef c t) ->
@@ -71,18 +70,16 @@ checkDataType name (DataDef cs) typ = do
 
     unify [] Builtin.Type =<< typeOf constrRetType
 
-    abstractedCs <- forM cs' $ \c@(ConstrDef qc e) -> do
+    forM_ cs' $ \(ConstrDef qc e) -> do
       logMeta 20 ("checkDataType res " ++ show qc) e
-      return $ abstract abstr <$> c
 
-    let params = varTelescope vs
-        typ'' = Core.pis params $ Scope Builtin.Type
+    let cs'' = [constrDef vs qc e | ConstrDef qc e <- cs']
+    let typ'' = Core.pis vs Builtin.Type
 
     typeRep' <- whnfExpandingTypeReps typeRep
-    let abstractedTypeRep = abstract abstr typeRep'
     logMeta 20 "checkDataType typeRep" typeRep'
 
-    return (DataDefinition (DataDef abstractedCs) $ Core.lams params abstractedTypeRep, typ'')
+    return (DataDefinition (DataDef cs'') $ Core.lams vs typeRep', typ'')
 
 -------------------------------------------------------------------------------
 -- Type helpers

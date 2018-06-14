@@ -204,7 +204,7 @@ viewPat expectedType pat patExpr f = do
   if fx == pure x then
     return (pat, patExpr)
   else do
-    let fExpr = Core.Lam mempty Explicit expectedType $ abstract1 x fx
+    let fExpr = Core.lam x fx
     return (Core.ViewPat fExpr pat, pure x)
 
 patToTerm

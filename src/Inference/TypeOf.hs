@@ -37,8 +37,7 @@ typeOf expr = case expr of
   Lam h p t s -> do
     x <- forall h p t
     resType  <- withVar x $ typeOf $ instantiate1 (pure x) s
-    let abstractedResType = abstract1 x resType
-    return $ Pi h p t abstractedResType
+    return $ pi_ x resType
   App e1 p e2 -> do
     e1type <- typeOf e1
     e1type' <- whnf e1type

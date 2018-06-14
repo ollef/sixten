@@ -9,6 +9,7 @@ import Data.Vector(Vector)
 
 import Syntax hiding (Definition, Module)
 import Syntax.Sized.Anno
+import TypedFreeVar
 import TypeRep(TypeRep)
 import Util
 
@@ -42,6 +43,13 @@ emptySubmodule = Submodule mempty mempty
 
 -------------------------------------------------------------------------------
 -- Helpers
+let_
+  :: FreeVar d Expr
+  -> Expr (FreeVar d Expr)
+  -> Expr (FreeVar d Expr)
+  -> Expr (FreeVar d Expr)
+let_ v e = Let (varHint v) (Anno e $ varType v) . abstract1 v
+
 pattern MkType :: TypeRep -> Expr v
 pattern MkType rep = Lit (TypeRep rep)
 

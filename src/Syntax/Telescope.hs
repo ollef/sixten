@@ -48,11 +48,11 @@ unTeleVar (TeleVar i) = i
 newtype Telescope anno expr v = Telescope (Vector (TeleArg anno expr v))
   deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
 
-data TeleArg anno expr v = TeleArg !NameHint !anno !(Scope TeleVar expr v)
-  deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
-
 unTelescope :: Telescope anno expr v -> Vector (TeleArg anno expr v)
 unTelescope (Telescope xs) = xs
+
+data TeleArg anno expr v = TeleArg !NameHint !anno !(Scope TeleVar expr v)
+  deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
 
 mapAnnotations :: (a -> a') -> Telescope a e v -> Telescope a' e v
 mapAnnotations f (Telescope xs) = Telescope $ (\(TeleArg h a s) -> (TeleArg h (f a) s)) <$> xs

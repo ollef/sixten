@@ -140,13 +140,11 @@ matchCon expr failVar retType exprs clauses expr0 = do
         typ' <- whnf typ
         let (_, params) = appsView typ'
         return $ Vector.fromList params
-    (ps, ys) <- conPatArgs c params
+    ys <- conPatArgs c params
 
     let exprs' = (pure <$> Vector.toList ys) ++ exprs
     rest <- withVars ys $ match failVar retType exprs' (decon clausesStartingWithC) (pure failVar)
-    let restScope = abstract (teleAbstraction ys) rest
-    tele <- patternTelescope ys ps
-    return $ ConBranch c tele restScope
+    return $ conBranchTyped c ys rest
 
   return $ fatBar failVar (Case expr (ConBranches cbrs) retType) expr0
   where
@@ -163,27 +161,13 @@ matchCon expr failVar retType exprs clauses expr0 = do
 conPatArgs
   :: QConstr
   -> Vector (Plicitness, CoreM)
-  -> Infer (Vector (Plicitness, PatM, CoreM), Vector FreeV)
+  -> Infer (Vector FreeV)
 conPatArgs c params = do
   ctype <- qconstructor c
   let (tele, _) = pisView (ctype :: CoreM)
       tele' = instantiatePrefix (snd <$> params) tele
-  vs <- forTeleWithPrefixM tele' $ \h p s vs ->
+  forTeleWithPrefixM tele' $ \h p s vs ->
     forall h p $ instantiateTele pure vs s
-  let ps = (\(p, v) -> (p, VarPat (varHint v) v, varType v))
-        <$> Vector.zip (teleAnnotations tele') vs
-  return (ps, vs)
-
-patternTelescope
-  :: Vector FreeV
-  -> Vector (a, Pat typ b, CoreM)
-  -> Infer (Telescope a (Expr MetaVar) FreeV)
-patternTelescope ys ps = Telescope <$> mapM go ps
-  where
-    go (p, pat, e) = do
-      -- TODO purify
-      let s = abstract (teleAbstraction ys) e
-      return $ TeleArg (patternHint pat) p s
 
 matchLit :: CoreM -> NonEmptyMatch
 matchLit expr failVar retType exprs clauses expr0 = do

@@ -91,7 +91,7 @@ prune allowedVars expr = inUpdatedContext (const mempty) $ bindMetas go expr
                 VIX.logShow 30 "prune nothing to do" ()
                 return $ Meta m es
               | otherwise -> do
-                let m'Type = pis (varTelescope' pvs') $ abstract (teleAbstraction vs') mType
+                let m'Type = pis vs' mType
                 m'Type' <- bindMetas go m'Type
                 let typeFvs = toHashSet m'Type'
                 logMeta 30 "prune m'Type'" m'Type'
@@ -107,7 +107,7 @@ prune allowedVars expr = inUpdatedContext (const mempty) $ bindMetas go expr
                     (metaSourceLoc m)
                     l
                   let e = Meta m' $ (\v -> (varData v, pure v)) <$> vs'
-                      e' = lams (varTelescope' pvs) $ abstract (teleAbstraction vs) e
+                      e' = lams plicitVs e
                   logShow 30 "prune varTypes" =<< (mapM (prettyMeta . varType) vs)
                   logShow 30 "prune vs'" $ varId <$> vs'
                   logShow 30 "prune varTypes'" =<< (mapM (prettyMeta . varType) vs')
@@ -121,9 +121,9 @@ prune allowedVars expr = inUpdatedContext (const mempty) $ bindMetas go expr
                 allowed = allowedVars <> locals
                 assertClosed :: Functor f => f FreeV -> f Void
                 assertClosed = fmap $ error "prune assertClosed"
-                pvs' = Vector.filter ((`HashSet.member` allowed) . snd) pvs
                 vs = snd <$> pvs
-                vs' = snd <$> pvs'
+                vs' = Vector.filter (`HashSet.member` allowed) vs
+                plicitVs = (\(p, v) -> v { varData = p }) <$> pvs
                 Just mType = typeApps (vacuous $ metaType m) es
 
 unify :: [(CoreM, CoreM)] -> CoreM -> CoreM -> Infer ()
@@ -185,9 +185,10 @@ unify' cxt touchable type1 type2
       case sol of
         Left l -> do
           let vs = snd <$> pvs
+              plicitVs = (\(p, v) -> v { varData = p }) <$> pvs
           -- TODO pruning might need to take into account extra args like unify
           prunedt <- prune (toHashSet vs) t
-          let lamt = lams (varTelescope' pvs) $ abstract (teleAbstraction vs) prunedt
+          let lamt = lams plicitVs prunedt
           normLamt <- simplifyExpr (const False) 0 <$> zonk lamt
           logShow 30 "vs" (varId <$> vs)
           logMeta 30 ("solving t " <> show (metaId m)) t

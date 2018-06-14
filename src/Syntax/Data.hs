@@ -8,6 +8,8 @@ import Control.Monad.Morph
 import Data.Bifunctor
 import Data.Bitraversable
 import Data.Functor.Classes
+import Data.Hashable
+import Data.Vector(Vector)
 
 import Pretty
 import Syntax.Annotation
@@ -77,6 +79,16 @@ instance (v ~ Doc, Pretty (typ v), Monad typ) => PrettyNamed (DataDef typ v) whe
 
 instance Pretty typ => Pretty (ConstrDef typ) where
   prettyM (ConstrDef n t) = prettyM n <+> ":" <+> prettyM t
+
+constrDef
+  :: (Hashable a, Eq a, Monad f)
+  => Vector a
+  -> Constr
+  -> f a
+  -> ConstrDef (Scope TeleVar f a)
+constrDef vs = \qc -> ConstrDef qc . abstr
+  where
+    abstr = abstract $ teleAbstraction vs
 
 abstractDataDef
   :: Functor typ

@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, GADTs, OverloadedStrings, PatternSynonyms, TemplateHaskell, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, GADTs, MonadComprehensions, OverloadedStrings, PatternSynonyms, TemplateHaskell, ViewPatterns #-}
 module Syntax.Sized.SLambda where
 
 import Control.Monad
@@ -9,6 +9,7 @@ import qualified Data.Vector as Vector
 
 import Syntax
 import Syntax.Sized.Anno
+import TypedFreeVar
 import TypeRep(TypeRep)
 import Util
 
@@ -30,6 +31,16 @@ type Type = Expr
 -- Helpers
 pattern MkType :: TypeRep -> Expr v
 pattern MkType rep = Lit (TypeRep rep)
+
+lam :: FreeVar d e -> Type (FreeVar d e) -> Anno Expr (FreeVar d e) -> Expr (FreeVar d e)
+lam v t = Lam (varHint v) t . abstract1Anno v
+
+letRec :: Vector (FreeVar d e, Anno Expr (FreeVar d e)) -> Expr (FreeVar d e) -> Expr (FreeVar d e)
+letRec ds expr = do
+  let ds' = [LetBinding (varHint v) (abstr e) t | (v, Anno e t) <- ds]
+  Let (LetRec ds') $ abstr expr
+  where
+    abstr = abstract $ letAbstraction $ fst <$> ds
 
 appsView :: Expr v -> (Expr v, Vector (Anno Expr v))
 appsView = go []

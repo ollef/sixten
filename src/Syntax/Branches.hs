@@ -13,6 +13,7 @@ import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Monoid as Monoid
 import Data.Semigroup as Semigroup
+import Data.Vector(Vector)
 
 import Pretty
 import Syntax.Annotation
@@ -21,6 +22,8 @@ import Syntax.Literal
 import Syntax.Module
 import Syntax.Name
 import Syntax.Telescope
+import qualified TypedFreeVar as Typed
+import FreeVar
 import Util
 
 data Branches a expr v
@@ -32,6 +35,30 @@ data ConBranch a expr v = ConBranch QConstr (Telescope a expr v) (Scope TeleVar 
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 data LitBranch expr v = LitBranch Literal (expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+conBranchTyped
+  :: Monad expr
+  => QConstr
+  -> Vector (Typed.FreeVar a expr)
+  -> expr (Typed.FreeVar a expr)
+  -> ConBranch a expr (Typed.FreeVar a expr)
+conBranchTyped c vs br = ConBranch c (Typed.varTelescope vs) (abstract (teleAbstraction vs) br)
+
+typedConBranchTyped
+  :: Monad expr
+  => QConstr
+  -> Vector (Typed.FreeVar a expr', expr (Typed.FreeVar a expr'))
+  -> expr (Typed.FreeVar a expr')
+  -> ConBranch () expr (Typed.FreeVar a expr')
+typedConBranchTyped c vs br = ConBranch c (Typed.varTypeTelescope vs) (abstract (teleAbstraction $ fst <$> vs) br)
+
+typedConBranch
+  :: Monad expr
+  => QConstr
+  -> Vector (FreeVar a, expr (FreeVar a))
+  -> expr (FreeVar a)
+  -> ConBranch () expr (FreeVar a)
+typedConBranch c vs br = ConBranch c (varTelescope vs) (abstract (teleAbstraction $ fst <$> vs) br)
 
 bimapBranches
   :: Bifunctor expr

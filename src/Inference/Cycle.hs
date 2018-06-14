@@ -20,9 +20,9 @@ import Inference.MetaVar.Zonk
 import Inference.Monad
 import Syntax
 import Syntax.Core
-import TypedFreeVar
 import Util
 import Util.TopoSort
+import VIX
 
 detectTypeRepCycles
   :: Vector (SourceLoc, (FreeV, Definition (Expr MetaVar) FreeV, CoreM))

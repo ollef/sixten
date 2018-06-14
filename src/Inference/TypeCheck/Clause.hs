@@ -22,7 +22,6 @@ import MonadContext
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
-import TypedFreeVar
 import Util
 import VIX
 
@@ -109,8 +108,7 @@ checkClausesRho clauses rhoType = do
     logMeta 25 "checkClausesRho body res" body
 
     let result = foldr
-          (\(f, v) e ->
-            f $ Core.Lam (varHint v) (varData v) (varType v) $ abstract1 v e)
+          (\(f, v) e -> f $ Core.lam v e)
           body
           (Vector.zip fs argVars)
 

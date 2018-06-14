@@ -31,6 +31,7 @@ import Processor.Result
 import Syntax
 import Syntax.Core
 import qualified Syntax.Sized.Lifted as Lifted
+import TypedFreeVar
 import TypeRep
 import Util
 import Util.MultiHashMap(MultiHashMap)
@@ -160,6 +161,29 @@ whenVerbose :: MonadVIX m => Int -> m () -> m ()
 whenVerbose i m = do
   v <- liftVIX $ gets vixVerbosity
   when (v >= i) m
+
+-- | Like freeVar, but with logging
+forall
+  :: (MonadFresh m, MonadVIX m, MonadIO m)
+  => NameHint
+  -> d
+  -> e (FreeVar d e)
+  -> m (FreeVar d e)
+forall h p t = do
+  v <- freeVar h p t
+  logVerbose 20 $ "forall: " <> shower (varId v)
+  return v
+
+logFreeVar
+  :: (Functor e, Functor f, Foldable f, Pretty (f Doc), Pretty (e Doc), MonadVIX m, MonadIO m)
+  => Int
+  -> String
+  -> f (FreeVar d e)
+  -> m ()
+logFreeVar v s x = whenVerbose v $ do
+  i <- liftVIX $ gets vixIndent
+  let r = showFreeVar x
+  VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide r
 
 -------------------------------------------------------------------------------
 -- Working with abstract syntax

@@ -4,6 +4,7 @@ module Inference.Monad where
 import Control.Monad.Except
 import Control.Monad.Reader
 import Data.Foldable
+import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
 import Inference.MetaVar
@@ -74,13 +75,11 @@ exists
   -> Infer CoreM
 exists hint d typ = do
   locals <- toVector <$> localVars
-  let tele = varTelescope locals
-      abstr = teleAbstraction locals
-      typ' = Core.pis tele $ abstract abstr typ
+  let typ' = Core.pis locals typ
   logMeta 30 "exists typ" typ
   typ'' <- traverse (error "exists not closed") typ'
   loc <- currentLocation
-  v <- existsAtLevel hint d typ'' (teleLength tele) loc =<< level
+  v <- existsAtLevel hint d typ'' (Vector.length locals) loc =<< level
   return $ Core.Meta v $ (\fv -> (varData fv, pure fv)) <$> locals
 
 existsType

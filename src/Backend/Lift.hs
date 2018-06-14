@@ -100,15 +100,16 @@ liftLambda tele lamScope = do
 
   let sortedFvs = topoSortVars $ toHashSet tele <> toHashSet lamScope
 
-  (closedTele, closedLamScope) <- closeLambda tele lamScope sortedFvs
+  (params, lamBody) <- closeLambda tele lamScope sortedFvs
 
   let args = (\v -> Anno (pure v) (varType v)) <$> sortedFvs
       addArgs | null args = id
               | otherwise = (`Lifted.Call` args)
 
-  logFreeVar 20 "liftLambda result" $ Sized.Function (vacuous closedTele :: Telescope () Lifted.Expr FV) (vacuous closedLamScope)
+  let fun = Sized.functionTyped params lamBody
+  logFreeVar 20 "liftLambda result" fun
 
-  g <- liftThing $ Sized.Function closedTele closedLamScope
+  g <- liftThing $ error "liftLambda not closed" <$> fun
 
   return $ addArgs $ global g
 
@@ -116,7 +117,7 @@ closeLambda
   :: Telescope () SLambda.Expr FV
   -> AnnoScope TeleVar SLambda.Expr FV
   -> Vector FV
-  -> LambdaLift (Telescope () Lifted.Expr Void, AnnoScope TeleVar Lifted.Expr Void)
+  -> LambdaLift (Vector FV, Anno Lifted.Expr FV)
 closeLambda tele lamScope sortedFvs = do
   vs <- forTeleWithPrefixM tele $ \h () s vs -> do
     let e = instantiateTele pure vs s
@@ -124,17 +125,9 @@ closeLambda tele lamScope sortedFvs = do
     freeVar h () e'
 
   let lamExpr = instantiateAnnoTele pure vs lamScope
-      vs' = sortedFvs <> vs
-      abstr = teleAbstraction vs'
-      tele'' = Telescope $ (\v -> TeleArg (varHint v) () $ abstract abstr $ varType v) <$> vs'
-
   lamExpr' <- liftAnnoExpr lamExpr
-  let lamScope' = abstractAnno abstr lamExpr'
 
-  voidedTele <- traverse (const $ internalError "closeLambda") tele''
-  voidedLamScope <- traverse (const $ internalError "closeLambda") lamScope'
-
-  return (voidedTele, voidedLamScope)
+  return (sortedFvs <> vs, lamExpr')
 
 topoSortVars
   :: HashSet FV
@@ -190,14 +183,14 @@ liftLet ds scope = do
         let g = case varIndex v of
               Just i -> snd $ subVec Vector.! i
               Nothing -> error "liftLet g"
-        (lamTele', lamScope') <- closeLambda (subBound lamTele) (subBound lamScope) sortedFvs
-        liftNamedThing g $ Sized.Function lamTele' lamScope'
+        (params, lamBody) <- closeLambda (subBound lamTele) (subBound lamScope) sortedFvs
+        liftNamedThing g $ error "liftLet not closed" <$> Sized.functionTyped params lamBody
         return $ addArgs $ global g
       _ -> liftExpr $ subBind body
 
   letBody <- liftExpr (subBind $ instantiateLet pure vs scope)
 
-  let sortedDs = flattenSCC <$> topoSortWith fst (toHashSet . snd) (Vector.zip vs liftedDs)
+  let sortedDs = topoSortWith fst (toHashSet . snd) (Vector.zip vs liftedDs)
 
   return $ lets sortedDs letBody
 
@@ -211,21 +204,18 @@ liftBranches (ConBranches cbrs) = fmap ConBranches $
       e' <- liftExpr e
       freeVar h () e'
     let brExpr = instantiateTele pure vs brScope
-        abstr = teleAbstraction vs
-        tele'' = Telescope $ (\v -> TeleArg (varHint v) () $ abstract abstr $ varType v) <$> vs
     brExpr' <- liftExpr brExpr
-    let brScope' = abstract abstr brExpr'
-    return $ ConBranch qc tele'' brScope'
+    return $ conBranchTyped qc vs brExpr'
 liftBranches (LitBranches lbrs def) = LitBranches
   <$> mapM (\(LitBranch l e) -> LitBranch l <$> liftExpr e) lbrs <*> liftExpr def
 
 lets
-  :: [[(FV, Lifted.Expr FV)]]
+  :: [SCC (FV, Lifted.Expr FV)]
   -> Lifted.Expr FV
   -> Lifted.Expr FV
 lets = flip $ foldr go
   where
-    go [(v, e)] = Lifted.Let (varHint v) (Anno e $ varType v) . abstract1 v
+    go (AcyclicSCC (v, e)) = Lifted.letTyped v e
     go _ = error "Circular Lift lets"
 
 liftToDefinitionM
@@ -237,15 +227,12 @@ liftToDefinitionM (Anno (SLambda.Lams tele bodyScope) _) = do
     e' <- liftExpr e
     freeVar h () e'
   let body = instantiateAnnoTele pure vs $ vacuous bodyScope
-      abstr = teleAbstraction vs
-      tele' = Telescope $ (\v -> TeleArg (varHint v) () $ abstract abstr $ varType v) <$> vs
   body' <- liftAnnoExpr body
-  let bodyScope' = abstractAnno abstr body'
-  return $ Sized.FunctionDef Public Sized.NonClosure $ (\_ -> error "liftToDefinitionM") <$> Sized.Function tele' bodyScope'
+  return $ Sized.FunctionDef Public Sized.NonClosure $ error "liftToDefinitionM" <$> Sized.functionTyped vs body'
 liftToDefinitionM sexpr = do
   sexpr' <- liftAnnoExpr $ vacuous sexpr
   logFreeVar 20 "liftToDefinitionM sexpr'" sexpr'
-  return $ Sized.ConstantDef Public $ Sized.Constant $ (\_ -> error "liftToDefinitionM 2") <$> sexpr'
+  return $ Sized.ConstantDef Public $ Sized.Constant $ error "liftToDefinitionM 2" <$> sexpr'
 
 liftToDefinition
   :: QName

@@ -1,6 +1,6 @@
+{-# LANGUAGE MonadComprehensions #-}
 module Inference.Subtype where
 
-import Control.Monad
 import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
@@ -44,7 +44,7 @@ skolemise' (Pi h p t resScope) instUntil k
     v <- forall h p t
     let resType = Util.instantiate1 (pure v) resScope
     withVar v $ skolemise resType instUntil $ \resType' f -> do
-      let f' x = Lam h p t $ abstract1 v $ f x
+      let f' x = lam v $ f x
       k resType' f'
 skolemise' typ _ k = k typ id
 
@@ -74,10 +74,7 @@ subtype' (Pi h1 p1 argType1 retScope1) (Pi h2 p2 argType2 retScope2)
     let retType1 = Util.instantiate1 v1 retScope1
         retType2 = Util.instantiate1 (pure v2) retScope2
     f2 <- withVar v2 $ subtype retType1 retType2
-    return
-      $ \x -> Lam h p2 argType2
-      $ abstract1 v2
-      $ f2 (App x p1 v1)
+    return $ \x -> lam v2 $ f2 (App x p1 v1)
 subtype' typ1 typ2 =
   skolemise typ2 (InstUntil Explicit) $ \rho f1 -> do
     f2 <- subtypeRho typ1 rho $ InstUntil Explicit
@@ -103,10 +100,7 @@ subtypeRho' (Pi h1 p1 argType1 retScope1) (Pi h2 p2 argType2 retScope2) _
     let retType1 = Util.instantiate1 v1 retScope1
         retType2 = Util.instantiate1 (pure v2) retScope2
     f2 <- withVar v2 $ subtypeRho retType1 retType2 $ InstUntil Explicit
-    return
-      $ \x -> Lam h p2 argType2
-      $ abstract1 v2 
-      $ f2 (App x p1 v1)
+    return $ \x -> lam v2 $ f2 (App x p1 v1)
 subtypeRho' (Pi h p t s) typ2 instUntil | shouldInst p instUntil = do
   v <- exists h p t
   f <- subtypeRho (Util.instantiate1 v s) typ2 instUntil
@@ -124,29 +118,22 @@ funSubtypes
     , Scope TeleVar (Expr MetaVar) FreeV
     , Vector (CoreM -> CoreM)
     )
-funSubtypes startType plics = go plics startType mempty mempty mempty
+funSubtypes startType plics = go plics startType mempty mempty
   where
-    go ps typ vs tele fs
+    go ps typ vs fs
       | Vector.null ps = do
         let vars = toVector vs
-            funs = toVector fs
-            abstr = teleAbstraction vars
-        tele' <- forM (toVector tele) $ \(h, p, t) -> do
-          let s = abstract abstr t
-          return $ TeleArg h p s
-
-        let typeScope = abstract abstr typ
-
-        return (Telescope tele', typeScope, funs)
+            tele = varTelescope vars
+            typeScope = abstract (teleAbstraction vars) typ
+        return (tele, typeScope, toVector fs)
       | otherwise = do
         let p = Vector.head ps
         (h, argType, resScope, f) <- funSubtype typ p
-        v <- forall mempty p argType
+        v <- forall h p argType
         withVar v $ go
           (Vector.tail ps)
           (Util.instantiate1 (pure v) resScope)
           (Snoc vs v)
-          (Snoc tele (h, p, argType))
           (Snoc fs f)
 
 -- | funSubtype typ p = (typ1, typ2, f) => f : (typ1 -> typ2) -> typ

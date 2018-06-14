@@ -60,7 +60,7 @@ elabUnsolvedConstraint m = inUpdatedContext (const mempty) $ do
           matchingInstance:_ -> do
             logMeta 25 "Matching instance" matchingInstance
             logMeta 25 "Matching instance typ" typ'
-            sol <- assertClosed $ lams (varTelescope vs) (abstract (teleAbstraction vs) matchingInstance)
+            sol <- assertClosed $ lams vs matchingInstance
             solve m sol
             return $ Just sol
       _ -> throwLocated "Malformed constraint" -- TODO error message
@@ -91,11 +91,12 @@ elabDef (DataDefinition (DataDef constrs) rep) typ = do
     let t = instantiateTele pure vs s
     forall h p t
 
-  let abstr = teleAbstraction vs
-  constrs' <- withVars vs $ forM constrs $ \constr -> forM constr $ \s -> do
+  let mkConstrDef = constrDef vs
+
+  constrs' <- withVars vs $ forM constrs $ \(ConstrDef c s) -> do
     let e = instantiateTele pure vs s
     e' <- elabExpr e
-    return $ abstract abstr e'
+    return $ mkConstrDef c e'
 
   rep' <- elabExpr rep
   return $ DataDefinition (DataDef constrs') rep'
@@ -148,8 +149,7 @@ mergeConstraintVars vars = do
       (vs, _) <- instantiatedMetaType m'
       solve m'
         $ assertClosed
-        $ lams (varTelescope vs)
-        $ abstract (teleAbstraction vs)
+        $ lams vs
         $ Meta m
         $ (\v -> (varData v, pure v)) <$> vs
     assertClosed :: Functor f => f FreeV -> f Void

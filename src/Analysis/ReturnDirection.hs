@@ -125,7 +125,7 @@ infer expr = case expr of
     (e', eloc) <- inferAnno e
     v <- exists h eloc Nothing
     (s', sloc) <- infer $ instantiate1 (pure v) s
-    return (Let h e' $ abstract1 v s', sloc)
+    return (let_ v e' s', sloc)
   Case e brs -> do
     (e', eloc) <- inferAnno e
     (brs', loc) <- inferBranches eloc brs
@@ -168,17 +168,13 @@ inferBranches
 inferBranches loc (ConBranches cbrs) = do
   locatedCBrs <- forM cbrs $ \(ConBranch c tele brScope) -> do
     vs <- forMTele tele $ \h _ _ -> exists h loc Nothing
-    let abstr = abstract $ teleAbstraction vs
-        br = instantiateTele pure vs brScope
+    let br = instantiateTele pure vs brScope
     sizes <- forMTele tele $ \_ _ s -> do
       let sz = instantiateTele pure vs s
       (sz', _szLoc)  <- infer sz
       return sz'
-    tele' <- forM (Vector.zip vs sizes) $ \(v, sz) ->
-      return $ TeleArg (varHint v) () $ abstr sz
     (br', brLoc) <- infer br
-    let brScope' = abstr br'
-    return (ConBranch c (Telescope tele') brScope', brLoc)
+    return (typedConBranch c (Vector.zip vs sizes) br', brLoc)
   let (cbrs', brLocs) = NonEmpty.unzip locatedCBrs
   brLoc <- foldM maxMetaReturnIndirect MProjection brLocs
   return (ConBranches cbrs', brLoc)
@@ -213,12 +209,10 @@ inferDefinition
   -> VIX (Definition Expr MetaVar, Signature MetaReturnIndirect)
 inferDefinition FreeVar {varData = MetaData {metaFunSig = Just (retDir, argDirs)}} (FunctionDef vis cl (Function args s)) = do
   vs <- forMTele args $ \h _ _ -> exists h MProjection Nothing
-  let abstr = teleAbstraction vs
-  args' <- forMTele args $ \h d szScope -> do
+  args' <- forMTele args $ \_ () szScope -> do
     let sz = instantiateTele pure vs szScope
     (sz', _szLoc) <- infer sz
-    let szScope' = abstract abstr sz'
-    return $ TeleArg h d szScope'
+    return sz'
   let e = instantiateAnnoTele pure vs s
   (e', loc) <- inferAnno e
   case retDir of
@@ -226,8 +220,7 @@ inferDefinition FreeVar {varData = MetaData {metaFunSig = Just (retDir, argDirs)
       glbdir <- maxMetaReturnIndirect loc m
       unifyMetaReturnIndirect glbdir m
     ReturnDirect _ -> return ()
-  let s' = abstractAnno abstr e'
-  return (FunctionDef vis cl $ Function (Telescope args') s', FunctionSig SixtenCompatible retDir argDirs)
+  return (FunctionDef vis cl $ function (Vector.zip vs args') e', FunctionSig SixtenCompatible retDir argDirs)
 inferDefinition _ (ConstantDef _ (Constant (Anno (Global glob) _))) =
   return (AliasDef, AliasSig glob)
 inferDefinition _ (ConstantDef vis (Constant e)) = do

@@ -106,8 +106,8 @@ etaLams
   -> Scope TeleVar (Expr meta) v
   -> Expr meta v
 etaLams glob applied tele scope = case go 0 $ fromScope scope of
-  Nothing -> lams tele scope
-  Just (i, expr) -> lams (takeTele (len - i) tele) $ toScope expr
+  Nothing -> quantify Lam tele scope
+  Just (i, expr) -> quantify Lam (takeTele (len - i) tele) $ toScope expr
   where
     go i (App e a (Var (B n)))
       | n == TeleVar (len - i')

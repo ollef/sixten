@@ -224,12 +224,7 @@ resolveClause
   -> ResolveNames (Scoped.Clause void Scoped.Expr PreName)
 resolveClause (Unscoped.Clause plicitPats e) = do
   plicitPats' <- traverse (traverse resolvePat) plicitPats
-
-  let pats = snd <$> plicitPats'
-      vars = join (toVector <$> pats)
-      typedPats'' = second (void . first (mapBound B)) <$> abstractPatternsTypes vars plicitPats'
-
-  Scoped.Clause typedPats'' . abstract (fmap B . patternAbstraction vars) <$> resolveExpr e
+  Scoped.clause plicitPats' <$> resolveExpr e
 
 resolveExpr
   :: Unscoped.Expr
@@ -246,14 +241,10 @@ resolveExpr expr = case expr of
   Unscoped.Lit l -> return $ Scoped.Lit l
   Unscoped.Pi p pat e -> do
     pat' <- resolvePat pat
-    let vs = toVector pat'
-    Scoped.Pi p (void $ abstractPatternTypes vs pat')
-      . abstract (patternAbstraction vs) <$> resolveExpr e
+    Scoped.pi_ p pat' <$> resolveExpr e
   Unscoped.Lam p pat e -> do
     pat' <- resolvePat pat
-    let vs = toVector pat'
-    Scoped.Lam p (void $ abstractPatternTypes vs pat')
-      . abstract (patternAbstraction vs) <$> resolveExpr e
+    Scoped.lam p pat' <$> resolveExpr e
   Unscoped.App e1 p e2 -> Scoped.App
     <$> resolveExpr e1
     <*> pure p
@@ -274,9 +265,9 @@ resolveExpr expr = case expr of
             (abstract abstr e)
 
     return $ foldr go body' $ flattenSCC <$> sortedDefs
-  Unscoped.Case e pats -> Scoped.Case
+  Unscoped.Case e pats -> Scoped.case_
     <$> resolveExpr e
-    <*> mapM (uncurry resolveBranch) pats
+    <*> mapM (bitraverse resolvePat resolveExpr) pats
   Unscoped.ExternCode c -> Scoped.ExternCode <$> mapM resolveExpr c
   Unscoped.Wildcard -> return Scoped.Wildcard
   Unscoped.SourceLoc loc e -> Scoped.SourceLoc loc <$> resolveExpr e
@@ -289,15 +280,6 @@ resolveExpr expr = case expr of
         (Literal.string "error\n")
         -- TODO use the actual error when strings are faster:
         -- (Literal.string $ shower $ pretty e)
-
-resolveBranch
-  :: Pat PreName Unscoped.Expr PreName
-  -> Unscoped.Expr
-  -> ResolveNames (Pat (HashSet QConstr) (PatternScope Scoped.Expr PreName) (), PatternScope Scoped.Expr PreName)
-resolveBranch pat e = do
-  pat' <- resolvePat pat
-  let vs = toVector pat'
-  (,) (void $ abstractPatternTypes vs pat') . abstract (patternAbstraction vs) <$> resolveExpr e
 
 resolvePat
   :: Pat PreName Unscoped.Expr PreName

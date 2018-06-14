@@ -52,11 +52,8 @@ convertDefinitionsM defs = do
       let Anno _ t = instantiateAnnoTele pure vs $ vacuous scope
       convertedType <- convertExpr t
 
-      let abstr = teleAbstraction vs
-          tele' = error "convertDefinitions"
-            <$> Telescope (Vector.zipWith (\v e -> TeleArg (varHint v) () (abstract abstr e)) vs es)
-          typeScope = error "convertDefinitions"
-            <$> abstract abstr convertedType
+      let tele' = error "convertDefinitions" <$> varTelescope (Vector.zip vs es)
+          typeScope = error "convertDefinitions" <$> abstract (teleAbstraction vs) convertedType
       return $ Just (name, (tele', typeScope))
     Sized.ConstantDef _ (Sized.Constant (Anno (Global glob) _)) -> do
       msig <- convertedSignature glob
@@ -80,14 +77,11 @@ convertDefinition (Sized.FunctionDef vis cl (Sized.Function tele scope)) = do
     convertExpr $ instantiateTele pure vs $ vacuous s
 
   let expr = instantiateAnnoTele pure vs $ vacuous scope
-      abstr = teleAbstraction vs
-      tele'' = error "convertFunction" <$> Telescope (Vector.zipWith (\v e -> TeleArg (varHint v) () (abstract abstr e)) vs es)
   expr' <- convertAnnoExpr expr
-  let scope' = abstractAnno abstr expr'
   return
     $ Sized.FunctionDef vis cl
-    $ Sized.Function tele''
-    $ error "convertDefinition Function" <$> scope'
+    $ error "convertDefinition Function"
+    <$> Sized.function (Vector.zip vs es) expr'
 convertDefinition (Sized.ConstantDef vis (Sized.Constant expr@(Anno (Global glob) sz))) = do
   msig <- convertedSignature glob
   expr' <- case msig of
@@ -140,8 +134,7 @@ convertExpr expr = case expr of
     v <- freeVar h ()
     let bodyExpr = Util.instantiate1 (pure v) bodyScope
     bodyExpr' <- convertExpr bodyExpr
-    let bodyScope' = abstract1 v bodyExpr'
-    return $ Let h e' bodyScope'
+    return $ let_ v e' bodyExpr'
   Case e brs -> Case <$> convertAnnoExpr e <*> convertBranches brs
   ExternCode c retType -> ExternCode <$> mapM convertAnnoExpr c <*> convertExpr retType
 
@@ -208,8 +201,6 @@ liftClosureFun f (tele, returnTypeScope) numCaptured = do
         $ \((v, _), (tv, _)) -> (v, pure tv)
 
   let funParams = pure (this, ptrRep) <> typeParams <> remainingParams'
-      funAbstr = teleAbstraction $ fst <$> funParams
-      funTele = Telescope $ (\(v, t) -> TeleArg (varHint v) () (abstract funAbstr t)) <$> funParams
 
   unused1 <- freeVar "unused" ()
   unused2 <- freeVar "unused" ()
@@ -217,27 +208,22 @@ liftClosureFun f (tele, returnTypeScope) numCaptured = do
         = Vector.cons (unused1, piRep)
         $ Vector.cons (unused2, intRep)
         capturedArgs
-      clAbstr = teleAbstraction $ fst <$> clArgs
-      clTele = Telescope $ (\(v, t) -> TeleArg (varHint v) () (abstract clAbstr t)) <$> clArgs
       funArgs = capturedArgs <> remainingParams'
       funArgs' = flip fmap funArgs $ \(v, t) -> Anno (pure v) t
 
-  let returnType = instantiateTele pure (fst <$> vs) $ vacuous returnTypeScope
+      returnType = instantiateTele pure (fst <$> vs) $ vacuous returnTypeScope
       fReturnType
         | any (\x -> HashSet.member x $ toHashSet returnType) $ fst <$> capturedArgs =
           Case (Anno (Builtin.deref $ pure this) (Global "ClosureConvert.knownCall.unknownSize"))
-          $ ConBranches $ pure $ ConBranch Builtin.Closure clTele
-          $ abstract clAbstr returnType
+          $ ConBranches $ pure $ typedConBranch Builtin.Closure clArgs returnType
         | otherwise = returnType
 
   liftThing
     $ fmap (error "liftClosureFun")
-    $ Sized.Function funTele
-    $ abstractAnno funAbstr
+    $ Sized.function funParams
     $ Anno
       (Case (Anno (Builtin.deref $ pure this) (Global "ClosureConvert.knownCall.unknownSize"))
-      $ ConBranches $ pure $ ConBranch Builtin.Closure clTele
-      $ abstract clAbstr
+      $ ConBranches $ pure $ typedConBranch Builtin.Closure clArgs
       $ Call (global f) funArgs')
       fReturnType
 
@@ -251,10 +237,7 @@ convertBranches (ConBranches cbrs) = fmap ConBranches $
     es <- forMTele tele $ \_ () s ->
       convertExpr $ instantiateTele pure vs s
     let brExpr = instantiateTele pure vs brScope
-        abstr = teleAbstraction vs
-        tele'' = Telescope $ Vector.zipWith (\v e -> TeleArg (varHint v) () $ abstract abstr e) vs es
     brExpr' <- convertExpr brExpr
-    let brScope' = abstract abstr brExpr'
-    return $ ConBranch qc tele'' brScope'
+    return $ typedConBranch qc (Vector.zip vs es) brExpr'
 convertBranches (LitBranches lbrs def) = LitBranches
   <$> mapM (\(LitBranch l e) -> LitBranch l <$> convertExpr e) lbrs <*> convertExpr def

@@ -106,12 +106,11 @@ extractExpr expr = case expr of
     <$> extractExpr e
     <*> traverse (traverse extractAnnoExpr) es
   Lifted.Let h e s -> do
-    e' <- extractAnnoExpr e
-    v <- freeVar h () $ typeAnno e'
+    Anno e' t' <- extractAnnoExpr e
+    v <- freeVar h () t'
     let body = instantiate1 (pure v) s
     body' <- extractExpr body
-    let s' = abstract1 v body'
-    return $ Extracted.Let h e' s'
+    return $ Extracted.let_ v e' body'
   Lifted.Case e brs -> Extracted.Case <$> extractAnnoExpr e <*> extractBranches brs
   Lifted.ExternCode f typ -> do
     typ' <- extractExpr typ
@@ -154,10 +153,7 @@ extractExtern retType (Extern C parts) = do
       callbackName <- freshName
       let ensureVoid :: FV -> Void
           ensureVoid = error "ExtractExtern: non-void"
-          paramsTele = ensureVoid <$> varTelescope callbackParams
-          function = Sized.Function paramsTele
-            $ ensureVoid
-            <$> abstractAnno (teleAbstraction callbackParams) expr
+          function = ensureVoid <$> Sized.functionTyped callbackParams expr
       emitCallback callbackName function
       let callbackArgs = (typedArgsMap HashMap.!) <$> toList callbackFreeVars
           callbackArgNames = fst3 <$> callbackArgs
@@ -248,11 +244,8 @@ extractBranches (ConBranches cbrs) = fmap ConBranches $
       e' <- extractExpr e
       freeVar h () e'
     let brExpr = instantiateTele pure vs brScope
-        abstr = teleAbstraction vs
-        tele'' = Telescope $ (\v -> TeleArg (varHint v) () $ abstract abstr $ varType v) <$> vs
     brExpr' <- extractExpr brExpr
-    let brScope' = abstract abstr brExpr'
-    return $ ConBranch qc tele'' brScope'
+    return $ conBranchTyped qc vs brExpr'
 extractBranches (LitBranches lbrs def) = LitBranches <$> sequence
   [ LitBranch l <$> extractExpr e
   | LitBranch l e <- lbrs
@@ -271,11 +264,8 @@ extractDef tgt qname@(QName mname name) def = fmap flatten $ runExtract names tg
         e' <- extractExpr e
         freeVar h () e'
       let expr = instantiateAnnoTele pure vs $ vacuous scope
-          abstr = teleAbstraction vs
-          tele'' = Telescope $ (\v -> TeleArg (varHint v) () $ abstract abstr $ varType v) <$> vs
       expr' <- extractAnnoExpr expr
-      let scope' = abstractAnno abstr expr'
-      return $ Sized.Function tele'' scope'
+      return $ Sized.functionTyped vs expr'
   Sized.ConstantDef vis (Sized.Constant e) -> Sized.ConstantDef vis . fmap noFV
     <$> (Sized.Constant <$> extractAnnoExpr (vacuous e))
   Sized.AliasDef -> return Sized.AliasDef

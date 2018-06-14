@@ -11,6 +11,8 @@ import Syntax hiding (Definition)
 import Syntax.Sized.Anno
 import TypeRep(TypeRep)
 import Util
+import qualified TypedFreeVar as Typed
+import FreeVar
 
 data Expr v
   = Var v
@@ -30,6 +32,20 @@ type FunSignature = (Telescope () Type Void, Scope TeleVar Type Void)
 
 -------------------------------------------------------------------------------
 -- Helpers
+
+letTyped
+  :: Typed.FreeVar d Expr
+  -> Expr (Typed.FreeVar d Expr)
+  -> Expr (Typed.FreeVar d Expr)
+  -> Expr (Typed.FreeVar d Expr)
+letTyped v e = Let (Typed.varHint v) (Anno e $ Typed.varType v) . abstract1 v
+
+let_
+  :: FreeVar d
+  -> Anno Expr (FreeVar d)
+  -> Expr (FreeVar d)
+  -> Expr (FreeVar d)
+let_ v e = Let (varHint v) e . abstract1 v
 
 pattern MkType :: TypeRep -> Expr v
 pattern MkType rep = Lit (TypeRep rep)

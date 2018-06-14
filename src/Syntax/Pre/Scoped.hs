@@ -3,8 +3,10 @@ module Syntax.Pre.Scoped
   ( module Definition
   , module Pattern
   , Expr(..), Type
+  , clause, pi_, lam, case_
+  , apps
+  , appsView
   , piView
-  , apps, appsView
   , pattern Pi1
   ) where
 
@@ -13,6 +15,7 @@ import Data.Bifunctor
 import Data.Bitraversable
 import Data.Foldable as Foldable
 import Data.Functor.Classes
+import Data.Hashable
 import Data.HashSet(HashSet)
 import Data.Monoid
 import Data.Traversable
@@ -44,12 +47,54 @@ type Type = Expr
 
 -------------------------------------------------------------------------------
 -- Helpers
-piView :: Expr v -> Maybe (Plicitness, Pat (HashSet QConstr) (PatternScope Type v) (), PatternScope Expr v)
-piView (Pi p pat s) = Just (p, pat, s)
-piView _ = Nothing
+clause
+  :: (Monad expr, Hashable v, Eq v)
+  => Vector (Plicitness, Pat (HashSet QConstr) (expr v) v)
+  -> expr v
+  -> Clause void expr v
+clause plicitPats e = do
+  let pats = snd <$> plicitPats
+      vars = join (toVector <$> pats)
+      typedPats = second (void . first (mapBound B)) <$> abstractPatternsTypes vars plicitPats
+  Clause typedPats $ abstract (fmap B . patternAbstraction vars) e
+
+pi_
+  :: (Hashable v, Eq v)
+  => Plicitness
+  -> Pat (HashSet QConstr) (Type v) v
+  -> Expr v
+  -> Expr v
+pi_ p pat = Pi p (void $ abstractPatternTypes vs pat) . abstract (patternAbstraction vs)
+    where
+      vs = toVector pat
+
+lam
+  :: (Hashable v, Eq v)
+  => Plicitness
+  -> Pat (HashSet QConstr) (Type v) v
+  -> Expr v
+  -> Expr v
+lam p pat = Lam p (void $ abstractPatternTypes vs pat) . abstract (patternAbstraction vs)
+    where
+      vs = toVector pat
+
+case_
+  :: (Hashable v, Eq v)
+  => Expr v
+  -> [(Pat (HashSet QConstr) (Type v) v, Expr v)]
+  -> Expr v
+case_ expr pats = Case expr $ go <$> pats
+  where
+    go (pat, e) = (void $ abstractPatternTypes vs pat, abstract (patternAbstraction vs) e)
+      where
+        vs = toVector pat
 
 apps :: Foldable t => Expr v -> t (Plicitness, Expr v) -> Expr v
 apps = Foldable.foldl' (uncurry . App)
+
+piView :: Expr v -> Maybe (Plicitness, Pat (HashSet QConstr) (PatternScope Type v) (), PatternScope Expr v)
+piView (Pi p pat s) = Just (p, pat, s)
+piView _ = Nothing
 
 appsView :: Expr v -> (Expr v, [(Plicitness, Expr v)])
 appsView = second toList . go
@@ -173,7 +218,7 @@ instance v ~ Doc => Pretty (Expr v) where
           associate absPrec (prettyM $ inst s)
     App e1 p e2 -> prettyApp (prettyM e1) (prettyAnnotation p $ prettyM e2)
     Let clauses scope -> parens `above` letPrec $ withNameHints ((\(_, h, _, _) -> h) <$> clauses) $ \ns ->
-      let go = ifor clauses $ \i (_, _, clause, mt) -> do
+      let go = ifor clauses $ \i (_, _, cl, mt) -> do
             let addTypeClause rest = case mt of
                   Nothing -> rest
                   Just t -> prettyM (ns Vector.! i) <+> ":" <+>
@@ -182,7 +227,7 @@ instance v ~ Doc => Pretty (Expr v) where
             addTypeClause
               $ prettyNamed
                 (prettyM $ ns Vector.! i)
-                (instantiateLetClause (pure . fromName) ns <$> clause)
+                (instantiateLetClause (pure . fromName) ns <$> cl)
        in "let" <+> align (vcat go)
         <+> "in" <+> prettyM (instantiateLet (pure . fromName) ns scope)
     Case e brs -> parens `above` casePrec $

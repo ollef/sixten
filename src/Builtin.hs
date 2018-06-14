@@ -91,16 +91,11 @@ apply target numArgs = evalFresh $ do
   args <- iforM argTypes $ \i argType ->
     freeVar ("x" <> shower i) () $ pure argType
 
-  let funArgs = pure this <> argTypes <> args
-      funAbstr = teleAbstraction funArgs
-      funTele = varTelescope funArgs
-
   funknown <- freeVar "funknown" () piRep
   farity <- freeVar "arity" () intRep
 
-  let clArgs = pure funknown <> pure farity
-      clAbstr = teleAbstraction clArgs
-      clTele = varTelescope clArgs
+  let funArgs = pure this <> argTypes <> args
+      clArgs = pure funknown <> pure farity
 
       callfunknown argTypes' args' =
         Lifted.PrimCall (ReturnIndirect OutParam) (pure funknown)
@@ -130,18 +125,15 @@ apply target numArgs = evalFresh $ do
   return
     $ fmap (error "Builtin.apply")
     $ Sized.FunctionDef Public Sized.NonClosure
-    $ Sized.Function funTele
-    $ abstractAnno funAbstr
+    $ Sized.functionTyped funArgs
     $ flip Anno unknownSize
     $ Lifted.Case (Anno (deref $ pure this) unknownSize)
-    $ ConBranches
-    $ pure
-    $ ConBranch Closure clTele
-    $ abstract clAbstr
-    $ Lifted.Case (varAnno farity)
-    $ LitBranches
-      [LitBranch (Integer arity) $ br $ fromIntegral arity | arity <- 1 :| [2..maxArity]]
-      (Lifted.Call (global FailName) $ pure $ Anno unitRep typeRep)
+    $ ConBranches $ pure
+    $ conBranchTyped Closure clArgs
+      $ Lifted.Case (varAnno farity)
+      $ LitBranches
+        [LitBranch (Integer arity) $ br $ fromIntegral arity | arity <- 1 :| [2..maxArity]]
+        (Lifted.Call (global FailName) $ pure $ Anno unitRep typeRep)
 
   where
     varAnno v = Anno (pure v) (varType v)
@@ -163,10 +155,6 @@ pap target k m = evalFresh $ do
   args <- iforM argTypes $ \i argType ->
     freeVar ("x" <> shower i) () $ pure argType
 
-  let funArgs = pure this <> argTypes <> args
-      funAbstr = teleAbstraction funArgs
-      funTele = varTelescope funArgs
-
   unused1 <- freeVar "_" () ptrRep
   unused2 <- freeVar "_" () intRep
   that <- freeVar "that" () ptrRep
@@ -175,20 +163,17 @@ pap target k m = evalFresh $ do
   clArgs <- iforM clArgTypes $ \i argType ->
     freeVar ("y" <> shower i) () $ pure argType
 
-  let clArgs' = pure unused1 <> pure unused2 <> pure that <> clArgTypes <> clArgs
-      clAbstr = teleAbstraction clArgs'
-      clTele = varTelescope clArgs'
+  let funArgs = pure this <> argTypes <> args
+      clArgs' = pure unused1 <> pure unused2 <> pure that <> clArgTypes <> clArgs
 
   return
     $ fmap (error "Builtin.pap")
     $ Sized.FunctionDef Public Sized.NonClosure
-    $ Sized.Function funTele
-    $ abstractAnno funAbstr
+    $ Sized.functionTyped funArgs
     $ flip Anno unknownSize
     $ Lifted.Case (Anno (deref $ pure this) unknownSize)
-    $ ConBranches $ pure $ ConBranch Closure
-      clTele
-      $ abstract clAbstr
+    $ ConBranches $ pure
+    $ conBranchTyped Closure clArgs'
       $ Lifted.Call (global $ applyName $ m + k)
       $ (\v -> Anno (pure v) (varType v)) <$> pure that <> clArgTypes <> argTypes <> clArgs <> args
   where

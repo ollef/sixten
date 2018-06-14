@@ -67,14 +67,14 @@ abstractDefImplicits
   -> CoreM
   -> (Definition (Core.Expr MetaVar) FreeV, CoreM)
 abstractDefImplicits vs (Definition a i e) t = do
-  let ge = abstractImplicits vs Core.Lam e
-      gt = abstractImplicits vs Core.Pi t
+  let ge = abstractImplicits vs Core.lam e
+      gt = abstractImplicits vs Core.pi_ t
   (Definition a i ge, gt)
 abstractDefImplicits vs (DataDefinition (DataDef cs) rep) typ = do
   let cs' = map (fmap $ toScope . splat f g) cs
   -- Abstract vs on top of typ
-  let grep = abstractImplicits vs Core.Lam rep
-      gtyp = abstractImplicits vs Core.Pi typ
+  let grep = abstractImplicits vs Core.lam rep
+      gtyp = abstractImplicits vs Core.pi_ typ
   (DataDefinition (DataDef cs') grep, gtyp)
   where
     varIndex = hashedElemIndex $ toVector vs
@@ -84,13 +84,10 @@ abstractDefImplicits vs (DataDefinition (DataDef cs) rep) typ = do
 abstractImplicits
   :: Foldable t
   => t FreeV
-  -> (NameHint -> Plicitness -> CoreM -> Scope () (Core.Expr MetaVar) FreeV -> CoreM)
+  -> (FreeV -> CoreM -> CoreM)
   -> CoreM
   -> CoreM
-abstractImplicits vs c b = foldr
-  (\v s -> c (varHint v) (implicitise $ varData v) (varType v) $ abstract1 v s)
-  b
-  vs
+abstractImplicits vs c b = foldr (\v -> c (v { varData = implicitise $ varData v })) b vs
 
 data GeneraliseDefsMode
   = GeneraliseType

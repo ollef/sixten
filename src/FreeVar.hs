@@ -1,13 +1,17 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module FreeVar where
 
+import Bound
 import Data.Function
 import Data.Hashable
 import Data.Monoid
+import Data.Vector(Vector)
 
 import MonadFresh
 import Pretty
-import Syntax
+import Syntax.Name
+import Syntax.NameHint
+import Syntax.Telescope
 import Util
 
 data FreeVar d = FreeVar
@@ -36,3 +40,14 @@ freeVar
 freeVar h d = do
   i <- fresh
   return $ FreeVar i h d
+
+varTelescope
+  :: Monad e
+  => Vector (FreeVar d, e (FreeVar d))
+  -> Telescope () e (FreeVar d)
+varTelescope vs
+  = Telescope
+  $ (\(v, t) -> TeleArg (varHint v) () $ abstract abstr t)
+  <$> vs
+  where
+    abstr = teleAbstraction (fst <$> vs)

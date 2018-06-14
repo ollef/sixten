@@ -226,13 +226,13 @@ bindDataDefMetas f (DataDef cs) typ = do
     let t = instantiateTele pure vs s
     forall h p t
 
-  withVars vs $ do
+  let mkConstrDef = constrDef vs
 
-    let abstr = teleAbstraction vs
+  withVars vs $ do
 
     cs' <- forM cs $ \(ConstrDef c s) -> do
       e <- bindMetas f $ instantiateTele pure vs s
-      return $ ConstrDef c $ abstract abstr e
+      return $ mkConstrDef c e
 
     return (DataDef cs', typ')
 
@@ -252,32 +252,25 @@ bindMetas f expr = case expr of
     v <- forall h p t'
     let e = instantiate1 (pure v) s
     e' <- withVar v $ bindMetas f e
-    let s' = abstract1 v e'
-    return $ Pi h p t' s'
+    return $ pi_ v e'
   Lam h p t s -> do
     t' <- bindMetas f t
     v <- forall h p t'
     let e = instantiate1 (pure v) s
     e' <- withVar v $ bindMetas f e
-    let s' = abstract1 v e'
-    return $ Lam h p t' s'
+    return $ lam v e'
   App e1 p e2 -> App <$> bindMetas f e1 <*> pure p <*> bindMetas f e2
   Let ds scope -> do
     vs <- forMLet ds $ \h _ t -> do
       t' <- bindMetas f t
       forall h Explicit t'
-    let abstr = letAbstraction vs
     withVars vs $ do
-      ds' <- iforMLet ds $ \i h s _ -> do
+      es <- forMLet ds $ \_ s _ -> do
         let e = instantiateLet pure vs s
-        e' <- bindMetas f e
-        let s' = abstract abstr e'
-            t' = varType $ vs Vector.! i
-        return $ LetBinding h s' t'
+        bindMetas f e
       let e = instantiateLet pure vs scope
       e' <- bindMetas f e
-      let scope' = abstract abstr e'
-      return $ Let (LetRec ds') scope'
+      return $ let_ (Vector.zip vs es) e'
   Case e brs t -> Case <$> bindMetas f e <*> bindBranchMetas f brs <*> bindMetas f t
   ExternCode e t -> ExternCode <$> mapM (bindMetas f) e <*> bindMetas f t
 
@@ -304,14 +297,10 @@ bindBranchMetas f brs = case brs of
         t' <- withVars vs $ bindMetas f t
         forall h p t'
 
-      let abstr = teleAbstraction vs
-          expr = instantiateTele pure vs scope
-
+      let expr = instantiateTele pure vs scope
       expr' <- withVars vs $ bindMetas f expr
-      let tele' = varTelescope vs
-          scope' = abstract abstr expr'
 
-      return $ ConBranch c tele' scope'
+      return $ conBranchTyped c vs expr'
   LitBranches lbrs def ->
     LitBranches
       <$> mapM (\(LitBranch l br) -> LitBranch l <$> bindMetas f br) lbrs

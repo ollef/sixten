@@ -2,15 +2,12 @@
 module TypedFreeVar where
 
 import Bound
-import Control.Monad.IO.Class
-import Control.Monad.State
 import Data.Char
 import Data.Function
 import Data.Functor.Classes
 import Data.Hashable
 import qualified Data.HashSet as HashSet
 import Data.Monoid
-import Data.String
 import qualified Data.Text as Text
 import Data.Vector(Vector)
 
@@ -20,7 +17,6 @@ import Syntax.Name
 import Syntax.NameHint
 import Syntax.Telescope
 import Util
-import VIX
 
 data FreeVar d e = FreeVar
   { varId :: !Int
@@ -77,18 +73,6 @@ letVar h d e t = do
   i <- fresh
   return $ FreeVar i h d (Just e) t
 
--- | Like freeVar, but with logging
-forall
-  :: (MonadFresh m, MonadVIX m, MonadIO m)
-  => NameHint
-  -> d
-  -> e (FreeVar d e)
-  -> m (FreeVar d e)
-forall h p t = do
-  v <- freeVar h p t
-  logVerbose 20 $ "forall: " <> shower (varId v)
-  return v
-
 showFreeVar
   :: (Functor e, Functor f, Foldable f, Pretty (f Doc), Pretty (e Doc))
   => f (FreeVar d e)
@@ -101,35 +85,24 @@ showFreeVar x = do
       then mempty
       else ", free vars: " <> pretty shownVars
 
-logFreeVar
-  :: (Functor e, Functor f, Foldable f, Pretty (f Doc), Pretty (e Doc), MonadVIX m, MonadIO m)
-  => Int
-  -> String
-  -> f (FreeVar d e)
-  -> m ()
-logFreeVar v s x = whenVerbose v $ do
-  i <- liftVIX $ gets vixIndent
-  let r = showFreeVar x
-  VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide r
-
 varTelescope
   :: Monad e
   => Vector (FreeVar d e)
   -> Telescope d e (FreeVar d e)
-varTelescope vs =
-  Telescope
+varTelescope vs
+  = Telescope
   $ (\v -> TeleArg (varHint v) (varData v) $ abstract abstr $ varType v)
   <$> vs
   where
     abstr = teleAbstraction vs
 
-varTelescope'
-  :: Monad e
-  => Vector (d, FreeVar d' e)
-  -> Telescope d e (FreeVar d' e)
-varTelescope' vs =
-  Telescope
-  $ (\(d, v) -> TeleArg (varHint v) d $ abstract abstr $ varType v)
+varTypeTelescope
+  :: Monad e'
+  => Vector (FreeVar d e, e' (FreeVar d e))
+  -> Telescope () e' (FreeVar d e)
+varTypeTelescope vs
+  = Telescope
+  $ (\(v, t) -> TeleArg (varHint v) () $ abstract abstr t)
   <$> vs
   where
-    abstr = teleAbstraction (snd <$> vs)
+    abstr = teleAbstraction (fst <$> vs)

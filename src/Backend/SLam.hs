@@ -49,7 +49,7 @@ slam expr = do
       v <- freeVar h p t'
       e <- slamAnno $ instantiate1 (pure v) s
       rep <- slam t'
-      return $ SLambda.Lam h rep $ abstract1Anno v e
+      return $ SLambda.lam v rep e
     (Core.appsView -> (Core.Con qc@(QConstr typeName _), es)) -> do
       (_, typeType) <- definition typeName
       n <- constrArity qc
@@ -64,7 +64,7 @@ slam expr = do
           let Just appliedConType = Core.typeApps conType es
               tele = Core.telescope appliedConType
           slam
-            $ Core.lams tele
+            $ quantify Core.Lam tele
             $ Scope
             $ Core.apps (Core.Con qc)
             $ Vector.fromList (fmap (pure . pure) <$> es)
@@ -74,14 +74,12 @@ slam expr = do
     Core.Case e brs _retType -> SLambda.Case <$> slamAnno e <*> slamBranches brs
     Core.Let ds scope -> do
       vs <- forMLet ds $ \h _ t -> freeVar h Explicit t
-      let abstr = letAbstraction vs
-      ds' <- fmap LetRec $ forMLet ds $ \h s t -> do
+      ds' <- forMLet ds $ \_ s t -> do
         e <- slam $ instantiateLet pure vs s
         t' <- slam t
-        return $ LetBinding h (abstract abstr e) t'
+        return $ Anno e t'
       body <- slam $ instantiateLet pure vs scope
-      let scope' = abstract abstr body
-      return $ SLambda.Let ds' scope'
+      return $ SLambda.letRec (Vector.zip vs ds') body
     Core.ExternCode c retType -> do
         retType' <- slam =<< whnfExpandingTypeReps retType
         c' <- slamExtern c
@@ -93,23 +91,14 @@ slamBranches
   :: Branches Plicitness (Core.Expr MetaVar) FreeV
   -> SLam (Branches () SLambda.Expr FreeV)
 slamBranches (ConBranches cbrs) = do
-  -- TODO
-  -- logPretty 20 "slamBranches brs" $ pretty <$> ConBranches cbrs
   cbrs' <- indentLog $ forM cbrs $ \(ConBranch c tele brScope) -> do
-    tele' <- forTeleWithPrefixM tele $ \h p s tele' -> do
-      let vs = fst <$> tele'
-          abstr = teleAbstraction vs
-          t = instantiateTele pure vs s
-      trep <- slam =<< whnfExpandingTypeReps t
-      v <- freeVar h p t
-      return (v, TeleArg h p $ abstract abstr trep)
-    let vs = fst <$> tele'
-        abstr = teleAbstraction vs
-        tele'' = Telescope
-               $ fmap (\(TeleArg h _ t) -> TeleArg h () t)
-               $ snd <$> tele'
-    brScope' <- slam $ instantiateTele pure vs brScope
-    return $ ConBranch c tele'' $ abstract abstr brScope'
+    vs <- forTeleWithPrefixM tele $ \h p s vs -> freeVar h p $ instantiateTele pure vs s
+    reps <- forM vs $ \v -> do
+      t' <- whnfExpandingTypeReps $ varType v
+      slam t'
+
+    brExpr <- slam $ instantiateTele pure vs brScope
+    return $ typedConBranchTyped c (Vector.zip vs reps) brExpr
   logPretty 20 "slamBranches res" $ pretty <$> ConBranches cbrs'
   return $ ConBranches cbrs'
 slamBranches (LitBranches lbrs d)

@@ -134,7 +134,7 @@ tcRho expr expected expectedAppResult = case expr of
       f <- instExpected expected Builtin.Type
       x <- forall h p patType
       body'' <- withVar x $ matchSingle (pure x) pat' body' Builtin.Type
-      return $ f $ Core.Pi h p patType $ abstract1 x body''
+      return $ f $ Core.pi_ x body''
   Pre.Lam p pat bodyScope -> do
     let h = Pre.patternHint pat
     case expected of
@@ -145,10 +145,8 @@ tcRho expr expected expectedAppResult = case expr of
           (body', bodyType) <- enterLevel $ inferRho body (InstUntil Explicit) Nothing
           argVar <- forall h p argType
           body'' <- withVar argVar $ matchSingle (pure argVar) pat' body' bodyType
-          let bodyScope' = abstract1 argVar body''
-              bodyTypeScope = abstract1 argVar bodyType
-          f <- instExpected expected $ Core.Pi h p argType bodyTypeScope
-          return $ f $ Core.Lam h p argType bodyScope'
+          f <- instExpected expected $ Core.pi_ argVar bodyType
+          return $ f $ Core.lam argVar body''
       Check expectedType -> do
         (typeh, argType, bodyTypeScope, fResult) <- funSubtype expectedType p
         let h' = h <> typeh
@@ -159,7 +157,7 @@ tcRho expr expected expectedAppResult = case expr of
           body' <- enterLevel $ checkPoly body bodyType
           argVar <- forall h' p argType
           body'' <- withVar argVar $ matchSingle (pure argVar) pat' body' bodyType
-          return $ fResult $ Core.Lam h' p argType $ abstract1 argVar body''
+          return $ fResult $ Core.lam argVar body''
   Pre.App fun p arg -> do
     (fun', funType) <- inferRho fun (InstUntil p) expectedAppResult
     (argType, resTypeScope, f1) <- subtypeFun funType p
@@ -176,8 +174,7 @@ tcRho expr expected expectedAppResult = case expr of
         let fun'' = f1 fun'
         return $ f2 $ Core.App fun'' p arg'
   Pre.Let ds scope -> enterLevel $ do
-    let names = (\(_, n, _, _) -> n) <$> ds
-    evars <- forM names $ \name -> do
+    evars <- forM ds $ \(_, name, _, _) -> do
       typ <- existsType name
       forall name Explicit typ
     let instantiatedDs

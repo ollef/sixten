@@ -4,8 +4,10 @@ module Syntax.Sized.Definition where
 import Bound
 import Control.Monad.Morph
 import Data.Monoid
+import Data.Vector(Vector)
 import Data.Void
 
+import FreeVar
 import Pretty
 import Syntax.Annotation
 import Syntax.GlobalBind
@@ -13,6 +15,7 @@ import Syntax.Module
 import Syntax.Name
 import Syntax.Sized.Anno
 import Syntax.Telescope
+import qualified TypedFreeVar as Typed
 import Util.TopoSort
 
 data Function expr v
@@ -36,6 +39,20 @@ data Definition expr v
 
 -------------------------------------------------------------------------------
 -- Helpers
+function
+  :: Monad expr
+  => Vector (FreeVar d, expr (FreeVar d))
+  -> Anno expr (FreeVar d)
+  -> Function expr (FreeVar d)
+function vs = Function (varTelescope vs) . abstractAnno (teleAbstraction $ fst <$> vs)
+
+functionTyped
+  :: Monad expr
+  => Vector (Typed.FreeVar () expr)
+  -> Anno expr (Typed.FreeVar () expr)
+  -> Function expr (Typed.FreeVar () expr)
+functionTyped vs = Function (Typed.varTelescope vs) . abstractAnno (teleAbstraction vs)
+
 dependencyOrder
   :: (GBind expr, Foldable expr)
   => [(QName, Definition expr Void)]
