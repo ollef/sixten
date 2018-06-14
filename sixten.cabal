@@ -70,8 +70,8 @@ executable sixten
                        Processor.Files
                        Processor.Result
                        Syntax
-                       Syntax.Abstract
-                       Syntax.Abstract.Pattern
+                       Syntax.Core
+                       Syntax.Core.Pattern
                        Syntax.Annotation
                        Syntax.Branches
                        Syntax.Class

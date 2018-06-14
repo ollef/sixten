@@ -13,7 +13,7 @@ import qualified Data.Vector as Vector
 
 import Inference.Normalise
 import Syntax
-import Syntax.Abstract hiding (let_)
+import Syntax.Core hiding (let_)
 import Util
 
 simplifyExpr

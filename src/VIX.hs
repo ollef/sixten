@@ -29,7 +29,7 @@ import Error
 import MonadFresh
 import Processor.Result
 import Syntax
-import Syntax.Abstract
+import Syntax.Core
 import qualified Syntax.Sized.Lifted as Lifted
 import TypeRep
 import Util

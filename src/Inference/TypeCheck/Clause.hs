@@ -20,7 +20,7 @@ import Inference.Subtype
 import Inference.TypeCheck.Pattern
 import MonadContext
 import Syntax
-import qualified Syntax.Abstract as Abstract
+import qualified Syntax.Core as Core
 import qualified Syntax.Concrete.Scoped as Concrete
 import TypedFreeVar
 import Util
@@ -29,7 +29,7 @@ import VIX
 checkClauses
   :: NonEmpty (Concrete.Clause Void Concrete.Expr FreeV)
   -> Polytype
-  -> Infer AbstractM
+  -> Infer CoreM
 checkClauses clauses polyType = indentLog $ do
   forM_ clauses $ \clause -> logPretty 20 "checkClauses clause" $ pretty <$> clause
   logMeta 20 "checkClauses typ" polyType
@@ -57,13 +57,13 @@ checkClauses clauses polyType = indentLog $ do
       | Vector.length pats > 0 = InstUntil $ fst $ Vector.head pats
       | otherwise = instUntilExpr $ fromScope s
 
-    piPlicitnesses :: AbstractM -> Infer [Plicitness]
+    piPlicitnesses :: CoreM -> Infer [Plicitness]
     piPlicitnesses t = do
       t' <- whnf t
       piPlicitnesses' t'
 
-    piPlicitnesses' :: AbstractM -> Infer [Plicitness]
-    piPlicitnesses' (Abstract.Pi h p t s) = do
+    piPlicitnesses' :: CoreM -> Infer [Plicitness]
+    piPlicitnesses' (Core.Pi h p t s) = do
       v <- forall h p t
       (:) p <$> piPlicitnesses (instantiate1 (pure v) s)
     piPlicitnesses' _ = return mempty
@@ -71,7 +71,7 @@ checkClauses clauses polyType = indentLog $ do
 checkClausesRho
   :: NonEmpty (Concrete.Clause Void Concrete.Expr FreeV)
   -> Rhotype
-  -> Infer AbstractM
+  -> Infer CoreM
 checkClausesRho clauses rhoType = do
   forM_ clauses $ \clause -> logPretty 20 "checkClausesRho clause" $ pretty <$> clause
   logMeta 20 "checkClausesRho type" rhoType
@@ -110,7 +110,7 @@ checkClausesRho clauses rhoType = do
 
     let result = foldr
           (\(f, v) e ->
-            f $ Abstract.Lam (varHint v) (varData v) (varType v) $ abstract1 v e)
+            f $ Core.Lam (varHint v) (varData v) (varType v) $ abstract1 v e)
           body
           (Vector.zip fs argVars)
 

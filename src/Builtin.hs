@@ -16,7 +16,7 @@ import Backend.Target(Target)
 import Builtin.Names
 import MonadFresh
 import Syntax
-import Syntax.Abstract as Abstract
+import Syntax.Core as Core
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Lifted as Lifted
@@ -31,7 +31,7 @@ context target = HashMap.fromList
       (Lam mempty Explicit Type $ Scope ptrRep)
       (arrow Explicit Type Type)
       [ ConstrDef RefName $ toScope $ fmap B $ arrow Explicit (pure 0)
-        $ Abstract.App (Global PtrName) Explicit (pure 0)
+        $ Core.App (Global PtrName) Explicit (pure 0)
       ])
   , (IntName, opaqueData intRep Type)
   , (NatName, dataType intRep Type

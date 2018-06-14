@@ -25,16 +25,16 @@ import Inference.TypeOf
 import MonadContext
 import Pretty
 import Syntax
-import Syntax.Abstract
+import Syntax.Core
 import TypedFreeVar
 import Util
 import VIX
 
 occurs
-  :: [(AbstractM, AbstractM)]
+  :: [(CoreM, CoreM)]
   -> Level
   -> MetaVar
-  -> AbstractM
+  -> CoreM
   -> Infer ()
 occurs cxt l mv expr = bitraverse_ go pure expr
   where
@@ -70,7 +70,7 @@ occurs cxt l mv expr = bitraverse_ go pure expr
           Left l' -> liftST $ writeSTRef (metaRef mv') $ Left $ min l l'
           Right expr' -> traverse_ go $ vacuous expr'
 
-prune :: HashSet FreeV -> AbstractM -> Infer AbstractM
+prune :: HashSet FreeV -> CoreM -> Infer CoreM
 prune allowedVars expr = inUpdatedContext (const mempty) $ bindMetas go expr
   where
     go m es = indentLog $ do
@@ -126,7 +126,7 @@ prune allowedVars expr = inUpdatedContext (const mempty) $ bindMetas go expr
                 vs' = snd <$> pvs'
                 Just mType = typeApps (vacuous $ metaType m) es
 
-unify :: [(AbstractM, AbstractM)] -> AbstractM -> AbstractM -> Infer ()
+unify :: [(CoreM, CoreM)] -> CoreM -> CoreM -> Infer ()
 unify cxt type1 type2 = do
   logMeta 30 "unify t1" type1
   logMeta 30 "      t2" type2
@@ -135,7 +135,7 @@ unify cxt type1 type2 = do
   touchable <- getTouchable
   unify' ((type1', type2') : cxt) touchable type1' type2'
 
-unify' :: [(AbstractM, AbstractM)] -> (MetaVar -> Bool) -> AbstractM -> AbstractM -> Infer ()
+unify' :: [(CoreM, CoreM)] -> (MetaVar -> Bool) -> CoreM -> CoreM -> Infer ()
 unify' cxt touchable type1 type2
   | type1 == type2 = return () -- TODO make specialised equality function to get rid of zonking in this and subtyping
   | otherwise = case (type1, type2) of

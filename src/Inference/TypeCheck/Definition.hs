@@ -32,7 +32,7 @@ import Inference.TypeCheck.Data
 import Inference.Unify
 import MonadContext
 import Syntax
-import qualified Syntax.Abstract as Abstract
+import qualified Syntax.Core as Core
 import qualified Syntax.Concrete.Scoped as Concrete
 import TypedFreeVar
 import Util
@@ -41,8 +41,8 @@ import VIX
 
 checkDefType
   :: Concrete.PatDefinition (Concrete.Clause Void Concrete.Expr FreeV)
-  -> AbstractM
-  -> Infer (Definition (Abstract.Expr MetaVar) FreeV, AbstractM)
+  -> CoreM
+  -> Infer (Definition (Core.Expr MetaVar) FreeV, CoreM)
 checkDefType (Concrete.PatDefinition a i clauses) typ = do
   e' <- checkClauses clauses typ
   return (Definition a i e', typ)
@@ -51,8 +51,8 @@ checkTopLevelDefType
   :: FreeV
   -> Concrete.TopLevelPatDefinition Concrete.Expr FreeV
   -> SourceLoc
-  -> AbstractM
-  -> Infer (Definition (Abstract.Expr MetaVar) FreeV, AbstractM)
+  -> CoreM
+  -> Infer (Definition (Core.Expr MetaVar) FreeV, CoreM)
 checkTopLevelDefType v def loc typ = located loc $ case def of
   Concrete.TopLevelPatDefinition def' -> checkDefType def' typ
   Concrete.TopLevelPatDataDefinition d -> checkDataType v d typ
@@ -63,18 +63,18 @@ checkTopLevelDefType v def loc typ = located loc $ case def of
 abstractDefImplicits
   :: Foldable t
   => t FreeV
-  -> Definition (Abstract.Expr MetaVar) FreeV
-  -> AbstractM
-  -> (Definition (Abstract.Expr MetaVar) FreeV, AbstractM)
+  -> Definition (Core.Expr MetaVar) FreeV
+  -> CoreM
+  -> (Definition (Core.Expr MetaVar) FreeV, CoreM)
 abstractDefImplicits vs (Definition a i e) t = do
-  let ge = abstractImplicits vs Abstract.Lam e
-      gt = abstractImplicits vs Abstract.Pi t
+  let ge = abstractImplicits vs Core.Lam e
+      gt = abstractImplicits vs Core.Pi t
   (Definition a i ge, gt)
 abstractDefImplicits vs (DataDefinition (DataDef cs) rep) typ = do
   let cs' = map (fmap $ toScope . splat f g) cs
   -- Abstract vs on top of typ
-  let grep = abstractImplicits vs Abstract.Lam rep
-      gtyp = abstractImplicits vs Abstract.Pi typ
+  let grep = abstractImplicits vs Core.Lam rep
+      gtyp = abstractImplicits vs Core.Pi typ
   (DataDefinition (DataDef cs') grep, gtyp)
   where
     varIndex = hashedElemIndex $ toVector vs
@@ -84,9 +84,9 @@ abstractDefImplicits vs (DataDefinition (DataDef cs) rep) typ = do
 abstractImplicits
   :: Foldable t
   => t FreeV
-  -> (NameHint -> Plicitness -> AbstractM -> Scope () (Abstract.Expr MetaVar) FreeV -> AbstractM)
-  -> AbstractM
-  -> AbstractM
+  -> (NameHint -> Plicitness -> CoreM -> Scope () (Core.Expr MetaVar) FreeV -> CoreM)
+  -> CoreM
+  -> CoreM
 abstractImplicits vs c b = foldr
   (\v s -> c (varHint v) (implicitise $ varData v) (varType v) $ abstract1 v s)
   b
@@ -101,14 +101,14 @@ generaliseDefs
   :: GeneraliseDefsMode
   -> Vector
     ( FreeV
-    , Definition (Abstract.Expr MetaVar) FreeV
-    , AbstractM
+    , Definition (Core.Expr MetaVar) FreeV
+    , CoreM
     )
   -> Infer
     ( Vector
       ( FreeV
-      , Definition (Abstract.Expr MetaVar) FreeV
-      , AbstractM
+      , Definition (Core.Expr MetaVar) FreeV
+      , CoreM
       )
     , FreeV -> FreeV
     )
@@ -127,8 +127,8 @@ collectMetas
   :: GeneraliseDefsMode
   -> Vector
     ( FreeV
-    , Definition (Abstract.Expr MetaVar) FreeV
-    , AbstractM
+    , Definition (Core.Expr MetaVar) FreeV
+    , CoreM
     )
   -> Infer (HashSet MetaVar)
 collectMetas mode defs = do
@@ -175,7 +175,7 @@ generaliseMetas metas = do
           sol <- solution m'
           case sol of
             Left _ -> return $ case HashMap.lookup m' sub of
-              Nothing -> Abstract.Meta m' es
+              Nothing -> Core.Meta m' es
               Just v -> pure v
             Right e -> bindMetas' go $ betaApps (vacuous e) es
     instTyp' <- bindMetas' go instTyp
@@ -192,14 +192,14 @@ replaceMetas
   :: HashMap MetaVar FreeV
   -> Vector
     ( FreeV
-    , Definition (Abstract.Expr MetaVar) FreeV
-    , AbstractM
+    , Definition (Core.Expr MetaVar) FreeV
+    , CoreM
     )
   -> Infer
     ( Vector
       ( FreeV
-      , Definition (Abstract.Expr MetaVar) FreeV
-      , AbstractM
+      , Definition (Core.Expr MetaVar) FreeV
+      , CoreM
       )
     )
 replaceMetas varMap defs = forM defs $ \(v, d, t) -> do
@@ -216,7 +216,7 @@ replaceMetas varMap defs = forM defs $ \(v, d, t) -> do
           Nothing -> do
             local <- isLocalMeta m
             if local then do
-              let Just typ = Abstract.typeApps (vacuous $ metaType m) es
+              let Just typ = Core.typeApps (vacuous $ metaType m) es
                   varKind = case metaPlicitness m of
                     Constraint -> "constraint"
                     Implicit -> "meta-variable"
@@ -228,7 +228,7 @@ replaceMetas varMap defs = forM defs $ \(v, d, t) -> do
               -- TODO use actual error in expression when strings are faster
               return $ Builtin.Fail typ'
             else
-              return $ Abstract.Meta m es
+              return $ Core.Meta m es
           Just v -> return $ pure v
         Right e -> bindMetas' go $ betaApps (vacuous e) es
 
@@ -241,13 +241,13 @@ collectDefDeps
   :: HashSet FreeV
   -> Vector
     ( FreeV
-    , Definition (Abstract.Expr MetaVar) FreeV
-    , AbstractM
+    , Definition (Core.Expr MetaVar) FreeV
+    , CoreM
     )
   -> Vector
     ( FreeV
-    , ( Definition (Abstract.Expr MetaVar) FreeV
-      , AbstractM
+    , ( Definition (Core.Expr MetaVar) FreeV
+      , CoreM
       , [FreeV]
       )
     )
@@ -269,23 +269,23 @@ collectDefDeps vars defs = do
 replaceDefs
   :: Vector
     ( FreeV
-    , ( Definition (Abstract.Expr MetaVar) FreeV
-      , AbstractM
+    , ( Definition (Core.Expr MetaVar) FreeV
+      , CoreM
       , [FreeV]
       )
     )
   -> Infer
     ( Vector
       ( FreeV
-      , Definition (Abstract.Expr MetaVar) FreeV
-      , AbstractM
+      , Definition (Core.Expr MetaVar) FreeV
+      , CoreM
       )
     , FreeV -> FreeV
     )
 replaceDefs defs = do
   let appSubMap
         = toHashMap
-        $ (\(v, (_, _, vs)) -> (v, Abstract.apps (pure v) ((\v' -> (implicitise $ varData v', pure v')) <$> vs)))
+        $ (\(v, (_, _, vs)) -> (v, Core.apps (pure v) ((\v' -> (implicitise $ varData v', pure v')) <$> vs)))
         <$> defs
       appSub v = HashMap.lookupDefault (pure v) v appSubMap
 
@@ -324,8 +324,8 @@ checkRecursiveDefs
   -> Infer
     (Vector
       ( FreeV
-      , Definition (Abstract.Expr MetaVar) FreeV
-      , AbstractM
+      , Definition (Core.Expr MetaVar) FreeV
+      , CoreM
       )
     )
 checkRecursiveDefs forceGeneralisation defs = do
@@ -399,8 +399,8 @@ checkTopLevelDefs
   -> Infer
     (Vector
       ( FreeV
-      , Definition (Abstract.Expr MetaVar) FreeV
-      , AbstractM
+      , Definition (Core.Expr MetaVar) FreeV
+      , CoreM
       )
     )
 checkTopLevelDefs defs = indentLog $ do
@@ -452,8 +452,8 @@ checkTopLevelRecursiveDefs
   -> Infer
     (Vector
       ( QName
-      , Definition (Abstract.Expr Void) Void
-      , Abstract.Type Void Void
+      , Definition (Core.Expr Void) Void
+      , Core.Type Void Void
       )
     )
 checkTopLevelRecursiveDefs defs = do

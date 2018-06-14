@@ -4,7 +4,7 @@ module Builtin.Names where
 import Data.Monoid
 import Data.String
 
-import Syntax.Abstract
+import Syntax.Core
 import Syntax.Annotation
 import Syntax.Module
 import Syntax.Name

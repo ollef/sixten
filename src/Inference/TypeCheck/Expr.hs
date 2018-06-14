@@ -22,7 +22,7 @@ import Inference.TypeOf
 import Inference.Unify
 import MonadContext
 import Syntax
-import qualified Syntax.Abstract as Abstract
+import qualified Syntax.Core as Core
 import qualified Syntax.Concrete.Scoped as Concrete
 import TypedFreeVar
 import Util
@@ -33,7 +33,7 @@ data Expected typ
   | Check typ
 
 -- | instExpected t2 t1 = e => e : t1 -> t2
-instExpected :: Expected Rhotype -> Polytype -> Infer (AbstractM -> AbstractM)
+instExpected :: Expected Rhotype -> Polytype -> Infer (CoreM -> CoreM)
 instExpected (Infer r instUntil) t = do
   (t', f) <- instantiateForalls t instUntil
   liftST $ writeSTRef r t'
@@ -42,7 +42,7 @@ instExpected (Check t2) t1 = subtype t1 t2
 
 --------------------------------------------------------------------------------
 -- Polytypes
-checkPoly :: ConcreteM -> Polytype -> Infer AbstractM
+checkPoly :: ConcreteM -> Polytype -> Infer CoreM
 checkPoly expr typ = do
   logPretty 20 "checkPoly expr" $ pretty <$> expr
   logMeta 20 "checkPoly type" typ
@@ -50,7 +50,7 @@ checkPoly expr typ = do
   logMeta 20 "checkPoly res expr" res
   return res
 
-checkPoly' :: ConcreteM -> Polytype -> Infer AbstractM
+checkPoly' :: ConcreteM -> Polytype -> Infer CoreM
 checkPoly' (Concrete.SourceLoc loc e) polyType
   = located loc $ checkPoly' e polyType
 checkPoly' expr@(Concrete.Lam Implicit _ _) polyType
@@ -63,7 +63,7 @@ checkPoly' expr polyType
 instantiateForalls
   :: Polytype
   -> InstUntil
-  -> Infer (Rhotype, AbstractM -> AbstractM)
+  -> Infer (Rhotype, CoreM -> CoreM)
 instantiateForalls typ instUntil = do
   typ' <- whnf typ
   instantiateForalls' typ' instUntil
@@ -71,8 +71,8 @@ instantiateForalls typ instUntil = do
 instantiateForalls'
   :: Polytype
   -> InstUntil
-  -> Infer (Rhotype, AbstractM -> AbstractM)
-instantiateForalls' (Abstract.Pi h p t s) instUntil
+  -> Infer (Rhotype, CoreM -> CoreM)
+instantiateForalls' (Core.Pi h p t s) instUntil
   | shouldInst p instUntil = do
     v <- exists h p t
     let typ = Util.instantiate1 v s
@@ -82,7 +82,7 @@ instantiateForalls' typ _ = return (typ, id)
 
 --------------------------------------------------------------------------------
 -- Rhotypes
-checkRho :: ConcreteM -> Rhotype -> Infer AbstractM
+checkRho :: ConcreteM -> Rhotype -> Infer CoreM
 checkRho expr typ = do
   logPretty 20 "checkRho expr" $ pretty <$> expr
   logMeta 20 "checkRho type" typ
@@ -90,10 +90,10 @@ checkRho expr typ = do
   logMeta 20 "checkRho res expr" res
   return res
 
-checkRho' :: ConcreteM -> Rhotype -> Infer AbstractM
+checkRho' :: ConcreteM -> Rhotype -> Infer CoreM
 checkRho' expr ty = tcRho expr (Check ty) (Just ty)
 
-inferRho :: ConcreteM -> InstUntil -> Maybe Rhotype -> Infer (AbstractM, Rhotype)
+inferRho :: ConcreteM -> InstUntil -> Maybe Rhotype -> Infer (CoreM, Rhotype)
 inferRho expr instUntil expectedAppResult = do
   logPretty 20 "inferRho" $ pretty <$> expr
   (resExpr, resType) <- indentLog $ inferRho' expr instUntil expectedAppResult
@@ -101,30 +101,30 @@ inferRho expr instUntil expectedAppResult = do
   logMeta 20 "inferRho res typ" resType
   return (resExpr, resType)
 
-inferRho' :: ConcreteM -> InstUntil -> Maybe Rhotype -> Infer (AbstractM, Rhotype)
+inferRho' :: ConcreteM -> InstUntil -> Maybe Rhotype -> Infer (CoreM, Rhotype)
 inferRho' expr instUntil expectedAppResult = do
   ref <- liftST $ newSTRef $ error "inferRho: empty result"
   expr' <- tcRho expr (Infer ref instUntil) expectedAppResult
   typ <- liftST $ readSTRef ref
   return (expr', typ)
 
-tcRho :: ConcreteM -> Expected Rhotype -> Maybe Rhotype -> Infer AbstractM
+tcRho :: ConcreteM -> Expected Rhotype -> Maybe Rhotype -> Infer CoreM
 tcRho expr expected expectedAppResult = case expr of
   Concrete.Var v -> do
     f <- instExpected expected $ varType v
-    return $ f $ Abstract.Var v
+    return $ f $ Core.Var v
   Concrete.Global g -> do
     (_, typ) <- definition g
     f <- instExpected expected typ
-    return $ f $ Abstract.Global g
+    return $ f $ Core.Global g
   Concrete.Lit l -> do
     f <- instExpected expected $ typeOfLiteral l
-    return $ f $ Abstract.Lit l
+    return $ f $ Core.Lit l
   Concrete.Con cons -> do
     qc <- resolveConstr cons expectedAppResult
     typ <- qconstructor qc
     f <- instExpected expected typ
-    return $ f $ Abstract.Con qc
+    return $ f $ Core.Con qc
   Concrete.Pi p pat bodyScope -> do
     (pat', _, patVars, patType) <- inferPat p pat mempty
     withPatVars patVars $ do
@@ -134,7 +134,7 @@ tcRho expr expected expectedAppResult = case expr of
       f <- instExpected expected Builtin.Type
       x <- forall h p patType
       body'' <- withVar x $ matchSingle (pure x) pat' body' Builtin.Type
-      return $ f $ Abstract.Pi h p patType $ abstract1 x body''
+      return $ f $ Core.Pi h p patType $ abstract1 x body''
   Concrete.Lam p pat bodyScope -> do
     let h = Concrete.patternHint pat
     case expected of
@@ -147,8 +147,8 @@ tcRho expr expected expectedAppResult = case expr of
           body'' <- withVar argVar $ matchSingle (pure argVar) pat' body' bodyType
           let bodyScope' = abstract1 argVar body''
               bodyTypeScope = abstract1 argVar bodyType
-          f <- instExpected expected $ Abstract.Pi h p argType bodyTypeScope
-          return $ f $ Abstract.Lam h p argType bodyScope'
+          f <- instExpected expected $ Core.Pi h p argType bodyTypeScope
+          return $ f $ Core.Lam h p argType bodyScope'
       Check expectedType -> do
         (typeh, argType, bodyTypeScope, fResult) <- funSubtype expectedType p
         let h' = h <> typeh
@@ -159,7 +159,7 @@ tcRho expr expected expectedAppResult = case expr of
           body' <- enterLevel $ checkPoly body bodyType
           argVar <- forall h' p argType
           body'' <- withVar argVar $ matchSingle (pure argVar) pat' body' bodyType
-          return $ fResult $ Abstract.Lam h' p argType $ abstract1 argVar body''
+          return $ fResult $ Core.Lam h' p argType $ abstract1 argVar body''
   Concrete.App fun p arg -> do
     (fun', funType) <- inferRho fun (InstUntil p) expectedAppResult
     (argType, resTypeScope, f1) <- subtypeFun funType p
@@ -169,12 +169,12 @@ tcRho expr expected expectedAppResult = case expr of
         let resType = Util.instantiate1 arg' resTypeScope
         f2 <- instExpected expected resType
         let fun'' = f1 fun'
-        return $ f2 $ Abstract.App fun'' p arg'
+        return $ f2 $ Core.App fun'' p arg'
       Just resType -> do
         f2 <- instExpected expected resType
         arg' <- checkPoly arg argType
         let fun'' = f1 fun'
-        return $ f2 $ Abstract.App fun'' p arg'
+        return $ f2 $ Core.App fun'' p arg'
   Concrete.Let ds scope -> enterLevel $ do
     let names = (\(_, n, _, _) -> n) <$> ds
     evars <- forM names $ \name -> do
@@ -201,13 +201,13 @@ tcRho expr expected expectedAppResult = case expr of
           Concrete -> letVar h Explicit (inst s) t
       let abstr = letAbstraction vars
       body <- withVars vars $ tcRho (instantiateLet pure vars scope) expected expectedAppResult
-      return $ Abstract.Let ds'' $ abstract abstr body
+      return $ Core.Let ds'' $ abstract abstr body
   Concrete.Case e brs -> tcBranches e brs expected expectedAppResult
   Concrete.ExternCode c -> do
     c' <- mapM (\e -> fst <$> inferRho e (InstUntil Explicit) Nothing) c
     returnType <- existsType mempty
     f <- instExpected expected returnType
-    return $ f $ Abstract.ExternCode c' returnType
+    return $ f $ Core.ExternCode c' returnType
   Concrete.Wildcard -> do
     t <- existsType mempty
     f <- instExpected expected t
@@ -220,7 +220,7 @@ tcBranches
   -> [(Concrete.Pat (HashSet QConstr) (PatternScope Concrete.Expr FreeV) (), PatternScope Concrete.Expr FreeV)]
   -> Expected Rhotype
   -> Maybe Rhotype
-  -> Infer AbstractM
+  -> Infer CoreM
 tcBranches expr pbrs expected expectedAppResult = do
   (expr', exprType) <- inferRho expr (InstUntil Explicit) Nothing
 

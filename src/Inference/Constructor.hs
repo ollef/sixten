@@ -10,7 +10,7 @@ import qualified Data.Text.Prettyprint.Doc as PP
 import Inference.Constraint
 import Inference.Monad
 import Syntax
-import qualified Syntax.Abstract as Abstract
+import qualified Syntax.Core as Core
 import TypedFreeVar
 import Util
 import VIX
@@ -49,15 +49,15 @@ resolveConstr cs expected = do
       ]
   where
     expectedDataType = join <$> traverse findExpectedDataType expected
-    findExpectedDataType :: AbstractM -> Infer (Maybe QName)
+    findExpectedDataType :: CoreM -> Infer (Maybe QName)
     findExpectedDataType typ = do
       typ' <- whnf typ
       case typ' of
-        Abstract.Pi h p t s -> do
+        Core.Pi h p t s -> do
           v <- freeVar h p t
           findExpectedDataType $ Util.instantiate1 (pure v) s
-        Abstract.App t1 _ _ -> findExpectedDataType t1
-        Abstract.Global v -> do
+        Core.App t1 _ _ -> findExpectedDataType t1
+        Core.Global v -> do
           (d, _) <- definition v
           return $ case d of
             DataDefinition _ _ -> Just v
