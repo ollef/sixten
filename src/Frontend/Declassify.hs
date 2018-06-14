@@ -91,7 +91,7 @@ declass qname loc classDef typ = do
         , TopLevelPatDefinition
           (PatDefinition
             Concrete
-            IsOrdinaryDefinition
+            IsConstant
             $ pure
             $ Clause
               (pure (Constraint, ConPat (HashSet.singleton classConstrName) pats))

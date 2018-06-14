@@ -173,7 +173,7 @@ addContext prog = liftVIX $ modify $ \s -> s
       = unions
       $ flip map (HashMap.toList prog) $ \(defName, (def, typ)) -> case def of
         DataDefinition {} -> mempty
-        Definition _ IsOrdinaryDefinition _ -> mempty
+        Definition _ IsConstant _ -> mempty
         Definition _ IsInstance _ -> do
           let (_, s) = pisView typ
           case appsView $ fromScope s of

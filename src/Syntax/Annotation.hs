@@ -51,10 +51,10 @@ instance Pretty Abstract where
   prettyM Concrete = "concrete"
 
 data IsInstance
-  = IsOrdinaryDefinition
+  = IsConstant
   | IsInstance
   deriving (Eq, Ord, Show)
 
 instance Pretty IsInstance where
-  prettyM IsOrdinaryDefinition = mempty
+  prettyM IsConstant = mempty
   prettyM IsInstance = "instance"

@@ -215,7 +215,7 @@ resolveDefinition
   :: Unscoped.Definition Unscoped.Expr
   -> ResolveNames (Name, (Scoped.PatDefinition (Scoped.Clause void Scoped.Expr PreName), Maybe (Scoped.Type PreName)))
 resolveDefinition (Unscoped.Definition name a clauses mtyp) = do
-  res <- Scoped.PatDefinition a IsOrdinaryDefinition <$> mapM resolveClause clauses
+  res <- Scoped.PatDefinition a IsConstant <$> mapM resolveClause clauses
   mtyp' <- forM mtyp resolveExpr
   return (name, (res, mtyp'))
 
