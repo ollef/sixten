@@ -11,7 +11,7 @@ import Data.Void
 import Analysis.Simplify
 import Inference.MetaVar
 import Syntax
-import Syntax.Abstract
+import Syntax.Core
 
 zonk :: MonadIO m => Expr MetaVar v -> m (Expr MetaVar v)
 zonk = hoistMetas $ \m es -> do

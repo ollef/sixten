@@ -12,7 +12,7 @@ import Inference.Monad
 import Inference.Normalise
 import MonadContext
 import Syntax
-import Syntax.Abstract
+import Syntax.Core
 import TypedFreeVar
 import Util
 import VIX
@@ -21,8 +21,8 @@ type MonadTypeOf m = (MonadIO m, MonadVIX m, MonadError Error m, MonadContext Fr
 
 typeOf
   :: MonadTypeOf m
-  => AbstractM
-  -> m AbstractM
+  => CoreM
+  -> m CoreM
 typeOf expr = case expr of
   Global v -> do
     (_, typ) <- definition v

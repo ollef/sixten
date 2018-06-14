@@ -36,9 +36,9 @@ import qualified Inference.Monad as TypeCheck
 import qualified Inference.TypeCheck.Definition as TypeCheck
 import Processor.Result
 import Syntax
-import qualified Syntax.Abstract as Abstract
-import qualified Syntax.Concrete.Scoped as Concrete
-import qualified Syntax.Concrete.Unscoped as Unscoped
+import qualified Syntax.Core as Core
+import qualified Syntax.Pre.Scoped as Pre
+import qualified Syntax.Pre.Unscoped as Unscoped
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Extracted as Extracted
@@ -53,16 +53,16 @@ process
 process = frontend backend
 
 frontend
-  :: ([(QName, Definition (Abstract.Expr Void) Void, Abstract.Expr Void Void)] -> VIX [k])
+  :: ([(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)] -> VIX [k])
   -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [k]
 frontend k
   = resolveProgramNames
-  >>=> prettyConcreteGroup "Concrete syntax" absurd
+  >>=> prettyPreGroup "Concrete syntax" absurd
 
   >=> declassifyGroup
 
-  >>=> prettyConcreteGroup "Declassified" absurd
+  >>=> prettyPreGroup "Declassified" absurd
   >=> typeCheckGroup
 
   >=> prettyTypedGroup 9 "Abstract syntax" absurd
@@ -74,7 +74,7 @@ frontend k
   >=> k
 
 backend
-  :: [(QName, Definition (Abstract.Expr Void) Void, Abstract.Expr Void Void)]
+  :: [(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)]
   -> VIX [Generate.GeneratedSubmodule]
 backend
   = slamGroup
@@ -114,13 +114,13 @@ infixr 1 >>=>
 (>>=>) :: Monad m => (a -> m [b]) -> (b -> m [c]) -> a -> m [c]
 (f >>=> g) a = concat <$> (f a >>= mapM g)
 
-prettyConcreteGroup
+prettyPreGroup
   :: (Pretty (e Doc), Monad e, Traversable e)
   => Text
   -> (v -> QName)
-  -> [(QName, SourceLoc, Concrete.TopLevelPatDefinition e v, Maybe (e v))]
-  -> VIX [(QName, SourceLoc, Concrete.TopLevelPatDefinition e v, Maybe (e v))]
-prettyConcreteGroup str f defs = do
+  -> [(QName, SourceLoc, Pre.TopLevelPatDefinition e v, Maybe (e v))]
+  -> VIX [(QName, SourceLoc, Pre.TopLevelPatDefinition e v, Maybe (e v))]
+prettyPreGroup str f defs = do
   let toDoc :: QName -> Doc
       toDoc = fromQName
   whenVerbose 10 $ do
@@ -143,8 +143,8 @@ prettyTypedGroup
   :: Int
   -> Text
   -> (v -> QName)
-  -> [(QName, Definition (Abstract.Expr Void) v, Abstract.Expr Void v)]
-  -> VIX [(QName, Definition (Abstract.Expr Void) v, Abstract.Expr Void v)]
+  -> [(QName, Definition (Core.Expr Void) v, Core.Expr Void v)]
+  -> VIX [(QName, Definition (Core.Expr Void) v, Core.Expr Void v)]
 prettyTypedGroup v str f defs = do
   whenVerbose v $ do
     VIX.log $ "----- " <> str <> " -----"
@@ -157,7 +157,7 @@ prettyTypedGroup v str f defs = do
       VIX.log
         $ showWide
         $ pretty
-        $ Abstract.prettyTypedDef (prettyM n) (fromQName . f <$> d) t'
+        $ Core.prettyTypedDef (prettyM n) (fromQName . f <$> d) t'
       VIX.log ""
   return defs
 
@@ -180,7 +180,7 @@ prettyGroup str f defs = do
 
 resolveProgramNames
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
-  -> VIX [[(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Maybe (Concrete.Type Void))]]
+  -> VIX [[(QName, SourceLoc, Pre.TopLevelPatDefinition Pre.Expr Void, Maybe (Pre.Type Void))]]
 resolveProgramNames modul = do
   res <- ResolveNames.resolveModule modul
   let defnames = HashSet.fromMap $ void $ moduleContents modul
@@ -198,8 +198,8 @@ resolveProgramNames modul = do
   return res
 
 declassifyGroup
-  :: [(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Maybe (Concrete.Type Void))]
-  -> VIX [[(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Maybe (Concrete.Type Void))]]
+  :: [(QName, SourceLoc, Pre.TopLevelPatDefinition Pre.Expr Void, Maybe (Pre.Type Void))]
+  -> VIX [[(QName, SourceLoc, Pre.TopLevelPatDefinition Pre.Expr Void, Maybe (Pre.Type Void))]]
 declassifyGroup xs = do
   results <- forM xs $
     \(name, loc, def, mtyp) -> Declassify.declassify name loc def mtyp
@@ -209,14 +209,14 @@ declassifyGroup xs = do
   return $ preResults' : [postResults' | not $ null postResults']
 
 typeCheckGroup
-  :: [(QName, SourceLoc, Concrete.TopLevelPatDefinition Concrete.Expr Void, Maybe (Concrete.Expr Void))]
-  -> VIX [(QName, Definition (Abstract.Expr Void) Void, Abstract.Expr Void Void)]
+  :: [(QName, SourceLoc, Pre.TopLevelPatDefinition Pre.Expr Void, Maybe (Pre.Expr Void))]
+  -> VIX [(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)]
 typeCheckGroup
   = fmap Vector.toList . TypeCheck.runInfer . TypeCheck.checkTopLevelRecursiveDefs . Vector.fromList
 
 simplifyGroup
-  :: [(QName, Definition (Abstract.Expr Void) Void, Abstract.Expr Void Void)]
-  -> VIX [(QName, Definition (Abstract.Expr Void) Void, Abstract.Expr Void Void)]
+  :: [(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)]
+  -> VIX [(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)]
 simplifyGroup defs = forM defs $ \(x, def, typ) ->
   return (x, simplifyDef globTerm def, simplifyExpr globTerm 0 typ)
   where
@@ -224,17 +224,17 @@ simplifyGroup defs = forM defs $ \(x, def, typ) ->
     names = HashSet.fromList $ fst3 <$> defs
 
 addGroupToContext
-  :: [(QName, Definition (Abstract.Expr Void) Void, Abstract.Expr Void Void)]
-  -> VIX [(QName, Definition (Abstract.Expr Void) Void, Abstract.Expr Void Void)]
+  :: [(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)]
+  -> VIX [(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)]
 addGroupToContext defs = do
   addContext $ HashMap.fromList $ (\(n, d, t) -> (n, (d, t))) <$> defs
   return defs
 
 slamGroup
-  :: [(QName, Definition (Abstract.Expr Void) Void, Abstract.Expr Void Void)]
+  :: [(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)]
   -> VIX [(QName, Anno SLambda.Expr Void)]
 slamGroup defs = forM defs $ \(x, d, _t) -> do
-  d' <- SLam.runSlam $ SLam.slamDef $ hoist (runIdentity . Abstract.hoistMetas absurd) $ vacuous d
+  d' <- SLam.runSlam $ SLam.slamDef $ hoist (runIdentity . Core.hoistMetas absurd) $ vacuous d
   d'' <- traverse (internalError . ("slamGroup" PP.<+>) . shower) d'
   return (x, d'')
 

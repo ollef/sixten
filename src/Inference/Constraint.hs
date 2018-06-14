@@ -21,7 +21,7 @@ import qualified Inference.Normalise as Normalise
 import Inference.Subtype
 import MonadContext
 import Syntax
-import Syntax.Abstract
+import Syntax.Core
 import TypedFreeVar
 import Util
 import VIX
@@ -69,8 +69,8 @@ elabUnsolvedConstraint m = inUpdatedContext (const mempty) $ do
     assertClosed = traverse $ \v -> error $ "elabUnsolvedConstraint assertClosed " <> shower (varId v)
 
 elabExpr
-  :: AbstractM
-  -> Infer AbstractM
+  :: CoreM
+  -> Infer CoreM
 elabExpr = bindMetas $ \m es -> do
   sol <- elabMetaVar m
   case sol of
@@ -79,7 +79,7 @@ elabExpr = bindMetas $ \m es -> do
 
 elabDef
   :: Definition (Expr MetaVar) FreeV
-  -> AbstractM
+  -> CoreM
   -> Infer (Definition (Expr MetaVar) FreeV)
 elabDef (Definition i a e) _
   = Definition i a <$> elabExpr e
@@ -101,8 +101,8 @@ elabDef (DataDefinition (DataDef constrs) rep) typ = do
   return $ DataDefinition (DataDef constrs') rep'
 
 elabRecursiveDefs
-  :: Vector (FreeV, Definition (Expr MetaVar) FreeV, AbstractM)
-  -> Infer (Vector (FreeV, Definition (Expr MetaVar) FreeV, AbstractM))
+  :: Vector (FreeV, Definition (Expr MetaVar) FreeV, CoreM)
+  -> Infer (Vector (FreeV, Definition (Expr MetaVar) FreeV, CoreM))
 elabRecursiveDefs defs
   = enterLevel
   $ forM defs $ \(v, def, typ) -> do
@@ -110,7 +110,7 @@ elabRecursiveDefs defs
     def' <- elabDef def typ'
     return (v, def', typ')
 
-mkConstraintVar :: AbstractM -> Infer AbstractM
+mkConstraintVar :: CoreM -> Infer CoreM
 mkConstraintVar = exists mempty Constraint
 
 mergeConstraintVars
@@ -155,14 +155,14 @@ mergeConstraintVars vars = do
     assertClosed :: Functor f => f FreeV -> f Void
     assertClosed = fmap $ error "mergeConstraintVars assertClosed"
 
-whnf :: AbstractM -> Infer AbstractM
+whnf :: CoreM -> Infer CoreM
 whnf = Normalise.whnf' Normalise.WhnfArgs
   { Normalise.expandTypeReps = False
   , Normalise.handleMetaVar = elabMetaVar
   }
   mempty
 
-whnfExpandingTypeReps :: AbstractM -> Infer AbstractM
+whnfExpandingTypeReps :: CoreM -> Infer CoreM
 whnfExpandingTypeReps = Normalise.whnf' Normalise.WhnfArgs
   { Normalise.expandTypeReps = True
   , Normalise.handleMetaVar = elabMetaVar

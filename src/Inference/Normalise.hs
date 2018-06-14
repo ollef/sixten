@@ -12,7 +12,7 @@ import Inference.MetaVar
 import Inference.Monad
 import MonadContext
 import Syntax
-import Syntax.Abstract
+import Syntax.Core
 import TypedFreeVar
 import TypeRep(TypeRep)
 import qualified TypeRep
@@ -25,8 +25,8 @@ type MonadNormalise m = (MonadIO m, MonadVIX m, MonadContext FreeV m, MonadError
 -- * Weak head normal forms
 whnf
   :: MonadNormalise m
-  => AbstractM
-  -> m AbstractM
+  => CoreM
+  -> m CoreM
 whnf = whnf' WhnfArgs
   { expandTypeReps = False
   , handleMetaVar = \m -> do
@@ -39,8 +39,8 @@ whnf = whnf' WhnfArgs
 
 whnfExpandingTypeReps
   :: MonadNormalise m
-  => AbstractM
-  -> m AbstractM
+  => CoreM
+  -> m CoreM
 whnfExpandingTypeReps = whnf' WhnfArgs
   { expandTypeReps = True
   , handleMetaVar = \m -> do
@@ -63,9 +63,9 @@ data WhnfArgs m = WhnfArgs
 whnf'
   :: MonadNormalise m
   => WhnfArgs m
-  -> [(Plicitness, AbstractM)] -- ^ Arguments to the expression
-  -> AbstractM -- ^ Expression to normalise
-  -> m AbstractM
+  -> [(Plicitness, CoreM)] -- ^ Arguments to the expression
+  -> CoreM -- ^ Expression to normalise
+  -> m CoreM
 whnf' args exprs expr = indentLog $ do
   logMeta 40 "whnf e" expr
   res <- go expr exprs
@@ -121,8 +121,8 @@ whnf' args exprs expr = indentLog $ do
 
 normalise
   :: MonadNormalise m
-  => AbstractM
-  -> m AbstractM
+  => CoreM
+  -> m CoreM
 normalise expr = do
   logMeta 40 "normalise e" expr
   res <- indentLog $ case expr of
@@ -260,7 +260,7 @@ instantiateLetM
   :: (MonadFix m, MonadIO m, MonadVIX m)
   => LetRec (Expr MetaVar) FreeV
   -> Scope LetVar (Expr MetaVar) FreeV
-  -> m AbstractM
+  -> m CoreM
 instantiateLetM ds scope = mdo
   vs <- forMLet ds $ \h s t -> letVar h Explicit (instantiateLet pure vs s) t
   return $ instantiateLet pure vs scope

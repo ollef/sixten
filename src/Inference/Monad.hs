@@ -10,18 +10,18 @@ import Inference.MetaVar
 import MonadContext
 import MonadFresh
 import Syntax
-import qualified Syntax.Abstract as Abstract
-import qualified Syntax.Concrete.Scoped as Concrete
+import qualified Syntax.Core as Core
+import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import Util
 import Util.Tsil(Tsil)
 import VIX
 
-type ConcreteM = Concrete.Expr FreeV
-type AbstractM = Abstract.Expr MetaVar FreeV
+type PreM = Pre.Expr FreeV
+type CoreM = Core.Expr MetaVar FreeV
 
-type Polytype = AbstractM
-type Rhotype = AbstractM -- No top-level foralls
+type Polytype = CoreM
+type Rhotype = CoreM -- No top-level foralls
 
 newtype InstUntil = InstUntil Plicitness
   deriving (Eq, Ord, Show)
@@ -70,22 +70,22 @@ enterLevel (InferMonad m) = InferMonad $ local (\e -> e { inferLevel = inferLeve
 exists
   :: NameHint
   -> Plicitness
-  -> AbstractM
-  -> Infer AbstractM
+  -> CoreM
+  -> Infer CoreM
 exists hint d typ = do
   locals <- toVector <$> localVars
   let tele = varTelescope locals
       abstr = teleAbstraction locals
-      typ' = Abstract.pis tele $ abstract abstr typ
+      typ' = Core.pis tele $ abstract abstr typ
   logMeta 30 "exists typ" typ
   typ'' <- traverse (error "exists not closed") typ'
   loc <- currentLocation
   v <- existsAtLevel hint d typ'' (teleLength tele) loc =<< level
-  return $ Abstract.Meta v $ (\fv -> (varData fv, pure fv)) <$> locals
+  return $ Core.Meta v $ (\fv -> (varData fv, pure fv)) <$> locals
 
 existsType
   :: NameHint
-  -> Infer AbstractM
+  -> Infer CoreM
 existsType n = exists n Explicit Builtin.Type
 
 getTouchable :: Infer (MetaVar -> Bool)

@@ -15,10 +15,10 @@ import qualified Data.Vector as Vector
 import qualified Builtin.Names as Builtin
 import qualified Frontend.Declassify as Declassify
 import Syntax
-import qualified Syntax.Concrete.Literal as Literal
-import Syntax.Concrete.Pattern
-import qualified Syntax.Concrete.Scoped as Scoped
-import qualified Syntax.Concrete.Unscoped as Unscoped
+import qualified Syntax.Pre.Literal as Literal
+import Syntax.Pre.Pattern
+import qualified Syntax.Pre.Scoped as Scoped
+import qualified Syntax.Pre.Unscoped as Unscoped
 import Util
 import Util.MultiHashMap(MultiHashMap)
 import qualified Util.MultiHashMap as MultiHashMap

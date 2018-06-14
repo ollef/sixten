@@ -70,16 +70,16 @@ executable sixten
                        Processor.Files
                        Processor.Result
                        Syntax
-                       Syntax.Abstract
-                       Syntax.Abstract.Pattern
+                       Syntax.Core
+                       Syntax.Core.Pattern
                        Syntax.Annotation
                        Syntax.Branches
                        Syntax.Class
-                       Syntax.Concrete.Definition
-                       Syntax.Concrete.Literal
-                       Syntax.Concrete.Pattern
-                       Syntax.Concrete.Scoped
-                       Syntax.Concrete.Unscoped
+                       Syntax.Pre.Definition
+                       Syntax.Pre.Literal
+                       Syntax.Pre.Pattern
+                       Syntax.Pre.Scoped
+                       Syntax.Pre.Unscoped
                        Syntax.Data
                        Syntax.Definition
                        Syntax.Direction

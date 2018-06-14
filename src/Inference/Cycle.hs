@@ -19,13 +19,13 @@ import Inference.MetaVar
 import Inference.MetaVar.Zonk
 import Inference.Monad
 import Syntax
-import Syntax.Abstract
+import Syntax.Core
 import TypedFreeVar
 import Util
 import Util.TopoSort
 
 detectTypeRepCycles
-  :: Vector (SourceLoc, (FreeV, Definition (Expr MetaVar) FreeV, AbstractM))
+  :: Vector (SourceLoc, (FreeV, Definition (Expr MetaVar) FreeV, CoreM))
   -> Infer ()
 detectTypeRepCycles defs = do
   reps <- traverse
@@ -85,7 +85,7 @@ detectTypeRepCycles defs = do
 -- We also peel off any lets at the top-level of all definitions and include
 -- them in the analysis.
 detectDefCycles
-  :: Vector (SourceLoc, (FreeV, Definition (Expr MetaVar) FreeV, AbstractM))
+  :: Vector (SourceLoc, (FreeV, Definition (Expr MetaVar) FreeV, CoreM))
   -> Infer ()
 detectDefCycles defs = do
   (peeledDefExprs, locMap) <- peelLets [(loc, v, e) | (loc, (v, Definition _ _ e, _)) <- Vector.toList defs]
@@ -116,13 +116,13 @@ detectDefCycles defs = do
                   ]
 
 peelLets
-  :: [(SourceLoc, FreeV, AbstractM)]
-  -> Infer ([(FreeV, AbstractM)], HashMap FreeV SourceLoc)
+  :: [(SourceLoc, FreeV, CoreM)]
+  -> Infer ([(FreeV, CoreM)], HashMap FreeV SourceLoc)
 peelLets = fmap fold . mapM go
   where
     go
-     :: (SourceLoc, FreeV, AbstractM)
-     -> Infer ([(FreeV, AbstractM)], HashMap FreeV SourceLoc)
+     :: (SourceLoc, FreeV, CoreM)
+     -> Infer ([(FreeV, CoreM)], HashMap FreeV SourceLoc)
     go (loc, v, e) = do
       e' <- zonk e
       case e' of

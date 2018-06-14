@@ -15,7 +15,7 @@ import Inference.TypeOf
 import MonadContext
 import MonadFresh
 import Syntax
-import qualified Syntax.Abstract as Abstract
+import qualified Syntax.Core as Core
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.SLambda as SLambda
 import TypedFreeVar
@@ -30,49 +30,49 @@ instance MonadContext FreeV SLam where
   localVars = return mempty
   inUpdatedContext _ m = m
 
-slamAnno :: AbstractM -> SLam (Anno SLambda.Expr FreeV)
+slamAnno :: CoreM -> SLam (Anno SLambda.Expr FreeV)
 slamAnno e = Anno <$> slam e <*> (slam =<< whnfExpandingTypeReps =<< typeOf e)
 
-slam :: AbstractM -> SLam (SLambda.Expr FreeV)
+slam :: CoreM -> SLam (SLambda.Expr FreeV)
 slam expr = do
   logMeta 20 "slam expr" expr
   res <- indentLog $ case expr of
-    Abstract.Var v -> return $ SLambda.Var v
-    Abstract.Meta _ _ -> error "slam Meta"
-    Abstract.Global g -> return $ SLambda.Global g
-    Abstract.Lit l -> return $ SLambda.Lit l
-    Abstract.Pi {} -> do
-      t <- whnfExpandingTypeReps $ Abstract.Global Builtin.PiTypeName
+    Core.Var v -> return $ SLambda.Var v
+    Core.Meta _ _ -> error "slam Meta"
+    Core.Global g -> return $ SLambda.Global g
+    Core.Lit l -> return $ SLambda.Lit l
+    Core.Pi {} -> do
+      t <- whnfExpandingTypeReps $ Core.Global Builtin.PiTypeName
       slam t
-    Abstract.Lam h p t s -> do
+    Core.Lam h p t s -> do
       t' <- whnfExpandingTypeReps t
       v <- freeVar h p t'
       e <- slamAnno $ instantiate1 (pure v) s
       rep <- slam t'
       return $ SLambda.Lam h rep $ abstract1Anno v e
-    (Abstract.appsView -> (Abstract.Con qc@(QConstr typeName _), es)) -> do
+    (Core.appsView -> (Core.Con qc@(QConstr typeName _), es)) -> do
       (_, typeType) <- definition typeName
       n <- constrArity qc
       case compare (length es) n of
         GT -> internalError $ "slam: too many args for constructor:" PP.<+> shower qc
         EQ -> do
-          let numParams = teleLength $ Abstract.telescope typeType
+          let numParams = teleLength $ Core.telescope typeType
               es' = drop numParams es
           SLambda.Con qc <$> mapM slamAnno (Vector.fromList $ snd <$> es')
         LT -> do
           conType <- qconstructor qc
-          let Just appliedConType = Abstract.typeApps conType es
-              tele = Abstract.telescope appliedConType
+          let Just appliedConType = Core.typeApps conType es
+              tele = Core.telescope appliedConType
           slam
-            $ Abstract.lams tele
+            $ Core.lams tele
             $ Scope
-            $ Abstract.apps (Abstract.Con qc)
+            $ Core.apps (Core.Con qc)
             $ Vector.fromList (fmap (pure . pure) <$> es)
             <> iforTele tele (\i _ a _ -> (a, pure $ B $ TeleVar i))
-    Abstract.Con _qc -> internalError "slam impossible"
-    Abstract.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamAnno e2
-    Abstract.Case e brs _retType -> SLambda.Case <$> slamAnno e <*> slamBranches brs
-    Abstract.Let ds scope -> do
+    Core.Con _qc -> internalError "slam impossible"
+    Core.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamAnno e2
+    Core.Case e brs _retType -> SLambda.Case <$> slamAnno e <*> slamBranches brs
+    Core.Let ds scope -> do
       vs <- forMLet ds $ \h _ t -> freeVar h Explicit t
       let abstr = letAbstraction vs
       ds' <- fmap LetRec $ forMLet ds $ \h s t -> do
@@ -82,7 +82,7 @@ slam expr = do
       body <- slam $ instantiateLet pure vs scope
       let scope' = abstract abstr body
       return $ SLambda.Let ds' scope'
-    Abstract.ExternCode c retType -> do
+    Core.ExternCode c retType -> do
         retType' <- slam =<< whnfExpandingTypeReps retType
         c' <- slamExtern c
         return $ SLambda.ExternCode c' retType'
@@ -90,7 +90,7 @@ slam expr = do
   return res
 
 slamBranches
-  :: Branches Plicitness (Abstract.Expr MetaVar) FreeV
+  :: Branches Plicitness (Core.Expr MetaVar) FreeV
   -> SLam (Branches () SLambda.Expr FreeV)
 slamBranches (ConBranches cbrs) = do
   -- TODO
@@ -118,7 +118,7 @@ slamBranches (LitBranches lbrs d)
     <*> slam d
 
 slamExtern
-  :: Extern AbstractM
+  :: Extern CoreM
   -> SLam (Extern (Anno SLambda.Expr FreeV))
 slamExtern (Extern lang parts)
   = fmap (Extern lang) $ forM parts $ \part -> case part of
@@ -128,7 +128,7 @@ slamExtern (Extern lang parts)
     TargetMacroPart m -> return $ TargetMacroPart m
 
 slamDef
-  :: Definition (Abstract.Expr MetaVar) FreeV
+  :: Definition (Core.Expr MetaVar) FreeV
   -> SLam (Anno SLambda.Expr FreeV)
 slamDef (Definition _ _ e) = slamAnno e
 slamDef (DataDefinition _ e) = slamAnno e

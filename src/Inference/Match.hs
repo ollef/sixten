@@ -21,21 +21,21 @@ import Inference.Monad
 import Inference.TypeOf
 import MonadContext
 import Syntax
-import Syntax.Abstract
-import Syntax.Abstract.Pattern
+import Syntax.Core
+import Syntax.Core.Pattern
 import TypedFreeVar
 import Util
 import VIX
 
-type PatM = Pat AbstractM FreeV
+type PatM = Pat CoreM FreeV
 -- | An expression possibly containing a pattern-match failure variable
-type ExprF = AbstractM
+type ExprF = CoreM
 type Clause =
   ( [PatM]
   , ExprF
   )
 
-fatBar :: FreeV -> AbstractM -> AbstractM -> AbstractM
+fatBar :: FreeV -> CoreM -> CoreM -> CoreM
 fatBar failVar e e' = case filter (== failVar) $ toList e of
   _ | Simplify.duplicable e' -> dup
   [] -> e
@@ -51,10 +51,10 @@ fatBar failVar e e' = case filter (== failVar) $ toList e of
     dup = substitute failVar e' e
 
 matchSingle
-  :: AbstractM
+  :: CoreM
   -> PatM
-  -> AbstractM
-  -> AbstractM
+  -> CoreM
+  -> CoreM
   -> Infer ExprF
 matchSingle expr pat innerExpr retType = do
   failVar <- forall "fail" Explicit retType
@@ -62,9 +62,9 @@ matchSingle expr pat innerExpr retType = do
   return $ substitute failVar (Builtin.Fail retType) result
 
 matchCase
-  :: AbstractM
-  -> [(PatM, AbstractM)]
-  -> AbstractM
+  :: CoreM
+  -> [(PatM, CoreM)]
+  -> CoreM
   -> Infer ExprF
 matchCase expr pats retType = do
   failVar <- forall "fail" Explicit retType
@@ -72,9 +72,9 @@ matchCase expr pats retType = do
   return $ substitute failVar (Builtin.Fail retType) result
 
 matchClauses
-  :: [AbstractM]
-  -> [([PatM], AbstractM)]
-  -> AbstractM
+  :: [CoreM]
+  -> [([PatM], CoreM)]
+  -> CoreM
   -> Infer ExprF
 matchClauses exprs pats retType = do
   failVar <- forall "fail" Explicit retType
@@ -84,7 +84,7 @@ matchClauses exprs pats retType = do
 type Match
   = FreeV -- ^ Failure variable
   -> ExprF -- ^ Return type
-  -> [AbstractM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
+  -> [CoreM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
   -> [Clause] -- ^ Clauses
   -> ExprF -- ^ The continuation for pattern match failure
   -> Infer ExprF
@@ -92,7 +92,7 @@ type Match
 type NonEmptyMatch
   = FreeV -- ^ Failure variable
   -> ExprF -- ^ Return type
-  -> [AbstractM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
+  -> [CoreM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
   -> NonEmpty Clause -- ^ Clauses
   -> ExprF -- ^ The continuation for pattern match failure
   -> Infer ExprF
@@ -126,7 +126,7 @@ matchMix failVar retType (expr:exprs) clauses@(clause NonEmpty.:| _) expr0
       ViewPatType _ -> matchView
 matchMix _ _ _ _ _ = error "matchMix"
 
-matchCon :: AbstractM -> NonEmptyMatch
+matchCon :: CoreM -> NonEmptyMatch
 matchCon expr failVar retType exprs clauses expr0 = do
   let (QConstr typeName _) = firstCon $ NonEmpty.head clauses
   cs <- constructors typeName
@@ -162,11 +162,11 @@ matchCon expr failVar retType exprs clauses expr0 = do
 
 conPatArgs
   :: QConstr
-  -> Vector (Plicitness, AbstractM)
-  -> Infer (Vector (Plicitness, PatM, AbstractM), Vector FreeV)
+  -> Vector (Plicitness, CoreM)
+  -> Infer (Vector (Plicitness, PatM, CoreM), Vector FreeV)
 conPatArgs c params = do
   ctype <- qconstructor c
-  let (tele, _) = pisView (ctype :: AbstractM)
+  let (tele, _) = pisView (ctype :: CoreM)
       tele' = instantiatePrefix (snd <$> params) tele
   vs <- forTeleWithPrefixM tele' $ \h p s vs ->
     forall h p $ instantiateTele pure vs s
@@ -176,7 +176,7 @@ conPatArgs c params = do
 
 patternTelescope
   :: Vector FreeV
-  -> Vector (a, Pat typ b, AbstractM)
+  -> Vector (a, Pat typ b, CoreM)
   -> Infer (Telescope a (Expr MetaVar) FreeV)
 patternTelescope ys ps = Telescope <$> mapM go ps
   where
@@ -185,7 +185,7 @@ patternTelescope ys ps = Telescope <$> mapM go ps
       let s = abstract (teleAbstraction ys) e
       return $ TeleArg (patternHint pat) p s
 
-matchLit :: AbstractM -> NonEmptyMatch
+matchLit :: CoreM -> NonEmptyMatch
 matchLit expr failVar retType exprs clauses expr0 = do
   let ls = NonEmpty.nub $ (lit . firstPattern) <$> clauses
   lbrs <- forM ls $ \l -> do
@@ -197,7 +197,7 @@ matchLit expr failVar retType exprs clauses expr0 = do
     lit (LitPat l) = l
     lit _ = error "match lit"
 
-matchVar :: AbstractM -> NonEmptyMatch
+matchVar :: CoreM -> NonEmptyMatch
 matchVar expr failVar retType exprs clauses expr0 = do
   clauses' <- traverse go clauses
   match failVar retType exprs (NonEmpty.toList clauses') expr0
@@ -211,7 +211,7 @@ matchVar expr failVar retType exprs clauses expr0 = do
       return (ps', substitute y expr e')
     go _ = error "match var"
 
-matchView :: AbstractM -> NonEmptyMatch
+matchView :: CoreM -> NonEmptyMatch
 matchView expr failVar retType exprs clauses
   = match failVar retType (App f Explicit expr : exprs) $ NonEmpty.toList $ deview <$> clauses
   where

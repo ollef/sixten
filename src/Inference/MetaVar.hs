@@ -20,7 +20,7 @@ import Error
 import MonadContext
 import MonadFresh
 import Syntax
-import Syntax.Abstract
+import Syntax.Core
 import TypedFreeVar
 import Util
 import VIX

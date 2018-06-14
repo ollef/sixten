@@ -11,8 +11,8 @@ import Inference.Monad
 import Inference.Unify
 import MonadContext
 import Syntax
-import Syntax.Abstract as Abstract
-import qualified Syntax.Concrete.Scoped as Concrete
+import Syntax.Core as Core
+import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import Util
 import Util.Tsil
@@ -28,7 +28,7 @@ import VIX
 skolemise
   :: Polytype
   -> InstUntil
-  -> (Rhotype -> (AbstractM -> AbstractM) -> Infer a)
+  -> (Rhotype -> (CoreM -> CoreM) -> Infer a)
   -> Infer a
 skolemise typ instUntil k = do
   typ' <- whnf typ
@@ -37,7 +37,7 @@ skolemise typ instUntil k = do
 skolemise'
   :: Polytype
   -> InstUntil
-  -> (Rhotype -> (AbstractM -> AbstractM) -> Infer a)
+  -> (Rhotype -> (CoreM -> CoreM) -> Infer a)
   -> Infer a
 skolemise' (Pi h p t resScope) instUntil k
   | shouldInst p instUntil = do
@@ -48,14 +48,14 @@ skolemise' (Pi h p t resScope) instUntil k
       k resType' f'
 skolemise' typ _ k = k typ id
 
-instUntilExpr :: Concrete.Expr v -> InstUntil
-instUntilExpr (Concrete.Lam p _ _) = InstUntil p
+instUntilExpr :: Pre.Expr v -> InstUntil
+instUntilExpr (Pre.Lam p _ _) = InstUntil p
 instUntilExpr _ = InstUntil Explicit
 
 --------------------------------------------------------------------------------
 -- Subtyping/subsumption
 -- | subtype t1 t2 = f => f : t1 -> t2
-subtype :: Polytype -> Polytype -> Infer (AbstractM -> AbstractM)
+subtype :: Polytype -> Polytype -> Infer (CoreM -> CoreM)
 subtype typ1 typ2 = do
   logMeta 30 "subtype t1" typ1
   logMeta 30 "        t2" typ2
@@ -64,7 +64,7 @@ subtype typ1 typ2 = do
     typ2' <- whnf typ2
     subtype' typ1' typ2'
 
-subtype' :: Polytype -> Polytype -> Infer (AbstractM -> AbstractM)
+subtype' :: Polytype -> Polytype -> Infer (CoreM -> CoreM)
 subtype' (Pi h1 p1 argType1 retScope1) (Pi h2 p2 argType2 retScope2)
   | p1 == p2 = do
     let h = h1 <> h2
@@ -83,7 +83,7 @@ subtype' typ1 typ2 =
     f2 <- subtypeRho typ1 rho $ InstUntil Explicit
     return $ f1 . f2
 
-subtypeRho :: Polytype -> Rhotype -> InstUntil -> Infer (AbstractM -> AbstractM)
+subtypeRho :: Polytype -> Rhotype -> InstUntil -> Infer (CoreM -> CoreM)
 subtypeRho typ1 typ2 instUntil = do
   logMeta 30 "subtypeRho t1" typ1
   logMeta 30 "           t2" typ2
@@ -92,7 +92,7 @@ subtypeRho typ1 typ2 instUntil = do
     typ2' <- whnf typ2
     subtypeRho' typ1' typ2' instUntil
 
-subtypeRho' :: Polytype -> Rhotype -> InstUntil -> Infer (AbstractM -> AbstractM)
+subtypeRho' :: Polytype -> Rhotype -> InstUntil -> Infer (CoreM -> CoreM)
 subtypeRho' typ1 typ2 _ | typ1 == typ2 = return id
 subtypeRho' (Pi h1 p1 argType1 retScope1) (Pi h2 p2 argType2 retScope2) _
   | p1 == p2 = do
@@ -122,7 +122,7 @@ funSubtypes
   -> Infer
     ( Telescope Plicitness (Expr MetaVar) FreeV
     , Scope TeleVar (Expr MetaVar) FreeV
-    , Vector (AbstractM -> AbstractM)
+    , Vector (CoreM -> CoreM)
     )
 funSubtypes startType plics = go plics startType mempty mempty mempty
   where
@@ -153,7 +153,7 @@ funSubtypes startType plics = go plics startType mempty mempty mempty
 funSubtype
   :: Rhotype
   -> Plicitness
-  -> Infer (NameHint, Rhotype, Scope1 (Expr MetaVar) FreeV, AbstractM -> AbstractM)
+  -> Infer (NameHint, Rhotype, Scope1 (Expr MetaVar) FreeV, CoreM -> CoreM)
 funSubtype typ p = do
   typ' <- whnf typ
   funSubtype' typ' p
@@ -161,7 +161,7 @@ funSubtype typ p = do
 funSubtype'
   :: Rhotype
   -> Plicitness
-  -> Infer (NameHint, Rhotype, Scope1 (Expr MetaVar) FreeV, AbstractM -> AbstractM)
+  -> Infer (NameHint, Rhotype, Scope1 (Expr MetaVar) FreeV, CoreM -> CoreM)
 funSubtype' (Pi h p t s) p' | p == p' = return (h, t, s, id)
 funSubtype' typ p = do
   argType <- existsType mempty
@@ -174,7 +174,7 @@ funSubtype' typ p = do
 subtypeFun
   :: Rhotype
   -> Plicitness
-  -> Infer (Rhotype, Scope1 (Expr MetaVar) FreeV, AbstractM -> AbstractM)
+  -> Infer (Rhotype, Scope1 (Expr MetaVar) FreeV, CoreM -> CoreM)
 subtypeFun typ p = do
   typ' <- whnf typ
   subtypeFun' typ' p
@@ -182,7 +182,7 @@ subtypeFun typ p = do
 subtypeFun'
   :: Rhotype
   -> Plicitness
-  -> Infer (Rhotype, Scope1 (Expr MetaVar) FreeV, AbstractM -> AbstractM)
+  -> Infer (Rhotype, Scope1 (Expr MetaVar) FreeV, CoreM -> CoreM)
 subtypeFun' (Pi _ p t s) p' | p == p' = return (t, s, id)
 subtypeFun' typ p = do
   argType <- existsType mempty

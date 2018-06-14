@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Syntax.Concrete.Literal where
+module Syntax.Pre.Literal where
 
 import Data.ByteString as ByteString
 import Data.Text(Text)
@@ -7,8 +7,8 @@ import Data.Text.Encoding as Encoding
 import qualified Data.Vector as Vector
 
 import Syntax
-import Syntax.Concrete.Pattern
-import Syntax.Concrete.Unscoped as Unscoped
+import Syntax.Pre.Pattern
+import Syntax.Pre.Unscoped as Unscoped
 
 import qualified Builtin.Names as Builtin
 

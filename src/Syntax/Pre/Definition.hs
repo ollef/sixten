@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, GADTs, OverloadedStrings, TemplateHaskell #-}
-module Syntax.Concrete.Definition where
+module Syntax.Pre.Definition where
 
 import Control.Monad
 import Data.Bifunctor
@@ -15,7 +15,7 @@ import Data.Vector(Vector)
 import Data.Void
 
 import Syntax
-import Syntax.Concrete.Pattern
+import Syntax.Pre.Pattern
 import Util
 
 data TopLevelPatDefinition expr v

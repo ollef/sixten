@@ -21,16 +21,16 @@ import Inference.Subtype
 import Inference.TypeOf
 import MonadContext
 import Syntax
-import qualified Syntax.Abstract as Abstract
-import Syntax.Abstract.Pattern as Abstract
-import qualified Syntax.Concrete.Scoped as Concrete
+import qualified Syntax.Core as Core
+import Syntax.Core.Pattern as Core
+import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import Util
 import VIX
 
 data ExpectedPat
-  = InferPat (STRef RealWorld AbstractM)
-  | CheckPat AbstractM
+  = InferPat (STRef RealWorld CoreM)
+  | CheckPat CoreM
 
 data BindingType = WildcardBinding | VarBinding
   deriving (Eq, Show)
@@ -48,17 +48,17 @@ withPatVars vs = withVars $ snd <$> vs
 
 checkPat
   :: Plicitness
-  -> Concrete.Pat (HashSet QConstr) (PatternScope Concrete.Expr FreeV) ()
+  -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
   -> BoundPatVars
   -> Polytype
-  -> Infer (Abstract.Pat AbstractM FreeV, AbstractM, PatVars)
+  -> Infer (Core.Pat CoreM FreeV, CoreM, PatVars)
 checkPat p pat vs expectedType = tcPat p pat vs $ CheckPat expectedType
 
 inferPat
   :: Plicitness
-  -> Concrete.Pat (HashSet QConstr) (PatternScope Concrete.Expr FreeV) ()
+  -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
   -> BoundPatVars
-  -> Infer (Abstract.Pat AbstractM FreeV, AbstractM, PatVars, Polytype)
+  -> Infer (Core.Pat CoreM FreeV, CoreM, PatVars, Polytype)
 inferPat p pat vs = do
   ref <- liftST $ newSTRef $ error "inferPat: empty result"
   (pat', patExpr, vs') <- tcPat p pat vs $ InferPat ref
@@ -66,10 +66,10 @@ inferPat p pat vs = do
   return (pat', patExpr, vs', t)
 
 tcPats
-  :: Vector (Plicitness, Concrete.Pat (HashSet QConstr) (PatternScope Concrete.Expr FreeV) ())
+  :: Vector (Plicitness, Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ())
   -> BoundPatVars
-  -> Telescope Plicitness (Abstract.Expr MetaVar) FreeV
-  -> Infer (Vector (Abstract.Pat AbstractM FreeV, AbstractM, AbstractM), PatVars)
+  -> Telescope Plicitness (Core.Expr MetaVar) FreeV
+  -> Infer (Vector (Core.Pat CoreM FreeV, CoreM, CoreM), PatVars)
 tcPats pats vs tele = do
   unless (Vector.length pats == teleLength tele)
     $ internalError "tcPats length mismatch"
@@ -89,10 +89,10 @@ tcPats pats vs tele = do
 
 tcPat
   :: Plicitness
-  -> Concrete.Pat (HashSet QConstr) (PatternScope Concrete.Expr FreeV) ()
+  -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
   -> BoundPatVars
   -> ExpectedPat
-  -> Infer (Abstract.Pat AbstractM FreeV, AbstractM, PatVars)
+  -> Infer (Core.Pat CoreM FreeV, CoreM, PatVars)
 tcPat p pat vs expected = do
   whenVerbose 20 $ do
     let shownPat = first (pretty . fmap pretty . instantiatePattern pure vs) pat
@@ -107,12 +107,12 @@ tcPat p pat vs expected = do
 
 tcPat'
   :: Plicitness
-  -> Concrete.Pat (HashSet QConstr) (PatternScope Concrete.Expr FreeV) ()
+  -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
   -> BoundPatVars
   -> ExpectedPat
-  -> Infer (Abstract.Pat AbstractM FreeV, AbstractM, PatVars)
+  -> Infer (Core.Pat CoreM FreeV, CoreM, PatVars)
 tcPat' p pat vs expected = case pat of
-  Concrete.VarPat h () -> do
+  Pre.VarPat h () -> do
     expectedType <- case expected of
       InferPat ref -> do
         expectedType <- existsType h
@@ -120,8 +120,8 @@ tcPat' p pat vs expected = case pat of
         return expectedType
       CheckPat expectedType -> return expectedType
     v <- forall h p expectedType
-    return (Abstract.VarPat h v, pure v, pure (VarBinding, v))
-  Concrete.WildcardPat -> do
+    return (Core.VarPat h v, pure v, pure (VarBinding, v))
+  Pre.WildcardPat -> do
     expectedType <- case expected of
       InferPat ref -> do
         expectedType <- existsType "_"
@@ -129,24 +129,24 @@ tcPat' p pat vs expected = case pat of
         return expectedType
       CheckPat expectedType -> return expectedType
     v <- forall "_" p expectedType
-    return (Abstract.VarPat "_" v, pure v, pure (WildcardBinding, v))
-  Concrete.LitPat lit -> do
+    return (Core.VarPat "_" v, pure v, pure (WildcardBinding, v))
+  Pre.LitPat lit -> do
     (pat', expr) <- instPatExpected
       expected
       (typeOfLiteral lit)
       (LitPat lit)
-      (Abstract.Lit lit)
+      (Core.Lit lit)
     return (pat', expr, mempty)
-  Concrete.ConPat cons pats -> do
+  Pre.ConPat cons pats -> do
     qc@(QConstr typeName _) <- resolveConstr cons $ case expected of
       CheckPat expectedType -> Just expectedType
       InferPat _ -> Nothing
     (_, typeType) <- definition typeName
     conType <- qconstructor qc
 
-    let paramsTele = Abstract.telescope typeType
+    let paramsTele = Core.telescope typeType
         numParams = teleLength paramsTele
-        (tele, retScope) = Abstract.pisView conType
+        (tele, retScope) = Core.pisView conType
         argPlics = Vector.drop numParams $ teleAnnotations tele
 
     pats' <- Vector.fromList <$> exactlyEqualisePats (Vector.toList argPlics) (Vector.toList pats)
@@ -163,28 +163,28 @@ tcPat' p pat vs expected = case pat of
         pats''' = Vector.zip3 argPlics (fst3 <$> pats'') argTypes
         params = Vector.zip (teleAnnotations paramsTele) paramVars
         iparams = first implicitise <$> params
-        patExpr = Abstract.apps (Abstract.Con qc) $ iparams <> Vector.zip argPlics argExprs
+        patExpr = Core.apps (Core.Con qc) $ iparams <> Vector.zip argPlics argExprs
 
         retType = instantiateTele id (paramVars <|> argExprs) retScope
 
-    (pat', patExpr') <- instPatExpected expected retType (Abstract.ConPat qc params pats''') patExpr
+    (pat', patExpr') <- instPatExpected expected retType (Core.ConPat qc params pats''') patExpr
 
     return (pat', patExpr', vs')
-  Concrete.AnnoPat pat' s -> do
+  Pre.AnnoPat pat' s -> do
     let patType = instantiatePattern pure vs s
     patType' <- checkPoly patType Builtin.Type
     (pat'', patExpr, vs') <- checkPat p pat' vs patType'
     (pat''', patExpr') <- instPatExpected expected patType' pat'' patExpr
     return (pat''', patExpr', vs')
-  Concrete.ViewPat _ _ -> internalError "tcPat ViewPat undefined TODO"
-  Concrete.PatLoc loc pat' -> located loc $ tcPat' p pat' vs expected
+  Pre.ViewPat _ _ -> internalError "tcPat ViewPat undefined TODO"
+  Pre.PatLoc loc pat' -> located loc $ tcPat' p pat' vs expected
 
 instPatExpected
   :: ExpectedPat
   -> Polytype -- ^ patType
-  -> Abstract.Pat AbstractM FreeV -- ^ pat
-  -> AbstractM -- ^ :: patType
-  -> Infer (Abstract.Pat AbstractM FreeV, AbstractM) -- ^ (pat :: expectedType, :: expectedType)
+  -> Core.Pat CoreM FreeV -- ^ pat
+  -> CoreM -- ^ :: patType
+  -> Infer (Core.Pat CoreM FreeV, CoreM) -- ^ (pat :: expectedType, :: expectedType)
 instPatExpected (CheckPat expectedType) patType pat patExpr = do
   f <- subtype expectedType patType
   viewPat expectedType pat patExpr f
@@ -193,33 +193,33 @@ instPatExpected (InferPat ref) patType pat patExpr = do
   return (pat, patExpr)
 
 viewPat
-  :: AbstractM -- ^ expectedType
-  -> Abstract.Pat AbstractM FreeV -- ^ pat
-  -> AbstractM -- ^ :: patType
-  -> (AbstractM -> AbstractM) -- ^ expectedType -> patType
-  -> Infer (Abstract.Pat AbstractM FreeV, AbstractM) -- ^ (expectedType, :: expectedType)
+  :: CoreM -- ^ expectedType
+  -> Core.Pat CoreM FreeV -- ^ pat
+  -> CoreM -- ^ :: patType
+  -> (CoreM -> CoreM) -- ^ expectedType -> patType
+  -> Infer (Core.Pat CoreM FreeV, CoreM) -- ^ (expectedType, :: expectedType)
 viewPat expectedType pat patExpr f = do
   x <- forall mempty Explicit expectedType
   let fx = f $ pure x
   if fx == pure x then
     return (pat, patExpr)
   else do
-    let fExpr = Abstract.Lam mempty Explicit expectedType $ abstract1 x fx
-    return (Abstract.ViewPat fExpr pat, pure x)
+    let fExpr = Core.Lam mempty Explicit expectedType $ abstract1 x fx
+    return (Core.ViewPat fExpr pat, pure x)
 
 patToTerm
-  :: Abstract.Pat AbstractM FreeV
-  -> Infer (Maybe AbstractM)
+  :: Core.Pat CoreM FreeV
+  -> Infer (Maybe CoreM)
 patToTerm pat = case pat of
-  Abstract.VarPat _ v -> return $ Just $ Abstract.Var v
-  Abstract.ConPat qc params pats -> do
+  Core.VarPat _ v -> return $ Just $ Core.Var v
+  Core.ConPat qc params pats -> do
     mterms <- mapM (\(p, pat', _typ') -> fmap ((,) p) <$> patToTerm pat') pats
     case sequence mterms of
       Nothing -> return Nothing
       Just terms -> return $ Just $
-        Abstract.apps (Abstract.Con qc) $ params <> terms
-  Abstract.LitPat l -> return $ Just $ Abstract.Lit l
-  Abstract.ViewPat{} -> return Nothing
+        Core.apps (Core.Con qc) $ params <> terms
+  Core.LitPat l -> return $ Just $ Core.Lit l
+  Core.ViewPat{} -> return Nothing
 
 --------------------------------------------------------------------------------
 -- "Equalisation" -- making the patterns match a list of parameter plicitnesses
@@ -227,8 +227,8 @@ patToTerm pat = case pat of
 exactlyEqualisePats
   :: Pretty c
   => [Plicitness]
-  -> [(Plicitness, Concrete.Pat c e ())]
-  -> Infer [(Plicitness, Concrete.Pat c e ())]
+  -> [(Plicitness, Pre.Pat c e ())]
+  -> Infer [(Plicitness, Pre.Pat c e ())]
 exactlyEqualisePats [] [] = return []
 exactlyEqualisePats [] ((p, pat):_)
   = throwLocated
@@ -244,9 +244,9 @@ exactlyEqualisePats (Implicit:ps) ((Implicit, pat):pats)
 exactlyEqualisePats (Explicit:ps) ((Explicit, pat):pats)
   = (:) (Explicit, pat) <$> exactlyEqualisePats ps pats
 exactlyEqualisePats (Constraint:ps) pats
-  = (:) (Constraint, Concrete.WildcardPat) <$> exactlyEqualisePats ps pats
+  = (:) (Constraint, Pre.WildcardPat) <$> exactlyEqualisePats ps pats
 exactlyEqualisePats (Implicit:ps) pats
-  = (:) (Implicit, Concrete.WildcardPat) <$> exactlyEqualisePats ps pats
+  = (:) (Implicit, Pre.WildcardPat) <$> exactlyEqualisePats ps pats
 exactlyEqualisePats (Explicit:_) ((Constraint, pat):_)
   = throwExpectedExplicit pat
 exactlyEqualisePats (Explicit:_) ((Implicit, pat):_)
@@ -262,8 +262,8 @@ exactlyEqualisePats (Explicit:_) []
 equalisePats
   :: (Pretty c)
   => [Plicitness]
-  -> [(Plicitness, Concrete.Pat c e ())]
-  -> Infer [(Plicitness, Concrete.Pat c e ())]
+  -> [(Plicitness, Pre.Pat c e ())]
+  -> Infer [(Plicitness, Pre.Pat c e ())]
 equalisePats _ [] = return []
 equalisePats [] pats = return pats
 equalisePats (Constraint:ps) ((Constraint, pat):pats)
@@ -273,15 +273,15 @@ equalisePats (Implicit:ps) ((Implicit, pat):pats)
 equalisePats (Explicit:ps) ((Explicit, pat):pats)
   = (:) (Explicit, pat) <$> equalisePats ps pats
 equalisePats (Constraint:ps) pats
-  = (:) (Constraint, Concrete.WildcardPat) <$> equalisePats ps pats
+  = (:) (Constraint, Pre.WildcardPat) <$> equalisePats ps pats
 equalisePats (Implicit:ps) pats
-  = (:) (Implicit, Concrete.WildcardPat) <$> equalisePats ps pats
+  = (:) (Implicit, Pre.WildcardPat) <$> equalisePats ps pats
 equalisePats (Explicit:_) ((Implicit, pat):_)
   = throwExpectedExplicit pat
 equalisePats (Explicit:_) ((Constraint, pat):_)
   = throwExpectedExplicit pat
 
-throwExpectedExplicit :: (Pretty v, Pretty c) => Concrete.Pat c e v -> Infer a
+throwExpectedExplicit :: (Pretty v, Pretty c) => Pre.Pat c e v -> Infer a
 throwExpectedExplicit pat
   = throwLocated
   $ PP.vcat

@@ -20,16 +20,16 @@ import Inference.Subtype
 import Inference.TypeCheck.Pattern
 import MonadContext
 import Syntax
-import qualified Syntax.Abstract as Abstract
-import qualified Syntax.Concrete.Scoped as Concrete
+import qualified Syntax.Core as Core
+import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import Util
 import VIX
 
 checkClauses
-  :: NonEmpty (Concrete.Clause Void Concrete.Expr FreeV)
+  :: NonEmpty (Pre.Clause Void Pre.Expr FreeV)
   -> Polytype
-  -> Infer AbstractM
+  -> Infer CoreM
 checkClauses clauses polyType = indentLog $ do
   forM_ clauses $ \clause -> logPretty 20 "checkClauses clause" $ pretty <$> clause
   logMeta 20 "checkClauses typ" polyType
@@ -37,9 +37,9 @@ checkClauses clauses polyType = indentLog $ do
   skolemise polyType (minimum $ instUntilClause <$> clauses) $ \rhoType f -> do
     ps <- piPlicitnesses rhoType
 
-    clauses' <- forM clauses $ \(Concrete.Clause pats body) -> do
+    clauses' <- forM clauses $ \(Pre.Clause pats body) -> do
       pats' <- equalisePats ps $ Vector.toList pats
-      return $ Concrete.Clause (Vector.fromList pats') body
+      return $ Pre.Clause (Vector.fromList pats') body
 
     let equalisedClauses = equaliseClauses clauses'
 
@@ -52,38 +52,38 @@ checkClauses clauses polyType = indentLog $ do
 
     return $ f res
   where
-    instUntilClause :: Concrete.Clause Void Concrete.Expr v -> InstUntil
-    instUntilClause (Concrete.Clause pats s)
+    instUntilClause :: Pre.Clause Void Pre.Expr v -> InstUntil
+    instUntilClause (Pre.Clause pats s)
       | Vector.length pats > 0 = InstUntil $ fst $ Vector.head pats
       | otherwise = instUntilExpr $ fromScope s
 
-    piPlicitnesses :: AbstractM -> Infer [Plicitness]
+    piPlicitnesses :: CoreM -> Infer [Plicitness]
     piPlicitnesses t = do
       t' <- whnf t
       piPlicitnesses' t'
 
-    piPlicitnesses' :: AbstractM -> Infer [Plicitness]
-    piPlicitnesses' (Abstract.Pi h p t s) = do
+    piPlicitnesses' :: CoreM -> Infer [Plicitness]
+    piPlicitnesses' (Core.Pi h p t s) = do
       v <- forall h p t
       (:) p <$> piPlicitnesses (instantiate1 (pure v) s)
     piPlicitnesses' _ = return mempty
 
 checkClausesRho
-  :: NonEmpty (Concrete.Clause Void Concrete.Expr FreeV)
+  :: NonEmpty (Pre.Clause Void Pre.Expr FreeV)
   -> Rhotype
-  -> Infer AbstractM
+  -> Infer CoreM
 checkClausesRho clauses rhoType = do
   forM_ clauses $ \clause -> logPretty 20 "checkClausesRho clause" $ pretty <$> clause
   logMeta 20 "checkClausesRho type" rhoType
 
   let (ps, firstPats) = Vector.unzip ppats
         where
-          Concrete.Clause ppats _ = NonEmpty.head clauses
+          Pre.Clause ppats _ = NonEmpty.head clauses
   (argTele, returnTypeScope, fs) <- funSubtypes rhoType ps
 
   clauses' <- indentLog $ forM clauses $ \clause -> do
-    let pats = Concrete.clausePatterns' clause
-        bodyScope = Concrete.clauseScope' clause
+    let pats = Pre.clausePatterns' clause
+        bodyScope = Pre.clauseScope' clause
     (pats', patVars) <- tcPats pats mempty argTele
     let body = instantiatePattern pure (boundPatVars patVars) bodyScope
         argExprs = snd3 <$> pats'
@@ -95,7 +95,7 @@ checkClausesRho clauses rhoType = do
     forM_ pats $ logPretty 20 "checkClausesRho clause pat" <=< bitraverse prettyMeta (pure . pretty)
     logMeta 20 "checkClausesRho clause body" body
 
-  argVars <- forTeleWithPrefixM (addTeleNames argTele $ Concrete.patternHint <$> firstPats) $ \h p s argVars ->
+  argVars <- forTeleWithPrefixM (addTeleNames argTele $ Pre.patternHint <$> firstPats) $ \h p s argVars ->
     forall h p $ instantiateTele pure argVars s
 
   withVars argVars $ do
@@ -110,7 +110,7 @@ checkClausesRho clauses rhoType = do
 
     let result = foldr
           (\(f, v) e ->
-            f $ Abstract.Lam (varHint v) (varData v) (varType v) $ abstract1 v e)
+            f $ Core.Lam (varHint v) (varData v) (varType v) $ abstract1 v e)
           body
           (Vector.zip fs argVars)
 
@@ -121,17 +121,17 @@ checkClausesRho clauses rhoType = do
 -- "Equalisation" -- making the clauses' number of patterns match eachother
 -- by adding implicits and eta-converting
 equaliseClauses
-  :: NonEmpty (Concrete.Clause b Concrete.Expr v)
-  -> NonEmpty (Concrete.Clause b Concrete.Expr v)
+  :: NonEmpty (Pre.Clause b Pre.Expr v)
+  -> NonEmpty (Pre.Clause b Pre.Expr v)
 equaliseClauses clauses
   = NonEmpty.zipWith
     (uncurry etaClause)
-    (go (Vector.toList . Concrete.clausePatterns <$> clauses))
-    (Concrete.clauseScope <$> clauses)
+    (go (Vector.toList . Pre.clausePatterns <$> clauses))
+    (Pre.clauseScope <$> clauses)
   where
     go
-      :: NonEmpty [(Plicitness, Concrete.Pat c (Scope b expr v) ())]
-      -> NonEmpty ([(Plicitness, Concrete.Pat c (Scope b expr v) ())], [Plicitness])
+      :: NonEmpty [(Plicitness, Pre.Pat c (Scope b expr v) ())]
+      -> NonEmpty ([(Plicitness, Pre.Pat c (Scope b expr v) ())], [Plicitness])
     go clausePats
       | numEx == 0 && numIm == 0 = (\pats -> (pats, mempty)) <$> clausePats
       | numEx == len = NonEmpty.zipWith (first . (:)) heads $ go tails
@@ -146,15 +146,15 @@ equaliseClauses clauses
         tails = tail <$> clausePats
         len = length clausePats
     go'
-      :: NonEmpty ([(Plicitness, Concrete.Pat c (Scope b expr v) ())], [Plicitness])
-      -> NonEmpty ([(Plicitness, Concrete.Pat c (Scope b expr v) ())], [Plicitness])
+      :: NonEmpty ([(Plicitness, Pre.Pat c (Scope b expr v) ())], [Plicitness])
+      -> NonEmpty ([(Plicitness, Pre.Pat c (Scope b expr v) ())], [Plicitness])
     go' clausePats
       = NonEmpty.zipWith
         (\ps (pats, ps') -> (pats, ps ++ ps'))
         (snd <$> clausePats)
         (go $ fst <$> clausePats)
 
-    numExplicit, numImplicit :: NonEmpty [(Plicitness, Concrete.Pat c (Scope b expr v) ())] -> Int
+    numExplicit, numImplicit :: NonEmpty [(Plicitness, Pre.Pat c (Scope b expr v) ())] -> Int
     numExplicit = length . NonEmpty.filter (\xs -> case xs of
       (Explicit, _):_ -> True
       _ -> False)
@@ -164,24 +164,24 @@ equaliseClauses clauses
       _ -> False)
 
     addImplicit, addExplicit
-      :: [(Plicitness, Concrete.Pat c (Scope b expr v) ())]
-      -> ([(Plicitness, Concrete.Pat c (Scope b expr v) ())], [Plicitness])
+      :: [(Plicitness, Pre.Pat c (Scope b expr v) ())]
+      -> ([(Plicitness, Pre.Pat c (Scope b expr v) ())], [Plicitness])
     addImplicit pats@((Implicit, _):_) = (pats, mempty)
-    addImplicit pats = ((Implicit, Concrete.WildcardPat) : pats, mempty)
+    addImplicit pats = ((Implicit, Pre.WildcardPat) : pats, mempty)
 
     addExplicit pats@((Explicit, _):_) = (pats, mempty)
-    addExplicit pats = ((Explicit, Concrete.VarPat mempty ()) : pats, pure Explicit)
+    addExplicit pats = ((Explicit, Pre.VarPat mempty ()) : pats, pure Explicit)
 
 etaClause
-  :: [(Plicitness, Concrete.Pat (HashSet QConstr) (Scope (Var PatternVar b) Concrete.Expr v) ())]
+  :: [(Plicitness, Pre.Pat (HashSet QConstr) (Scope (Var PatternVar b) Pre.Expr v) ())]
   -> [Plicitness]
-  -> Scope (Var PatternVar b) Concrete.Expr v
-  -> Concrete.Clause b Concrete.Expr v
+  -> Scope (Var PatternVar b) Pre.Expr v
+  -> Pre.Clause b Pre.Expr v
 etaClause pats extras (Scope scope)
-  = Concrete.Clause
+  = Pre.Clause
     (Vector.fromList pats)
     $ Scope
-    $ Concrete.apps scope vs
+    $ Pre.apps scope vs
   where
     numBindings = length $ concat $ Foldable.toList . snd <$> pats
     numExtras = length extras
