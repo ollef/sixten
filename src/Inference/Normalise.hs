@@ -2,6 +2,7 @@
 module Inference.Normalise where
 
 import Control.Monad.Except
+import Data.Foldable
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Vector as Vector
 import Data.Void
@@ -34,6 +35,7 @@ whnf = whnf' WhnfArgs
       Left _ -> return Nothing
       Right e -> return $ Just e
   }
+  mempty
 
 whnfExpandingTypeReps
   :: MonadNormalise m
@@ -47,6 +49,7 @@ whnfExpandingTypeReps = whnf' WhnfArgs
       Left _ -> return Nothing
       Right e -> return $ Just e
   }
+  mempty
 
 data WhnfArgs m = WhnfArgs
   { expandTypeReps :: !Bool
@@ -60,69 +63,61 @@ data WhnfArgs m = WhnfArgs
 whnf'
   :: MonadNormalise m
   => WhnfArgs m
-  -> AbstractM
+  -> [(Plicitness, AbstractM)] -- ^ Arguments to the expression
+  -> AbstractM -- ^ Expression to normalise
   -> m AbstractM
-whnf' args expr = indentLog $ do
+whnf' args exprs expr = indentLog $ do
   logMeta 40 "whnf e" expr
-  res <- uncurry go $ appsView expr
+  res <- go expr exprs
   logMeta 40 "whnf res" res
   return res
   where
-    go f [] = whnfInner args f
-    go f es@((p, e):es') = do
-      f' <- whnfInner args f
-      case f' of
-        Lam _ p' _ s | p == p' -> do
-          -- TODO sharing?
-          go (Util.instantiate1 e s) es'
-        _ -> case apps f' es of
-          Builtin.ProductTypeRep x y -> typeRepBinOp
-            (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
-            TypeRep.product Builtin.ProductTypeRep
-            (whnf' args) x y
-          Builtin.SumTypeRep x y -> typeRepBinOp
-            (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
-            TypeRep.sum Builtin.SumTypeRep
-            (whnf' args) x y
-          Builtin.SubInt x y -> binOp Nothing (Just 0) (-) Builtin.SubInt (whnf' args) x y
-          Builtin.AddInt x y -> binOp (Just 0) (Just 0) (+) Builtin.AddInt (whnf' args) x y
-          Builtin.MaxInt x y -> binOp (Just 0) (Just 0) max Builtin.MaxInt (whnf' args) x y
-          expr' -> return expr'
+    go (Var (FreeVar { varValue = Just e })) es = whnf' args es e
+    go e@(Var (FreeVar { varValue = Nothing })) es = return $ apps e es
+    go e@(Meta m mes) es = do
+      sol <- handleMetaVar args m
+      case sol of
+        Nothing -> return $ apps e es
+        Just e' -> whnf' args (toList mes ++ es) (vacuous e')
+    go (Global Builtin.ProductTypeRepName) [(Explicit, x), (Explicit, y)] = typeRepBinOp
+      (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
+      TypeRep.product Builtin.ProductTypeRep
+      whnf0 x y
+    go (Global Builtin.SumTypeRepName) [(Explicit, x), (Explicit, y)] = typeRepBinOp
+      (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
+      TypeRep.sum Builtin.SumTypeRep
+      whnf0 x y
+    go (Global Builtin.SubIntName) [(Explicit, x), (Explicit, y)] =
+      binOp Nothing (Just 0) (-) Builtin.SubInt whnf0 x y
+    go (Global Builtin.AddIntName) [(Explicit, x), (Explicit, y)] =
+      binOp (Just 0) (Just 0) (+) Builtin.AddInt whnf0 x y
+    go (Global Builtin.MaxIntName) [(Explicit, x), (Explicit, y)] =
+      binOp (Just 0) (Just 0) max Builtin.MaxInt whnf0 x y
+    go e@(Global g) es = do
+      (d, _) <- definition g
+      case d of
+        Definition Concrete _ e' -> whnf' args es e'
+        DataDefinition _ rep | expandTypeReps args -> whnf' args es rep
+        _ -> return $ apps e es
+    go e@(Con _) es = return $ apps e es
+    go e@(Lit _) es = return $ apps e es
+    go e@(Pi {}) es = return $ apps e es
+    go (Lam _ p1 _ s) ((p2, e):es) | p1 == p2 = whnf' args es $ instantiate1 e s
+    go e@(Lam {}) es = return $ apps e es
+    go (App e1 p e2) es = whnf' args ((p, e2) : es) e1
+    go (Let ds scope) es = do
+      e <- instantiateLetM ds scope
+      whnf' args es e
+    go (Case e brs retType) es = do
+      e' <- whnf0 e
+      retType' <- whnf0 retType
+      chooseBranch e' brs retType' es $ whnf' args es
+    go (ExternCode c retType) es = do
+      c' <- mapM whnf0 c
+      retType' <- whnf0 retType
+      return $ apps (ExternCode c' retType') es
 
-whnfInner
-  :: MonadNormalise m
-  => WhnfArgs m
-  -> AbstractM
-  -> m AbstractM
-whnfInner args expr = case expr of
-  Var (FreeVar { varValue = Just e }) -> whnf' args e
-  Var (FreeVar { varValue = Nothing }) -> return expr
-  Meta m es -> do
-    sol <- handleMetaVar args m
-    case sol of
-      Nothing -> return expr
-      Just e -> whnf' args $ apps (vacuous e) es
-  Global g -> do
-    (d, _) <- definition g
-    case d of
-      Definition Concrete _ e -> whnf' args e
-      DataDefinition _ e | expandTypeReps args -> whnf' args e
-      _ -> return expr
-  Con _ -> return expr
-  Lit _ -> return expr
-  Pi {} -> return expr
-  Lam {} -> return expr
-  App {} -> return expr
-  Let ds scope -> do
-    e <- instantiateLetM ds scope
-    whnf' args e
-  Case e brs retType -> do
-    e' <- whnf' args e
-    retType' <- whnf' args retType
-    chooseBranch e' brs retType' $ whnf' args
-  ExternCode c retType -> ExternCode
-    <$> mapM (whnf' args) c
-    <*> whnf' args retType
+    whnf0 = whnf' args mempty
 
 normalise
   :: MonadNormalise m
@@ -168,7 +163,7 @@ normalise expr = do
       normalise e
     Case e brs retType -> do
       e' <- normalise e
-      res <- chooseBranch e' brs retType normalise
+      res <- chooseBranch e' brs retType [] normalise
       case res of
         Case e'' brs' retType' -> Case e'' <$> (case brs' of
           ConBranches cbrs -> ConBranches
@@ -246,19 +241,20 @@ chooseBranch
   => Expr meta v
   -> Branches Plicitness (Expr meta) v
   -> Expr meta v
+  -> [(Plicitness, Expr meta v)]
   -> (Expr meta v -> m (Expr meta v))
   -> m (Expr meta v)
-chooseBranch (Lit l) (LitBranches lbrs def) _ k = k chosenBranch
+chooseBranch (Lit l) (LitBranches lbrs def) _ _ k = k chosenBranch
   where
     chosenBranch = head $ [br | LitBranch l' br <- NonEmpty.toList lbrs, l == l'] ++ [def]
-chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs) _ k =
+chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs) _ _ k =
   k $ instantiateTele snd (Vector.drop (Vector.length argsv - numConArgs) argsv) chosenBranch
   where
     argsv = Vector.fromList args
     (numConArgs, chosenBranch) = case [(teleLength tele, br) | ConBranch qc' tele br <- cbrs, qc == qc'] of
       [br] -> br
       _ -> error "Normalise.chooseBranch"
-chooseBranch e brs retType _ = return $ Case e brs retType
+chooseBranch e brs retType es _ = return $ apps (Case e brs retType) es
 
 instantiateLetM
   :: (MonadFix m, MonadIO m, MonadVIX m)

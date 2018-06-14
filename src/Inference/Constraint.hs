@@ -160,9 +160,11 @@ whnf = Normalise.whnf' Normalise.WhnfArgs
   { Normalise.expandTypeReps = False
   , Normalise.handleMetaVar = elabMetaVar
   }
+  mempty
 
 whnfExpandingTypeReps :: AbstractM -> Infer AbstractM
 whnfExpandingTypeReps = Normalise.whnf' Normalise.WhnfArgs
   { Normalise.expandTypeReps = True
   , Normalise.handleMetaVar = elabMetaVar
   }
+  mempty

@@ -46,6 +46,7 @@ simplifyExpr glob !applied expr = case expr of
         (simplifyExpr glob 0 e)
         (hoist (simplifyExpr glob applied) brs)
         (simplifyExpr glob 0 retType)
+        []
         (Identity . simplifyExpr glob applied)
   Let ds s -> letRec glob (hoist (simplifyExpr glob 0) ds) $ hoist (simplifyExpr glob applied) s
   ExternCode c retType ->
