@@ -196,11 +196,11 @@ viewPat
   :: AbstractM -- ^ expectedType
   -> Abstract.Pat AbstractM FreeV -- ^ pat
   -> AbstractM -- ^ :: patType
-  -> (AbstractM -> Infer AbstractM) -- ^ expectedType -> patType
+  -> (AbstractM -> AbstractM) -- ^ expectedType -> patType
   -> Infer (Abstract.Pat AbstractM FreeV, AbstractM) -- ^ (expectedType, :: expectedType)
 viewPat expectedType pat patExpr f = do
   x <- forall mempty Explicit expectedType
-  fx <- f $ pure x
+  let fx = f $ pure x
   if fx == pure x then
     return (pat, patExpr)
   else do

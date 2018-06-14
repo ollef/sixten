@@ -52,7 +52,7 @@ elabUnsolvedConstraint m = inUpdatedContext (const mempty) $ do
               <> [(pure v, varType v) | v <- toList vs, varData v == Constraint]
         matchingInstances <- forM candidates $ \(inst, instanceType) -> tryMaybe $ do
           f <- untouchable $ subtype instanceType typ'
-          f inst
+          return $ f inst
         case catMaybes matchingInstances of
           [] -> do
             logVerbose 25 "No matching instance"

@@ -50,7 +50,7 @@ checkClauses clauses polyType = indentLog $ do
     l <- level
     logMeta 20 ("checkClauses res " <> show l) res
 
-    f res
+    return $ f res
   where
     instUntilClause :: Concrete.Clause Void Concrete.Expr v -> InstUntil
     instUntilClause (Concrete.Clause pats s)
@@ -108,11 +108,11 @@ checkClausesRho clauses rhoType = do
 
     logMeta 25 "checkClausesRho body res" body
 
-    result <- foldrM
-      (\(f, v) e ->
-        f $ Abstract.Lam (varHint v) (varData v) (varType v) $ abstract1 v e)
-      body
-      (Vector.zip fs argVars)
+    let result = foldr
+          (\(f, v) e ->
+            f $ Abstract.Lam (varHint v) (varData v) (varType v) $ abstract1 v e)
+          body
+          (Vector.zip fs argVars)
 
     logMeta 20 "checkClausesRho res" result
     return result

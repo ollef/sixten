@@ -33,7 +33,7 @@ data Expected typ
   | Check typ
 
 -- | instExpected t2 t1 = e => e : t1 -> t2
-instExpected :: Expected Rhotype -> Polytype -> Infer (AbstractM -> Infer AbstractM)
+instExpected :: Expected Rhotype -> Polytype -> Infer (AbstractM -> AbstractM)
 instExpected (Infer r instUntil) t = do
   (t', f) <- instantiateForalls t instUntil
   liftST $ writeSTRef r t'
@@ -58,12 +58,12 @@ checkPoly' expr@(Concrete.Lam Implicit _ _) polyType
 checkPoly' expr polyType
   = skolemise polyType (instUntilExpr expr) $ \rhoType f -> do
     e <- checkRho expr rhoType
-    f e
+    return $ f e
 
 instantiateForalls
   :: Polytype
   -> InstUntil
-  -> Infer (Rhotype, AbstractM -> Infer AbstractM)
+  -> Infer (Rhotype, AbstractM -> AbstractM)
 instantiateForalls typ instUntil = do
   typ' <- whnf typ
   instantiateForalls' typ' instUntil
@@ -71,14 +71,14 @@ instantiateForalls typ instUntil = do
 instantiateForalls'
   :: Polytype
   -> InstUntil
-  -> Infer (Rhotype, AbstractM -> Infer AbstractM)
+  -> Infer (Rhotype, AbstractM -> AbstractM)
 instantiateForalls' (Abstract.Pi h p t s) instUntil
   | shouldInst p instUntil = do
     v <- exists h p t
     let typ = Util.instantiate1 v s
     (result, f) <- instantiateForalls typ instUntil
     return (result, \x -> f $ betaApp x p v)
-instantiateForalls' typ _ = return (typ, pure)
+instantiateForalls' typ _ = return (typ, id)
 
 --------------------------------------------------------------------------------
 -- Rhotypes
@@ -112,19 +112,19 @@ tcRho :: ConcreteM -> Expected Rhotype -> Maybe Rhotype -> Infer AbstractM
 tcRho expr expected expectedAppResult = case expr of
   Concrete.Var v -> do
     f <- instExpected expected $ varType v
-    f $ Abstract.Var v
+    return $ f $ Abstract.Var v
   Concrete.Global g -> do
     (_, typ) <- definition g
     f <- instExpected expected typ
-    f $ Abstract.Global g
+    return $ f $ Abstract.Global g
   Concrete.Lit l -> do
     f <- instExpected expected $ typeOfLiteral l
-    f $ Abstract.Lit l
+    return $ f $ Abstract.Lit l
   Concrete.Con cons -> do
     qc <- resolveConstr cons expectedAppResult
     typ <- qconstructor qc
     f <- instExpected expected typ
-    f $ Abstract.Con qc
+    return $ f $ Abstract.Con qc
   Concrete.Pi p pat bodyScope -> do
     (pat', _, patVars, patType) <- inferPat p pat mempty
     withPatVars patVars $ do
@@ -134,7 +134,7 @@ tcRho expr expected expectedAppResult = case expr of
       f <- instExpected expected Builtin.Type
       x <- forall h p patType
       body'' <- withVar x $ matchSingle (pure x) pat' body' Builtin.Type
-      f $ Abstract.Pi h p patType $ abstract1 x body''
+      return $ f $ Abstract.Pi h p patType $ abstract1 x body''
   Concrete.Lam p pat bodyScope -> do
     let h = Concrete.patternHint pat
     case expected of
@@ -148,7 +148,7 @@ tcRho expr expected expectedAppResult = case expr of
           let bodyScope' = abstract1 argVar body''
               bodyTypeScope = abstract1 argVar bodyType
           f <- instExpected expected $ Abstract.Pi h p argType bodyTypeScope
-          f $ Abstract.Lam h p argType bodyScope'
+          return $ f $ Abstract.Lam h p argType bodyScope'
       Check expectedType -> do
         (typeh, argType, bodyTypeScope, fResult) <- funSubtype expectedType p
         let h' = h <> typeh
@@ -159,7 +159,7 @@ tcRho expr expected expectedAppResult = case expr of
           body' <- enterLevel $ checkPoly body bodyType
           argVar <- forall h' p argType
           body'' <- withVar argVar $ matchSingle (pure argVar) pat' body' bodyType
-          fResult $ Abstract.Lam h' p argType $ abstract1 argVar body''
+          return $ fResult $ Abstract.Lam h' p argType $ abstract1 argVar body''
   Concrete.App fun p arg -> do
     (fun', funType) <- inferRho fun (InstUntil p) expectedAppResult
     (argType, resTypeScope, f1) <- subtypeFun funType p
@@ -168,13 +168,13 @@ tcRho expr expected expectedAppResult = case expr of
         arg' <- checkPoly arg argType
         let resType = Util.instantiate1 arg' resTypeScope
         f2 <- instExpected expected resType
-        fun'' <- f1 fun'
-        f2 $ Abstract.App fun'' p arg'
+        let fun'' = f1 fun'
+        return $ f2 $ Abstract.App fun'' p arg'
       Just resType -> do
         f2 <- instExpected expected resType
         arg' <- checkPoly arg argType
-        fun'' <- f1 fun'
-        f2 $ Abstract.App fun'' p arg'
+        let fun'' = f1 fun'
+        return $ f2 $ Abstract.App fun'' p arg'
   Concrete.Let ds scope -> enterLevel $ do
     let names = (\(_, n, _, _) -> n) <$> ds
     evars <- forM names $ \name -> do
@@ -207,12 +207,12 @@ tcRho expr expected expectedAppResult = case expr of
     c' <- mapM (\e -> fst <$> inferRho e (InstUntil Explicit) Nothing) c
     returnType <- existsType mempty
     f <- instExpected expected returnType
-    f $ Abstract.ExternCode c' returnType
+    return $ f $ Abstract.ExternCode c' returnType
   Concrete.Wildcard -> do
     t <- existsType mempty
     f <- instExpected expected t
     x <- exists mempty Explicit t
-    f x
+    return $ f x
   Concrete.SourceLoc loc e -> located loc $ tcRho e expected expectedAppResult
 
 tcBranches
@@ -246,4 +246,4 @@ tcBranches expr pbrs expected expectedAppResult = do
   f <- instExpected expected resType
 
   matched <- matchCase expr' inferredBranches resType
-  f matched
+  return $ f matched
