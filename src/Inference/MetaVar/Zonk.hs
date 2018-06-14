@@ -18,7 +18,10 @@ zonk = hoistMetas $ \m es -> do
   sol <- solution m
   case sol of
     Left _ -> return $ Meta m es
-    Right e -> return $ betaApps (vacuous e) es
+    Right e -> do
+      e' <- zonk e
+      solve m e'
+      return $ betaApps (vacuous e') es
 
 zonkDef :: MonadIO m => Definition (Expr MetaVar) v -> m (Definition (Expr MetaVar) v)
 zonkDef = transverseDefinition zonk
