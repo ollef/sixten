@@ -137,8 +137,6 @@ collectMetas mode defs = do
   let isLocalConstraint m@MetaVar { metaPlicitness = Constraint } = isLocalMeta m
       isLocalConstraint _ = return False
 
-  -- TODO use special form of metaVars that doesn't count metavar dependencies?
-
   defVars <- case mode of
     GeneraliseType -> return mempty
     GeneraliseAll -> forM defs $ \(_, def, _) ->
