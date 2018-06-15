@@ -75,7 +75,7 @@ id x = x
 
 the type-checker will create a metavariable `m` for the type of `x`, since it's unknown,
 yielding type `id : m -> m`. To generalise `id`, we replace all metavariables
-with universally quantified variables, yielding `id : forall x. x -> x`.
+with universally quantified variables, yielding `id : forall T. T -> T`.
 
 ## References
 
