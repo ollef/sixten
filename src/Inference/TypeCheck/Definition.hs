@@ -175,10 +175,10 @@ generaliseMetas metas = do
             Right e -> bindMetas' go $ betaApps (vacuous e) es
     instTyp' <- bindMetas' go instTyp
     let localDeps = toHashSet instTyp' `HashSet.intersection` toHashSet instVs
-    unless (HashSet.null localDeps) $ error "generaliseMetas local deps" -- TODO error message
-    v <- forall (metaHint m) (metaPlicitness m) instTyp'
-    modify $ HashMap.insert m v
-    return ()
+    when (HashSet.null localDeps) $ do
+      v <- forall (metaHint m) (metaPlicitness m) instTyp'
+      modify $ HashMap.insert m v
+      return ()
   where
     acyclic (AcyclicSCC a) = a
     acyclic (CyclicSCC _) = error "generaliseMetas"
