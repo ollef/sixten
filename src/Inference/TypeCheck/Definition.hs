@@ -214,20 +214,23 @@ replaceMetas varMap defs = forM defs $ \(v, d, t) -> do
             local <- isLocalMeta m
             if local then do
               let Just typ = Core.typeApps (vacuous $ metaType m) es
-                  varKind = case metaPlicitness m of
-                    Constraint -> "constraint"
-                    Implicit -> "meta-variable"
-                    Explicit -> "meta-variable"
               typ' <- bindMetas' go typ
-              printedTyp <- prettyMeta typ'
-              report $ TypeError ("Unresolved " <> varKind) (metaSourceLoc m)
-                $ "A " <> varKind <> " of type " <> red printedTyp <> " could not be resolved."
+              reportUnresolvedMetaError typ'
               -- TODO use actual error in expression when strings are faster
               return $ Builtin.Fail typ'
             else
               return $ Core.Meta m es
           Just v -> return $ pure v
         Right e -> bindMetas' go $ betaApps (vacuous e) es
+      where
+        varKind = case metaPlicitness m of
+          Constraint -> "constraint"
+          Implicit -> "meta-variable"
+          Explicit -> "meta-variable"
+        reportUnresolvedMetaError typ = do
+          printedTyp <- prettyMeta typ
+          report $ TypeError ("Unresolved " <> varKind) (metaSourceLoc m)
+            $ "A " <> varKind <> " of type " <> red printedTyp <> " could not be resolved."
 
 isLocalMeta :: MetaVar -> Infer Bool
 isLocalMeta m = do
