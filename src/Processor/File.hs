@@ -58,14 +58,14 @@ frontend
   -> VIX [k]
 frontend k
   = resolveProgramNames
-  >>=> prettyPreGroup "Concrete syntax" absurd
+  >>=> prettyPreGroup "Pre-syntax" absurd
 
   >=> declassifyGroup
 
   >>=> prettyPreGroup "Declassified" absurd
   >=> typeCheckGroup
 
-  >=> prettyTypedGroup 9 "Abstract syntax" absurd
+  >=> prettyTypedGroup 9 "Core syntax" absurd
 
   >=> simplifyGroup
   >=> prettyTypedGroup 8 "Simplified" absurd
