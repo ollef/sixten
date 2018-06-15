@@ -111,9 +111,6 @@ elabRecursiveDefs defs
     def' <- elabDef def typ'
     return (v, def', typ')
 
-mkConstraintVar :: CoreM -> Infer CoreM
-mkConstraintVar = exists mempty Constraint
-
 mergeConstraintVars
   :: HashSet MetaVar
   -> Infer (HashSet MetaVar) -- ^ The metavars that are still unsolved
