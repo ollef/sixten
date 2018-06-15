@@ -79,4 +79,6 @@ with universally quantified variables, yielding `id : forall x. x -> x`.
 
 ## References
 
-[1]: [Andreas Abel and Brigitte Pientka: Higher-Order Dynamic Pattern Unification for Dependent Types and Records](http://www.cse.chalmers.se/~abela/unif-sigma-long.pdf)
+[Andreas Abel and Brigitte Pientka: Higher-Order Dynamic Pattern Unification for Dependent Types and Records][1]
+
+[1]: http://www.cse.chalmers.se/~abela/unif-sigma-long.pdf
