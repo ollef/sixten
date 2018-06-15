@@ -475,15 +475,14 @@ checkTopLevelRecursiveDefs defs = do
 
   let vars' = (\(v, _, _) -> v) <$> checkedDefs
 
-  l <- level
   let varIndex = hashedElemIndex vars'
       unexpose v = fromMaybe (pure v) $ (fmap global . (names Vector.!?)) =<< varIndex v
       vf :: FreeV -> Infer b
-      vf v = internalError $ "checkTopLevelRecursiveDefs" PP.<+> shower v PP.<+> shower l
+      vf v = internalError $ "checkTopLevelRecursiveDefs" PP.<+> shower v
       mf :: MetaVar -> Infer b
       mf v = do
         sol <- solution v
-        internalError $ "checkTopLevelRecursiveDefs" PP.<+> shower v PP.<+> "SOL" PP.<+> shower sol PP.<+> shower l
+        internalError $ "checkTopLevelRecursiveDefs" PP.<+> shower v PP.<+> "SOL" PP.<+> shower sol
 
   forM (Vector.zip names checkedDefs) $ \(name, (_, def, typ)) -> do
     logDefMeta 20 ("checkTopLevelRecursiveDefs def " ++ show (pretty name)) def
