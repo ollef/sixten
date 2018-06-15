@@ -105,8 +105,7 @@ elabRecursiveDefs
   :: Vector (FreeV, Definition (Expr MetaVar) FreeV, CoreM)
   -> Infer (Vector (FreeV, Definition (Expr MetaVar) FreeV, CoreM))
 elabRecursiveDefs defs
-  = enterLevel
-  $ forM defs $ \(v, def, typ) -> do
+  = forM defs $ \(v, def, typ) -> do
     typ' <- elabExpr typ
     def' <- elabDef def typ'
     return (v, def', typ')

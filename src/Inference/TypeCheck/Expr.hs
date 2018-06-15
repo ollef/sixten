@@ -130,7 +130,7 @@ tcRho expr expected expectedAppResult = case expr of
     withPatVars patVars $ do
       let body = instantiatePattern pure (boundPatVars patVars) bodyScope
           h = Pre.patternHint pat
-      body' <- enterLevel $ checkPoly body Builtin.Type
+      body' <- checkPoly body Builtin.Type
       f <- instExpected expected Builtin.Type
       x <- forall h p patType
       body'' <- withVar x $ matchSingle (pure x) pat' body' Builtin.Type
@@ -142,7 +142,7 @@ tcRho expr expected expectedAppResult = case expr of
         (pat', _, patVars, argType) <- inferPat p pat mempty
         withPatVars patVars $ do
           let body = instantiatePattern pure (boundPatVars patVars) bodyScope
-          (body', bodyType) <- enterLevel $ inferRho body (InstUntil Explicit) Nothing
+          (body', bodyType) <- inferRho body (InstUntil Explicit) Nothing
           argVar <- forall h p argType
           body'' <- withVar argVar $ matchSingle (pure argVar) pat' body' bodyType
           f <- instExpected expected $ Core.pi_ argVar bodyType
@@ -154,7 +154,7 @@ tcRho expr expected expectedAppResult = case expr of
         withPatVars patVars $ do
           let body = instantiatePattern pure (boundPatVars patVars) bodyScope
               bodyType = Util.instantiate1 patExpr bodyTypeScope
-          body' <- enterLevel $ checkPoly body bodyType
+          body' <- checkPoly body bodyType
           argVar <- forall h' p argType
           body'' <- withVar argVar $ matchSingle (pure argVar) pat' body' bodyType
           return $ fResult $ Core.lam argVar body''

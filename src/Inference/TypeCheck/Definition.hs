@@ -456,23 +456,22 @@ checkTopLevelRecursiveDefs
 checkTopLevelRecursiveDefs defs = do
   let names = (\(v, _, _, _) -> v) <$> defs
 
-  checkedDefs <- enterLevel $ do
-    vars <- forM defs $ \(name, _, def, _) -> do
-      let hint = fromQName name
-      typ <- existsType hint
-      forall hint (defPlicitness def) typ
+  vars <- forM defs $ \(name, _, def, _) -> do
+    let hint = fromQName name
+    typ <- existsType hint
+    forall hint (defPlicitness def) typ
 
-    let nameIndex = hashedElemIndex names
-        expose name = case nameIndex name of
-          Nothing -> global name
-          Just index -> pure
-            $ fromMaybe (error "checkTopLevelRecursiveDefs 1")
-            $ vars Vector.!? index
+  let nameIndex = hashedElemIndex names
+      expose name = case nameIndex name of
+        Nothing -> global name
+        Just index -> pure
+          $ fromMaybe (error "checkTopLevelRecursiveDefs 1")
+          $ vars Vector.!? index
 
-    let exposedDefs = flip fmap defs $ \(_, loc, def, mtyp) ->
-          (loc, gbound expose $ vacuous def, gbind expose . vacuous <$> mtyp)
+  let exposedDefs = flip fmap defs $ \(_, loc, def, mtyp) ->
+        (loc, gbound expose $ vacuous def, gbind expose . vacuous <$> mtyp)
 
-    checkRecursiveDefs True (Vector.zip vars exposedDefs)
+  checkedDefs <- checkRecursiveDefs True (Vector.zip vars exposedDefs)
 
   let vars' = (\(v, _, _) -> v) <$> checkedDefs
 
