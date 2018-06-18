@@ -31,7 +31,8 @@ data GeneraliseDefsMode
   deriving (Eq, Show)
 
 generaliseDefs
-  :: GeneraliseDefsMode
+  :: (MetaVar -> Bool)
+  -> GeneraliseDefsMode
   -> Vector
     ( FreeV
     , Definition (Expr MetaVar) FreeV
@@ -45,9 +46,9 @@ generaliseDefs
       )
     , FreeV -> FreeV
     )
-generaliseDefs mode defs = do
+generaliseDefs mpred mode defs = do
   defs' <- elabRecursiveDefs defs
-  metas <- collectMetas mode defs'
+  metas <- collectMetas mpred mode defs'
   metas' <- mergeConstraintVars metas
   varMap <- generaliseMetas metas'
   logShow 30 "generaliseDefs varMap" varMap
@@ -57,20 +58,22 @@ generaliseDefs mode defs = do
   replaceDefs defDeps
 
 collectMetas
-  :: GeneraliseDefsMode
+  :: (MetaVar -> Bool)
+  -> GeneraliseDefsMode
   -> Vector
     ( FreeV
     , Definition (Expr MetaVar) FreeV
     , CoreM
     )
   -> Infer (HashSet MetaVar)
-collectMetas mode defs = do
+collectMetas mpred mode defs = do
   -- After type-checking we may actually be in a situation where a dependency
   -- we thought existed doesn't actually exist because of class instances being
   -- resolved (unresolved class instances are assumed to depend on all
   -- instances), so we can't be sure that we have a single cycle. Therefore we
   -- separately compute dependencies for each definition.
-  let isLocalConstraint m@MetaVar { metaPlicitness = Constraint } = isLocalMeta m
+  let isLocalConstraint m@MetaVar { metaPlicitness = Constraint }
+        | mpred m = isLocalMeta m
       isLocalConstraint _ = return False
 
   defVars <- case mode of
@@ -81,7 +84,7 @@ collectMetas mode defs = do
   typeVars <- forM defs $ \(_, _, typ) -> do
     metas <- metaVars typ
     logShow 30 "collectMetas" metas
-    filtered <- filterMSet isLocalMeta metas
+    filtered <- filterMSet (\m -> if not (mpred m) then return False else isLocalMeta m) metas
     logShow 30 "collectMetas filtered" filtered
     return filtered
 

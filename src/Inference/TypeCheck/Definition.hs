@@ -23,6 +23,7 @@ import Inference.TypeCheck.Clause
 import Inference.TypeCheck.Data
 import Inference.Unify
 import MonadContext
+import MonadFresh
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
@@ -77,38 +78,42 @@ checkRecursiveDefs forceGeneralisation defs = withDefVars $ do
     unify [] (varType evar) typ'
     return (evar, (loc, def))
 
-  -- The definitions without type signature are checked and generalised,
-  -- assuming the type signatures of the others.
+  preId <- fresh
+
+  -- The definitions without type signature are checked assuming the type
+  -- signatures of the others.
   noSigResult <- checkTopLevelDefs noSigDefs
 
-  result <- if gen then do
+  result <- case (Vector.null sigDefs, gen) of
+    (_, False) -> do
+      sigResult <- checkTopLevelDefs sigDefs'
+      return $ noSigResult <> sigResult
+    (True, True) -> do
+      -- There are no definitions with signature, so generalise the ones
+      -- without signature fully
+      (genNoSigResult, _) <- generaliseDefs (const True) GeneraliseAll noSigResult
+      return genNoSigResult
+    (False, True) -> do
+      -- Generalise the definitions without signature, but don't generalise
+      -- metavariables created during type-checking the type signatures above
+      (genNoSigResult, noSigSub) <- generaliseDefs ((> preId) . metaId) GeneraliseAll noSigResult
 
-    -- Generalise the definitions without signature
-    (genNoSigResult, noSigSub) <- generaliseDefs GeneraliseAll noSigResult
+      subbedSigDefs <- forM sigDefs' $ \(v, (loc, def)) -> do
+        let def' = def >>>= pure . noSigSub
+        return (v, (loc, def'))
 
-    subbedSigDefs <- forM sigDefs' $ \(v, (loc, def)) -> do
-      let def' = def >>>= pure . noSigSub
-      return (v, (loc, def'))
+      sigResult <- checkTopLevelDefs subbedSigDefs
 
-    sigResult <- checkTopLevelDefs subbedSigDefs
-
-    -- Generalise the definitions with signature
-    if Vector.null sigResult then
-        -- No need to generalise again if there are actually no definitions
-        -- with signatures
-        return genNoSigResult
-      else do
-        (genResult, _) <- generaliseDefs GeneraliseType $ genNoSigResult <> sigResult
-        return genResult
-  else do
-    sigResult <- checkTopLevelDefs sigDefs'
-    return $ noSigResult <> sigResult
+      -- Generalise all definitions a final time, now allowing all
+      -- metavariables
+      (genResult, _) <- generaliseDefs (const True) GeneraliseType $ genNoSigResult <> sigResult
+      return genResult
 
   let locs = (\(_, (loc, _)) -> loc) <$> noSigDefs
         <|> (\(_, (loc, _)) -> loc) <$> sigDefs'
 
   unless (Vector.length locs == Vector.length result) $
-    internalError $ "checkRecursiveDefs unmatched length" PP.<+> shower (Vector.length locs) PP.<+> shower (Vector.length result)
+    internalError "checkRecursiveDefs unmatched length"
 
   let locResult = Vector.zip locs result
 
