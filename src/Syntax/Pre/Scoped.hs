@@ -206,6 +206,10 @@ instance v ~ Doc => Pretty (Expr v) where
     Global g -> prettyM g
     Lit l -> prettyM l
     Con c -> prettyM $ toList c
+    Pi p (AnnoPat WildcardPat t) s -> parens `above` arrPrec $ do
+      let inst = instantiatePattern (pure . fromName) mempty
+      prettyAnnotation p (prettyM $ inst t) <+> "->" <+>
+        associate arrPrec (prettyM $ inst s)
     Pi p pat s -> withNameHints (nameHints pat) $ \ns -> do
       let inst = instantiatePattern (pure . fromName) ns
       parens `above` arrPrec $
