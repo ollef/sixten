@@ -123,7 +123,7 @@ instance (Pretty con, Pretty typ, Pretty b) => Pretty (Pat con typ b) where
     WildcardPat -> "_"
     LitPat l -> prettyM l
     ConPat c args -> prettyApps (prettyM c) $ (\(p, arg) -> prettyAnnotation p $ prettyM arg) <$> args
-    AnnoPat t p -> parens `above` annoPrec $
+    AnnoPat p t -> parens `above` annoPrec $
       prettyM p <+> ":" <+> prettyM t
     ViewPat t p -> parens `above` arrPrec $
       prettyM t <+> "->" <+> prettyM p
