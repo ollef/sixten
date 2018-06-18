@@ -208,9 +208,9 @@ instance v ~ Doc => Pretty (Expr v) where
     Con c -> prettyM $ toList c
     Pi p pat s -> withNameHints (nameHints pat) $ \ns -> do
       let inst = instantiatePattern (pure . fromName) ns
-      parens `above` absPrec $
+      parens `above` arrPrec $
         prettyAnnotation p (prettyPattern ns $ first inst pat) <+> "->" <+>
-          associate absPrec (prettyM $ inst s)
+          associate arrPrec (prettyM $ inst s)
     Lam p pat s -> withNameHints (nameHints pat) $ \ns -> do
       let inst = instantiatePattern (pure . fromName) ns
       parens `above` absPrec $

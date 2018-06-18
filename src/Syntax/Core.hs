@@ -224,7 +224,7 @@ instance (v ~ Doc, Pretty m, Eq m) => Pretty (Expr m v) where
       <+> "->" <+>
       associate arrPrec (prettyM e)
     (usedPisViewM -> Just (tele, s)) -> withTeleHints tele $ \ns ->
-      parens `above` absPrec $
+      parens `above` arrPrec $
       prettyTeleVarTypes ns tele <+> "->" <+>
       associate arrPrec (prettyM $ instantiateTele (pure . fromName) ns s)
     Pi {} -> error "impossible prettyPrec pi"
