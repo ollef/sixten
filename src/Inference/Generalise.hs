@@ -25,35 +25,6 @@ import Util
 import Util.TopoSort
 import VIX
 
-abstractDefImplicits
-  :: Foldable t
-  => t FreeV
-  -> Definition (Expr MetaVar) FreeV
-  -> CoreM
-  -> (Definition (Expr MetaVar) FreeV, CoreM)
-abstractDefImplicits vs (Definition a i e) t = do
-  let ge = abstractImplicits vs lam e
-      gt = abstractImplicits vs pi_ t
-  (Definition a i ge, gt)
-abstractDefImplicits vs (DataDefinition (DataDef cs) rep) typ = do
-  let cs' = map (fmap $ toScope . splat f g) cs
-  -- Abstract vs on top of typ
-  let grep = abstractImplicits vs lam rep
-      gtyp = abstractImplicits vs pi_ typ
-  (DataDefinition (DataDef cs') grep, gtyp)
-  where
-    varIndex = hashedElemIndex $ toVector vs
-    f v = pure $ maybe (F v) (B . TeleVar) (varIndex v)
-    g = pure . B . (+ TeleVar (length vs))
-
-abstractImplicits
-  :: Foldable t
-  => t FreeV
-  -> (FreeV -> CoreM -> CoreM)
-  -> CoreM
-  -> CoreM
-abstractImplicits vs c b = foldr (\v -> c (v { varData = implicitise $ varData v })) b vs
-
 data GeneraliseDefsMode
   = GeneraliseType
   | GeneraliseAll
@@ -275,3 +246,31 @@ replaceDefs defs = do
 
   return (renamedDefs, rename)
 
+abstractDefImplicits
+  :: Foldable t
+  => t FreeV
+  -> Definition (Expr MetaVar) FreeV
+  -> CoreM
+  -> (Definition (Expr MetaVar) FreeV, CoreM)
+abstractDefImplicits vs (Definition a i e) t = do
+  let ge = abstractImplicits vs lam e
+      gt = abstractImplicits vs pi_ t
+  (Definition a i ge, gt)
+abstractDefImplicits vs (DataDefinition (DataDef cs) rep) typ = do
+  let cs' = map (fmap $ toScope . splat f g) cs
+  -- Abstract vs on top of typ
+  let grep = abstractImplicits vs lam rep
+      gtyp = abstractImplicits vs pi_ typ
+  (DataDefinition (DataDef cs') grep, gtyp)
+  where
+    varIndex = hashedElemIndex $ toVector vs
+    f v = pure $ maybe (F v) (B . TeleVar) (varIndex v)
+    g = pure . B . (+ TeleVar (length vs))
+
+abstractImplicits
+  :: Foldable t
+  => t FreeV
+  -> (FreeV -> CoreM -> CoreM)
+  -> CoreM
+  -> CoreM
+abstractImplicits vs c b = foldr (\v -> c (v { varData = implicitise $ varData v })) b vs
