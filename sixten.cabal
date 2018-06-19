@@ -71,16 +71,11 @@ executable sixten
                        Processor.Files
                        Processor.Result
                        Syntax
-                       Syntax.Core
-                       Syntax.Core.Pattern
                        Syntax.Annotation
                        Syntax.Branches
                        Syntax.Class
-                       Syntax.Pre.Definition
-                       Syntax.Pre.Literal
-                       Syntax.Pre.Pattern
-                       Syntax.Pre.Scoped
-                       Syntax.Pre.Unscoped
+                       Syntax.Core
+                       Syntax.Core.Pattern
                        Syntax.Data
                        Syntax.Definition
                        Syntax.Direction
@@ -92,6 +87,11 @@ executable sixten
                        Syntax.Name
                        Syntax.NameHint
                        Syntax.Pattern
+                       Syntax.Pre.Definition
+                       Syntax.Pre.Literal
+                       Syntax.Pre.Pattern
+                       Syntax.Pre.Scoped
+                       Syntax.Pre.Unscoped
                        Syntax.Sized.Anno
                        Syntax.Sized.Definition
                        Syntax.Sized.Extracted
@@ -100,11 +100,11 @@ executable sixten
                        Syntax.Telescope
                        TypeRep
                        TypedFreeVar
-                       VIX
                        Util
                        Util.MultiHashMap
                        Util.TopoSort
                        Util.Tsil
+                       VIX
   build-depends:
                        base >=4.8 && <4.11,
                        bound,
