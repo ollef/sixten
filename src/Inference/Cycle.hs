@@ -126,9 +126,7 @@ peelLets = fmap fold . mapM go
     go (loc, v, e) = do
       e' <- zonk e
       case e' of
-        Let ds scope -> do
-          vs <- forMLet ds $ \h _ t ->
-            forall h Explicit t
+        Let ds scope -> letExtendContext ds $ \vs -> do
           let inst = instantiateLet pure vs
           es <- forMLet ds $ \_ s _ ->
             return $ inst s

@@ -26,6 +26,7 @@ import System.IO
 
 import Backend.Target as Target
 import Error
+import MonadContext
 import MonadFresh
 import Processor.Result
 import Syntax
@@ -173,6 +174,63 @@ forall h p t = do
   v <- freeVar h p t
   logVerbose 20 $ "forall: " <> shower (varId v)
   return v
+
+extendContext
+  :: (MonadFresh m, MonadVIX m, MonadIO m, MonadContext (FreeVar d e) m)
+  => NameHint
+  -> d
+  -> e (FreeVar d e)
+  -> (FreeVar d e -> m a)
+  -> m a
+extendContext h p t k = do
+  x <- forall h p t
+  withVar x $ k x
+
+teleExtendContext
+  :: (Monad e, MonadFresh m, MonadVIX m, MonadIO m, MonadContext (FreeVar d e) m)
+  => Telescope d e (FreeVar d e)
+  -> (Vector (FreeVar d e) -> m a)
+  -> m a
+teleExtendContext tele k = do
+  vs <- forTeleWithPrefixM tele $ \h p s vs -> do
+    let t = instantiateTele pure vs s
+    forall h p t
+  withVars vs $ k vs
+
+teleExtendContext'
+  :: (Monad e, MonadFresh m, MonadVIX m, MonadIO m, MonadContext (FreeVar d e') m)
+  => Telescope d e (FreeVar d e')
+  -> (e (FreeVar d e') -> m (e' (FreeVar d e')))
+  -> (Vector (FreeVar d e') -> m a)
+  -> m a
+teleExtendContext' tele typ k = do
+  vs <- forTeleWithPrefixM tele $ \h p s vs -> do
+    let t = instantiateTele pure vs s
+    t' <- withVars vs $ typ t
+    forall h p t'
+  withVars vs $ k vs
+
+letExtendContext
+  :: (Monad e, MonadFresh m, MonadVIX m, MonadIO m, MonadContext (FreeVar Plicitness e) m)
+  => LetRec e (FreeVar Plicitness e)
+  -> (Vector (FreeVar Plicitness e) -> m a)
+  -> m a
+letExtendContext ds k = do
+  vs <- forMLet ds $ \h _ t -> do
+    forall h Explicit t
+  withVars vs $ k vs
+
+letExtendContext'
+  :: (Monad e, MonadFresh m, MonadVIX m, MonadIO m, MonadContext (FreeVar Plicitness e') m)
+  => LetRec e (FreeVar Plicitness e')
+  -> (e (FreeVar Plicitness e') -> m (e' (FreeVar Plicitness e')))
+  -> (Vector (FreeVar Plicitness e') -> m a)
+  -> m a
+letExtendContext' ds typ k = do
+  vs <- forMLet ds $ \h _ t -> do
+    t' <- typ t
+    forall h Explicit t'
+  withVars vs $ k vs
 
 logFreeVar
   :: (Functor e, Functor f, Foldable f, Pretty (f Doc), Pretty (e Doc), MonadVIX m, MonadIO m)

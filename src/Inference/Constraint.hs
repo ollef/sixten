@@ -41,8 +41,7 @@ elabUnsolvedConstraint
   -> Infer (Maybe (Expr MetaVar Void))
 elabUnsolvedConstraint m = inUpdatedContext (const mempty) $ do
   logShow 25 "elabUnsolvedConstraint" $ metaId m
-  (vs, typ) <- instantiatedMetaType m
-  withVars vs $ do
+  withInstantiatedMetaType m $ \vs typ -> do
     typ' <- simplifyExpr (const False) 0 <$> zonk typ
     case typ of
       (appsView -> (Global className, _)) -> do
@@ -84,22 +83,21 @@ elabDef
 elabDef (Definition i a e) _
   = Definition i a <$> elabExpr e
 elabDef (DataDefinition (DataDef constrs) rep) typ = do
+  rep' <- elabExpr rep
   -- TODO should parameter telescope be built into DataDefinition?
   typ' <- zonk typ
   let params = telescope typ'
-  vs <- forTeleWithPrefixM params $ \h p s vs -> do
-    let t = instantiateTele pure vs s
-    forall h p t
 
-  let mkConstrDef = constrDef vs
+  teleExtendContext params $ \vs -> do
 
-  constrs' <- withVars vs $ forM constrs $ \(ConstrDef c s) -> do
-    let e = instantiateTele pure vs s
-    e' <- elabExpr e
-    return $ mkConstrDef c e'
+    let mkConstrDef = constrDef vs
 
-  rep' <- elabExpr rep
-  return $ DataDefinition (DataDef constrs') rep'
+    constrs' <- forM constrs $ \(ConstrDef c s) -> do
+      let e = instantiateTele pure vs s
+      e' <- elabExpr e
+      return $ mkConstrDef c e'
+
+    return $ DataDefinition (DataDef constrs') rep'
 
 elabRecursiveDefs
   :: Vector (FreeV, Definition (Expr MetaVar) FreeV, CoreM)
@@ -141,8 +139,7 @@ mergeConstraintVars vars = do
                     return varTypes
             Nothing -> return $ Map.insert (arity, typ) m varTypes
     go varTypes _ = return varTypes
-    solveVar m m' = do
-      (vs, _) <- instantiatedMetaType m'
+    solveVar m m' = withInstantiatedMetaType m' $ \vs _ ->
       solve m'
         $ assertClosed
         $ lams vs

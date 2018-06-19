@@ -19,7 +19,6 @@ import Inference.MetaVar
 import Inference.MetaVar.Zonk
 import Inference.Monad
 import Inference.TypeOf
-import MonadContext
 import Syntax
 import Syntax.Core
 import Syntax.Core.Pattern
@@ -56,30 +55,30 @@ matchSingle
   -> CoreM
   -> CoreM
   -> Infer ExprF
-matchSingle expr pat innerExpr retType = do
-  failVar <- forall "fail" Explicit retType
-  result <- withVar failVar $ match failVar retType [expr] [([pat], innerExpr)] innerExpr
-  return $ substitute failVar (Builtin.Fail retType) result
+matchSingle expr pat innerExpr retType =
+  extendContext "fail" Explicit retType $ \failVar -> do
+    result <- match failVar retType [expr] [([pat], innerExpr)] innerExpr
+    return $ substitute failVar (Builtin.Fail retType) result
 
 matchCase
   :: CoreM
   -> [(PatM, CoreM)]
   -> CoreM
   -> Infer ExprF
-matchCase expr pats retType = do
-  failVar <- forall "fail" Explicit retType
-  result <- withVar failVar $ match failVar retType [expr] (first pure <$> pats) (pure failVar)
-  return $ substitute failVar (Builtin.Fail retType) result
+matchCase expr pats retType =
+  extendContext "fail" Explicit retType $ \failVar -> do
+    result <- match failVar retType [expr] (first pure <$> pats) (pure failVar)
+    return $ substitute failVar (Builtin.Fail retType) result
 
 matchClauses
   :: [CoreM]
   -> [([PatM], CoreM)]
   -> CoreM
   -> Infer ExprF
-matchClauses exprs pats retType = do
-  failVar <- forall "fail" Explicit retType
-  result <- withVar failVar $ match failVar retType exprs pats (pure failVar)
-  return $ substitute failVar (Builtin.Fail retType) result
+matchClauses exprs pats retType =
+  extendContext "fail" Explicit retType $ \failVar -> do
+    result <- match failVar retType exprs pats (pure failVar)
+    return $ substitute failVar (Builtin.Fail retType) result
 
 type Match
   = FreeV -- ^ Failure variable
@@ -140,11 +139,10 @@ matchCon expr failVar retType exprs clauses expr0 = do
         typ' <- whnf typ
         let (_, params) = appsView typ'
         return $ Vector.fromList params
-    ys <- conPatArgs c params
-
-    let exprs' = (pure <$> Vector.toList ys) ++ exprs
-    rest <- withVars ys $ match failVar retType exprs' (decon clausesStartingWithC) (pure failVar)
-    return $ conBranchTyped c ys rest
+    conPatArgs c params $ \ys -> do
+      let exprs' = (pure <$> Vector.toList ys) ++ exprs
+      rest <- match failVar retType exprs' (decon clausesStartingWithC) (pure failVar)
+      return $ conBranchTyped c ys rest
 
   return $ fatBar failVar (Case expr (ConBranches cbrs) retType) expr0
   where
@@ -161,13 +159,13 @@ matchCon expr failVar retType exprs clauses expr0 = do
 conPatArgs
   :: QConstr
   -> Vector (Plicitness, CoreM)
-  -> Infer (Vector FreeV)
-conPatArgs c params = do
+  -> (Vector FreeV -> Infer a)
+  -> Infer a
+conPatArgs c params k = do
   ctype <- qconstructor c
   let (tele, _) = pisView (ctype :: CoreM)
       tele' = instantiatePrefix (snd <$> params) tele
-  forTeleWithPrefixM tele' $ \h p s vs ->
-    forall h p $ instantiateTele pure vs s
+  teleExtendContext tele' k
 
 matchLit :: CoreM -> NonEmptyMatch
 matchLit expr failVar retType exprs clauses expr0 = do

@@ -18,7 +18,6 @@ import Inference.MetaVar
 import Inference.Monad
 import Inference.Subtype
 import Inference.TypeCheck.Pattern
-import MonadContext
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
@@ -62,8 +61,7 @@ checkClauses clauses polyType = indentLog $ do
       piPlicitnesses' t'
 
     piPlicitnesses' :: CoreM -> Infer [Plicitness]
-    piPlicitnesses' (Core.Pi h p t s) = do
-      v <- forall h p t
+    piPlicitnesses' (Core.Pi h p t s) = extendContext h p t $ \v ->
       (:) p <$> piPlicitnesses (instantiate1 (pure v) s)
     piPlicitnesses' _ = return mempty
 
@@ -94,10 +92,7 @@ checkClausesRho clauses rhoType = do
     forM_ pats $ logPretty 20 "checkClausesRho clause pat" <=< bitraverse prettyMeta (pure . pretty)
     logMeta 20 "checkClausesRho clause body" body
 
-  argVars <- forTeleWithPrefixM (addTeleNames argTele $ Pre.patternHint <$> firstPats) $ \h p s argVars ->
-    forall h p $ instantiateTele pure argVars s
-
-  withVars argVars $ do
+  teleExtendContext (addTeleNames argTele $ Pre.patternHint <$> firstPats) $ \argVars -> do
     let returnType = instantiateTele pure argVars returnTypeScope
 
     body <- matchClauses

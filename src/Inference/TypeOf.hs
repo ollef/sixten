@@ -34,9 +34,8 @@ typeOf expr = case expr of
   Con qc -> qconstructor qc
   Lit l -> return $ typeOfLiteral l
   Pi {} -> return Builtin.Type
-  Lam h p t s -> do
-    x <- forall h p t
-    resType  <- withVar x $ typeOf $ instantiate1 (pure x) s
+  Lam h p t s -> extendContext h p t $ \x -> do
+    resType  <- typeOf $ instantiate1 (pure x) s
     return $ pi_ x resType
   App e1 p e2 -> do
     e1type <- typeOf e1
@@ -45,9 +44,8 @@ typeOf expr = case expr of
       Pi _ p' _ resType | p == p' -> return $ instantiate1 e2 resType
       _ -> internalError $ "typeOf: expected" PP.<+> shower p PP.<+> "pi type"
         <> PP.line <> "actual type: " PP.<+> shower e1type'
-  Let ds s -> do
-    xs <- forMLet ds $ \h _ t -> forall h Explicit t
-    withVars xs $ typeOf $ instantiateLet pure xs s
+  Let ds s -> letExtendContext ds $ \xs ->
+    typeOf $ instantiateLet pure xs s
   Case _ _ retType -> return retType
   ExternCode _ retType -> return retType
 

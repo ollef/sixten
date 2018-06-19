@@ -180,17 +180,14 @@ normalise expr = do
   logMeta 40 "normalise res" res
   return res
   where
-    normaliseConBranch qc tele scope = do
-      vs <- forTeleWithPrefixM tele $ \h p s vs -> do
-        t' <- normalise $ instantiateTele pure vs s
-        forall h p t'
-      e' <- withVars vs $ normalise $ instantiateTele pure vs scope
+    normaliseConBranch qc tele scope = teleExtendContext' tele normalise $ \vs -> do
+      e' <- normalise $ instantiateTele pure vs scope
       return $ conBranchTyped qc vs e'
     normaliseScope c h p t s = do
       t' <- normalise t
-      x <- forall h p t'
-      e <- withVar x $ normalise $ Util.instantiate1 (pure x) s
-      return $ c x e
+      extendContext h p t' $ \x -> do
+        e <- normalise $ Util.instantiate1 (pure x) s
+        return $ c x e
 
 binOp
   :: Monad m

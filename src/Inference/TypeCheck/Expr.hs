@@ -132,9 +132,9 @@ tcRho expr expected expectedAppResult = case expr of
           h = Pre.patternHint pat
       body' <- checkPoly body Builtin.Type
       f <- instExpected expected Builtin.Type
-      x <- forall h p patType
-      body'' <- withVar x $ matchSingle (pure x) pat' body' Builtin.Type
-      return $ f $ Core.pi_ x body''
+      extendContext h p patType $ \x -> do
+        body'' <- matchSingle (pure x) pat' body' Builtin.Type
+        return $ f $ Core.pi_ x body''
   Pre.Lam p pat bodyScope -> do
     let h = Pre.patternHint pat
     case expected of
@@ -143,10 +143,10 @@ tcRho expr expected expectedAppResult = case expr of
         withPatVars patVars $ do
           let body = instantiatePattern pure (boundPatVars patVars) bodyScope
           (body', bodyType) <- inferRho body (InstUntil Explicit) Nothing
-          argVar <- forall h p argType
-          body'' <- withVar argVar $ matchSingle (pure argVar) pat' body' bodyType
-          f <- instExpected expected $ Core.pi_ argVar bodyType
-          return $ f $ Core.lam argVar body''
+          extendContext h p argType $ \argVar -> do
+            body'' <- matchSingle (pure argVar) pat' body' bodyType
+            f <- instExpected expected $ Core.pi_ argVar bodyType
+            return $ f $ Core.lam argVar body''
       Check expectedType -> do
         (typeh, argType, bodyTypeScope, fResult) <- funSubtype expectedType p
         let h' = h <> typeh
@@ -155,9 +155,9 @@ tcRho expr expected expectedAppResult = case expr of
           let body = instantiatePattern pure (boundPatVars patVars) bodyScope
               bodyType = Util.instantiate1 patExpr bodyTypeScope
           body' <- checkPoly body bodyType
-          argVar <- forall h' p argType
-          body'' <- withVar argVar $ matchSingle (pure argVar) pat' body' bodyType
-          return $ fResult $ Core.lam argVar body''
+          extendContext h' p argType $ \argVar -> do
+            body'' <- matchSingle (pure argVar) pat' body' bodyType
+            return $ fResult $ Core.lam argVar body''
   Pre.App fun p arg -> do
     (fun', funType) <- inferRho fun (InstUntil p) expectedAppResult
     (argType, resTypeScope, f1) <- subtypeFun funType p

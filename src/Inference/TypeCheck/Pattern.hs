@@ -51,14 +51,16 @@ checkPat
   -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
   -> BoundPatVars
   -> Polytype
-  -> Infer (Core.Pat CoreM FreeV, CoreM, PatVars)
+  -> (Core.Pat CoreM FreeV -> CoreM -> PatVars -> Infer a)
+  -> Infer a
 checkPat p pat vs expectedType = tcPat p pat vs $ CheckPat expectedType
 
 inferPat
   :: Plicitness
   -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
   -> BoundPatVars
-  -> Infer (Core.Pat CoreM FreeV, CoreM, PatVars, Polytype)
+  -> (Core.Pat CoreM FreeV -> CoreM -> PatVars -> Polytype -> Infer a)
+  -> Infer a
 inferPat p pat vs = do
   ref <- liftST $ newSTRef $ error "inferPat: empty result"
   (pat', patExpr, vs') <- tcPat p pat vs $ InferPat ref
@@ -92,7 +94,8 @@ tcPat
   -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
   -> BoundPatVars
   -> ExpectedPat
-  -> Infer (Core.Pat CoreM FreeV, CoreM, PatVars)
+  -> (Core.Pat CoreM FreeV -> CoreM -> PatVars -> Infer a)
+  -> Infer a
 tcPat p pat vs expected = do
   whenVerbose 20 $ do
     let shownPat = first (pretty . fmap pretty . instantiatePattern pure vs) pat
@@ -110,8 +113,9 @@ tcPat'
   -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
   -> BoundPatVars
   -> ExpectedPat
-  -> Infer (Core.Pat CoreM FreeV, CoreM, PatVars)
-tcPat' p pat vs expected = case pat of
+  -> (Core.Pat CoreM FreeV -> CoreM -> PatVars -> Infer a)
+  -> Infer a
+tcPat' p pat vs expected k = case pat of
   Pre.VarPat h () -> do
     expectedType <- case expected of
       InferPat ref -> do
@@ -119,8 +123,8 @@ tcPat' p pat vs expected = case pat of
         liftST $ writeSTRef ref expectedType
         return expectedType
       CheckPat expectedType -> return expectedType
-    v <- forall h p expectedType
-    return (Core.VarPat h v, pure v, pure (VarBinding, v))
+    extendContext h p expectedType $ \v ->
+      k (Core.VarPat h v) (pure v) (pure (VarBinding, v))
   Pre.WildcardPat -> do
     expectedType <- case expected of
       InferPat ref -> do
@@ -128,8 +132,8 @@ tcPat' p pat vs expected = case pat of
         liftST $ writeSTRef ref expectedType
         return expectedType
       CheckPat expectedType -> return expectedType
-    v <- forall "_" p expectedType
-    return (Core.VarPat "_" v, pure v, pure (WildcardBinding, v))
+    extendContext "_" p expectedType $ \v ->
+      k (Core.VarPat "_" v) (pure v) (pure (WildcardBinding, v))
   Pre.LitPat lit -> do
     (pat', expr) <- instPatExpected
       expected

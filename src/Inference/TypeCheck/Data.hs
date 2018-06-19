@@ -11,7 +11,6 @@ import Inference.MetaVar.Zonk
 import Inference.Monad
 import Inference.TypeOf
 import Inference.Unify
-import MonadContext
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
@@ -45,13 +44,10 @@ checkDataType name (DataDef cs) typ = do
   typ' <- zonk typ
   logMeta 20 "checkDataType t" typ'
 
-  vs <- forTeleWithPrefixM (Core.telescope typ') $ \h p s vs -> do
-    let is = instantiateTele pure vs s
-    forall h p is
+  teleExtendContext (Core.telescope typ') $ \vs -> do
 
-  let constrRetType = Core.apps (pure name) $ (\v -> (varData v, pure v)) <$> vs
+    let constrRetType = Core.apps (pure name) $ (\v -> (varData v, pure v)) <$> vs
 
-  withVars vs $ do
     (cs', rets, sizes) <- fmap unzip3 $ forM cs $ \(ConstrDef c t) ->
       checkConstrDef $ ConstrDef c $ instantiateTele pure vs t
 
