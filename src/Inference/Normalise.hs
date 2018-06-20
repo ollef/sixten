@@ -129,7 +129,11 @@ normalise expr = do
   res <- indentLog $ case expr of
     Var FreeVar { varValue = Just e } -> normalise e
     Var FreeVar { varValue = Nothing } -> return expr
-    Meta m es -> traverseMetaSolution normalise m es
+    Meta m es -> do
+      sol <- solution m
+      case sol of
+        Left _ -> Meta m <$> mapM (mapM normalise) es
+        Right e -> normalise $ apps (vacuous e) es
     Global g -> do
       (d, _) <- definition g
       case d of
