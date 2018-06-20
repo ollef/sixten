@@ -72,8 +72,8 @@ whnf' args exprs expr = indentLog $ do
   logMeta 40 "whnf res" res
   return res
   where
-    go (Var (FreeVar { varValue = Just e })) es = whnf' args es e
-    go e@(Var (FreeVar { varValue = Nothing })) es = return $ apps e es
+    go (Var FreeVar { varValue = Just e }) es = whnf' args es e
+    go e@(Var FreeVar { varValue = Nothing }) es = return $ apps e es
     go e@(Meta m mes) es = do
       sol <- handleMetaVar args m
       case sol of
@@ -101,9 +101,9 @@ whnf' args exprs expr = indentLog $ do
         _ -> return $ apps e es
     go e@(Con _) es = return $ apps e es
     go e@(Lit _) es = return $ apps e es
-    go e@(Pi {}) es = return $ apps e es
+    go e@Pi {} es = return $ apps e es
     go (Lam _ p1 _ s) ((p2, e):es) | p1 == p2 = whnf' args es $ instantiate1 e s
-    go e@(Lam {}) es = return $ apps e es
+    go e@Lam {} es = return $ apps e es
     go (App e1 p e2) es = whnf' args ((p, e2) : es) e1
     go (Let ds scope) es = do
       e <- instantiateLetM ds scope
@@ -127,8 +127,8 @@ normalise
 normalise expr = do
   logMeta 40 "normalise e" expr
   res <- indentLog $ case expr of
-    Var (FreeVar { varValue = Just e }) -> normalise e
-    Var (FreeVar { varValue = Nothing }) -> return expr
+    Var FreeVar { varValue = Just e } -> normalise e
+    Var FreeVar { varValue = Nothing } -> return expr
     Meta m es -> traverseMetaSolution normalise m es
     Global g -> do
       (d, _) <- definition g
