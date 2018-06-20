@@ -110,8 +110,9 @@ whnf' args exprs expr = indentLog $ do
       whnf' args es e
     go (Case e brs retType) es = do
       e' <- whnf0 e
-      retType' <- whnf0 retType
-      chooseBranch e' brs retType' es $ whnf' args es
+      case chooseBranch e' brs of
+        Nothing -> Case e' brs <$> whnf0 retType
+        Just chosen -> whnf' args es chosen
     go (ExternCode c retType) es = do
       c' <- mapM whnf0 c
       retType' <- whnf0 retType
@@ -163,19 +164,20 @@ normalise expr = do
       normalise e
     Case e brs retType -> do
       e' <- normalise e
-      res <- chooseBranch e' brs retType [] normalise
-      case res of
-        Case e'' brs' retType' -> Case e'' <$> (case brs' of
-          ConBranches cbrs -> ConBranches
-            <$> sequence
-              [ normaliseConBranch qc tele s
-              | ConBranch qc tele s <- cbrs
-              ]
-          LitBranches lbrs def -> LitBranches
-            <$> sequence [LitBranch l <$> normalise br | LitBranch l br <- lbrs]
-            <*> normalise def)
-          <*> normalise retType'
-        _ -> return res
+      case chooseBranch e' brs of
+        Nothing -> do
+          retType' <- normalise retType
+          brs' <- case brs of
+            ConBranches cbrs -> ConBranches
+              <$> sequence
+                [ normaliseConBranch qc tele s
+                | ConBranch qc tele s <- cbrs
+                ]
+            LitBranches lbrs def -> LitBranches
+              <$> sequence [LitBranch l <$> normalise br | LitBranch l br <- lbrs]
+              <*> normalise def
+          return $ Case e' brs' retType'
+        Just chosen -> normalise chosen
     ExternCode c retType -> ExternCode <$> mapM normalise c <*> normalise retType
   logMeta 40 "normalise res" res
   return res
@@ -231,24 +233,20 @@ typeRepBinOp lzero rzero op cop norm x y = do
     _ -> return $ cop x' y'
 
 chooseBranch
-  :: Monad m
-  => Expr meta v
+  :: Expr meta v
   -> Branches Plicitness (Expr meta) v
-  -> Expr meta v
-  -> [(Plicitness, Expr meta v)]
-  -> (Expr meta v -> m (Expr meta v))
-  -> m (Expr meta v)
-chooseBranch (Lit l) (LitBranches lbrs def) _ _ k = k chosenBranch
+  -> Maybe (Expr meta v)
+chooseBranch (Lit l) (LitBranches lbrs def) = Just chosenBranch
   where
     chosenBranch = head $ [br | LitBranch l' br <- NonEmpty.toList lbrs, l == l'] ++ [def]
-chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs) _ _ k =
-  k $ instantiateTele snd (Vector.drop (Vector.length argsv - numConArgs) argsv) chosenBranch
+chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs) =
+  Just $ instantiateTele snd (Vector.drop (Vector.length argsv - numConArgs) argsv) chosenBranch
   where
     argsv = Vector.fromList args
     (numConArgs, chosenBranch) = case [(teleLength tele, br) | ConBranch qc' tele br <- cbrs, qc == qc'] of
       [br] -> br
       _ -> error "Normalise.chooseBranch"
-chooseBranch e brs retType es _ = return $ apps (Case e brs retType) es
+chooseBranch _ _ = Nothing
 
 instantiateLetM
   :: (MonadFix m, MonadIO m, MonadVIX m)
