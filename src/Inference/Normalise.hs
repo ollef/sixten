@@ -74,7 +74,11 @@ whnf' args expr exprs = indentLog $ do
   logMeta 40 "whnf res" res
   return res
   where
-    go (Var FreeVar { varValue = Just e }) es = whnf' args e es
+    go e@(Var FreeVar { varValue = Just e' }) es = do
+      minlined <- normaliseDef whnf0 e' es
+      case minlined of
+        Nothing -> return $ apps e es
+        Just (inlined, es') -> whnf' args inlined es'
     go e@(Var FreeVar { varValue = Nothing }) es = return $ apps e es
     go e@(Meta m mes) es = do
       sol <- handleMetaVar args m
@@ -140,7 +144,11 @@ normalise' expr exprs = do
       => CoreM
       -> [(Plicitness, CoreM)]
       -> m CoreM
-    go (Var FreeVar { varValue = Just e }) es = normalise' e es
+    go e@(Var FreeVar { varValue = Just e' }) es = do
+      minlined <- normaliseDef normalise e' es
+      case minlined of
+        Nothing -> irreducible e es
+        Just (inlined, es') -> normalise' inlined es'
     go e@(Var FreeVar { varValue = Nothing }) es = irreducible e es
     go (Meta m mes) es = do
       sol <- solution m
