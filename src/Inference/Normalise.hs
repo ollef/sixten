@@ -233,6 +233,11 @@ normaliseBuiltins k (Global Builtin.AddIntName) [(Explicit, x), (Explicit, y)] =
   binOp (Just 0) (Just 0) (+) Builtin.AddInt k x y
 normaliseBuiltins k (Global Builtin.MaxIntName) [(Explicit, x), (Explicit, y)] =
   binOp (Just 0) (Just 0) max Builtin.MaxInt k x y
+normaliseBuiltins k e@(Global Builtin.MkTypeName) [(Explicit, x)] = do
+  x' <- k x mempty
+  case x' of
+    Lit (Integer i) -> return $ MkType $ TypeRep.TypeRep i
+    _ -> return $ App e Explicit x'
 normaliseBuiltins k e es = k e es
 
 binOp

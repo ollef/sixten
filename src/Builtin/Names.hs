@@ -46,6 +46,9 @@ pattern TypeName <- ((==) "Sixten.Builtin.Type" -> True) where TypeName = "Sixte
 pattern Type :: Expr m t
 pattern Type = Global TypeName
 
+pattern MkTypeName :: QName
+pattern MkTypeName <- ((==) "Sixten.Builtin.MkType" -> True) where MkTypeName = "Sixten.Builtin.MkType"
+
 pattern ProductTypeRepName :: QName
 pattern ProductTypeRepName <- ((==) "Sixten.Builtin.productTypeRep" -> True) where ProductTypeRepName = "Sixten.Builtin.productTypeRep"
 pattern ProductTypeRep :: Expr m t -> Expr m t -> Expr m t
