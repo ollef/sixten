@@ -189,7 +189,7 @@ unify' cxt touchable type1 type2
           -- TODO pruning might need to take into account extra args like unify
           prunedt <- prune (toHashSet vs) t
           let lamt = lams plicitVs prunedt
-          normLamt <- simplifyExpr (const False) 0 <$> zonk lamt
+          normLamt <- normalise lamt
           logShow 30 "vs" (varId <$> vs)
           logMeta 30 ("solving t " <> show (metaId m)) t
           logMeta 30 ("solving prunedt " <> show (metaId m)) prunedt
