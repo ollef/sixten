@@ -40,4 +40,5 @@ script:
 
 cache:
   directories:
-  - $HOME/.stack
+  - "$HOME/.stack"
+  - "$HOME/build/ollef/sixten/.stack-work"
