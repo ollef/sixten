@@ -4,7 +4,6 @@ module Analysis.Simplify where
 import Bound
 import Data.Bifunctor
 import Data.Foldable as Foldable
-import Data.Functor.Identity
 import Data.Maybe
 import Data.Monoid
 import qualified Data.MultiSet as MultiSet
@@ -40,14 +39,11 @@ simplifyExpr glob !applied expr = case expr of
       (simplifyExpr glob (applied + 1) e1)
       p
       (simplifyExpr glob 0 e2)
-  Case e brs retType ->
-    runIdentity
-      $ chooseBranch
-        (simplifyExpr glob 0 e)
-        (hoist (simplifyExpr glob applied) brs)
-        (simplifyExpr glob 0 retType)
-        []
-        (Identity . simplifyExpr glob applied)
+  Case e brs retType -> do
+    let e' = simplifyExpr glob 0 e
+    case chooseBranch e' brs of
+      Nothing -> Case e' (hoist (simplifyExpr glob applied) brs) (simplifyExpr glob 0 retType)
+      Just chosen -> simplifyExpr glob applied chosen
   Let ds s -> letRec glob (hoist (simplifyExpr glob 0) ds) $ hoist (simplifyExpr glob applied) s
   ExternCode c retType ->
     ExternCode

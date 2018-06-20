@@ -100,18 +100,6 @@ isSolved = fmap isRight . solution
 isUnsolved :: MonadIO m => MetaVar -> m Bool
 isUnsolved = fmap isLeft . solution
 
-traverseMetaSolution
-  :: MonadIO m
-  => (Expr MetaVar v -> m (Expr MetaVar v))
-  -> MetaVar
-  -> Vector (Plicitness, Expr MetaVar v)
-  -> m (Expr MetaVar v)
-traverseMetaSolution f m es = do
-  sol <- solution m
-  case sol of
-    Left _ -> return $ Meta m es
-    Right e -> f $ apps (vacuous e) es
-
 data WithVar a = WithVar !MetaVar a
 
 instance Eq (WithVar a) where

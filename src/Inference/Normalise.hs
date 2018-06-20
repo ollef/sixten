@@ -27,7 +27,7 @@ whnf
   :: MonadNormalise m
   => CoreM
   -> m CoreM
-whnf = whnf' WhnfArgs
+whnf expr = whnf' WhnfArgs
   { expandTypeReps = False
   , handleMetaVar = \m -> do
     sol <- solution m
@@ -35,13 +35,14 @@ whnf = whnf' WhnfArgs
       Left _ -> return Nothing
       Right e -> return $ Just e
   }
+  expr
   mempty
 
 whnfExpandingTypeReps
   :: MonadNormalise m
   => CoreM
   -> m CoreM
-whnfExpandingTypeReps = whnf' WhnfArgs
+whnfExpandingTypeReps expr = whnf' WhnfArgs
   { expandTypeReps = True
   , handleMetaVar = \m -> do
     sol <- solution m
@@ -49,6 +50,7 @@ whnfExpandingTypeReps = whnf' WhnfArgs
       Left _ -> return Nothing
       Right e -> return $ Just e
   }
+  expr
   mempty
 
 data WhnfArgs m = WhnfArgs
@@ -63,134 +65,175 @@ data WhnfArgs m = WhnfArgs
 whnf'
   :: MonadNormalise m
   => WhnfArgs m
-  -> [(Plicitness, CoreM)] -- ^ Arguments to the expression
   -> CoreM -- ^ Expression to normalise
+  -> [(Plicitness, CoreM)] -- ^ Arguments to the expression
   -> m CoreM
-whnf' args exprs expr = indentLog $ do
+whnf' args expr exprs = indentLog $ do
   logMeta 40 "whnf e" expr
-  res <- go expr exprs
+  res <- normaliseBuiltins go expr exprs
   logMeta 40 "whnf res" res
   return res
   where
-    go (Var (FreeVar { varValue = Just e })) es = whnf' args es e
-    go e@(Var (FreeVar { varValue = Nothing })) es = return $ apps e es
+    go e@(Var FreeVar { varValue = Just e' }) es = do
+      minlined <- normaliseDef whnf0 e' es
+      case minlined of
+        Nothing -> return $ apps e es
+        Just (inlined, es') -> whnf' args inlined es'
+    go e@(Var FreeVar { varValue = Nothing }) es = return $ apps e es
     go e@(Meta m mes) es = do
       sol <- handleMetaVar args m
       case sol of
         Nothing -> return $ apps e es
-        Just e' -> whnf' args (toList mes ++ es) (vacuous e')
-    go (Global Builtin.ProductTypeRepName) [(Explicit, x), (Explicit, y)] = typeRepBinOp
-      (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
-      TypeRep.product Builtin.ProductTypeRep
-      whnf0 x y
-    go (Global Builtin.SumTypeRepName) [(Explicit, x), (Explicit, y)] = typeRepBinOp
-      (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
-      TypeRep.sum Builtin.SumTypeRep
-      whnf0 x y
-    go (Global Builtin.SubIntName) [(Explicit, x), (Explicit, y)] =
-      binOp Nothing (Just 0) (-) Builtin.SubInt whnf0 x y
-    go (Global Builtin.AddIntName) [(Explicit, x), (Explicit, y)] =
-      binOp (Just 0) (Just 0) (+) Builtin.AddInt whnf0 x y
-    go (Global Builtin.MaxIntName) [(Explicit, x), (Explicit, y)] =
-      binOp (Just 0) (Just 0) max Builtin.MaxInt whnf0 x y
+        Just e' -> whnf' args (vacuous e') $ toList mes ++ es
     go e@(Global g) es = do
       (d, _) <- definition g
       case d of
-        Definition Concrete _ e' -> whnf' args es e'
-        DataDefinition _ rep | expandTypeReps args -> whnf' args es rep
-        _ -> return $ apps e es
+        Definition Concrete _ e' -> do
+          minlined <- normaliseDef whnf0 e' es
+          case minlined of
+            Nothing -> return $ apps e es
+            Just (inlined, es') -> whnf' args inlined es'
+        Definition Abstract _ _ -> return $ apps e es
+        DataDefinition _ rep
+          | expandTypeReps args -> do
+            minlined <- normaliseDef whnf0 rep es
+            case minlined of
+              Nothing -> return $ apps e es
+              Just (inlined, es') -> whnf' args inlined es'
+          | otherwise -> return $ apps e es
     go e@(Con _) es = return $ apps e es
     go e@(Lit _) es = return $ apps e es
-    go e@(Pi {}) es = return $ apps e es
-    go (Lam _ p1 _ s) ((p2, e):es) | p1 == p2 = whnf' args es $ instantiate1 e s
-    go e@(Lam {}) es = return $ apps e es
-    go (App e1 p e2) es = whnf' args ((p, e2) : es) e1
+    go e@Pi {} es = return $ apps e es
+    go (Lam _ p1 _ s) ((p2, e):es) | p1 == p2 = whnf' args (Util.instantiate1 e s) es
+    go e@Lam {} es = return $ apps e es
+    go (App e1 p e2) es = whnf' args e1 $ (p, e2) : es
     go (Let ds scope) es = do
       e <- instantiateLetM ds scope
-      whnf' args es e
+      whnf' args e es
     go (Case e brs retType) es = do
       e' <- whnf0 e
-      retType' <- whnf0 retType
-      chooseBranch e' brs retType' es $ whnf' args es
+      case chooseBranch e' brs of
+        Nothing -> Case e' brs <$> whnf0 retType
+        Just chosen -> whnf' args chosen es
     go (ExternCode c retType) es = do
       c' <- mapM whnf0 c
       retType' <- whnf0 retType
       return $ apps (ExternCode c' retType') es
 
-    whnf0 = whnf' args mempty
+    whnf0 e = whnf' args e mempty
 
 normalise
   :: MonadNormalise m
   => CoreM
   -> m CoreM
-normalise expr = do
+normalise e = normalise' e mempty
+
+normalise'
+  :: MonadNormalise m
+  => CoreM -- ^ Expression to normalise
+  -> [(Plicitness, CoreM)] -- ^ Arguments to the expression
+  -> m CoreM
+normalise' expr exprs = do
   logMeta 40 "normalise e" expr
-  res <- indentLog $ case expr of
-    Var (FreeVar { varValue = Just e }) -> normalise e
-    Var (FreeVar { varValue = Nothing }) -> return expr
-    Meta m es -> traverseMetaSolution normalise m es
-    Global g -> do
-      (d, _) <- definition g
-      case d of
-        Definition Concrete _ e -> normalise e
-        _ -> return expr
-    Con _ -> return expr
-    Lit _ -> return expr
-    Pi h p t s -> normaliseScope pi_ h p t s
-    Lam h p t s -> normaliseScope lam h p t s
-    Builtin.ProductTypeRep x y -> typeRepBinOp
-      (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
-      TypeRep.product Builtin.ProductTypeRep
-      normalise x y
-    Builtin.SumTypeRep x y -> typeRepBinOp
-      (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
-      TypeRep.sum Builtin.SumTypeRep
-      normalise x y
-    Builtin.SubInt x y -> binOp Nothing (Just 0) (-) Builtin.SubInt normalise x y
-    Builtin.AddInt x y -> binOp (Just 0) (Just 0) (+) Builtin.AddInt normalise x y
-    Builtin.MaxInt x y -> binOp (Just 0) (Just 0) max Builtin.MaxInt normalise x y
-    App e1 p e2 -> do
-      e1' <- normalise e1
-      case e1' of
-        -- TODO sharing?
-        Lam _ p' _ s | p == p' ->
-          normalise $ Util.instantiate1 e2 s
-        _ -> do
-          e2' <- normalise e2
-          return $ App e1' p e2'
-    Let ds scope -> do
-      e <- instantiateLetM ds scope
-      normalise e
-    Case e brs retType -> do
-      e' <- normalise e
-      res <- chooseBranch e' brs retType [] normalise
-      case res of
-        Case e'' brs' retType' -> Case e'' <$> (case brs' of
-          ConBranches cbrs -> ConBranches
-            <$> sequence
-              [ normaliseConBranch qc tele s
-              | ConBranch qc tele s <- cbrs
-              ]
-          LitBranches lbrs def -> LitBranches
-            <$> sequence [LitBranch l <$> normalise br | LitBranch l br <- lbrs]
-            <*> normalise def)
-          <*> normalise retType'
-        _ -> return res
-    ExternCode c retType -> ExternCode <$> mapM normalise c <*> normalise retType
+  res <- normaliseBuiltins go expr exprs
   logMeta 40 "normalise res" res
   return res
   where
+    go
+      :: MonadNormalise m
+      => CoreM
+      -> [(Plicitness, CoreM)]
+      -> m CoreM
+    go e@(Var FreeVar { varValue = Just e' }) es = do
+      minlined <- normaliseDef normalise e' es
+      case minlined of
+        Nothing -> irreducible e es
+        Just (inlined, es') -> normalise' inlined es'
+    go e@(Var FreeVar { varValue = Nothing }) es = irreducible e es
+    go (Meta m mes) es = do
+      sol <- solution m
+      case sol of
+        Left _ -> do
+          mes' <- mapM (mapM normalise) mes
+          irreducible (Meta m mes') es
+        Right e -> normalise' (vacuous e) $ toList mes ++ es
+    go e@(Global g) es = do
+      (d, _) <- definition g
+      case d of
+        Definition Concrete _ e' -> do
+          minlined <- normaliseDef normalise e' es
+          case minlined of
+            Nothing -> irreducible e es
+            Just (inlined, es') -> normalise' inlined es'
+        Definition Abstract _ _ -> irreducible e es
+        DataDefinition {} -> irreducible e es
+    go e@(Con _) es = irreducible e es
+    go e@(Lit _) es = irreducible e es
+    go (Pi h p t s) es = normaliseScope pi_ h p t s es
+    -- TODO sharing
+    go (Lam _ p1 _ s) ((p2, e):es) | p1 == p2 = normalise' (Util.instantiate1 e s) es
+    go (Lam h p t s) es = normaliseScope lam h p t s es
+    go (App e1 p e2) es = normalise' e1 ((p, e2) : es)
+    go (Let ds scope) es = do
+      e <- instantiateLetM ds scope
+      normalise' e es
+    go (Case e brs retType) es = do
+      e' <- normalise e
+      case chooseBranch e' brs of
+        Nothing -> do
+          retType' <- normalise retType
+          brs' <- case brs of
+            ConBranches cbrs -> ConBranches
+              <$> sequence
+                [ normaliseConBranch qc tele s
+                | ConBranch qc tele s <- cbrs
+                ]
+            LitBranches lbrs def -> LitBranches
+              <$> sequence [LitBranch l <$> normalise br | LitBranch l br <- lbrs]
+              <*> normalise def
+          irreducible (Case e' brs' retType') es
+        Just chosen -> normalise' chosen es
+    go (ExternCode c retType) es = do
+      c' <- mapM normalise c
+      retType' <- normalise retType
+      irreducible (ExternCode c' retType') es
+
+    irreducible e es = apps e <$> mapM (mapM normalise) es
+
     normaliseConBranch qc tele scope = do
       vs <- forTeleWithPrefixM tele $ \h p s vs -> do
         t' <- normalise $ instantiateTele pure vs s
         forall h p t'
       e' <- withVars vs $ normalise $ instantiateTele pure vs scope
       return $ conBranchTyped qc vs e'
-    normaliseScope c h p t s = do
+
+    normaliseScope c h p t s es = do
       t' <- normalise t
       x <- forall h p t'
       e <- withVar x $ normalise $ Util.instantiate1 (pure x) s
-      return $ c x e
+      irreducible (c x e) es
+
+normaliseBuiltins
+  :: Monad m
+  => (Expr meta v -> [(Plicitness, Expr meta v)] -> m (Expr meta v))
+  -> Expr meta v
+  -> [(Plicitness, Expr meta v)]
+  -> m (Expr meta v)
+normaliseBuiltins k (Global Builtin.ProductTypeRepName) [(Explicit, x), (Explicit, y)] = typeRepBinOp
+  (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
+  TypeRep.product Builtin.ProductTypeRep
+  k x y
+normaliseBuiltins k (Global Builtin.SumTypeRepName) [(Explicit, x), (Explicit, y)] = typeRepBinOp
+  (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
+  TypeRep.sum Builtin.SumTypeRep
+  k x y
+normaliseBuiltins k (Global Builtin.SubIntName) [(Explicit, x), (Explicit, y)] =
+  binOp Nothing (Just 0) (-) Builtin.SubInt k x y
+normaliseBuiltins k (Global Builtin.AddIntName) [(Explicit, x), (Explicit, y)] =
+  binOp (Just 0) (Just 0) (+) Builtin.AddInt k x y
+normaliseBuiltins k (Global Builtin.MaxIntName) [(Explicit, x), (Explicit, y)] =
+  binOp (Just 0) (Just 0) max Builtin.MaxInt k x y
+normaliseBuiltins k e es = k e es
 
 binOp
   :: Monad m
@@ -198,13 +241,13 @@ binOp
   -> Maybe Integer
   -> (Integer -> Integer -> Integer)
   -> (Expr meta v -> Expr meta v -> Expr meta v)
-  -> (Expr meta v -> m (Expr meta v))
+  -> (Expr meta v -> [(Plicitness, Expr meta v)] -> m (Expr meta v))
   -> Expr meta v
   -> Expr meta v
   -> m (Expr meta v)
-binOp lzero rzero op cop norm x y = do
-  x' <- norm x
-  y' <- norm y
+binOp lzero rzero op cop k x y = do
+  x' <- normaliseBuiltins k x mempty
+  y' <- normaliseBuiltins k y mempty
   case (x', y') of
     (Lit (Integer m), _) | Just m == lzero -> return y'
     (_, Lit (Integer n)) | Just n == rzero -> return x'
@@ -217,13 +260,13 @@ typeRepBinOp
   -> Maybe TypeRep
   -> (TypeRep -> TypeRep -> TypeRep)
   -> (Expr meta v -> Expr meta v -> Expr meta v)
-  -> (Expr meta v -> m (Expr meta v))
+  -> (Expr meta v -> [(Plicitness, Expr meta v)] -> m (Expr meta v))
   -> Expr meta v
   -> Expr meta v
   -> m (Expr meta v)
-typeRepBinOp lzero rzero op cop norm x y = do
-  x' <- norm x
-  y' <- norm y
+typeRepBinOp lzero rzero op cop k x y = do
+  x' <- normaliseBuiltins k x mempty
+  y' <- normaliseBuiltins k y mempty
   case (x', y') of
     (MkType m, _) | Just m == lzero -> return y'
     (_, MkType n) | Just n == rzero -> return x'
@@ -231,24 +274,53 @@ typeRepBinOp lzero rzero op cop norm x y = do
     _ -> return $ cop x' y'
 
 chooseBranch
-  :: Monad m
-  => Expr meta v
+  :: Expr meta v
   -> Branches Plicitness (Expr meta) v
-  -> Expr meta v
-  -> [(Plicitness, Expr meta v)]
-  -> (Expr meta v -> m (Expr meta v))
-  -> m (Expr meta v)
-chooseBranch (Lit l) (LitBranches lbrs def) _ _ k = k chosenBranch
+  -> Maybe (Expr meta v)
+chooseBranch (Lit l) (LitBranches lbrs def) = Just chosenBranch
   where
     chosenBranch = head $ [br | LitBranch l' br <- NonEmpty.toList lbrs, l == l'] ++ [def]
-chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs) _ _ k =
-  k $ instantiateTele snd (Vector.drop (Vector.length argsv - numConArgs) argsv) chosenBranch
+chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs) =
+  Just $ instantiateTele snd (Vector.drop (Vector.length argsv - numConArgs) argsv) chosenBranch
   where
     argsv = Vector.fromList args
     (numConArgs, chosenBranch) = case [(teleLength tele, br) | ConBranch qc' tele br <- cbrs, qc == qc'] of
       [br] -> br
       _ -> error "Normalise.chooseBranch"
-chooseBranch e brs retType es _ = return $ apps (Case e brs retType) es
+chooseBranch _ _ = Nothing
+
+-- | Definition normalisation heuristic:
+--
+-- If a definition is of the form `f = \xs. cases`, we inline `f` during the
+-- normalisation of `f es` if:
+--
+-- The application is saturated, i.e. `length es >= length xs`, and the
+-- (possibly nested) case expressions `cases` reduce to something that doesn't
+-- start with a case.
+--
+-- This is done to avoid endlessly unfolding recursive definitions. It means
+-- that it's possible to miss some definitional equalities, but this is
+-- hopefully rarely the case in practice.
+normaliseDef
+  :: Monad m
+  => (CoreM -> m CoreM) -- ^ How to normalise case scrutinees
+  -> CoreM -- ^ The definition
+  -> [(Plicitness, CoreM)] -- ^ Arguments
+  -> m (Maybe (CoreM, [(Plicitness, CoreM)]))
+  -- ^ The definition body applied to some arguments and any arguments that are still left
+normaliseDef norm = lambdas
+  where
+    lambdas (Lam _ p2 _ s) ((p1, e):es) | p1 == p2 = lambdas (instantiate1 e s) es
+    lambdas Lam {} [] = return Nothing
+    lambdas e es = do
+      mresult <- cases e
+      return $ flip (,) es <$> mresult
+    cases (Case e brs _retType) = do
+      e' <- norm e
+      case chooseBranch e' brs of
+        Nothing -> return Nothing
+        Just chosen -> cases chosen
+    cases e = return $ Just e
 
 instantiateLetM
   :: (MonadFix m, MonadIO m, MonadVIX m)

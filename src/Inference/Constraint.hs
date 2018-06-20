@@ -43,8 +43,8 @@ elabUnsolvedConstraint m = inUpdatedContext (const mempty) $ do
   logShow 25 "elabUnsolvedConstraint" $ metaId m
   (vs, typ) <- instantiatedMetaType m
   withVars vs $ do
-    typ' <- simplifyExpr (const False) 0 <$> zonk typ
-    case typ of
+    typ' <- whnf typ
+    case typ' of
       (appsView -> (Global className, _)) -> do
         -- Try subsumption on all instances of the class until a match is found
         globalClassInstances <- liftVIX $ gets $ HashMap.lookupDefault mempty className . vixClassInstances
@@ -152,15 +152,17 @@ mergeConstraintVars vars = do
     assertClosed = fmap $ error "mergeConstraintVars assertClosed"
 
 whnf :: CoreM -> Infer CoreM
-whnf = Normalise.whnf' Normalise.WhnfArgs
+whnf e = Normalise.whnf' Normalise.WhnfArgs
   { Normalise.expandTypeReps = False
   , Normalise.handleMetaVar = elabMetaVar
   }
+  e
   mempty
 
 whnfExpandingTypeReps :: CoreM -> Infer CoreM
-whnfExpandingTypeReps = Normalise.whnf' Normalise.WhnfArgs
+whnfExpandingTypeReps e = Normalise.whnf' Normalise.WhnfArgs
   { Normalise.expandTypeReps = True
   , Normalise.handleMetaVar = elabMetaVar
   }
+  e
   mempty
