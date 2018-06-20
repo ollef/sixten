@@ -169,7 +169,7 @@ compileLlvm compiler opts tgt llFile = do
 
 assemble :: Binary -> Options -> [FilePath] -> FilePath -> IO ()
 assemble clang opts objFiles outFile = do
-  let extraLibDirFlag = ["-L" ++ dir | dir <- Options.extraLibDir opts]
+  let extraLibDirFlags = ["-L" ++ dir | dir <- Options.extraLibDirs opts]
 #ifndef mingw32_HOST_OS
   ldFlags <- readProcess "pkg-config" ["--libs", "--static", "bdw-gc"] ""
 #else
@@ -178,6 +178,6 @@ assemble clang opts objFiles outFile = do
   let ldFlags = "-lgc-lib -fuse-ld=lld-link -Xlinker -nodefaultlib:libcmt -Xlinker -defaultlib:msvcrt.lib"
 #endif
   callProcess clang
-    $ concatMap words (extraLibDirFlag ++ lines ldFlags)
+    $ concatMap words (extraLibDirFlags ++ lines ldFlags)
     ++ optimisationFlags opts
     ++ objFiles ++ ["-o", outFile]
