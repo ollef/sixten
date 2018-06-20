@@ -27,7 +27,7 @@ whnf
   :: MonadNormalise m
   => CoreM
   -> m CoreM
-whnf = whnf' WhnfArgs
+whnf expr = whnf' WhnfArgs
   { expandTypeReps = False
   , handleMetaVar = \m -> do
     sol <- solution m
@@ -35,13 +35,14 @@ whnf = whnf' WhnfArgs
       Left _ -> return Nothing
       Right e -> return $ Just e
   }
+  expr
   mempty
 
 whnfExpandingTypeReps
   :: MonadNormalise m
   => CoreM
   -> m CoreM
-whnfExpandingTypeReps = whnf' WhnfArgs
+whnfExpandingTypeReps expr = whnf' WhnfArgs
   { expandTypeReps = True
   , handleMetaVar = \m -> do
     sol <- solution m
@@ -49,6 +50,7 @@ whnfExpandingTypeReps = whnf' WhnfArgs
       Left _ -> return Nothing
       Right e -> return $ Just e
   }
+  expr
   mempty
 
 data WhnfArgs m = WhnfArgs
@@ -63,22 +65,22 @@ data WhnfArgs m = WhnfArgs
 whnf'
   :: MonadNormalise m
   => WhnfArgs m
-  -> [(Plicitness, CoreM)] -- ^ Arguments to the expression
   -> CoreM -- ^ Expression to normalise
+  -> [(Plicitness, CoreM)] -- ^ Arguments to the expression
   -> m CoreM
-whnf' args exprs expr = indentLog $ do
+whnf' args expr exprs = indentLog $ do
   logMeta 40 "whnf e" expr
   res <- normaliseBuiltins go expr exprs
   logMeta 40 "whnf res" res
   return res
   where
-    go (Var FreeVar { varValue = Just e }) es = whnf' args es e
+    go (Var FreeVar { varValue = Just e }) es = whnf' args e es
     go e@(Var FreeVar { varValue = Nothing }) es = return $ apps e es
     go e@(Meta m mes) es = do
       sol <- handleMetaVar args m
       case sol of
         Nothing -> return $ apps e es
-        Just e' -> whnf' args (toList mes ++ es) (vacuous e')
+        Just e' -> whnf' args (vacuous e') $ toList mes ++ es
     go e@(Global g) es = do
       (d, _) <- definition g
       case d of
@@ -86,48 +88,48 @@ whnf' args exprs expr = indentLog $ do
           minlined <- normaliseDef whnf0 e' es
           case minlined of
             Nothing -> return $ apps e es
-            Just (inlined, es') -> whnf' args es' inlined
+            Just (inlined, es') -> whnf' args inlined es'
         Definition Abstract _ _ -> return $ apps e es
         DataDefinition _ rep
           | expandTypeReps args -> do
             minlined <- normaliseDef whnf0 rep es
             case minlined of
               Nothing -> return $ apps e es
-              Just (inlined, es') -> whnf' args es' inlined
+              Just (inlined, es') -> whnf' args inlined es'
           | otherwise -> return $ apps e es
     go e@(Con _) es = return $ apps e es
     go e@(Lit _) es = return $ apps e es
     go e@Pi {} es = return $ apps e es
-    go (Lam _ p1 _ s) ((p2, e):es) | p1 == p2 = whnf' args es $ instantiate1 e s
+    go (Lam _ p1 _ s) ((p2, e):es) | p1 == p2 = whnf' args (Util.instantiate1 e s) es
     go e@Lam {} es = return $ apps e es
-    go (App e1 p e2) es = whnf' args ((p, e2) : es) e1
+    go (App e1 p e2) es = whnf' args e1 $ (p, e2) : es
     go (Let ds scope) es = do
       e <- instantiateLetM ds scope
-      whnf' args es e
+      whnf' args e es
     go (Case e brs retType) es = do
       e' <- whnf0 e
       case chooseBranch e' brs of
         Nothing -> Case e' brs <$> whnf0 retType
-        Just chosen -> whnf' args es chosen
+        Just chosen -> whnf' args chosen es
     go (ExternCode c retType) es = do
       c' <- mapM whnf0 c
       retType' <- whnf0 retType
       return $ apps (ExternCode c' retType') es
 
-    whnf0 = whnf' args mempty
+    whnf0 e = whnf' args e mempty
 
 normalise
   :: MonadNormalise m
   => CoreM
   -> m CoreM
-normalise = normalise' mempty
+normalise e = normalise' e mempty
 
 normalise'
   :: MonadNormalise m
-  => [(Plicitness, CoreM)]
-  -> CoreM
+  => CoreM -- ^ Expression to normalise
+  -> [(Plicitness, CoreM)] -- ^ Arguments to the expression
   -> m CoreM
-normalise' exprs expr = do
+normalise' expr exprs = do
   logMeta 40 "normalise e" expr
   res <- normaliseBuiltins go expr exprs
   logMeta 40 "normalise res" res
@@ -138,7 +140,7 @@ normalise' exprs expr = do
       => CoreM
       -> [(Plicitness, CoreM)]
       -> m CoreM
-    go (Var FreeVar { varValue = Just e }) es = normalise' es e
+    go (Var FreeVar { varValue = Just e }) es = normalise' e es
     go e@(Var FreeVar { varValue = Nothing }) es = irreducible e es
     go (Meta m mes) es = do
       sol <- solution m
@@ -146,7 +148,7 @@ normalise' exprs expr = do
         Left _ -> do
           mes' <- mapM (mapM normalise) mes
           irreducible (Meta m mes') es
-        Right e -> normalise' (toList mes ++ es) $ vacuous e
+        Right e -> normalise' (vacuous e) $ toList mes ++ es
     go e@(Global g) es = do
       (d, _) <- definition g
       case d of
@@ -154,19 +156,19 @@ normalise' exprs expr = do
           minlined <- normaliseDef normalise e' es
           case minlined of
             Nothing -> irreducible e es
-            Just (inlined, es') -> normalise' es' inlined
+            Just (inlined, es') -> normalise' inlined es'
         Definition Abstract _ _ -> irreducible e es
         DataDefinition {} -> irreducible e es
     go e@(Con _) es = irreducible e es
     go e@(Lit _) es = irreducible e es
     go (Pi h p t s) es = normaliseScope pi_ h p t s es
     -- TODO sharing
-    go (Lam _ p1 _ s) ((p2, e):es) | p1 == p2 = normalise' es $ Util.instantiate1 e s
+    go (Lam _ p1 _ s) ((p2, e):es) | p1 == p2 = normalise' (Util.instantiate1 e s) es
     go (Lam h p t s) es = normaliseScope lam h p t s es
-    go (App e1 p e2) es = normalise' ((p, e2) : es) e1
+    go (App e1 p e2) es = normalise' e1 ((p, e2) : es)
     go (Let ds scope) es = do
       e <- instantiateLetM ds scope
-      normalise' es e
+      normalise' e es
     go (Case e brs retType) es = do
       e' <- normalise e
       case chooseBranch e' brs of
@@ -182,7 +184,7 @@ normalise' exprs expr = do
               <$> sequence [LitBranch l <$> normalise br | LitBranch l br <- lbrs]
               <*> normalise def
           irreducible (Case e' brs' retType') es
-        Just chosen -> normalise' es chosen
+        Just chosen -> normalise' chosen es
     go (ExternCode c retType) es = do
       c' <- mapM normalise c
       retType' <- normalise retType
