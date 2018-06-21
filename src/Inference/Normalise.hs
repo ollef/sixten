@@ -69,7 +69,7 @@ whnf'
   -> [(Plicitness, CoreM)] -- ^ Arguments to the expression
   -> m CoreM
 whnf' args expr exprs = indentLog $ do
-  logMeta 40 "whnf e" expr
+  logMeta 40 "whnf e" $ apps expr exprs
   res <- normaliseBuiltins go expr exprs
   logMeta 40 "whnf res" res
   return res
@@ -134,7 +134,7 @@ normalise'
   -> [(Plicitness, CoreM)] -- ^ Arguments to the expression
   -> m CoreM
 normalise' expr exprs = do
-  logMeta 40 "normalise e" expr
+  logMeta 40 "normalise e" $ apps expr exprs
   res <- normaliseBuiltins go expr exprs
   logMeta 40 "normalise res" res
   return res
