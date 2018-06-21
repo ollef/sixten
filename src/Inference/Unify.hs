@@ -130,8 +130,8 @@ unify :: [(CoreM, CoreM)] -> CoreM -> CoreM -> Infer ()
 unify cxt type1 type2 = do
   logMeta 30 "unify t1" type1
   logMeta 30 "      t2" type2
-  type1' <- zonk =<< whnf type1
-  type2' <- zonk =<< whnf type2
+  type1' <- whnf type1
+  type2' <- whnf type2
   touchable <- getTouchable
   unify' ((type1', type2') : cxt) touchable type1' type2'
 
