@@ -3,7 +3,6 @@ module Inference.Match where
 
 import Control.Monad.Except
 import Data.Bifunctor
-import Data.Bitraversable
 import Data.Foldable
 import Data.Function
 import Data.List.NonEmpty(NonEmpty)
@@ -16,7 +15,6 @@ import qualified Analysis.Simplify as Simplify
 import qualified Builtin.Names as Builtin
 import Inference.Constraint
 import Inference.MetaVar
-import Inference.MetaVar.Zonk
 import Inference.Monad
 import Inference.TypeOf
 import MonadContext
@@ -183,16 +181,13 @@ matchLit expr failVar retType exprs clauses expr0 = do
 
 matchVar :: CoreM -> NonEmptyMatch
 matchVar expr failVar retType exprs clauses expr0 = do
-  clauses' <- traverse go clauses
+  let clauses' = go <$> clauses
   match failVar retType exprs (NonEmpty.toList clauses') expr0
   where
-    go :: Clause -> Infer Clause
+    go :: Clause -> Clause
     go (VarPat _ y:ps, e) = do
-      ps' <- forM ps $ flip bitraverse pure $ \t -> do
-        t' <- zonk t
-        return $ substitute y expr t'
-      e' <- zonk e
-      return (ps', substitute y expr e')
+      let ps' = fmap (first $ substitute y expr) ps
+      (ps', substitute y expr e)
     go _ = error "match var"
 
 matchView :: CoreM -> NonEmptyMatch
