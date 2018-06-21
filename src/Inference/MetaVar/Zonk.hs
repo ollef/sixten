@@ -23,9 +23,6 @@ zonk = hoistMetas $ \m es -> do
       solve m e'
       return $ betaApps (vacuous e') es
 
-zonkDef :: MonadIO m => Definition (Expr MetaVar) v -> m (Definition (Expr MetaVar) v)
-zonkDef = transverseDefinition zonk
-
 metaVars :: MonadIO m => Expr MetaVar v -> m (HashSet MetaVar)
 metaVars expr = execStateT (hoistMetas_ go expr) mempty
   where
