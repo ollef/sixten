@@ -139,11 +139,6 @@ normalise' expr exprs = do
   logMeta 40 "normalise res" res
   return res
   where
-    go
-      :: MonadNormalise m
-      => CoreM
-      -> [(Plicitness, CoreM)]
-      -> m CoreM
     go e@(Var FreeVar { varValue = Just e' }) es = do
       minlined <- normaliseDef normalise e' es
       case minlined of
