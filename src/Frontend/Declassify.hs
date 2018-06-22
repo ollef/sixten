@@ -12,7 +12,7 @@ import qualified Data.Vector as Vector
 import Data.Void
 
 import Error
-import Syntax
+import Syntax hiding (Definition, DataDefinition)
 import Syntax.Pre.Scoped
 import Util
 import VIX
@@ -20,16 +20,16 @@ import VIX
 declassify
   :: QName
   -> SourceLoc
-  -> TopLevelPatDefinition Expr Void
+  -> Definition Expr Void
   -> VIX
-    ( [(QName, SourceLoc, TopLevelPatDefinition Expr Void)]
-    , [(QName, SourceLoc, TopLevelPatDefinition Expr Void)]
+    ( [(QName, SourceLoc, Definition Expr Void)]
+    , [(QName, SourceLoc, Definition Expr Void)]
     )
 declassify name loc def = case def of
-  TopLevelPatConstantDefinition _ -> doNothing
-  TopLevelPatDataDefinition _ -> doNothing
-  TopLevelPatClassDefinition classDef -> first pure <$> declass name loc classDef
-  TopLevelPatInstanceDefinition instDef -> (, mempty) <$> deinstance name loc instDef
+  ConstantDefinition _ -> doNothing
+  DataDefinition _ -> doNothing
+  ClassDefinition classDef -> first pure <$> declass name loc classDef
+  InstanceDefinition instDef -> (, mempty) <$> deinstance name loc instDef
   where
     doNothing = return (pure (name, loc, def), mempty)
 
@@ -48,8 +48,8 @@ declass
   -> SourceLoc
   -> ClassDef Expr Void
   -> VIX
-    ( (QName, SourceLoc, TopLevelPatDefinition Expr Void)
-    , [(QName, SourceLoc, TopLevelPatDefinition Expr Void)]
+    ( (QName, SourceLoc, Definition Expr Void)
+    , [(QName, SourceLoc, Definition Expr Void)]
     )
 declass qname loc classDef = do
   liftVIX $ modify $ \s -> s
@@ -66,7 +66,7 @@ declass qname loc classDef = do
   return
     (( qname
       , loc
-      , TopLevelPatDataDefinition
+      , DataDefinition
         $ DataDef params
         $ pure
         $ ConstrDef (qconstrConstr classConstrName)
@@ -82,8 +82,8 @@ declass qname loc classDef = do
       )
     , [ ( QName (qnameModule qname) mname
         , mloc
-        , TopLevelPatConstantDefinition
-          (PatConstantDef
+        , ConstantDefinition
+          (ConstantDef
             Concrete
             IsConstant
             (pure
@@ -118,7 +118,7 @@ deinstance
   :: QName
   -> SourceLoc
   -> PatInstanceDef Expr Void
-  -> VIX [(QName, SourceLoc, TopLevelPatDefinition Expr Void)]
+  -> VIX [(QName, SourceLoc, Definition Expr Void)]
 deinstance qname@(QName modName name) loc (PatInstanceDef typ methods) = located loc $ do
   className <- getClass typ
   mnames <- liftVIX $ gets $ HashMap.lookup className . vixClassMethods
@@ -141,8 +141,8 @@ deinstance qname@(QName modName name) loc (PatInstanceDef typ methods) = located
         return $
           ( qname
           , loc
-          , TopLevelPatConstantDefinition
-            $ PatConstantDef
+          , ConstantDefinition
+            $ ConstantDef
               Concrete
               IsInstance
               (pure
@@ -153,7 +153,7 @@ deinstance qname@(QName modName name) loc (PatInstanceDef typ methods) = located
               $ Just typ
           )
           :
-          [ (mname n, loc', TopLevelPatConstantDefinition def)
+          [ (mname n, loc', ConstantDefinition def)
           | (n, loc', def) <- Vector.toList methods'
           ]
   where

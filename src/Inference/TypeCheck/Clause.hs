@@ -25,10 +25,10 @@ import Util
 import VIX
 
 checkConstantDef
-  :: Pre.PatConstantDef Pre.Expr FreeV
+  :: Pre.ConstantDef Pre.Expr FreeV
   -> CoreM
   -> Infer (Definition (Core.Expr MetaVar) FreeV)
-checkConstantDef (Pre.PatConstantDef a i clauses _) typ = do
+checkConstantDef (Pre.ConstantDef a i clauses _) typ = do
   e' <- checkClauses clauses typ
   return $ Definition a i e'
 

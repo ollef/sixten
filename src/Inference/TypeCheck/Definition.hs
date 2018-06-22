@@ -36,7 +36,7 @@ checkAndGeneraliseDefs
   -> Vector
     ( FreeV
     , ( SourceLoc
-      , Pre.TopLevelPatDefinition Pre.Expr FreeV
+      , Pre.Definition Pre.Expr FreeV
       )
     )
   -> Infer
@@ -106,27 +106,27 @@ checkAndGeneraliseDefs forceGeneralisation defs = withDefVars $ do
     withDefVars = if gen then withVars (fst <$> defs) else id
     divide = bimap Vector.fromList Vector.fromList . foldMap go
       where
-        go (v, (loc, def@(Pre.TopLevelPatConstantDefinition (Pre.PatConstantDef _ _ _ (Just typ))))) = ([], [(v, (loc, def, typ))])
-        go (v, (loc, def@(Pre.TopLevelPatConstantDefinition (Pre.PatConstantDef _ _ _ Nothing)))) = ([(v, (loc, def))], [])
-        go (v, (loc, def@(Pre.TopLevelPatDataDefinition (DataDef tele _)))) = ([], [(v, (loc, def, Pre.telePis tele $ Pre.Global Builtin.TypeName))])
+        go (v, (loc, def@(Pre.ConstantDefinition (Pre.ConstantDef _ _ _ (Just typ))))) = ([], [(v, (loc, def, typ))])
+        go (v, (loc, def@(Pre.ConstantDefinition (Pre.ConstantDef _ _ _ Nothing)))) = ([(v, (loc, def))], [])
+        go (v, (loc, def@(Pre.DataDefinition (DataDef tele _)))) = ([], [(v, (loc, def, Pre.telePis tele $ Pre.Global Builtin.TypeName))])
         go _ = error "checkAndGeneraliseDefs divide"
 
 checkDef
   :: FreeV
-  -> Pre.TopLevelPatDefinition Pre.Expr FreeV
+  -> Pre.Definition Pre.Expr FreeV
   -> Infer (Definition (Core.Expr MetaVar) FreeV)
 checkDef v def = case def of
-  Pre.TopLevelPatConstantDefinition def' -> checkConstantDef def' $ varType v
-  Pre.TopLevelPatDataDefinition d -> checkDataDef v d
+  Pre.ConstantDefinition def' -> checkConstantDef def' $ varType v
+  Pre.DataDefinition d -> checkDataDef v d
   -- Should be removed by Declassify:
-  Pre.TopLevelPatClassDefinition _ -> error "checkDef class"
-  Pre.TopLevelPatInstanceDefinition _ -> error "checkDef instance"
+  Pre.ClassDefinition _ -> error "checkDef class"
+  Pre.InstanceDefinition _ -> error "checkDef instance"
 
 checkDefs
   :: Vector
     ( FreeV
     , ( SourceLoc
-      , Pre.TopLevelPatDefinition Pre.Expr FreeV
+      , Pre.Definition Pre.Expr FreeV
       )
     )
   -> Infer
@@ -144,7 +144,7 @@ checkAndGeneraliseTopLevelDefs
   :: Vector
     ( QName
     , SourceLoc
-    , Pre.TopLevelPatDefinition Pre.Expr Void
+    , Pre.Definition Pre.Expr Void
     )
   -> Infer
     (Vector
@@ -200,22 +200,22 @@ shouldGeneralise
   :: Vector
     ( FreeV
     , ( SourceLoc
-      , Pre.TopLevelPatDefinition Pre.Expr FreeV
+      , Pre.Definition Pre.Expr FreeV
       )
     )
   -> Bool
 shouldGeneralise = all (\(_, (_, def)) -> shouldGeneraliseDef def)
   where
-    shouldGeneraliseDef (Pre.TopLevelPatConstantDefinition (Pre.PatConstantDef _ _ (Pre.Clause ps _ NonEmpty.:| _) _)) = Vector.length ps > 0
-    shouldGeneraliseDef Pre.TopLevelPatDataDefinition {} = True
-    shouldGeneraliseDef Pre.TopLevelPatClassDefinition {} = True
-    shouldGeneraliseDef Pre.TopLevelPatInstanceDefinition {} = True
+    shouldGeneraliseDef (Pre.ConstantDefinition (Pre.ConstantDef _ _ (Pre.Clause ps _ NonEmpty.:| _) _)) = Vector.length ps > 0
+    shouldGeneraliseDef Pre.DataDefinition {} = True
+    shouldGeneraliseDef Pre.ClassDefinition {} = True
+    shouldGeneraliseDef Pre.InstanceDefinition {} = True
 
 defPlicitness
-  :: Pre.TopLevelPatDefinition e v
+  :: Pre.Definition e v
   -> Plicitness
-defPlicitness (Pre.TopLevelPatConstantDefinition (Pre.PatConstantDef _ IsInstance _ _)) = Constraint
-defPlicitness Pre.TopLevelPatConstantDefinition {} = Explicit
-defPlicitness Pre.TopLevelPatDataDefinition {} = Explicit
-defPlicitness Pre.TopLevelPatClassDefinition {} = Explicit
-defPlicitness Pre.TopLevelPatInstanceDefinition {} = Explicit
+defPlicitness (Pre.ConstantDefinition (Pre.ConstantDef _ IsInstance _ _)) = Constraint
+defPlicitness Pre.ConstantDefinition {} = Explicit
+defPlicitness Pre.DataDefinition {} = Explicit
+defPlicitness Pre.ClassDefinition {} = Explicit
+defPlicitness Pre.InstanceDefinition {} = Explicit

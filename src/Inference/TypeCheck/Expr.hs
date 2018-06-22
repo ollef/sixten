@@ -180,7 +180,7 @@ tcRho expr expected expectedAppResult = case expr of
     let instantiatedDs
           = (\(loc, _, def) ->
               ( loc
-              , Pre.TopLevelPatConstantDefinition $ Pre.instantiateLetConstantDef pure evars def
+              , Pre.ConstantDefinition $ Pre.instantiateLetConstantDef pure evars def
               )) <$> ds
     ds' <- checkAndGeneraliseDefs False (Vector.zip evars instantiatedDs)
     let evars' = fst <$> ds'

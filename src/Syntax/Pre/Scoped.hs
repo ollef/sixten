@@ -36,7 +36,7 @@ data Expr v
   | Pi !Plicitness (Pat (HashSet QConstr) (PatternScope Type v) ()) (PatternScope Expr v)
   | Lam !Plicitness (Pat (HashSet QConstr) (PatternScope Type v) ()) (PatternScope Expr v)
   | App (Expr v) !Plicitness (Expr v)
-  | Let (Vector (SourceLoc, NameHint, PatConstantDef Expr (Var LetVar v))) (Scope LetVar Expr v)
+  | Let (Vector (SourceLoc, NameHint, ConstantDef Expr (Var LetVar v))) (Scope LetVar Expr v)
   | Case (Expr v) [(Pat (HashSet QConstr) (PatternScope Type v) (), PatternScope Expr v)]
   | ExternCode (Extern (Expr v))
   | Wildcard

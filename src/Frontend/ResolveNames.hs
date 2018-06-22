@@ -37,7 +37,7 @@ runResolveNames m env = do
 
 resolveModule
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
-  -> VIX [[(QName, SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void)]]
+  -> VIX [[(QName, SourceLoc, Scoped.Definition Scoped.Expr void)]]
 resolveModule modul = do
   let imports
         = Import Builtin.BuiltinModuleName Builtin.BuiltinModuleName AllExposed
@@ -125,10 +125,10 @@ methodClasses contents = HashMap.fromList
   ]
 
 instances
-  :: [(QName, (SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void), a)]
+  :: [(QName, (SourceLoc, Scoped.Definition Scoped.Expr void), a)]
   -> VIX (MultiHashMap QName QName)
 instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, (_, def), _) -> case def of
-  Scoped.TopLevelPatInstanceDefinition (Scoped.PatInstanceDef typ _) -> do
+  Scoped.InstanceDefinition (Scoped.PatInstanceDef typ _) -> do
     c <- Declassify.getClass typ
     return [(c, name)]
   _ -> return mempty
@@ -172,22 +172,22 @@ importedAliases (Import modName asName exposed) = do
 -- | Distinguish variables from constructors, resolve scopes
 resolveTopLevelDefinition
   :: Unscoped.TopLevelDefinition
-  -> ResolveNames (Scoped.TopLevelPatDefinition Scoped.Expr PreName)
+  -> ResolveNames (Scoped.Definition Scoped.Expr PreName)
 resolveTopLevelDefinition (Unscoped.TopLevelDefinition d) =
-  Scoped.TopLevelPatConstantDefinition . snd <$> resolveDefinition d
+  Scoped.ConstantDefinition . snd <$> resolveDefinition d
 resolveTopLevelDefinition (Unscoped.TopLevelDataDefinition _name params cs) = do
   (params', abstr) <- resolveParams params
   cs' <- mapM (mapM (fmap abstr . resolveExpr)) cs
-  return $ Scoped.TopLevelPatDataDefinition $ DataDef params' cs'
+  return $ Scoped.DataDefinition $ DataDef params' cs'
 resolveTopLevelDefinition (Unscoped.TopLevelClassDefinition _name params ms) = do
   (params', abstr) <- resolveParams params
   ms' <- mapM (mapM (fmap abstr . resolveExpr)) ms
-  return $ Scoped.TopLevelPatClassDefinition $ ClassDef params' ms'
+  return $ Scoped.ClassDefinition $ ClassDef params' ms'
 resolveTopLevelDefinition (Unscoped.TopLevelInstanceDefinition typ ms) = do
   typ' <- resolveExpr typ
   ms' <- mapM (\(loc, m) -> (,) loc <$> resolveDefinition m) ms
   return
-    $ Scoped.TopLevelPatInstanceDefinition
+    $ Scoped.InstanceDefinition
     $ Scoped.PatInstanceDef typ'
     $ Vector.fromList
     $ (\(loc, (n, d)) -> (n, loc, d))
@@ -207,9 +207,9 @@ resolveParams params = do
 
 resolveDefinition
   :: Unscoped.Definition Unscoped.Expr
-  -> ResolveNames (Name, Scoped.PatConstantDef Scoped.Expr PreName)
+  -> ResolveNames (Name, Scoped.ConstantDef Scoped.Expr PreName)
 resolveDefinition (Unscoped.Definition name a clauses mtyp) = do
-  res <- Scoped.PatConstantDef a IsConstant <$> mapM resolveClause clauses <*> mapM resolveExpr mtyp
+  res <- Scoped.ConstantDef a IsConstant <$> mapM resolveClause clauses <*> mapM resolveExpr mtyp
   return (name, res)
 
 resolveClause
