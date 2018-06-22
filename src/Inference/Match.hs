@@ -153,7 +153,7 @@ matchCon expr failVar retType exprs clauses expr0 = do
     constr (ConPat c _ _) = c
     constr _ = error "match constr"
     constructors typeName = do
-      (DataDefinition (DataDef cs) _, _) <- definition typeName
+      (DataDefinition (DataDef _ cs) _, _) <- definition typeName
       return $ QConstr typeName . constrName <$> cs
 
 conPatArgs
@@ -162,7 +162,7 @@ conPatArgs
   -> Infer (Vector FreeV)
 conPatArgs c params = do
   ctype <- qconstructor c
-  let (tele, _) = pisView (ctype :: CoreM)
+  let (tele, _) = pisView ctype
       tele' = instantiatePrefix (snd <$> params) tele
   forTeleWithPrefixM tele' $ \h p s vs ->
     forall h p $ instantiateTele pure vs s

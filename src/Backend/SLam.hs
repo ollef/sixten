@@ -51,18 +51,18 @@ slam expr = do
       rep <- slam t'
       return $ SLambda.lam v rep e
     (Core.appsView -> (Core.Con qc@(QConstr typeName _), es)) -> do
-      (_, typeType) <- definition typeName
+      (DataDefinition (DataDef params _) _, _) <- definition typeName
       n <- constrArity qc
       case compare (length es) n of
         GT -> internalError $ "slam: too many args for constructor:" PP.<+> shower qc
         EQ -> do
-          let numParams = teleLength $ Core.telescope typeType
+          let numParams = teleLength params
               es' = drop numParams es
           SLambda.Con qc <$> mapM slamAnno (Vector.fromList $ snd <$> es')
         LT -> do
           conType <- qconstructor qc
           let Just appliedConType = Core.typeApps conType es
-              tele = Core.telescope appliedConType
+              tele = Core.piTelescope appliedConType
           slam
             $ quantify Core.Lam tele
             $ Scope

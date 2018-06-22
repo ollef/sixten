@@ -31,44 +31,21 @@ import TypedFreeVar
 import Util
 import VIX
 
-checkDefType
-  :: Pre.PatDefinition (Pre.Clause Void Pre.Expr FreeV)
-  -> CoreM
-  -> Infer (Definition (Core.Expr MetaVar) FreeV, CoreM)
-checkDefType (Pre.PatDefinition a i clauses) typ = do
-  e' <- checkClauses clauses typ
-  return (Definition a i e', typ)
-
-checkTopLevelDefType
-  :: FreeV
-  -> Pre.TopLevelPatDefinition Pre.Expr FreeV
-  -> SourceLoc
-  -> CoreM
-  -> Infer (Definition (Core.Expr MetaVar) FreeV, CoreM)
-checkTopLevelDefType v def loc typ = located loc $ case def of
-  Pre.TopLevelPatDefinition def' -> checkDefType def' typ
-  Pre.TopLevelPatDataDefinition d -> checkDataType v d typ
-  -- Should be removed by Declassify:
-  Pre.TopLevelPatClassDefinition _ -> error "checkTopLevelDefType class"
-  Pre.TopLevelPatInstanceDefinition _ -> error "checkTopLevelDefType instance"
-
-checkRecursiveDefs
+checkAndGeneraliseDefs
   :: Bool
   -> Vector
     ( FreeV
     , ( SourceLoc
       , Pre.TopLevelPatDefinition Pre.Expr FreeV
-      , Maybe PreM
       )
     )
   -> Infer
     (Vector
       ( FreeV
       , Definition (Core.Expr MetaVar) FreeV
-      , CoreM
       )
     )
-checkRecursiveDefs forceGeneralisation defs = withDefVars $ do
+checkAndGeneraliseDefs forceGeneralisation defs = withDefVars $ do
   -- Divide the definitions into ones with and without type signature.
   let (noSigDefs, sigDefs) = divide defs
 
@@ -82,11 +59,11 @@ checkRecursiveDefs forceGeneralisation defs = withDefVars $ do
 
   -- The definitions without type signature are checked assuming the type
   -- signatures of the others.
-  noSigResult <- checkTopLevelDefs noSigDefs
+  noSigResult <- checkDefs noSigDefs
 
   result <- case (Vector.null sigDefs, gen) of
     (_, False) -> do
-      sigResult <- checkTopLevelDefs sigDefs'
+      sigResult <- checkDefs sigDefs'
       return $ noSigResult <> sigResult
     (True, True) -> do
       -- There are no definitions with signature, so generalise the ones
@@ -102,7 +79,7 @@ checkRecursiveDefs forceGeneralisation defs = withDefVars $ do
         let def' = def >>>= pure . noSigSub
         return (v, (loc, def'))
 
-      sigResult <- checkTopLevelDefs subbedSigDefs
+      sigResult <- checkDefs subbedSigDefs
 
       -- Generalise all definitions a final time, now allowing all
       -- metavariables
@@ -113,7 +90,7 @@ checkRecursiveDefs forceGeneralisation defs = withDefVars $ do
         <|> (\(_, (loc, _)) -> loc) <$> sigDefs'
 
   unless (Vector.length locs == Vector.length result) $
-    internalError "checkRecursiveDefs unmatched length"
+    internalError "checkAndGeneraliseDefs unmatched length"
 
   let locResult = Vector.zip locs result
 
@@ -129,10 +106,23 @@ checkRecursiveDefs forceGeneralisation defs = withDefVars $ do
     withDefVars = if gen then withVars (fst <$> defs) else id
     divide = bimap Vector.fromList Vector.fromList . foldMap go
       where
-        go (v, (loc, def, Nothing)) = ([(v, (loc, def))], [])
-        go (v, (loc, def, Just t)) = ([], [(v, (loc, def, t))])
+        go (v, (loc, def@(Pre.TopLevelPatConstantDefinition (Pre.PatConstantDef _ _ _ (Just typ))))) = ([], [(v, (loc, def, typ))])
+        go (v, (loc, def@(Pre.TopLevelPatConstantDefinition (Pre.PatConstantDef _ _ _ Nothing)))) = ([(v, (loc, def))], [])
+        go (v, (loc, def@(Pre.TopLevelPatDataDefinition (DataDef tele _)))) = ([], [(v, (loc, def, Pre.telePis tele $ Pre.Global Builtin.TypeName))])
+        go _ = error "checkAndGeneraliseDefs divide"
 
-checkTopLevelDefs
+checkDef
+  :: FreeV
+  -> Pre.TopLevelPatDefinition Pre.Expr FreeV
+  -> Infer (Definition (Core.Expr MetaVar) FreeV)
+checkDef v def = case def of
+  Pre.TopLevelPatConstantDefinition def' -> checkConstantDef def' $ varType v
+  Pre.TopLevelPatDataDefinition d -> checkDataDef v d
+  -- Should be removed by Declassify:
+  Pre.TopLevelPatClassDefinition _ -> error "checkDef class"
+  Pre.TopLevelPatInstanceDefinition _ -> error "checkDef instance"
+
+checkDefs
   :: Vector
     ( FreeV
     , ( SourceLoc
@@ -143,54 +133,18 @@ checkTopLevelDefs
     (Vector
       ( FreeV
       , Definition (Core.Expr MetaVar) FreeV
-      , CoreM
       )
     )
-checkTopLevelDefs defs = indentLog $ do
-  -- forM_ defs $ \(var, (_, def)) ->
-  --   logMeta 20 ("checkTopLevelDefs " ++ show (pretty $ fromNameHint "" id $ varHint var)) def
+checkDefs defs = indentLog $
+  forM defs $ \(var, (loc, def)) -> do
+    def' <- located loc $ checkDef var def
+    return (var, def')
 
-  checkedDefs <- forM defs $ \(var, (loc, def)) -> do
-    (def', typ'') <- checkTopLevelDefType var def loc $ varType var
-    return (var, def', typ'')
-
---   forM_ elabDefs $ \(var, def, typ) -> do
---     logMeta 20 ("checkTopLevelDefs res " ++ show (pretty $ fromNameHint "" id $ metaHint var)) def
---     logMeta 20 ("checkTopLevelDefs res t " ++ show (pretty $ fromNameHint "" id $ metaHint var)) typ
-
-  return checkedDefs
-
-shouldGeneralise
-  :: Vector
-    ( FreeV
-    , ( SourceLoc
-      , Pre.TopLevelPatDefinition Pre.Expr FreeV
-      , Maybe PreM
-      )
-    )
-  -> Bool
-shouldGeneralise = all (\(_, (_, def, _)) -> shouldGeneraliseDef def)
-  where
-    shouldGeneraliseDef (Pre.TopLevelPatDefinition (Pre.PatDefinition _ _ (Pre.Clause ps _ NonEmpty.:| _))) = Vector.length ps > 0
-    shouldGeneraliseDef Pre.TopLevelPatDataDefinition {} = True
-    shouldGeneraliseDef Pre.TopLevelPatClassDefinition {} = True
-    shouldGeneraliseDef Pre.TopLevelPatInstanceDefinition {} = True
-
-defPlicitness
-  :: Pre.TopLevelPatDefinition e v
-  -> Plicitness
-defPlicitness (Pre.TopLevelPatDefinition (Pre.PatDefinition _ IsInstance _)) = Constraint
-defPlicitness Pre.TopLevelPatDefinition {} = Explicit
-defPlicitness Pre.TopLevelPatDataDefinition {} = Explicit
-defPlicitness Pre.TopLevelPatClassDefinition {} = Explicit
-defPlicitness Pre.TopLevelPatInstanceDefinition {} = Explicit
-
-checkTopLevelRecursiveDefs
+checkAndGeneraliseTopLevelDefs
   :: Vector
     ( QName
     , SourceLoc
     , Pre.TopLevelPatDefinition Pre.Expr Void
-    , Maybe (Pre.Type Void)
     )
   -> Infer
     (Vector
@@ -199,10 +153,10 @@ checkTopLevelRecursiveDefs
       , Core.Type Void Void
       )
     )
-checkTopLevelRecursiveDefs defs = do
-  let names = (\(v, _, _, _) -> v) <$> defs
+checkAndGeneraliseTopLevelDefs defs = do
+  let names = (\(v, _, _) -> v) <$> defs
 
-  vars <- forM defs $ \(name, _, def, _) -> do
+  vars <- forM defs $ \(name, _, def) -> do
     let hint = fromQName name
     typ <- existsType hint
     forall hint (defPlicitness def) typ
@@ -211,32 +165,57 @@ checkTopLevelRecursiveDefs defs = do
       expose name = case nameIndex name of
         Nothing -> global name
         Just index -> pure
-          $ fromMaybe (error "checkTopLevelRecursiveDefs 1")
+          $ fromMaybe (error "checkAndGeneraliseTopLevelDefs 1")
           $ vars Vector.!? index
 
-  let exposedDefs = flip fmap defs $ \(_, loc, def, mtyp) ->
-        (loc, gbound expose $ vacuous def, gbind expose . vacuous <$> mtyp)
+  let exposedDefs = flip fmap defs $ \(_, loc, def) ->
+        (loc, gbound expose $ vacuous def)
 
-  checkedDefs <- checkRecursiveDefs True (Vector.zip vars exposedDefs)
+  checkedDefs <- checkAndGeneraliseDefs True (Vector.zip vars exposedDefs)
 
-  let vars' = (\(v, _, _) -> v) <$> checkedDefs
+  let vars' = fst <$> checkedDefs
 
   let varIndex = hashedElemIndex vars'
       unexpose v = fromMaybe (pure v) $ (fmap global . (names Vector.!?)) =<< varIndex v
       vf :: FreeV -> Infer b
-      vf v = internalError $ "checkTopLevelRecursiveDefs" PP.<+> shower v
+      vf v = internalError $ "checkAndGeneraliseTopLevelDefs" PP.<+> shower v
       mf :: MetaVar -> Infer b
       mf v = do
         sol <- solution v
-        internalError $ "checkTopLevelRecursiveDefs" PP.<+> shower v PP.<+> "SOL" PP.<+> shower sol
+        internalError $ "checkAndGeneraliseTopLevelDefs" PP.<+> shower v PP.<+> "SOL" PP.<+> shower sol
 
-  forM (Vector.zip names checkedDefs) $ \(name, (_, def, typ)) -> do
-    logDefMeta 20 ("checkTopLevelRecursiveDefs def " ++ show (pretty name)) def
-    logMeta 20 ("checkTopLevelRecursiveDefs typ " ++ show (pretty name)) typ
+  forM (Vector.zip names checkedDefs) $ \(name, (v, def)) -> do
+    let typ = varType v
+    logDefMeta 20 ("checkAndGeneraliseTopLevelDefs def " ++ show (pretty name)) def
+    logMeta 20 ("checkAndGeneraliseTopLevelDefs typ " ++ show (pretty name)) typ
     let unexposedDef = def >>>= unexpose
         unexposedTyp = typ >>= unexpose
-    logDefMeta 20 ("checkTopLevelRecursiveDefs unexposedDef " ++ show (pretty name)) unexposedDef
-    logMeta 20 ("checkTopLevelRecursiveDefs unexposedTyp " ++ show (pretty name)) unexposedTyp
+    logDefMeta 20 ("checkAndGeneraliseTopLevelDefs unexposedDef " ++ show (pretty name)) unexposedDef
+    logMeta 20 ("checkAndGeneraliseTopLevelDefs unexposedTyp " ++ show (pretty name)) unexposedTyp
     unexposedDef' <- bitraverseDefinition mf vf unexposedDef
     unexposedTyp' <- bitraverse mf vf unexposedTyp
     return (name, unexposedDef', unexposedTyp')
+
+shouldGeneralise
+  :: Vector
+    ( FreeV
+    , ( SourceLoc
+      , Pre.TopLevelPatDefinition Pre.Expr FreeV
+      )
+    )
+  -> Bool
+shouldGeneralise = all (\(_, (_, def)) -> shouldGeneraliseDef def)
+  where
+    shouldGeneraliseDef (Pre.TopLevelPatConstantDefinition (Pre.PatConstantDef _ _ (Pre.Clause ps _ NonEmpty.:| _) _)) = Vector.length ps > 0
+    shouldGeneraliseDef Pre.TopLevelPatDataDefinition {} = True
+    shouldGeneraliseDef Pre.TopLevelPatClassDefinition {} = True
+    shouldGeneraliseDef Pre.TopLevelPatInstanceDefinition {} = True
+
+defPlicitness
+  :: Pre.TopLevelPatDefinition e v
+  -> Plicitness
+defPlicitness (Pre.TopLevelPatConstantDefinition (Pre.PatConstantDef _ IsInstance _ _)) = Constraint
+defPlicitness Pre.TopLevelPatConstantDefinition {} = Explicit
+defPlicitness Pre.TopLevelPatDataDefinition {} = Explicit
+defPlicitness Pre.TopLevelPatClassDefinition {} = Explicit
+defPlicitness Pre.TopLevelPatInstanceDefinition {} = Explicit

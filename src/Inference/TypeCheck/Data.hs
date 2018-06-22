@@ -19,39 +19,24 @@ import TypedFreeVar
 import qualified TypeRep
 import VIX
 
-checkConstrDef
-  :: ConstrDef PreM
-  -> Infer (ConstrDef CoreM, CoreM, CoreM)
-checkConstrDef (ConstrDef c typ) = do
-  typ' <- zonk =<< checkPoly typ Builtin.Type
-  (sizes, ret) <- go typ'
-  let size = foldl' productType (Core.MkType TypeRep.UnitRep) sizes
-  return (ConstrDef c typ', ret, size)
-  where
-    go :: CoreM -> Infer ([CoreM], CoreM)
-    -- TODO: Check for escaping type variables?
-    go (Core.Pi h p t s) = do
-      v <- forall h p t
-      (sizes, ret) <- go $ instantiate1 (pure v) s
-      return (t : sizes, ret)
-    go ret = return ([], ret)
-
-checkDataType
+checkDataDef
   :: FreeV
   -> DataDef Pre.Expr FreeV
-  -> CoreM
-  -> Infer (Definition (Core.Expr MetaVar) FreeV, CoreM)
-checkDataType name (DataDef cs) typ = do
-  typ' <- zonk typ
-  logMeta 20 "checkDataType t" typ'
+  -> Infer (Definition (Core.Expr MetaVar) FreeV)
+checkDataDef name (DataDef ps cs) = do
 
-  vs <- forTeleWithPrefixM (Core.telescope typ') $ \h p s vs -> do
-    let is = instantiateTele pure vs s
-    forall h p is
-
-  let constrRetType = Core.apps (pure name) $ (\v -> (varData v, pure v)) <$> vs
+  -- TODO: These vars are typechecked twice (in checkAndGeneraliseDefs as the
+-- expected type and here). Can we clean this up?
+  vs <- forTeleWithPrefixM ps $ \h p s vs -> do
+    let t = instantiateTele pure vs s
+    t' <- withVars vs $ checkPoly t Builtin.Type
+    forall h p t'
 
   withVars vs $ do
+    unify [] (Core.pis vs Builtin.Type) $ varType name
+
+    let constrRetType = Core.apps (pure name) $ (\v -> (varData v, pure v)) <$> vs
+
     (cs', rets, sizes) <- fmap unzip3 $ forM cs $ \(ConstrDef c t) ->
       checkConstrDef $ ConstrDef c $ instantiateTele pure vs t
 
@@ -70,16 +55,30 @@ checkDataType name (DataDef cs) typ = do
 
     unify [] Builtin.Type =<< typeOf constrRetType
 
-    forM_ cs' $ \(ConstrDef qc e) -> do
-      logMeta 20 ("checkDataType res " ++ show qc) e
-
-    let cs'' = [constrDef vs qc e | ConstrDef qc e <- cs']
-    let typ'' = Core.pis vs Builtin.Type
+    forM_ cs' $ \(ConstrDef qc e) ->
+      logMeta 20 ("checkDataDef res " ++ show qc) e
 
     typeRep' <- whnfExpandingTypeReps typeRep
-    logMeta 20 "checkDataType typeRep" typeRep'
+    logMeta 20 "checkDataDef typeRep" typeRep'
 
-    return (DataDefinition (DataDef cs'') $ Core.lams vs typeRep', typ'')
+    return $ DataDefinition (dataDef vs cs') $ Core.lams vs typeRep'
+
+checkConstrDef
+  :: ConstrDef PreM
+  -> Infer (ConstrDef CoreM, CoreM, CoreM)
+checkConstrDef (ConstrDef c typ) = do
+  typ' <- zonk =<< checkPoly typ Builtin.Type
+  (sizes, ret) <- go typ'
+  let size = foldl' productType (Core.MkType TypeRep.UnitRep) sizes
+  return (ConstrDef c typ', ret, size)
+  where
+    go :: CoreM -> Infer ([CoreM], CoreM)
+    -- TODO: Check for escaping type variables?
+    go (Core.Pi h p t s) = do
+      v <- forall h p t
+      (sizes, ret) <- go $ instantiate1 (pure v) s
+      return (t : sizes, ret)
+    go ret = return ([], ret)
 
 -------------------------------------------------------------------------------
 -- Type helpers

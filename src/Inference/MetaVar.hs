@@ -182,21 +182,16 @@ bindDefMetas
   :: (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadVIX m, MonadIO m)
   => (meta -> Vector (Plicitness, Expr meta (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
   -> Definition (Expr meta) (FreeBindVar meta')
-  -> Expr meta (FreeBindVar meta')
-  -> m (Definition (Expr meta') (FreeBindVar meta'), Expr meta' (FreeBindVar meta'))
-bindDefMetas f def typ = case def of
-  Definition a i e -> (,) <$> (Definition a i <$> bindMetas f e) <*> bindMetas f typ
-  DataDefinition d rep -> do
-    (d', typ') <- bindDataDefMetas f d typ
-    rep' <- bindMetas f rep
-    return (DataDefinition d' rep', typ')
+  -> m (Definition (Expr meta') (FreeBindVar meta'))
+bindDefMetas f def = case def of
+  Definition a i e -> Definition a i <$> bindMetas f e
+  DataDefinition d rep -> DataDefinition <$> bindDataDefMetas f d <*> bindMetas f rep
 
 bindDefMetas'
   :: (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadVIX m, MonadIO m)
   => (meta -> Vector (Plicitness, Expr meta' (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
   -> Definition (Expr meta) (FreeBindVar meta')
-  -> Expr meta (FreeBindVar meta')
-  -> m (Definition (Expr meta') (FreeBindVar meta'), Expr meta' (FreeBindVar meta'))
+  -> m (Definition (Expr meta') (FreeBindVar meta'))
 bindDefMetas' f = bindDefMetas $ \m es -> do
   es' <- traverse (traverse $ bindMetas' f) es
   f m es'
@@ -205,24 +200,20 @@ bindDataDefMetas
   :: (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadVIX m, MonadIO m)
   => (meta -> Vector (Plicitness, Expr meta (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
   -> DataDef (Expr meta) (FreeBindVar meta')
-  -> Expr meta (FreeBindVar meta')
-  -> m (DataDef (Expr meta') (FreeBindVar meta'), Expr meta' (FreeBindVar meta'))
-bindDataDefMetas f (DataDef cs) typ = do
-  typ' <- bindMetas f typ
-
-  vs <- forTeleWithPrefixM (telescope typ') $ \h p s vs -> do
+  -> m (DataDef (Expr meta') (FreeBindVar meta'))
+bindDataDefMetas f (DataDef ps cs) = do
+  vs <- forTeleWithPrefixM ps $ \h p s vs -> do
     let t = instantiateTele pure vs s
-    forall h p t
-
-  let mkConstrDef = constrDef vs
+    t' <- bindMetas f t
+    forall h p t'
 
   withVars vs $ do
 
     cs' <- forM cs $ \(ConstrDef c s) -> do
       e <- bindMetas f $ instantiateTele pure vs s
-      return $ mkConstrDef c e
+      return $ ConstrDef c e
 
-    return (DataDef cs', typ')
+    return $ dataDef vs cs'
 
 bindMetas
   :: (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadVIX m, MonadIO m)

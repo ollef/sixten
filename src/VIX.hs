@@ -238,10 +238,10 @@ addModule m constrs names = liftVIX $ modify $ \s -> s
 
 qconstructor :: (MonadVIX m, MonadError Error m) => QConstr -> m (Type meta v)
 qconstructor qc@(QConstr n c) = do
-  (def, typ) <- definition n
+  (def, _) <- definition n
   case def of
-    DataDefinition dataDef _ -> do
-      let qcs = quantifiedConstrTypes dataDef typ $ const Implicit
+    DataDefinition ddef _ -> do
+      let qcs = quantifiedConstrTypes ddef implicitise
       case filter ((== c) . constrName) qcs of
         [] -> throwLocated $ "Not in scope: constructor " <> pretty qc
         [cdef] -> return $ constrType cdef
@@ -295,7 +295,7 @@ constrIndex
 constrIndex (QConstr n c) = do
   mres <- liftVIX $ gets $ HashMap.lookup n . vixContext
   return $ case mres of
-    Just (DataDefinition (DataDef constrDefs@(_:_:_)) _, _) ->
+    Just (DataDefinition (DataDef _ constrDefs@(_:_:_)) _, _) ->
       findIndex ((== c) . constrName) constrDefs
     _ -> Nothing
 

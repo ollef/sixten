@@ -141,11 +141,10 @@ tcPat' p pat vs expected = case pat of
     qc@(QConstr typeName _) <- resolveConstr cons $ case expected of
       CheckPat expectedType -> Just expectedType
       InferPat _ -> Nothing
-    (_, typeType) <- definition typeName
+    (DataDefinition (DataDef paramsTele _) _, _) <- definition typeName
     conType <- qconstructor qc
 
-    let paramsTele = Core.telescope typeType
-        numParams = teleLength paramsTele
+    let numParams = teleLength paramsTele
         (tele, retScope) = Core.pisView conType
         argPlics = Vector.drop numParams $ teleAnnotations tele
 

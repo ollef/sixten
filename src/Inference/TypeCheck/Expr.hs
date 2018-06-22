@@ -174,25 +174,24 @@ tcRho expr expected expectedAppResult = case expr of
         let fun'' = f1 fun'
         return $ f2 $ Core.App fun'' p arg'
   Pre.Let ds scope -> enterLevel $ do
-    evars <- forM ds $ \(_, name, _, _) -> do
+    evars <- forM ds $ \(_, name, _) -> do
       typ <- existsType name
       forall name Explicit typ
     let instantiatedDs
-          = (\(loc, _, def, mtyp) ->
+          = (\(loc, _, def) ->
               ( loc
-              , Pre.TopLevelPatDefinition $ Pre.instantiateLetClause pure evars <$> def
-              , instantiateLet pure evars <$> mtyp
+              , Pre.TopLevelPatConstantDefinition $ Pre.instantiateLetConstantDef pure evars def
               )) <$> ds
-    ds' <- checkRecursiveDefs False (Vector.zip evars instantiatedDs)
-    let evars' = (\(v, _, _) -> v) <$> ds'
+    ds' <- checkAndGeneraliseDefs False (Vector.zip evars instantiatedDs)
+    let evars' = fst <$> ds'
         eabstr = letAbstraction evars'
     let ds'' = LetRec
           $ flip fmap ds'
-          $ \(v, Definition _ _ e, t) -> LetBinding (varHint v) (abstract eabstr e) t
+          $ \(v, Definition _ _ e) -> LetBinding (varHint v) (abstract eabstr e) $ varType v
     mdo
       let inst = instantiateLet pure vars
       vars <- iforMLet ds'' $ \i h s t -> do
-        let (_, Definition a _ _, _) = ds' Vector.! i
+        let (_, Definition a _ _) = ds' Vector.! i
         case a of
           Abstract -> forall h Explicit t
           Concrete -> letVar h Explicit (inst s) t

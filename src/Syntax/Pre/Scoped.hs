@@ -3,7 +3,7 @@ module Syntax.Pre.Scoped
   ( module Definition
   , module Pattern
   , Expr(..), Type
-  , clause, pi_, lam, case_
+  , clause, pi_, pis, telePis, lam, case_
   , apps
   , appsView
   , piView
@@ -36,7 +36,7 @@ data Expr v
   | Pi !Plicitness (Pat (HashSet QConstr) (PatternScope Type v) ()) (PatternScope Expr v)
   | Lam !Plicitness (Pat (HashSet QConstr) (PatternScope Type v) ()) (PatternScope Expr v)
   | App (Expr v) !Plicitness (Expr v)
-  | Let (Vector (SourceLoc, NameHint, PatDefinition (Clause LetVar Expr v), Maybe (Scope LetVar Type v))) (Scope LetVar Expr v)
+  | Let (Vector (SourceLoc, NameHint, PatConstantDef Expr (Var LetVar v))) (Scope LetVar Expr v)
   | Case (Expr v) [(Pat (HashSet QConstr) (PatternScope Type v) (), PatternScope Expr v)]
   | ExternCode (Extern (Expr v))
   | Wildcard
@@ -51,12 +51,12 @@ clause
   :: (Monad expr, Hashable v, Eq v)
   => Vector (Plicitness, Pat (HashSet QConstr) (expr v) v)
   -> expr v
-  -> Clause void expr v
+  -> Clause expr v
 clause plicitPats e = do
   let pats = snd <$> plicitPats
-      vars = join (toVector <$> pats)
-      typedPats = second (void . first (mapBound B)) <$> abstractPatternsTypes vars plicitPats
-  Clause typedPats $ abstract (fmap B . patternAbstraction vars) e
+      vars = pats >>= toVector
+      typedPats = fmap void <$> abstractPatternsTypes vars plicitPats
+  Clause typedPats $ abstract (patternAbstraction vars) e
 
 pi_
   :: (Hashable v, Eq v)
@@ -67,6 +67,22 @@ pi_
 pi_ p pat = Pi p (void $ abstractPatternTypes vs pat) . abstract (patternAbstraction vs)
     where
       vs = toVector pat
+
+pis
+  :: (Hashable v, Eq v, Foldable t)
+  => t (Plicitness, Pat (HashSet QConstr) (Type v) v)
+  -> Expr v
+  -> Expr v
+pis pats e = foldr (uncurry pi_) e pats
+
+telePis
+  :: (Hashable v, Eq v)
+  => Telescope Plicitness Type v
+  -> Expr v
+  -> Expr v
+telePis tele e = fmap (unvar (error "telePis") id) $ pis pats $ F <$> e
+  where
+    pats = iforTele tele $ \i h p s -> (p, AnnoPat (VarPat h $ B $ TeleVar i) $ fromScope s)
 
 lam
   :: (Hashable v, Eq v)
@@ -131,7 +147,7 @@ instance Eq1 Expr where
   liftEq f (Pi p1 pat1 s1) (Pi p2 pat2 s2) = p1 == p2 && liftPatEq (==) (liftEq f) (==) pat1 pat2 && liftEq f s1 s2
   liftEq f (Lam p1 pat1 s1) (Lam p2 pat2 s2) = p1 == p2 && liftPatEq (==) (liftEq f) (==) pat1 pat2 && liftEq f s1 s2
   liftEq f (App e1 p1 e1') (App e2 p2 e2') = liftEq f e1 e2 && p1 == p2 && liftEq f e1' e2'
-  liftEq f (Let tele1 s1) (Let tele2 s2) = liftEq (\(_, _, d1, mt1) (_, _, d2, mt2) -> liftEq (liftEq f) d1 d2 && liftEq (liftEq f) mt1 mt2) tele1 tele2 && liftEq f s1 s2
+  liftEq f (Let defs1 s1) (Let defs2 s2) = liftEq (\(_, _, d1) (_, _, d2) -> liftEq (liftEq f) d1 d2) defs1 defs2 && liftEq f s1 s2
   liftEq f (Case e1 brs1) (Case e2 brs2)
     = liftEq f e1 e2
     && liftEq (\(pat1, s1) (pat2, s2) -> liftPatEq (==) (liftEq f) (==) pat1 pat2 && liftEq f s1 s2) brs1 brs2
@@ -158,7 +174,7 @@ instance Monad Expr where
     Pi p pat s -> Pi p (first (>>>= f) pat) ((>>>= f) s)
     Lam p pat s -> Lam p (first (>>>= f) pat) ((>>>= f) s)
     App e1 p e2 -> App (e1 >>= f) p (e2 >>= f)
-    Let tele s -> Let ((\(loc, h, pd, mt) -> (loc, h, (>>>= f) <$> pd, (>>>= f) <$> mt)) <$> tele) (s >>>= f)
+    Let defs s -> Let ((\(loc, h, pd) -> (loc, h, pd >>>= unvar (pure . B) (fmap F . f))) <$> defs) (s >>>= f)
     Case e brs -> Case (e >>= f) (bimap (first (>>>= f)) (>>>= f) <$> brs)
     ExternCode c -> ExternCode ((>>= f) <$> c)
     Wildcard -> Wildcard
@@ -174,7 +190,7 @@ instance GBind Expr where
     Pi p pat s -> Pi p (first (gbound f) pat) (gbound f s)
     Lam p pat s -> Lam p (first (gbound f) pat) (gbound f s)
     App e1 p e2 -> App (gbind f e1) p (gbind f e2)
-    Let tele s -> Let ((\(loc, h, pd, mt) -> (loc, h, gbound f <$> pd, gbound f <$> mt)) <$> tele) (gbound f s)
+    Let defs s -> Let ((\(loc, h, pd) -> (loc, h, gbound (fmap F . f) pd)) <$> defs) (gbound f s)
     Case e brs -> Case (gbind f e) (bimap (first (gbound f)) (gbound f) <$> brs)
     ExternCode c -> ExternCode (gbind f <$> c)
     Wildcard -> Wildcard
@@ -192,7 +208,7 @@ instance Traversable Expr where
     Pi p pat s -> Pi p <$> bitraverse (traverse f) pure pat <*> traverse f s
     Lam p pat s -> Lam p <$> bitraverse (traverse f) pure pat <*> traverse f s
     App e1 p e2 -> App <$> traverse f e1 <*> pure p <*> traverse f e2
-    Let tele s -> Let <$> traverse (bitraverse (traverse $ traverse f) $ traverse $ traverse f) tele <*> traverse f s
+    Let defs s -> Let <$> traverse (bitraverse pure $ traverse $ traverse f) defs <*> traverse f s
     Case e brs -> Case
       <$> traverse f e
       <*> traverse (bitraverse (bitraverse (traverse f) pure) (traverse f)) brs
@@ -221,17 +237,11 @@ instance v ~ Doc => Pretty (Expr v) where
         "\\" <> prettyAnnotation p (prettyPattern ns $ first inst pat) <> "." <+>
           associate absPrec (prettyM $ inst s)
     App e1 p e2 -> prettyApp (prettyM e1) (prettyAnnotation p $ prettyM e2)
-    Let clauses scope -> parens `above` letPrec $ withNameHints ((\(_, h, _, _) -> h) <$> clauses) $ \ns ->
-      let go = ifor clauses $ \i (_, _, cl, mt) -> do
-            let addTypeClause rest = case mt of
-                  Nothing -> rest
-                  Just t -> prettyM (ns Vector.! i) <+> ":" <+>
-                    prettyM (instantiateLet (pure . fromName) ns t)
-                    <$$> rest
-            addTypeClause
-              $ prettyNamed
-                (prettyM $ ns Vector.! i)
-                (instantiateLetClause (pure . fromName) ns <$> cl)
+    Let defs scope -> parens `above` letPrec $ withNameHints ((\(_, h, _) -> h) <$> defs) $ \ns ->
+      let go = ifor defs $ \i (_, _, cl) ->
+            prettyNamed
+              (prettyM $ ns Vector.! i)
+              (instantiateConstantDef (pure . fromName . (ns Vector.!) . unLetVar) cl)
        in "let" <+> align (vcat go)
         <+> "in" <+> prettyM (instantiateLet (pure . fromName) ns scope)
     Case e brs -> parens `above` casePrec $

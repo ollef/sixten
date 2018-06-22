@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, MonadComprehensions #-}
+{-# LANGUAGE MonadComprehensions, OverloadedStrings, ViewPatterns #-}
 module Builtin where
 
 import Control.Applicative
@@ -44,7 +44,9 @@ context target = HashMap.fromList
     cl = fromMaybe (error "Builtin not closed") . closed
     -- TODO: Should be made nonmatchable
     opaqueData rep t = dataType rep t mempty
-    dataType rep t xs = (DataDefinition (DataDef xs) rep, cl t)
+    dataType rep typ xs = (DataDefinition (DataDef (piTelescope cltyp) xs) rep, cltyp)
+      where
+        cltyp = cl typ
 
     intRep = MkType $ TypeRep.intRep target
     ptrRep = MkType $ TypeRep.ptrRep target

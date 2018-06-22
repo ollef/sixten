@@ -6,6 +6,7 @@ import Control.Monad.Identity
 import Control.Monad.State
 import Data.Bifunctor
 import Data.Char
+import Data.Functor.Classes
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
@@ -115,23 +116,17 @@ infixr 1 >>=>
 (f >>=> g) a = concat <$> (f a >>= mapM g)
 
 prettyPreGroup
-  :: (Pretty (e Doc), Monad e, Traversable e)
+  :: (Pretty (e Doc), Monad e, Traversable e, Eq1 e)
   => Text
   -> (v -> QName)
-  -> [(QName, SourceLoc, Pre.TopLevelPatDefinition e v, Maybe (e v))]
-  -> VIX [(QName, SourceLoc, Pre.TopLevelPatDefinition e v, Maybe (e v))]
+  -> [(QName, SourceLoc, Pre.TopLevelPatDefinition e v)]
+  -> VIX [(QName, SourceLoc, Pre.TopLevelPatDefinition e v)]
 prettyPreGroup str f defs = do
   let toDoc :: QName -> Doc
       toDoc = fromQName
   whenVerbose 10 $ do
     VIX.log $ "----- " <> str <> " -----"
-    forM_ defs $ \(n, _, d, mt) -> do
-      forM_ mt $ \t -> do
-        let t' = toDoc . f <$> t
-        VIX.log
-          $ showWide
-          $ pretty
-          $ prettyM n <+> ":" <+> prettyM t'
+    forM_ defs $ \(n, _, d) -> do
       VIX.log
         $ showWide
         $ pretty
@@ -157,7 +152,7 @@ prettyTypedGroup v str f defs = do
       VIX.log
         $ showWide
         $ pretty
-        $ Core.prettyTypedDef (prettyM n) (fromQName . f <$> d) t'
+        $ prettyNamed (prettyM n) (fromQName . f <$> d)
       VIX.log ""
   return defs
 
@@ -180,7 +175,7 @@ prettyGroup str f defs = do
 
 resolveProgramNames
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
-  -> VIX [[(QName, SourceLoc, Pre.TopLevelPatDefinition Pre.Expr Void, Maybe (Pre.Type Void))]]
+  -> VIX [[(QName, SourceLoc, Pre.TopLevelPatDefinition Pre.Expr Void)]]
 resolveProgramNames modul = do
   res <- ResolveNames.resolveModule modul
   let defnames = HashSet.fromMap $ void $ moduleContents modul
@@ -198,21 +193,21 @@ resolveProgramNames modul = do
   return res
 
 declassifyGroup
-  :: [(QName, SourceLoc, Pre.TopLevelPatDefinition Pre.Expr Void, Maybe (Pre.Type Void))]
-  -> VIX [[(QName, SourceLoc, Pre.TopLevelPatDefinition Pre.Expr Void, Maybe (Pre.Type Void))]]
+  :: [(QName, SourceLoc, Pre.TopLevelPatDefinition Pre.Expr Void)]
+  -> VIX [[(QName, SourceLoc, Pre.TopLevelPatDefinition Pre.Expr Void)]]
 declassifyGroup xs = do
   results <- forM xs $
-    \(name, loc, def, mtyp) -> Declassify.declassify name loc def mtyp
+    \(name, loc, def) -> Declassify.declassify name loc def
   let (preResults, postResults) = unzip results
       postResults' = concat postResults
       preResults' = concat preResults
   return $ preResults' : [postResults' | not $ null postResults']
 
 typeCheckGroup
-  :: [(QName, SourceLoc, Pre.TopLevelPatDefinition Pre.Expr Void, Maybe (Pre.Expr Void))]
+  :: [(QName, SourceLoc, Pre.TopLevelPatDefinition Pre.Expr Void)]
   -> VIX [(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)]
 typeCheckGroup
-  = fmap Vector.toList . TypeCheck.runInfer . TypeCheck.checkTopLevelRecursiveDefs . Vector.fromList
+  = fmap Vector.toList . TypeCheck.runInfer . TypeCheck.checkAndGeneraliseTopLevelDefs . Vector.fromList
 
 simplifyGroup
   :: [(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)]

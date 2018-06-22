@@ -79,36 +79,29 @@ elabExpr = bindMetas $ \m es -> do
 
 elabDef
   :: Definition (Expr MetaVar) FreeV
-  -> CoreM
   -> Infer (Definition (Expr MetaVar) FreeV)
-elabDef (Definition i a e) _
+elabDef (Definition i a e)
   = Definition i a <$> elabExpr e
-elabDef (DataDefinition (DataDef constrs) rep) typ = do
-  -- TODO should parameter telescope be built into DataDefinition?
-  typ' <- zonk typ
-  let params = telescope typ'
-  vs <- forTeleWithPrefixM params $ \h p s vs -> do
+elabDef (DataDefinition (DataDef ps constrs) rep) = do
+  vs <- forTeleWithPrefixM ps $ \h p s vs -> do
     let t = instantiateTele pure vs s
     forall h p t
-
-  let mkConstrDef = constrDef vs
 
   constrs' <- withVars vs $ forM constrs $ \(ConstrDef c s) -> do
     let e = instantiateTele pure vs s
     e' <- elabExpr e
-    return $ mkConstrDef c e'
+    return $ ConstrDef c e'
 
   rep' <- elabExpr rep
-  return $ DataDefinition (DataDef constrs') rep'
+  return $ DataDefinition (dataDef vs constrs') rep'
 
 elabRecursiveDefs
-  :: Vector (FreeV, Definition (Expr MetaVar) FreeV, CoreM)
-  -> Infer (Vector (FreeV, Definition (Expr MetaVar) FreeV, CoreM))
-elabRecursiveDefs defs
-  = forM defs $ \(v, def, typ) -> do
-    typ' <- elabExpr typ
-    def' <- elabDef def typ'
-    return (v, def', typ')
+  :: Vector (FreeV, Definition (Expr MetaVar) FreeV)
+  -> Infer (Vector (FreeV, Definition (Expr MetaVar) FreeV))
+elabRecursiveDefs defs = forM defs $ \(v, def) -> do
+  def' <- elabDef def
+  _typ' <- elabExpr $ varType v
+  return (v, def')
 
 mergeConstraintVars
   :: HashSet MetaVar

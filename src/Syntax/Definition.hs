@@ -5,6 +5,7 @@ import Bound
 import Control.Monad.Morph
 import Data.Bifunctor
 import Data.Bitraversable
+import Data.Functor.Classes
 
 import Pretty
 import Syntax.Annotation
@@ -54,9 +55,9 @@ transverseDefinition
 transverseDefinition f (Definition a i e) = Definition a i <$> f e
 transverseDefinition f (DataDefinition d t) = DataDefinition <$> transverseDataDef f d <*> f t
 
-instance (Monad expr, Pretty (expr v), v ~ Doc) => PrettyNamed (Definition expr v) where
+instance (Monad expr, Pretty (expr v), v ~ Doc, Eq1 expr) => PrettyNamed (Definition expr v) where
   prettyNamed name (Definition a i e) = prettyM a <+> prettyM i <$$> name <+> "=" <+> prettyM e
   prettyNamed name (DataDefinition d e) = prettyNamed name d <+> "=" <+> prettyM e
 
-instance (Monad expr, Pretty (expr v), v ~ Doc) => Pretty (Definition expr v) where
+instance (Monad expr, Pretty (expr v), v ~ Doc, Eq1 expr) => Pretty (Definition expr v) where
   prettyM = prettyNamed "_"

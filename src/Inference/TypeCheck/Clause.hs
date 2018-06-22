@@ -9,7 +9,6 @@ import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Monoid
 import qualified Data.Vector as Vector
-import Data.Void
 
 import {-# SOURCE #-} Inference.TypeCheck.Expr
 import Inference.Constraint
@@ -25,8 +24,16 @@ import qualified Syntax.Pre.Scoped as Pre
 import Util
 import VIX
 
+checkConstantDef
+  :: Pre.PatConstantDef Pre.Expr FreeV
+  -> CoreM
+  -> Infer (Definition (Core.Expr MetaVar) FreeV)
+checkConstantDef (Pre.PatConstantDef a i clauses _) typ = do
+  e' <- checkClauses clauses typ
+  return $ Definition a i e'
+
 checkClauses
-  :: NonEmpty (Pre.Clause Void Pre.Expr FreeV)
+  :: NonEmpty (Pre.Clause Pre.Expr FreeV)
   -> Polytype
   -> Infer CoreM
 checkClauses clauses polyType = indentLog $ do
@@ -51,7 +58,7 @@ checkClauses clauses polyType = indentLog $ do
 
     return $ f res
   where
-    instUntilClause :: Pre.Clause Void Pre.Expr v -> InstUntil
+    instUntilClause :: Pre.Clause Pre.Expr v -> InstUntil
     instUntilClause (Pre.Clause pats s)
       | Vector.length pats > 0 = InstUntil $ fst $ Vector.head pats
       | otherwise = instUntilExpr $ fromScope s
@@ -68,7 +75,7 @@ checkClauses clauses polyType = indentLog $ do
     piPlicitnesses' _ = return mempty
 
 checkClausesRho
-  :: NonEmpty (Pre.Clause Void Pre.Expr FreeV)
+  :: NonEmpty (Pre.Clause Pre.Expr FreeV)
   -> Rhotype
   -> Infer CoreM
 checkClausesRho clauses rhoType = do
@@ -80,9 +87,7 @@ checkClausesRho clauses rhoType = do
           Pre.Clause ppats _ = NonEmpty.head clauses
   (argTele, returnTypeScope, fs) <- funSubtypes rhoType ps
 
-  clauses' <- indentLog $ forM clauses $ \clause -> do
-    let pats = Pre.clausePatterns' clause
-        bodyScope = Pre.clauseScope' clause
+  clauses' <- indentLog $ forM clauses $ \(Pre.Clause pats bodyScope) -> do
     (pats', patVars) <- tcPats pats mempty argTele
     let body = instantiatePattern pure (boundPatVars patVars) bodyScope
         argExprs = snd3 <$> pats'
@@ -119,8 +124,8 @@ checkClausesRho clauses rhoType = do
 -- "Equalisation" -- making the clauses' number of patterns match eachother
 -- by adding implicits and eta-converting
 equaliseClauses
-  :: NonEmpty (Pre.Clause b Pre.Expr v)
-  -> NonEmpty (Pre.Clause b Pre.Expr v)
+  :: NonEmpty (Pre.Clause Pre.Expr v)
+  -> NonEmpty (Pre.Clause Pre.Expr v)
 equaliseClauses clauses
   = NonEmpty.zipWith
     (uncurry etaClause)
@@ -171,10 +176,10 @@ equaliseClauses clauses
     addExplicit pats = ((Explicit, Pre.VarPat mempty ()) : pats, pure Explicit)
 
 etaClause
-  :: [(Plicitness, Pre.Pat (HashSet QConstr) (Scope (Var PatternVar b) Pre.Expr v) ())]
+  :: [(Plicitness, Pre.Pat (HashSet QConstr) (Scope PatternVar Pre.Expr v) ())]
   -> [Plicitness]
-  -> Scope (Var PatternVar b) Pre.Expr v
-  -> Pre.Clause b Pre.Expr v
+  -> Scope PatternVar Pre.Expr v
+  -> Pre.Clause Pre.Expr v
 etaClause pats extras (Scope scope)
   = Pre.Clause
     (Vector.fromList pats)
@@ -183,4 +188,4 @@ etaClause pats extras (Scope scope)
   where
     numBindings = length $ concat $ Foldable.toList . snd <$> pats
     numExtras = length extras
-    vs = zip extras $ pure . B . B . PatternVar <$> [numBindings - numExtras ..]
+    vs = zip extras $ pure . B . PatternVar <$> [numBindings - numExtras ..]

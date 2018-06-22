@@ -23,7 +23,7 @@ import Text.Parsix(Position(Position, visualRow, visualColumn), (<?>))
 
 import Error
 import Processor.Result
-import Syntax
+import Syntax hiding (dataDef)
 import Syntax.Pre.Literal
 import Syntax.Pre.Pattern
 import Syntax.Pre.Unscoped as Unscoped

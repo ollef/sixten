@@ -25,13 +25,13 @@ import Util.TopoSort
 import VIX
 
 detectTypeRepCycles
-  :: Vector (SourceLoc, (FreeV, Definition (Expr MetaVar) FreeV, CoreM))
+  :: Vector (SourceLoc, (FreeV, Definition (Expr MetaVar) FreeV))
   -> Infer ()
 detectTypeRepCycles defs = do
   reps <- traverse
     (bitraverse pure zonk)
-    [(v, rep) | (_, (v, DataDefinition _ rep, _)) <- defs]
-  let locMap = HashMap.fromList $ Vector.toList [(v, loc) | (loc, (v, _, _)) <- defs]
+    [(v, rep) | (_, (v, DataDefinition _ rep)) <- defs]
+  let locMap = HashMap.fromList $ Vector.toList [(v, loc) | (loc, (v, _)) <- defs]
   case cycles reps of
     firstCycle:_ -> do
       let headVar = head firstCycle
@@ -85,10 +85,10 @@ detectTypeRepCycles defs = do
 -- We also peel off any lets at the top-level of all definitions and include
 -- them in the analysis.
 detectDefCycles
-  :: Vector (SourceLoc, (FreeV, Definition (Expr MetaVar) FreeV, CoreM))
+  :: Vector (SourceLoc, (FreeV, Definition (Expr MetaVar) FreeV))
   -> Infer ()
 detectDefCycles defs = do
-  (peeledDefExprs, locMap) <- peelLets [(loc, v, e) | (loc, (v, Definition _ _ e, _)) <- Vector.toList defs]
+  (peeledDefExprs, locMap) <- peelLets [(loc, v, e) | (loc, (v, Definition _ _ e)) <- Vector.toList defs]
   forM_ (topoSortWith fst snd peeledDefExprs) $ \scc -> case scc of
     AcyclicSCC _ -> return ()
     CyclicSCC defExprs -> do

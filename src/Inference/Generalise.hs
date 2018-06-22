@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Inference.Generalise where
 
+import Control.Applicative
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Foldable as Foldable
@@ -36,13 +37,11 @@ generaliseDefs
   -> Vector
     ( FreeV
     , Definition (Expr MetaVar) FreeV
-    , CoreM
     )
   -> Infer
     ( Vector
       ( FreeV
       , Definition (Expr MetaVar) FreeV
-      , CoreM
       )
     , FreeV -> FreeV
     )
@@ -63,7 +62,6 @@ collectMetas
   -> Vector
     ( FreeV
     , Definition (Expr MetaVar) FreeV
-    , CoreM
     )
   -> Infer (HashSet MetaVar)
 collectMetas mpred mode defs = do
@@ -78,11 +76,11 @@ collectMetas mpred mode defs = do
 
   defVars <- case mode of
     GeneraliseType -> return mempty
-    GeneraliseAll -> forM defs $ \(_, def, _) ->
+    GeneraliseAll -> forM defs $ \(_, def) ->
       filterMSet isLocalConstraint =<< definitionMetaVars def
 
-  typeVars <- forM defs $ \(_, _, typ) -> do
-    metas <- metaVars typ
+  typeVars <- forM defs $ \(v, _) -> do
+    metas <- metaVars $ varType v
     logShow 30 "collectMetas" metas
     filtered <- filterMSet (\m -> if not (mpred m) then return False else isLocalMeta m) metas
     logShow 30 "collectMetas filtered" filtered
@@ -127,7 +125,6 @@ replaceMetas
   -> Vector
     ( FreeV
     , Definition (Expr MetaVar) FreeV
-    , CoreM
     )
   -> Infer
     ( Vector
@@ -136,10 +133,11 @@ replaceMetas
       , CoreM
       )
     )
-replaceMetas varMap defs = forM defs $ \(v, d, t) -> do
+replaceMetas varMap defs = forM defs $ \(v, d) -> do
   logShow 30 "replaceMetas varMap" varMap
   logDefMeta 30 "replaceMetas def" d
-  (d', t') <- bindDefMetas' go d t
+  d' <- bindDefMetas' go d
+  t' <- bindMetas' go $ varType v
   logDefMeta 30 "replaceMetas def result" d'
   return (v, d', t')
   where
@@ -215,7 +213,6 @@ replaceDefs
     ( Vector
       ( FreeV
       , Definition (Expr MetaVar) FreeV
-      , CoreM
       )
     , FreeV -> FreeV
     )
@@ -232,7 +229,7 @@ replaceDefs defs = do
     logMeta 30 "replaceDefs type" typ
     let subbedDef = def >>>= appSub
         subbedType = typ >>= appSub
-        (def', typ') = abstractDefImplicits vs subbedDef subbedType
+    (def', typ') <- abstractDefImplicits vs subbedDef subbedType
     logDefMeta 30 "replaceDefs subbedDef" subbedDef
     logMeta 30 "replaceDefs subbedType" subbedType
     newVar <- forall (varHint oldVar) (varData oldVar) typ'
@@ -244,7 +241,7 @@ replaceDefs defs = do
       rename v = HashMap.lookupDefault v v renameMap
 
       renamedDefs
-        = (\(_, newVar, def) -> (newVar, rename <$> def, rename <$> varType newVar))
+        = (\(_, newVar, def) -> (newVar { varType = rename <$> varType newVar }, rename <$> def))
         <$> subbedDefs
 
   return (renamedDefs, rename)
@@ -254,21 +251,23 @@ abstractDefImplicits
   => t FreeV
   -> Definition (Expr MetaVar) FreeV
   -> CoreM
-  -> (Definition (Expr MetaVar) FreeV, CoreM)
+  -> Infer (Definition (Expr MetaVar) FreeV, CoreM)
 abstractDefImplicits vs (Definition a i e) t = do
   let ge = abstractImplicits vs lam e
       gt = abstractImplicits vs pi_ t
-  (Definition a i ge, gt)
-abstractDefImplicits vs (DataDefinition (DataDef cs) rep) typ = do
-  let cs' = map (fmap $ toScope . splat f g) cs
-  -- Abstract vs on top of typ
+  return (Definition a i ge, gt)
+abstractDefImplicits vs (DataDefinition (DataDef ps cs) rep) typ = do
+  vs' <- forTeleWithPrefixM ps $ \h p s vs' -> do
+    let t = instantiateTele pure vs' s
+    forall h p t
+
+  let cs' = [ConstrDef c $ instantiateTele pure vs' s | ConstrDef c s <- cs]
+
   let grep = abstractImplicits vs lam rep
       gtyp = abstractImplicits vs pi_ typ
-  (DataDefinition (DataDef cs') grep, gtyp)
+  return (DataDefinition (dataDef (implicitiseVar <$> toVector vs <|> vs') cs') grep, gtyp)
   where
-    varIndex = hashedElemIndex $ toVector vs
-    f v = pure $ maybe (F v) (B . TeleVar) (varIndex v)
-    g = pure . B . (+ TeleVar (length vs))
+    implicitiseVar v = v { varData = implicitise $ varData v }
 
 abstractImplicits
   :: Foldable t

@@ -3,7 +3,6 @@ module Frontend.ResolveNames where
 
 import Control.Monad.Except
 import Control.Monad.RWS
-import Data.Bifunctor
 import Data.Bitraversable
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
@@ -38,7 +37,7 @@ runResolveNames m env = do
 
 resolveModule
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
-  -> VIX [[(QName, SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void, Maybe (Scoped.Type void))]]
+  -> VIX [[(QName, SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void)]]
 resolveModule modul = do
   let imports
         = Import Builtin.BuiltinModuleName Builtin.BuiltinModuleName AllExposed
@@ -50,8 +49,8 @@ resolveModule modul = do
         $ localConstrAliases (moduleContents modul) <> importedConstrAliases
 
   checkedDefDeps <- forM (HashMap.toList $ moduleContents modul) $ \(n, (loc, def)) -> do
-    ((def', mtyp'), deps) <- runResolveNames (resolveTopLevelDefinition def) env
-    return (n, (loc, def', mtyp'), deps)
+    (def', deps) <- runResolveNames (resolveTopLevelDefinition def) env
+    return (n, loc, def', deps)
 
   let aliases = localAliases (moduleContents modul) <> importedNameAliases
       lookupAlias preName
@@ -61,10 +60,9 @@ resolveModule modul = do
         where
           candidates = MultiHashMap.lookupDefault (HashSet.singleton $ fromPreName preName) preName aliases
 
-  resolvedDefs <- forM checkedDefDeps $ \(n, (loc, def, mtyp), deps) -> do
+  resolvedDefs <- forM checkedDefDeps $ \(n, loc, def, deps) -> do
     def' <- traverse lookupAlias def
-    mtyp' <- traverse (traverse lookupAlias) mtyp
-    return (n, (loc, def' >>>= global, (>>= global) <$> mtyp'), toHashSet def' <> foldMap toHashSet mtyp' <> deps)
+    return (n, (loc, def' >>>= global), toHashSet def' <> deps)
 
   -- Each _usage_ of a class (potentially) depends on all its instances.
   -- But the class itself doesn't (necessarily).
@@ -86,7 +84,7 @@ resolveModule modul = do
 
   let sortedDefGroups = flattenSCC <$> topoSortWith fst3 (addExtraDeps . thd3) resolvedDefs
 
-  return [[(n, loc, def, typ) | (n, (loc, def, typ), _) <- defs] | defs <- sortedDefGroups]
+  return [[(n, loc, def) | (n, (loc, def), _) <- defs] | defs <- sortedDefGroups]
 
 localConstrAliases
   :: HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
@@ -127,10 +125,10 @@ methodClasses contents = HashMap.fromList
   ]
 
 instances
-  :: [(QName, (SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void, Maybe (Scoped.Expr void)), a)]
+  :: [(QName, (SourceLoc, Scoped.TopLevelPatDefinition Scoped.Expr void), a)]
   -> VIX (MultiHashMap QName QName)
-instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, (_, def, mtyp), _) -> case (def, mtyp) of
-  (Scoped.TopLevelPatInstanceDefinition _, Just typ) -> do
+instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, (_, def), _) -> case def of
+  Scoped.TopLevelPatInstanceDefinition (Scoped.PatInstanceDef typ _) -> do
     c <- Declassify.getClass typ
     return [(c, name)]
   _ -> return mempty
@@ -174,54 +172,49 @@ importedAliases (Import modName asName exposed) = do
 -- | Distinguish variables from constructors, resolve scopes
 resolveTopLevelDefinition
   :: Unscoped.TopLevelDefinition
-  -> ResolveNames (Scoped.TopLevelPatDefinition Scoped.Expr PreName, Maybe (Scoped.Type PreName))
+  -> ResolveNames (Scoped.TopLevelPatDefinition Scoped.Expr PreName)
 resolveTopLevelDefinition (Unscoped.TopLevelDefinition d) =
-  first Scoped.TopLevelPatDefinition . snd <$> resolveDefinition d
+  Scoped.TopLevelPatConstantDefinition . snd <$> resolveDefinition d
 resolveTopLevelDefinition (Unscoped.TopLevelDataDefinition _name params cs) = do
-  (typ, abstr) <- resolveParamsType params $ Unscoped.Var $ fromQName Builtin.TypeName
+  (params', abstr) <- resolveParams params
   cs' <- mapM (mapM (fmap abstr . resolveExpr)) cs
-  let res = Scoped.TopLevelPatDataDefinition $ DataDef cs'
-  return (res, Just typ)
+  return $ Scoped.TopLevelPatDataDefinition $ DataDef params' cs'
 resolveTopLevelDefinition (Unscoped.TopLevelClassDefinition _name params ms) = do
-  (typ, abstr) <- resolveParamsType params $ Unscoped.Var $ fromQName Builtin.TypeName
+  (params', abstr) <- resolveParams params
   ms' <- mapM (mapM (fmap abstr . resolveExpr)) ms
-  let res = Scoped.TopLevelPatClassDefinition $ ClassDef ms'
-  return (res, Just typ)
+  return $ Scoped.TopLevelPatClassDefinition $ ClassDef params' ms'
 resolveTopLevelDefinition (Unscoped.TopLevelInstanceDefinition typ ms) = do
   typ' <- resolveExpr typ
   ms' <- mapM (\(loc, m) -> (,) loc <$> resolveDefinition m) ms
-  let res = Scoped.TopLevelPatInstanceDefinition
-        $ Scoped.PatInstanceDef
-        $ Vector.fromList
-        $ (\(loc, (n, (d, mtyp))) -> (n, loc, d, mtyp))
-        <$> ms'
-  return (res, Just typ')
+  return
+    $ Scoped.TopLevelPatInstanceDefinition
+    $ Scoped.PatInstanceDef typ'
+    $ Vector.fromList
+    $ (\(loc, (n, d)) -> (n, loc, d))
+    <$> ms'
 
-resolveParamsType
+resolveParams
   :: Monad f
   => [(Plicitness, Name, Unscoped.Type)]
-  -> Unscoped.Expr
-  -> ResolveNames (Scoped.Expr PreName, f PreName -> Scope TeleVar f PreName)
-resolveParamsType params kind = do
-  typ' <- resolveExpr typ
-  return (typ', abstr)
-  where
-    pats = (\(p, n, t) -> (p, AnnoPat (VarPat (NameHint n) $ fromName n) t)) <$> params
-    typ = Unscoped.pis pats kind
-    paramNames = (\(_, n, _) -> fromName n) <$> params
-    abstr = abstract $ teleAbstraction $ Vector.fromList paramNames
+  -> ResolveNames (Telescope Plicitness Scoped.Expr PreName, f PreName -> Scope TeleVar f PreName)
+resolveParams params = do
+  params' <- forM params $ \(p, n, t) -> do
+    t' <- resolveExpr t
+    return (fromName n, p, t')
+  let paramNames = fst3 <$> params'
+      abstr = abstract $ teleAbstraction $ Vector.fromList paramNames
+  return (telescope fromPreName params', abstr)
 
 resolveDefinition
   :: Unscoped.Definition Unscoped.Expr
-  -> ResolveNames (Name, (Scoped.PatDefinition (Scoped.Clause void Scoped.Expr PreName), Maybe (Scoped.Type PreName)))
+  -> ResolveNames (Name, Scoped.PatConstantDef Scoped.Expr PreName)
 resolveDefinition (Unscoped.Definition name a clauses mtyp) = do
-  res <- Scoped.PatDefinition a IsConstant <$> mapM resolveClause clauses
-  mtyp' <- forM mtyp resolveExpr
-  return (name, (res, mtyp'))
+  res <- Scoped.PatConstantDef a IsConstant <$> mapM resolveClause clauses <*> mapM resolveExpr mtyp
+  return (name, res)
 
 resolveClause
   :: Unscoped.Clause Unscoped.Expr
-  -> ResolveNames (Scoped.Clause void Scoped.Expr PreName)
+  -> ResolveNames (Scoped.Clause Scoped.Expr PreName)
 resolveClause (Unscoped.Clause plicitPats e) = do
   plicitPats' <- traverse (traverse resolvePat) plicitPats
   Scoped.clause plicitPats' <$> resolveExpr e
@@ -254,14 +247,14 @@ resolveExpr expr = case expr of
     body' <- resolveExpr body
     let sortedDefs = topoSortWith
           (\(_, (name, _)) -> fromName name)
-          (\(_, (_, (d, mt))) -> foldMap toHashSet d <> foldMap toHashSet mt)
+          (\(_, (_, d)) -> toHashSet d)
           defs'
 
         go ds e = do
           let ds' = Vector.fromList ds
               abstr = letAbstraction $ fromName . fst . snd <$> ds'
           Scoped.Let
-            ((\(loc, (name, (def, mtyp))) -> (loc, fromName name, Scoped.abstractClause abstr <$> def, abstract abstr <$> mtyp)) <$> ds')
+            ((\(loc, (name, def)) -> (loc, fromName name, Scoped.abstractConstantDef abstr def)) <$> ds')
             (abstract abstr e)
 
     return $ foldr go body' $ flattenSCC <$> sortedDefs

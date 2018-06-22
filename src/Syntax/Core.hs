@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, MonadComprehensions, OverloadedStrings, PatternSynonyms, RankNTypes, TemplateHaskell, TypeFamilies, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, MonadComprehensions, OverloadedStrings, PatternSynonyms, RankNTypes, TemplateHaskell, TypeFamilies, ViewPatterns #-}
 module Syntax.Core where
 
 import Control.Monad
@@ -98,8 +98,8 @@ usedPiView _ = Nothing
 usedPisViewM :: Expr m v -> Maybe (Telescope Plicitness (Expr m) v, Scope TeleVar (Expr m) v)
 usedPisViewM = bindingsViewM usedPiView
 
-telescope :: Expr m v -> Telescope Plicitness (Expr m) v
-telescope (pisView -> (tele, _)) = tele
+piTelescope :: Expr m v -> Telescope Plicitness (Expr m) v
+piTelescope (pisView -> (tele, _)) = tele
 
 pisView :: Expr m v -> (Telescope Plicitness (Expr m) v, Scope TeleVar (Expr m) v)
 pisView = bindingsView piView
@@ -112,21 +112,11 @@ arrow p a b = Pi mempty p a $ abstractNone b
 
 quantifiedConstrTypes
   :: DataDef (Type m) v
-  -> Type m v
   -> (Plicitness -> Plicitness)
   -> [ConstrDef (Type m v)]
-quantifiedConstrTypes (DataDef cs) typ anno = map (fmap $ quantify Pi ps) cs
+quantifiedConstrTypes (DataDef ps cs) anno = map (fmap $ quantify Pi ps') cs
   where
-    ps = mapAnnotations anno $ telescope typ
-
-prettyTypedDef
-  :: (Eq m, Pretty m)
-  => PrettyDoc
-  -> Definition (Expr m) Doc
-  -> Expr m Doc
-  -> PrettyDoc
-prettyTypedDef name (Definition a i d) _ = prettyM a <+> prettyM i <$$> name <+> "=" <+> prettyM d
-prettyTypedDef name (DataDefinition d e) t = prettyDataDef name (telescope t) d <+> "=" <+> prettyM e
+    ps' = mapAnnotations anno ps
 
 -------------------------------------------------------------------------------
 -- Instances

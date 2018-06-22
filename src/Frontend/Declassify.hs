@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, ViewPatterns #-}
+{-# LANGUAGE OverloadedStrings, TupleSections, ViewPatterns #-}
 module Frontend.Declassify where
 
 import Control.Monad.State
@@ -7,7 +7,6 @@ import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.List
 import Data.Monoid
-import Data.Ord
 import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 import Data.Void
@@ -22,20 +21,17 @@ declassify
   :: QName
   -> SourceLoc
   -> TopLevelPatDefinition Expr Void
-  -> Maybe (Type Void)
   -> VIX
-    ( [(QName, SourceLoc, TopLevelPatDefinition Expr Void, Maybe (Type Void))]
-    , [(QName, SourceLoc, TopLevelPatDefinition Expr Void, Maybe (Type Void))]
+    ( [(QName, SourceLoc, TopLevelPatDefinition Expr Void)]
+    , [(QName, SourceLoc, TopLevelPatDefinition Expr Void)]
     )
-declassify name loc def mtyp = case (def, mtyp) of
-  (TopLevelPatDefinition _, _) -> doNothing
-  (TopLevelPatDataDefinition _, _) -> doNothing
-  (TopLevelPatClassDefinition methods, Just typ) -> first pure <$> declass name loc methods typ
-  (TopLevelPatClassDefinition _, Nothing) -> error "declassify impossible 1"
-  (TopLevelPatInstanceDefinition methods, Just typ) -> flip (,) mempty <$> deinstance name loc methods typ
-  (TopLevelPatInstanceDefinition _, Nothing) -> error "declassify impossible 2"
+declassify name loc def = case def of
+  TopLevelPatConstantDefinition _ -> doNothing
+  TopLevelPatDataDefinition _ -> doNothing
+  TopLevelPatClassDefinition classDef -> first pure <$> declass name loc classDef
+  TopLevelPatInstanceDefinition instDef -> (, mempty) <$> deinstance name loc instDef
   where
-    doNothing = return (pure (name, loc, def, mtyp), mempty)
+    doNothing = return (pure (name, loc, def), mempty)
 
 {-
   class C a where
@@ -51,19 +47,18 @@ declass
   :: QName
   -> SourceLoc
   -> ClassDef Expr Void
-  -> Type Void
   -> VIX
-    ( (QName, SourceLoc, TopLevelPatDefinition Expr Void, Maybe (Type Void))
-    , [(QName, SourceLoc, TopLevelPatDefinition Expr Void, Maybe (Type Void))]
+    ( (QName, SourceLoc, TopLevelPatDefinition Expr Void)
+    , [(QName, SourceLoc, TopLevelPatDefinition Expr Void)]
     )
-declass qname loc classDef typ = do
+declass qname loc classDef = do
   liftVIX $ modify $ \s -> s
     { vixClassMethods
       = HashMap.insert qname (Vector.fromList $ methodNames classDef)
       $ vixClassMethods s
     }
   let classConstrName = classConstr qname
-      (params, _retType) = extractParams typ
+      params = classParams classDef
       numMethods = length $ classMethods classDef
       implicitPiParams = quantify (\h _ t s -> Pi Implicit (AnnoPat (VarPat h ()) $ abstractNone t) $ mapBound (\() -> 0) s) params
       classType = apps (Global qname) $ iforTele params $ \i _ p _ -> (p, pure $ B $ TeleVar i)
@@ -72,7 +67,7 @@ declass qname loc classDef typ = do
     (( qname
       , loc
       , TopLevelPatDataDefinition
-        $ DataDef
+        $ DataDef params
         $ pure
         $ ConstrDef (qconstrConstr classConstrName)
         $ Scope
@@ -84,20 +79,19 @@ declass qname loc classDef typ = do
             . abstractNone)
           classType
         $ classMethods classDef
-      , Just typ
       )
     , [ ( QName (qnameModule qname) mname
         , mloc
-        , TopLevelPatDefinition
-          (PatDefinition
+        , TopLevelPatConstantDefinition
+          (PatConstantDef
             Concrete
             IsConstant
-            $ pure
-            $ Clause
-              (pure (Constraint, ConPat (HashSet.singleton classConstrName) pats))
-              $ toScope $ pure $ B $ B 0
+            (pure
+              $ Clause
+                (pure (Constraint, ConPat (HashSet.singleton classConstrName) pats))
+                $ toScope $ pure $ B 0)
+            $ Just $ implicitPiParams $ toScope $ classParam $ fromScope mtyp
           )
-        , Just $ implicitPiParams $ toScope $ classParam $ fromScope mtyp
         )
       | (i, MethodDef mname mloc mtyp) <- zip [0..] $ classMethods classDef
       , let prePats = Vector.replicate i WildcardPat
@@ -108,13 +102,6 @@ declass qname loc classDef typ = do
 
 classConstr :: QName -> QConstr
 classConstr qname@(QName _ name) = QConstr qname $ fromName $ "Mk" <> name
-
-extractParams
-  :: Expr v
-  -> (Telescope Plicitness Expr v, Scope TeleVar Expr v)
-extractParams = bindingsView $ \expr -> case expr of
-  Pi1 h p t s -> Just (h, p, t, s)
-  _ -> Nothing
 
 {-
   instanceName = instance C a => C [a] where
@@ -131,9 +118,8 @@ deinstance
   :: QName
   -> SourceLoc
   -> PatInstanceDef Expr Void
-  -> Type Void
-  -> VIX [(QName, SourceLoc, TopLevelPatDefinition Expr Void, Maybe (Type Void))]
-deinstance qname@(QName modName name) loc (PatInstanceDef methods) typ = located loc $ do
+  -> VIX [(QName, SourceLoc, TopLevelPatDefinition Expr Void)]
+deinstance qname@(QName modName name) loc (PatInstanceDef typ methods) = located loc $ do
   className <- getClass typ
   mnames <- liftVIX $ gets $ HashMap.lookup className . vixClassMethods
   case mnames of
@@ -141,9 +127,9 @@ deinstance qname@(QName modName name) loc (PatInstanceDef methods) typ = located
     Just names -> do
       let methods'
             = Vector.fromList
-            $ sortBy (comparing $ hashedElemIndex names . getName)
+            $ sortOn (hashedElemIndex names . fst3)
             $ Vector.toList methods
-          names' = getName <$> methods'
+          names' = fst3 <$> methods'
       if names /= names' then
         throwMethodProblem
           className
@@ -155,20 +141,20 @@ deinstance qname@(QName modName name) loc (PatInstanceDef methods) typ = located
         return $
           ( qname
           , loc
-          , TopLevelPatDefinition
-            $ PatDefinition
+          , TopLevelPatConstantDefinition
+            $ PatConstantDef
               Concrete
               IsInstance
-              $ pure
-              $ Clause mempty
-              $ abstractNone
-              $ apps (Con $ HashSet.singleton $ classConstr className)
-              $ (\(n, _, _, _) -> (Explicit, global $ mname n)) <$> methods'
-          , Just typ
+              (pure
+                $ Clause mempty
+                $ abstractNone
+                $ apps (Con $ HashSet.singleton $ classConstr className)
+                $ (\n -> (Explicit, global $ mname n)) <$> names')
+              $ Just typ
           )
           :
-          [ (mname n, loc', TopLevelPatDefinition def, mtyp)
-          | (n, loc', def, mtyp) <- Vector.toList methods'
+          [ (mname n, loc', TopLevelPatConstantDefinition def)
+          | (n, loc', def) <- Vector.toList methods'
           ]
   where
     diff xs ys = HashSet.toList $ HashSet.difference (toHashSet xs) (toHashSet ys)
@@ -177,7 +163,6 @@ deinstance qname@(QName modName name) loc (PatInstanceDef methods) typ = located
         p [] = False
         p [_] = False
         p _ = True
-    getName (n, _, _, _) = n
 
 getClass
   :: Expr v

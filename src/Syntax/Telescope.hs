@@ -54,6 +54,13 @@ unTelescope (Telescope xs) = xs
 data TeleArg anno expr v = TeleArg !NameHint !anno !(Scope TeleVar expr v)
   deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
 
+telescope :: (Foldable t, Monad expr, Eq v, Hashable v) => (v -> NameHint) -> t (v, anno, expr v) -> Telescope anno expr v
+telescope hint vs
+  = Telescope
+  $ fmap snd
+  $ forWithPrefix (toVector vs) $ \(v, a, e) vts ->
+    (v, TeleArg (hint v) a $ abstract (teleAbstraction (fst <$> vts)) e)
+
 mapAnnotations :: (a -> a') -> Telescope a e v -> Telescope a' e v
 mapAnnotations f (Telescope xs) = Telescope $ (\(TeleArg h a s) -> (TeleArg h (f a) s)) <$> xs
 
