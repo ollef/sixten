@@ -41,7 +41,7 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
 - llvm-hs-pretty-0.2.0.0
-- parsix-0.1.0.1
+- parsix-0.1.0.2
 
 # Override default flag values for local packages and extra-deps
 flags: {}
