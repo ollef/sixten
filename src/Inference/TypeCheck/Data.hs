@@ -7,7 +7,6 @@ import {-# SOURCE #-} Inference.TypeCheck.Expr
 import qualified Builtin.Names as Builtin
 import Inference.Constraint as Constraint
 import Inference.MetaVar
-import Inference.MetaVar.Zonk
 import Inference.Monad
 import Inference.TypeOf
 import Inference.Unify
@@ -67,7 +66,7 @@ checkConstrDef
   :: ConstrDef PreM
   -> Infer (ConstrDef CoreM, CoreM, CoreM)
 checkConstrDef (ConstrDef c typ) = do
-  typ' <- zonk =<< checkPoly typ Builtin.Type
+  typ' <- checkPoly typ Builtin.Type
   (sizes, ret) <- go typ'
   let size = foldl' productType (Core.MkType TypeRep.UnitRep) sizes
   return (ConstrDef c typ', ret, size)
