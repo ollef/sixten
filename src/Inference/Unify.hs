@@ -30,101 +30,6 @@ import TypedFreeVar
 import Util
 import VIX
 
-occurs
-  :: [(CoreM, CoreM)]
-  -> Level
-  -> MetaVar
-  -> CoreM
-  -> Infer ()
-occurs cxt l mv expr = bitraverse_ go pure expr
-  where
-    go mv'
-      | mv == mv' = do
-        explanation <- forM cxt $ \(t1, t2) -> do
-          t1' <- zonk t1
-          t2' <- zonk t2
-          actual <- prettyMeta t1'
-          expect <- prettyMeta t2'
-          return
-            [ ""
-            , bold "Inferred:" PP.<+> red actual
-            , bold "Expected:" PP.<+> dullGreen expect
-            ]
-        printedTv <- prettyMetaVar mv'
-        expr' <- zonk expr
-        printedExpr <- prettyMeta expr'
-        throwLocated
-          $ "Cannot construct the infinite type"
-          <> PP.line
-          <> PP.vcat
-            ([ dullBlue printedTv
-            , "="
-            , dullBlue printedExpr
-            , ""
-            , "while trying to unify"
-            ] ++ intercalate ["", "while trying to unify"] explanation)
-      | otherwise = do
-        -- occurs cxt l mv $ vacuous $ metaType mv'
-        sol <- solution mv'
-        case sol of
-          Left l' -> liftST $ writeSTRef (metaRef mv') $ Left $ min l l'
-          Right expr' -> traverse_ go $ vacuous expr'
-
-prune :: CoreM -> Infer CoreM
-prune expr = inUpdatedContext (const mempty) $ bindMetas go expr
-  where
-    go m es = indentLog $ do
-      logShow 30 "prune" $ metaId m
-      sol <- solution m
-      case sol of
-        Right e -> do
-          VIX.logShow 30 "prune solved" ()
-          bindMetas go $ betaApps (vacuous e) es
-        Left l -> do
-          allowed <- toHashSet <$> localVars
-          case distinctVars es of
-            Nothing -> do
-              VIX.logShow 30 "prune not distinct" ()
-              return $ Meta m es
-            Just pvs
-              | Vector.length vs' == Vector.length vs -> do
-                VIX.logShow 30 "prune nothing to do" ()
-                return $ Meta m es
-              | otherwise -> do
-                let m'Type = pis vs' mType
-                m'Type' <- bindMetas go m'Type
-                let typeFvs = toHashSet m'Type'
-                logMeta 30 "prune m'Type'" m'Type'
-                logShow 30 "prune vs" $ varId <$> vs
-                logShow 30 "prune vs'" $ varId <$> vs'
-                logShow 30 "prune typeFvs" $ varId <$> toList typeFvs
-                if HashSet.null typeFvs then do
-                  m' <- existsAtLevel
-                    (metaHint m)
-                    (metaPlicitness m)
-                    (assertClosed m'Type')
-                    (Vector.length vs')
-                    (metaSourceLoc m)
-                    l
-                  let e = Meta m' $ (\v -> (varData v, pure v)) <$> vs'
-                      e' = lams plicitVs e
-                  logShow 30 "prune varTypes" =<< (mapM (prettyMeta . varType) vs)
-                  logShow 30 "prune vs'" $ varId <$> vs'
-                  logShow 30 "prune varTypes'" =<< (mapM (prettyMeta . varType) vs')
-                  logMeta 30 "prune e'" e'
-                  solve m $ assertClosed e'
-                  return e
-                else
-                  return $ Meta m es
-              | otherwise -> return $ Meta m es
-              where
-                assertClosed :: Functor f => f FreeV -> f Void
-                assertClosed = fmap $ error "prune assertClosed"
-                vs = snd <$> pvs
-                vs' = Vector.filter (`HashSet.member` allowed) vs
-                plicitVs = (\(p, v) -> v { varData = p }) <$> pvs
-                Just mType = typeApps (vacuous $ metaType m) es
-
 unify :: [(CoreM, CoreM)] -> CoreM -> CoreM -> Infer ()
 unify cxt type1 type2 = do
   logMeta 30 "unify t1" type1
@@ -259,6 +164,101 @@ unify' cxt touchable type1 type2 = case (type1, type2) of
       throwLocated
         $ "Type mismatch" <> PP.line <>
           PP.vcat (intercalate ["", "while trying to unify"] explanation)
+
+occurs
+  :: [(CoreM, CoreM)]
+  -> Level
+  -> MetaVar
+  -> CoreM
+  -> Infer ()
+occurs cxt l mv expr = bitraverse_ go pure expr
+  where
+    go mv'
+      | mv == mv' = do
+        explanation <- forM cxt $ \(t1, t2) -> do
+          t1' <- zonk t1
+          t2' <- zonk t2
+          actual <- prettyMeta t1'
+          expect <- prettyMeta t2'
+          return
+            [ ""
+            , bold "Inferred:" PP.<+> red actual
+            , bold "Expected:" PP.<+> dullGreen expect
+            ]
+        printedTv <- prettyMetaVar mv'
+        expr' <- zonk expr
+        printedExpr <- prettyMeta expr'
+        throwLocated
+          $ "Cannot construct the infinite type"
+          <> PP.line
+          <> PP.vcat
+            ([ dullBlue printedTv
+            , "="
+            , dullBlue printedExpr
+            , ""
+            , "while trying to unify"
+            ] ++ intercalate ["", "while trying to unify"] explanation)
+      | otherwise = do
+        -- occurs cxt l mv $ vacuous $ metaType mv'
+        sol <- solution mv'
+        case sol of
+          Left l' -> liftST $ writeSTRef (metaRef mv') $ Left $ min l l'
+          Right expr' -> traverse_ go $ vacuous expr'
+
+prune :: CoreM -> Infer CoreM
+prune expr = inUpdatedContext (const mempty) $ bindMetas go expr
+  where
+    go m es = indentLog $ do
+      logShow 30 "prune" $ metaId m
+      sol <- solution m
+      case sol of
+        Right e -> do
+          VIX.logShow 30 "prune solved" ()
+          bindMetas go $ betaApps (vacuous e) es
+        Left l -> do
+          allowed <- toHashSet <$> localVars
+          case distinctVars es of
+            Nothing -> do
+              VIX.logShow 30 "prune not distinct" ()
+              return $ Meta m es
+            Just pvs
+              | Vector.length vs' == Vector.length vs -> do
+                VIX.logShow 30 "prune nothing to do" ()
+                return $ Meta m es
+              | otherwise -> do
+                let m'Type = pis vs' mType
+                m'Type' <- bindMetas go m'Type
+                let typeFvs = toHashSet m'Type'
+                logMeta 30 "prune m'Type'" m'Type'
+                logShow 30 "prune vs" $ varId <$> vs
+                logShow 30 "prune vs'" $ varId <$> vs'
+                logShow 30 "prune typeFvs" $ varId <$> toList typeFvs
+                if HashSet.null typeFvs then do
+                  m' <- existsAtLevel
+                    (metaHint m)
+                    (metaPlicitness m)
+                    (assertClosed m'Type')
+                    (Vector.length vs')
+                    (metaSourceLoc m)
+                    l
+                  let e = Meta m' $ (\v -> (varData v, pure v)) <$> vs'
+                      e' = lams plicitVs e
+                  logShow 30 "prune varTypes" =<< (mapM (prettyMeta . varType) vs)
+                  logShow 30 "prune vs'" $ varId <$> vs'
+                  logShow 30 "prune varTypes'" =<< (mapM (prettyMeta . varType) vs')
+                  logMeta 30 "prune e'" e'
+                  solve m $ assertClosed e'
+                  return e
+                else
+                  return $ Meta m es
+              | otherwise -> return $ Meta m es
+              where
+                assertClosed :: Functor f => f FreeV -> f Void
+                assertClosed = fmap $ error "prune assertClosed"
+                vs = snd <$> pvs
+                vs' = Vector.filter (`HashSet.member` allowed) vs
+                plicitVs = (\(p, v) -> v { varData = p }) <$> pvs
+                Just mType = typeApps (vacuous $ metaType m) es
 
 distinctVars :: (Eq v, Hashable v, Traversable t) => t (p, Expr m v) -> Maybe (t (p, v))
 distinctVars es = case traverse isVar es of
