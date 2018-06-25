@@ -1,6 +1,7 @@
 {-# LANGUAGE DefaultSignatures, FlexibleInstances, FunctionalDependencies, GADTs, MultiParamTypeClasses, UndecidableInstances #-}
 module MonadContext where
 
+import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Identity
@@ -34,3 +35,5 @@ instance MonadContext v m => MonadContext v (StateT s m) where
   inUpdatedContext f (StateT m) = StateT $ inUpdatedContext f . m
 instance MonadContext v m => MonadContext v (IdentityT m) where
   inUpdatedContext f (IdentityT m) = IdentityT $ inUpdatedContext f m
+instance MonadContext v m => MonadContext v (ExceptT e m) where
+  inUpdatedContext f (ExceptT m) = ExceptT $ inUpdatedContext f m

@@ -3,6 +3,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module MonadFresh where
 
+import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Identity
@@ -39,3 +40,4 @@ instance MonadFresh m => MonadFresh (StateT s m)
 instance MonadFresh m => MonadFresh (IdentityT m)
 instance MonadFresh m => MonadFresh (IRBuilder.IRBuilderT m)
 instance MonadFresh m => MonadFresh (IRBuilder.ModuleBuilderT m)
+instance MonadFresh m => MonadFresh (ExceptT e m)

@@ -90,7 +90,6 @@ subtypeRho typ1 typ2 instUntil = do
     subtypeRho' typ1' typ2' instUntil
 
 subtypeRho' :: Polytype -> Rhotype -> InstUntil -> Infer (CoreM -> CoreM)
-subtypeRho' typ1 typ2 _ | typ1 == typ2 = return id
 subtypeRho' (Pi h1 p1 argType1 retScope1) (Pi h2 p2 argType2 retScope2) _
   | p1 == p2 = do
     let h = h1 <> h2

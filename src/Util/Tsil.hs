@@ -45,3 +45,9 @@ lookup _ Nil = Nothing
 lookup a (Snoc as (a', b))
   | a == a' = Just b
   | otherwise = Util.Tsil.lookup a as
+
+filter :: (a -> Bool) -> Tsil a -> Tsil a
+filter _ Nil = Nil
+filter f (Snoc xs x)
+  | f x = Snoc (Util.Tsil.filter f xs) x
+  | otherwise = Util.Tsil.filter f xs

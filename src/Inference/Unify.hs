@@ -14,12 +14,13 @@ import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 import Data.Void
 
+import {-# SOURCE #-} Inference.Constraint
 import Analysis.Simplify
+import qualified Inference.Equality as Equality
 import Inference.MetaVar
 import Inference.MetaVar.Zonk
 import Inference.Monad
 import Inference.Normalise hiding (whnf)
-import {-# SOURCE #-} Inference.Constraint
 import Inference.TypeOf
 import MonadContext
 import Pretty
@@ -134,50 +135,53 @@ unify cxt type1 type2 = do
   unify' ((type1', type2') : cxt) touchable type1' type2'
 
 unify' :: [(CoreM, CoreM)] -> (MetaVar -> Bool) -> CoreM -> CoreM -> Infer ()
-unify' cxt touchable type1 type2
-  | type1 == type2 = return () -- TODO make specialised equality function to get rid of zonking in this and subtyping
-  | otherwise = case (type1, type2) of
-    (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
-    (Lam h1 p1 t1 s1, Lam h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
-    -- Eta-expand
-    (Lam h p t s, _) -> do
-      v <- forall h p t
-      withVar v $ unify cxt (instantiate1 (pure v) s) (App type2 p $ pure v)
-    (_, Lam h p t s) -> do
-      v <- forall h p t
-      withVar v $ unify cxt (App type1 p $ pure v) (instantiate1 (pure v) s)
-    -- Eta-reduce
-    (etaReduce -> Just type1', _) -> unify cxt type1' type2
-    (_, etaReduce -> Just type2') -> unify cxt type1 type2'
-    -- If we have 'unify (f xs) t', where 'f' is an existential, and 'xs' are
-    -- distinct universally quantified variables, then 'f = \xs. t' is a most
-    -- general solution (see Miller, Dale (1991) "A Logic programming...")
-    (appsView -> (Meta m es1, es2), _) | touchable m, Just pvs <- distinctVars (es1 <> toVector es2) -> solveVar unify m pvs type2
-    (_, appsView -> (Meta m es1, es2)) | touchable m, Just pvs <- distinctVars (es1 <> toVector es2) -> solveVar (flip . unify) m pvs type1
-    -- Since we've already tried reducing the application, we can only hope to
-    -- unify it pointwise.
-    (App e1 p1 e1', App e2 p2 e2') | p1 == p2 -> do
-      unify cxt e1  e2
-      unify cxt e1' e2'
-    _ -> do
-      explanation <- forM cxt $ \(t1, t2) -> do
-        t1' <- zonk t1
-        t2' <- zonk t2
-        actual <- prettyMeta t1'
-        expect <- prettyMeta t2'
-        return
-          [ ""
-          , bold "Inferred:" PP.<+> red actual
-          , bold "Expected:" PP.<+> dullGreen expect
-          ]
-      throwLocated
-        $ "Type mismatch" <> PP.line <>
-          PP.vcat (intercalate ["", "while trying to unify"] explanation)
+unify' cxt touchable type1 type2 = case (type1, type2) of
+  (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
+  (Lam h1 p1 t1 s1, Lam h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
+  -- Eta-expand
+  (Lam h p t s, _) -> do
+    v <- forall h p t
+    withVar v $ unify cxt (instantiate1 (pure v) s) (App type2 p $ pure v)
+  (_, Lam h p t s) -> do
+    v <- forall h p t
+    withVar v $ unify cxt (App type1 p $ pure v) (instantiate1 (pure v) s)
+  -- Eta-reduce
+  (etaReduce -> Just type1', _) -> unify cxt type1' type2
+  (_, etaReduce -> Just type2') -> unify cxt type1 type2'
+
+  -- If we have 'unify (f xs) t', where 'f' is an existential, and 'xs' are
+  -- distinct universally quantified variables, then 'f = \xs. t' is a most
+  -- general solution (see Miller, Dale (1991) "A Logic programming...")
+  (appsView -> (Meta m1 es1, es1'), appsView -> (Meta m2 es2, es2')) -> do
+    Left l1 <- solution m1
+    Left l2 <- solution m2
+    let argVec1 = es1 <> toVector es1'
+        argVec2 = es2 <> toVector es2'
+    case (distinctVars argVec1, distinctVars argVec2) of
+      _ | m1 == m2 -> sameVar m1 argVec1 argVec2
+      (Just pvs, _) | l1 >= l2, touchable m1 -> solveVar unify m1 pvs type2
+      (_, Just pvs) | l2 <= l1, touchable m2 -> solveVar (flip . unify) m2 pvs type1
+      (_, _) -> can'tUnify
+  (appsView -> (Meta m es, es'), _)
+    | touchable m
+    , Just pvs <- distinctVars (es <> toVector es')
+    -> solveVar unify m pvs type2
+  (_, appsView -> (Meta m es, es'))
+    | touchable m
+    , Just pvs <- distinctVars (es <> toVector es')
+    -> solveVar (flip . unify) m pvs type1
+  -- Since we've already tried reducing the application, we can only hope to
+  -- unify it pointwise.
+  (App e1 p1 e1', App e2 p2 e2') | p1 == p2 -> do
+    unify cxt e1  e2
+    unify cxt e1' e2'
+  _ -> can'tUnify
   where
     absCase h p t1 t2 s1 s2 = do
       unify cxt t1 t2
       v <- forall h p t1
       withVar v $ unify cxt (instantiate1 (pure v) s1) (instantiate1 (pure v) s2)
+
     solveVar recurse m pvs t = do
       sol <- solution m
       case sol of
@@ -198,6 +202,63 @@ unify' cxt touchable type1 type2
           recurse cxt (vacuous $ metaType m) lamtType
           solve m closedLamt
         Right c -> recurse cxt (apps (vacuous c) $ second pure <$> pvs) t
+
+    sameVar m pes1 pes2 = do
+      when (Vector.length pes1 /= Vector.length pes2) $
+        error "sameVar mismatched length"
+
+      let keepArg (isVar -> Just v1) (isVar -> Just v2) | v1 /= v2 = False
+          keepArg _ _ = True
+          keep = Vector.zipWith keepArg pes1 pes2
+      if and keep then
+        -- If we keep all arguments we can't make any progress without delayed
+        -- constraint solving other than checking for equality.
+        can'tUnify
+      else do
+        (vs, typ) <- instantiatedMetaType' (Vector.length pes1) m
+        let vs' = snd <$> Vector.filter fst (Vector.zip keep vs)
+        let m'Type = pis vs' typ
+        prunedM'Type <- prune m'Type
+        normM'Type <- normalise prunedM'Type
+
+        let typeFvs = toHashSet normM'Type
+        if HashSet.null typeFvs then do
+          Left l <- solution m
+          m' <- existsAtLevel
+            (metaHint m)
+            (metaPlicitness m)
+            (assertClosed normM'Type)
+            (Vector.length vs')
+            (metaSourceLoc m)
+            l
+          let e = Meta m' $ (\v -> (varData v, pure v)) <$> vs'
+              e' = lams vs e
+          solve m $ assertClosed e'
+          unify cxt type1 type2
+        else
+          can'tUnify
+      where
+        assertClosed :: Functor f => f FreeV -> f Void
+        assertClosed = fmap $ error "unify sameVar assertClosed"
+
+    can'tUnify = do
+      equal <- Equality.exec $ Equality.expr type1 type2
+      unless equal typeMismatch
+
+    typeMismatch = do
+      explanation <- forM cxt $ \(t1, t2) -> do
+        t1' <- zonk t1
+        t2' <- zonk t2
+        actual <- prettyMeta t1'
+        expect <- prettyMeta t2'
+        return
+          [ ""
+          , bold "Inferred:" PP.<+> red actual
+          , bold "Expected:" PP.<+> dullGreen expect
+          ]
+      throwLocated
+        $ "Type mismatch" <> PP.line <>
+          PP.vcat (intercalate ["", "while trying to unify"] explanation)
 
 distinctVars :: (Eq v, Hashable v, Traversable t) => t (p, Expr m v) -> Maybe (t (p, v))
 distinctVars es = case traverse isVar es of

@@ -169,13 +169,20 @@ instantiatedMetaType
   :: (MonadError Error m, MonadFresh m, MonadVIX m, MonadIO m)
   => MetaVar
   -> m (Vector FreeV, Expr MetaVar (FreeBindVar MetaVar))
-instantiatedMetaType m = go mempty (metaArity m) (vacuous $ metaType m)
+instantiatedMetaType m = instantiatedMetaType' (metaArity m) m
+
+instantiatedMetaType'
+  :: (MonadError Error m, MonadFresh m, MonadVIX m, MonadIO m)
+  => Int
+  -> MetaVar
+  -> m (Vector FreeV, Expr MetaVar (FreeBindVar MetaVar))
+instantiatedMetaType' arity m = go mempty arity (vacuous $ metaType m)
   where
     go vs 0 t = return (toVector $ reverse vs, t)
     go vs n (Pi h a t s) = do
       v <- forall h a t
       go (v:vs) (n - 1) (instantiate1 (pure v) s)
-    go _ _ _ = internalError "instantiatedMetaType"
+    go _ _ _ = internalError "instantiatedMetaType'"
 
 -- TODO move?
 bindDefMetas
