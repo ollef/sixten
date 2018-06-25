@@ -216,15 +216,16 @@ prune expr = inUpdatedContext (const mempty) $ bindMetas go expr
           VIX.logShow 30 "prune solved" ()
           bindMetas go $ betaApps (vacuous e) es
         Left l -> do
+          es' <- mapM (mapM whnf) es
           allowed <- toHashSet <$> localVars
-          case distinctVars es of
+          case distinctVars es' of
             Nothing -> do
               VIX.logShow 30 "prune not distinct" ()
-              return $ Meta m es
+              return $ Meta m es'
             Just pvs
               | Vector.length vs' == Vector.length vs -> do
                 VIX.logShow 30 "prune nothing to do" ()
-                return $ Meta m es
+                return $ Meta m es'
               | otherwise -> do
                 let m'Type = pis vs' mType
                 m'Type' <- bindMetas go m'Type
@@ -250,8 +251,8 @@ prune expr = inUpdatedContext (const mempty) $ bindMetas go expr
                   solve m $ assertClosed e'
                   return e
                 else
-                  return $ Meta m es
-              | otherwise -> return $ Meta m es
+                  return $ Meta m es'
+              | otherwise -> return $ Meta m es'
               where
                 assertClosed :: Functor f => f FreeV -> f Void
                 assertClosed = fmap $ error "prune assertClosed"
