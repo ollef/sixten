@@ -4,6 +4,7 @@ module Inference.Monad where
 import Control.Monad.Except
 import Control.Monad.Reader
 import Data.Foldable
+import Data.Maybe
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
@@ -16,6 +17,7 @@ import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import Util
 import Util.Tsil(Tsil)
+import qualified Util.Tsil as Tsil
 import VIX
 
 type PreM = Pre.Expr FreeV
@@ -74,7 +76,7 @@ exists
   -> CoreM
   -> Infer CoreM
 exists hint d typ = do
-  locals <- toVector <$> localVars
+  locals <- toVector . Tsil.filter (isNothing . varValue) <$> localVars
   let typ' = Core.pis locals typ
   logMeta 30 "exists typ" typ
   typ'' <- traverse (error "exists not closed") typ'
