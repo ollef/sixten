@@ -7,7 +7,6 @@ import Data.Bifunctor
 import Data.Foldable
 import Data.Hashable
 import qualified Data.HashSet as HashSet
-import Data.HashSet(HashSet)
 import Data.List
 import Data.Monoid
 import Data.STRef
@@ -70,8 +69,8 @@ occurs cxt l mv expr = bitraverse_ go pure expr
           Left l' -> liftST $ writeSTRef (metaRef mv') $ Left $ min l l'
           Right expr' -> traverse_ go $ vacuous expr'
 
-prune :: HashSet FreeV -> CoreM -> Infer CoreM
-prune allowedVars expr = inUpdatedContext (const mempty) $ bindMetas go expr
+prune :: CoreM -> Infer CoreM
+prune expr = inUpdatedContext (const mempty) $ bindMetas go expr
   where
     go m es = indentLog $ do
       logShow 30 "prune" $ metaId m
@@ -81,7 +80,7 @@ prune allowedVars expr = inUpdatedContext (const mempty) $ bindMetas go expr
           VIX.logShow 30 "prune solved" ()
           bindMetas go $ betaApps (vacuous e) es
         Left l -> do
-          locals <- toHashSet <$> localVars
+          allowed <- toHashSet <$> localVars
           case distinctVars es of
             Nothing -> do
               VIX.logShow 30 "prune not distinct" ()
@@ -118,7 +117,6 @@ prune allowedVars expr = inUpdatedContext (const mempty) $ bindMetas go expr
                   return $ Meta m es
               | otherwise -> return $ Meta m es
               where
-                allowed = allowedVars <> locals
                 assertClosed :: Functor f => f FreeV -> f Void
                 assertClosed = fmap $ error "prune assertClosed"
                 vs = snd <$> pvs
@@ -186,14 +184,13 @@ unify' cxt touchable type1 type2
         Left l -> do
           let vs = snd <$> pvs
               plicitVs = (\(p, v) -> v { varData = p }) <$> pvs
-          -- TODO pruning might need to take into account extra args like unify
-          prunedt <- prune (toHashSet vs) t
-          let lamt = lams plicitVs prunedt
-          normLamt <- normalise lamt
+          let lamt = lams plicitVs t
+          lamt' <- prune lamt
+          normLamt <- normalise lamt'
           logShow 30 "vs" (varId <$> vs)
           logMeta 30 ("solving t " <> show (metaId m)) t
-          logMeta 30 ("solving prunedt " <> show (metaId m)) prunedt
           logMeta 30 ("solving lamt " <> show (metaId m)) lamt
+          logMeta 30 ("solving lamt' " <> show (metaId m)) lamt'
           logMeta 30 ("solving normlamt " <> show (metaId m)) normLamt
           occurs cxt l m normLamt
           lamtType <- typeOf normLamt
