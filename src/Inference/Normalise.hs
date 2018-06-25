@@ -80,10 +80,13 @@ whnf' args expr exprs = indentLog $ do
         Nothing -> return $ apps e es
         Just (inlined, es') -> whnf' args inlined es'
     go e@(Var FreeVar { varValue = Nothing }) es = return $ apps e es
-    go e@(Meta m mes) es = do
+    go (Meta m mes) es = do
       sol <- handleMetaVar args m
       case sol of
-        Nothing -> return $ apps e es
+        Nothing -> do
+          mes' <- mapM (mapM whnf0) mes
+          es' <- mapM (mapM whnf0) es
+          return $ apps (Meta m mes') es'
         Just e' -> whnf' args (vacuous e') $ toList mes ++ es
     go e@(Global g) es = do
       (d, _) <- definition g
