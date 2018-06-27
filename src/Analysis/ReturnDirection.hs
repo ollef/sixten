@@ -18,7 +18,7 @@ import Syntax.Sized.Anno
 import Syntax.Sized.Definition
 import Syntax.Sized.Lifted
 import Util
-import VIX
+import VIX hiding (forall)
 
 data MetaReturnIndirect
   = MProjection
@@ -95,14 +95,14 @@ data MetaData = MetaData
   , metaFunSig :: Maybe (RetDirM, Vector Direction)
   } deriving Show
 
-type MetaVar = FreeVar MetaData
+type FreeV = FreeVar MetaData
 
-exists :: NameHint -> Location -> Maybe (RetDirM, Vector Direction) -> VIX MetaVar
-exists h loc call = freeVar h $ MetaData loc call
+forall :: NameHint -> Location -> Maybe (RetDirM, Vector Direction) -> VIX FreeV
+forall h loc call = freeVar h $ MetaData loc call
 
 infer
-  :: Expr MetaVar
-  -> VIX (Expr MetaVar, Location)
+  :: Expr FreeV
+  -> VIX (Expr FreeV, Location)
 infer expr = case expr of
   Var v -> return (expr, metaLocation $ varData v)
   Global _ -> return (expr, MProjection)
@@ -123,7 +123,7 @@ infer expr = case expr of
       args
   Let h e s -> do
     (e', eloc) <- inferAnno e
-    v <- exists h eloc Nothing
+    v <- forall h eloc Nothing
     (s', sloc) <- infer $ instantiate1 (pure v) s
     return (let_ v e' s', sloc)
   Case e brs -> do
@@ -135,19 +135,19 @@ infer expr = case expr of
     c' <- mapM (fmap fst . inferAnno) c
     return (ExternCode c' retType', MOutParam)
 
-inferAnno :: Anno Expr MetaVar -> VIX (Anno Expr MetaVar, Location)
+inferAnno :: Anno Expr FreeV -> VIX (Anno Expr FreeV, Location)
 inferAnno (Anno e t) = do
   (e', loc) <- infer e
   (t', _) <- infer t
   return (Anno e' t', loc)
 
 inferCall
-  :: (Expr MetaVar -> Vector (Anno Expr MetaVar) -> Expr MetaVar)
+  :: (Expr FreeV -> Vector (Anno Expr FreeV) -> Expr FreeV)
   -> ReturnDirection MetaReturnIndirect
   -> Vector Direction
-  -> Expr MetaVar
-  -> Vector (Anno Expr MetaVar)
-  -> VIX (Expr MetaVar, MetaReturnIndirect)
+  -> Expr FreeV
+  -> Vector (Anno Expr FreeV)
+  -> VIX (Expr FreeV, MetaReturnIndirect)
 inferCall con (ReturnIndirect mretIndirect) argDirs f es = do
   (f', _) <- infer f
   locatedEs <- mapM inferAnno es
@@ -163,11 +163,11 @@ inferCall con _ _ f es = do
 
 inferBranches
   :: Location
-  -> Branches () Expr MetaVar
-  -> VIX (Branches () Expr MetaVar, Location)
+  -> Branches () Expr FreeV
+  -> VIX (Branches () Expr FreeV, Location)
 inferBranches loc (ConBranches cbrs) = do
   locatedCBrs <- forM cbrs $ \(ConBranch c tele brScope) -> do
-    vs <- forMTele tele $ \h _ _ -> exists h loc Nothing
+    vs <- forMTele tele $ \h _ _ -> forall h loc Nothing
     let br = instantiateTele pure vs brScope
     sizes <- forMTele tele $ \_ _ s -> do
       let sz = instantiateTele pure vs s
@@ -188,8 +188,8 @@ inferBranches _loc (LitBranches lbrs def) = do
   return (LitBranches lbrs' def', loc)
 
 inferFunction
-  :: Expr MetaVar
-  -> VIX (Expr MetaVar, (RetDirM, Vector Direction))
+  :: Expr FreeV
+  -> VIX (Expr FreeV, (RetDirM, Vector Direction))
 inferFunction expr = case expr of
   Var v -> return (expr, fromMaybe def $ metaFunSig $ varData v)
   Global g -> do
@@ -204,11 +204,11 @@ inferFunction expr = case expr of
     def = error "ReturnDirection.inferFunction non-function"
 
 inferDefinition
-  :: MetaVar
-  -> Definition Expr MetaVar
-  -> VIX (Definition Expr MetaVar, Signature MetaReturnIndirect)
+  :: FreeV
+  -> Definition Expr FreeV
+  -> VIX (Definition Expr FreeV, Signature MetaReturnIndirect)
 inferDefinition FreeVar {varData = MetaData {metaFunSig = Just (retDir, argDirs)}} (FunctionDef vis cl (Function args s)) = do
-  vs <- forMTele args $ \h _ _ -> exists h MProjection Nothing
+  vs <- forMTele args $ \h _ _ -> forall h MProjection Nothing
   args' <- forMTele args $ \_ () szScope -> do
     let sz = instantiateTele pure vs szScope
     (sz', _szLoc) <- infer sz
@@ -229,8 +229,8 @@ inferDefinition _ (ConstantDef vis (Constant e)) = do
 inferDefinition _ _ = error "ReturnDirection.inferDefinition"
 
 generaliseDefs
-  :: Vector (Definition Expr MetaVar, Signature MetaReturnIndirect)
-  -> VIX (Vector (Definition Expr MetaVar, Signature ReturnIndirect))
+  :: Vector (Definition Expr FreeV, Signature MetaReturnIndirect)
+  -> VIX (Vector (Definition Expr FreeV, Signature ReturnIndirect))
 generaliseDefs
   = traverse
   $ bitraverse pure (traverse $ toReturnIndirect Projection)
@@ -257,7 +257,7 @@ inferRecursiveDefs defs = do
           ConstantDef {} -> Nothing
           AliasDef -> Nothing
     funSig' <- traverse (bitraverse (traverse $ maybe existsMetaReturnIndirect pure) pure) funSig
-    exists h MProjection funSig'
+    forall h MProjection funSig'
 
   let nameIndex = hashedElemIndex names
       expose name = case nameIndex name of
@@ -281,7 +281,7 @@ inferRecursiveDefs defs = do
         Just index -> global
           $ fromMaybe (error "inferRecursiveDefs 2")
           $ names Vector.!? index
-      vf :: MetaVar -> VIX b
+      vf :: FreeV -> VIX b
       vf v = internalError $ "inferRecursiveDefs" PP.<+> shower v
 
   forM (Vector.zip names genDefs) $ \(name, (def ,sig)) -> do
