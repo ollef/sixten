@@ -3,7 +3,7 @@ module Syntax.Sized.Extracted where
 
 import Control.Monad
 import Data.Deriving
-import Data.Monoid
+import Data.Semigroup
 import Data.Text(Text)
 import Data.Vector(Vector)
 
@@ -109,7 +109,11 @@ instance v ~ Doc => Pretty (Expr v) where
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> indent 2 (prettyM brs)
 
-instance Monoid innards => Monoid (Submodule innards) where
-  mempty = Submodule mempty mempty mempty
-  Submodule a1 b1 c1 `mappend` Submodule a2 b2 c2
+instance Semigroup innards => Semigroup (Submodule innards) where
+  Submodule a1 b1 c1 <> Submodule a2 b2 c2
     = Submodule (a1 <> a2) (b1 <> b2) (c1 <> c2)
+
+-- TODO remove Semigroup constraint when ghc has been updated
+instance (Monoid innards, Semigroup innards) => Monoid (Submodule innards) where
+  mempty = Submodule mempty mempty mempty
+  mappend = (<>)

@@ -2,6 +2,7 @@
 module Backend.Lift where
 
 import Control.Monad.Except
+import Control.Monad.Fail
 import Control.Monad.State
 import Data.Bifunctor
 import Data.Foldable
@@ -29,15 +30,15 @@ data LiftState thing = LiftState
   }
 
 newtype Lift thing m a = Lift (StateT (LiftState thing) m a)
-  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadTrans, MonadFresh, MonadVIX, MonadIO, MonadError e)
+  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadTrans, MonadFail, MonadFresh, MonadVIX, MonadIO, MonadError e)
 
-freshName :: Monad m => Lift thing m QName
+freshName :: MonadFail m => Lift thing m QName
 freshName = do
   name:names <- gets freshNames
   modify $ \s -> s { freshNames = names }
   return name
 
-freshNameWithHint :: Monad m => Name -> Lift thing m QName
+freshNameWithHint :: MonadFail m => Name -> Lift thing m QName
 freshNameWithHint hint = do
   QName mname name:names <- gets freshNames
   modify $ \s -> s { freshNames = names }
@@ -49,7 +50,7 @@ liftNamedThing name thing =
     { liftedThings = (name, thing) : liftedThings s
     }
 
-liftThing :: Monad m => thing -> Lift thing m QName
+liftThing :: MonadFail m => thing -> Lift thing m QName
 liftThing thing = do
   name <- freshName
   liftNamedThing name thing
@@ -151,7 +152,7 @@ liftLet ds scope = do
     freeVar h () t'
 
   let instantiatedDs = Vector.zip vs $ instantiateLet pure vs <$> letBodies ds
-      dsToLift = [(v, body) | (v, body@(SLambda.lamView -> Just _)) <- instantiatedDs]
+      dsToLift = [(v, body) | (v, body@(SLambda.lamView -> Just _)) <- toList instantiatedDs]
       liftedVars = toHashSet $ fst <$> dsToLift
       fvs = fold (toHashSet . snd <$> dsToLift) `HashSet.difference` liftedVars
       sortedFvs = topoSortVars fvs
@@ -159,7 +160,7 @@ liftLet ds scope = do
       addArgs | null args = id
               | otherwise = (`Lifted.Call` args)
 
-  subVec <- forM dsToLift $ \(v, _) -> do
+  subVec <- forM (toVector dsToLift) $ \(v, _) -> do
     g <- fromNameHint freshName freshNameWithHint $ varHint v
     return (v, g)
 

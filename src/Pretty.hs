@@ -131,8 +131,10 @@ dullGreen = PP.annotate $ PP.colorDull PP.Green
 -------------------------------------------------------------------------------
 withName :: (Name -> PrettyDoc) -> PrettyDoc
 withName k = do
-  name:fnames <- asks freeNames
-  local (\env -> env {freeNames = fnames}) $ withHint name k
+  fnames <- asks freeNames
+  case fnames of
+    name:fnames' -> local (\env -> env {freeNames = fnames'}) $ withHint name k
+    [] -> error "withName impossible"
 
 withHint :: Name -> (Name -> PrettyDoc) -> PrettyDoc
 withHint name k = do

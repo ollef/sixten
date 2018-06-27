@@ -2,6 +2,7 @@
 module Inference.Monad where
 
 import Control.Monad.Except
+import Control.Monad.Fail
 import Control.Monad.Reader
 import Data.Foldable
 import Data.Maybe
@@ -42,7 +43,7 @@ data InferEnv = InferEnv
   }
 
 newtype Infer a = InferMonad (ReaderT InferEnv VIX a)
-  deriving (Functor, Applicative, Monad, MonadIO, MonadFix, MonadError Error, MonadFresh, MonadReport, MonadVIX)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadFail, MonadFix, MonadError Error, MonadFresh, MonadReport, MonadVIX)
 
 runInfer :: Infer a -> VIX a
 runInfer (InferMonad i) = runReaderT i InferEnv

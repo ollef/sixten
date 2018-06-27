@@ -18,7 +18,7 @@ instance (Eq k, Hashable k, Eq v, Hashable v) => Semigroup (MultiHashMap k v) wh
 
 instance (Eq k, Hashable k, Eq v, Hashable v) => Monoid (MultiHashMap k v) where
   mempty = MultiHashMap mempty
-  mappend = union
+  mappend = (<>)
 
 insert
   :: (Eq k, Hashable k, Eq v, Hashable v)

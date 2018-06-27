@@ -152,7 +152,9 @@ inferCall con (ReturnIndirect mretIndirect) argDirs f es = do
   (f', _) <- infer f
   locatedEs <- mapM inferAnno es
   let es' = fst <$> locatedEs
-      locs = [l | ((_, l), Indirect) <- Vector.zip locatedEs argDirs]
+      locs
+        = (\((_, l), _) -> l)
+        <$> Vector.filter ((== Indirect) . snd) (Vector.zip locatedEs argDirs)
   loc <- foldM maxMetaReturnIndirect mretIndirect locs
   return (con f' es', loc)
 inferCall con _ _ f es = do

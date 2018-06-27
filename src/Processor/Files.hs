@@ -36,10 +36,13 @@ data ProcessFilesResult = ProcessFilesResult
   , llFiles :: [FilePath]
   }
 
+instance Semigroup ProcessFilesResult where
+  ProcessFilesResult c1 l1 <> ProcessFilesResult c2 l2
+    = ProcessFilesResult (c1 <> c2) (l1 <> l2)
+
 instance Monoid ProcessFilesResult where
   mempty = ProcessFilesResult mempty mempty
-  mappend (ProcessFilesResult c1 l1) (ProcessFilesResult c2 l2)
-    = ProcessFilesResult (mappend c1 c2) (mappend l1 l2)
+  mappend = (<>)
 
 parseFiles
   :: NonEmpty FilePath

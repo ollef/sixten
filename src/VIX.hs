@@ -3,6 +3,7 @@ module VIX where
 
 import Control.Monad.Base
 import Control.Monad.Except
+import Control.Monad.Fail
 import Control.Monad.Identity
 import Control.Monad.Reader
 import Control.Monad.ST
@@ -90,7 +91,7 @@ emptyVIXState target handle verbosity silent = VIXState
   }
 
 newtype VIX a = VIX { unVIX :: StateT VIXState (ExceptT Error IO) a }
-  deriving (Functor, Applicative, Monad, MonadFix, MonadError Error, MonadIO, MonadBase IO, MonadBaseControl IO)
+  deriving (Functor, Applicative, Monad, MonadFail, MonadFix, MonadError Error, MonadIO, MonadBase IO, MonadBaseControl IO)
 
 instance MonadVIX VIX where
   liftVIX (StateT s) = VIX $ StateT $ pure . runIdentity . s

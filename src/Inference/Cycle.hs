@@ -1,4 +1,4 @@
-{-# LANGUAGE MonadComprehensions, OverloadedStrings, ViewPatterns #-}
+{-# LANGUAGE OverloadedStrings, ViewPatterns #-}
 module Inference.Cycle where
 
 import Control.Monad.Except
@@ -30,8 +30,8 @@ detectTypeRepCycles
 detectTypeRepCycles defs = do
   reps <- traverse
     (bitraverse pure zonk)
-    [(v, rep) | (_, (v, DataDefinition _ rep)) <- defs]
-  let locMap = HashMap.fromList $ Vector.toList [(v, loc) | (loc, (v, _)) <- defs]
+    [(v, rep) | (_, (v, DataDefinition _ rep)) <- toList defs]
+  let locMap = HashMap.fromList [(v, loc) | (loc, (v, _)) <- toList defs]
   case cycles reps of
     firstCycle:_ -> do
       let headVar = head firstCycle

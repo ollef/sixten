@@ -1,5 +1,6 @@
 module Syntax.NameHint where
 
+import Data.Semigroup
 import Data.String
 
 import Syntax.Name
@@ -9,11 +10,14 @@ data NameHint
   | NameHint !Name
   deriving Show
 
+instance Semigroup NameHint where
+  m@NameHint {} <> _ = m
+  _ <> n@NameHint {} = n
+  NoHint <> NoHint = NoHint
+
 instance Monoid NameHint where
   mempty = NoHint
-  m@NameHint {} `mappend` _ = m
-  _ `mappend` n@NameHint {} = n
-  NoHint `mappend` NoHint = NoHint
+  mappend = (<>)
 
 instance Eq NameHint where
   _ == _ = True

@@ -1,6 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, MonadComprehensions, OverloadedStrings #-}
 module Backend.ExtractExtern where
 
+import Control.Monad.Fail
 import Control.Monad.State
 import Data.Foldable
 import qualified Data.HashMap.Lazy as HashMap
@@ -63,7 +64,7 @@ data ExtractState = ExtractState
   }
 
 newtype Extract a = Extract { unExtract :: StateT ExtractState VIX a }
-  deriving (Functor, Applicative, Monad, MonadState ExtractState, MonadFresh, MonadVIX, MonadIO)
+  deriving (Functor, Applicative, Monad, MonadState ExtractState, MonadFail, MonadFresh, MonadVIX, MonadIO)
 
 runExtract :: [QName] -> Target -> Extract a -> VIX ([(QName, Sized.Function Extracted.Expr Void)], Extracted.Submodule a)
 runExtract names tgt (Extract m) = do

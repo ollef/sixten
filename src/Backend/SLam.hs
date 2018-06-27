@@ -3,6 +3,7 @@ module Backend.SLam where
 
 import Bound.Scope hiding (instantiate1)
 import Control.Monad.Except
+import Control.Monad.Fail
 import Data.Monoid
 import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
@@ -23,7 +24,7 @@ import Util
 import VIX
 
 newtype SLam a = SLam { runSlam :: VIX a }
-  deriving (Functor, Applicative, Monad, MonadFix, MonadIO, MonadVIX, MonadFresh, MonadError Error)
+  deriving (Functor, Applicative, Monad, MonadFail, MonadFix, MonadIO, MonadVIX, MonadFresh, MonadError Error)
 
 -- | Dummy instance, since we don't use the context
 instance MonadContext FreeV SLam where
