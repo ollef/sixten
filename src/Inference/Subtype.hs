@@ -1,11 +1,14 @@
 {-# LANGUAGE MonadComprehensions #-}
 module Inference.Subtype where
 
+import Data.HashSet(HashSet)
+import qualified Data.HashSet as HashSet
 import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import {-# SOURCE #-} Inference.Constraint
+import Analysis.Simplify
 import Inference.MetaVar
 import Inference.Monad
 import Inference.Unify
@@ -17,6 +20,59 @@ import TypedFreeVar
 import Util
 import Util.Tsil
 import VIX
+
+--------------------------------------------------------------------------------
+-- | deepSkolemise t1 = (t2, f) => f : t2 -> t1
+--
+-- Deep skolemisation. Like skolemise, but peels off quantifiers under pis,
+-- e.g. the `b` in `Int -> forall b. b -> b`
+deepSkolemise
+  :: Polytype
+  -> (Rhotype -> (CoreM -> CoreM) -> Infer a)
+  -> Infer a
+deepSkolemise t1 k
+  = deepSkolemiseInner t1 mempty $ \vs t2 f -> k t2 $ f . lams vs
+
+deepSkolemiseInner
+  :: Polytype
+  -> HashSet FreeV
+  -> (Vector FreeV -> Rhotype -> (CoreM -> CoreM) -> Infer a)
+  -> Infer a
+deepSkolemiseInner typ argsToPass k = do
+  typ' <- whnf typ
+  deepSkolemiseInner' typ' argsToPass k
+
+deepSkolemiseInner'
+  :: Polytype
+  -> HashSet FreeV
+  -> (Vector FreeV -> Rhotype -> (CoreM -> CoreM) -> Infer a)
+  -> Infer a
+deepSkolemiseInner' typ@(Pi h p t resScope) argsToPass k = case p of
+  Explicit -> do
+    y <- forall h p t
+    withVar y $ do
+      let resType = Util.instantiate1 (pure y) resScope
+      deepSkolemiseInner resType (HashSet.insert y argsToPass) $ \vs resType' f -> k
+        vs
+        (pi_ y resType')
+        (\x -> lam y $ f $ lams vs $ betaApp (betaApps x $ (\v -> (varData v, pure v)) <$> vs) p $ pure y)
+  Implicit -> implicitCase
+  Constraint -> implicitCase
+  where
+    implicitCase
+      -- If the type mentions any dependent arguments that we are going to
+      -- "pass", (e.g. when trying to pull `b` above `A` in `(A : Type) -> forall
+      -- (b : A). Int`), we have to bail out.
+      | HashSet.size (HashSet.intersection (toHashSet t) argsToPass) > 0 = k mempty typ id
+      | otherwise = do
+        y <- forall h p t
+        withVar y $ do
+          let resType = Util.instantiate1 (pure y) resScope
+          deepSkolemiseInner resType argsToPass $ \vs resType' f -> k
+            (Vector.cons y vs)
+            resType'
+            (\x -> lam y $ f $ betaApp x p $ pure y)
+deepSkolemiseInner' typ _ k = k mempty typ id
 
 --------------------------------------------------------------------------------
 -- | skolemise t1 = (t2, f) => f : t2 -> t1
@@ -56,27 +112,10 @@ instUntilExpr _ = InstUntil Explicit
 -- Subtyping/subsumption
 -- | subtype t1 t2 = f => f : t1 -> t2
 subtype :: Polytype -> Polytype -> Infer (CoreM -> CoreM)
-subtype typ1 typ2 = do
+subtype typ1 typ2 = indentLog $ do
   logMeta 30 "subtype t1" typ1
   logMeta 30 "        t2" typ2
-  indentLog $ do
-    typ1' <- whnf typ1
-    typ2' <- whnf typ2
-    subtype' typ1' typ2'
-
-subtype' :: Polytype -> Polytype -> Infer (CoreM -> CoreM)
-subtype' (Pi h1 p1 argType1 retScope1) (Pi h2 p2 argType2 retScope2)
-  | p1 == p2 = do
-    let h = h1 <> h2
-    f1 <- subtype argType2 argType1
-    v2 <- forall h p1 argType2
-    let v1 = f1 $ pure v2
-    let retType1 = Util.instantiate1 v1 retScope1
-        retType2 = Util.instantiate1 (pure v2) retScope2
-    f2 <- withVar v2 $ subtype retType1 retType2
-    return $ \x -> lam v2 $ f2 (App x p1 v1)
-subtype' typ1 typ2 =
-  skolemise typ2 (InstUntil Explicit) $ \rho f1 -> do
+  deepSkolemise typ2 $ \rho f1 -> do
     f2 <- subtypeRho typ1 rho $ InstUntil Explicit
     return $ f1 . f2
 

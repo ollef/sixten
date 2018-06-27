@@ -1,0 +1,14 @@
+f : forall b. Int -> b -> b
+f _ y = y
+
+g : Int -> forall b. b -> b
+g = f
+
+h : forall b. Int -> b -> b
+h = g
+
+test : (A : Type) -> forall (b : A). Int
+test A = 610
+
+test2 : (A : Type) -> forall (b : A). Int
+test2 = test
