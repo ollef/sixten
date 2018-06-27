@@ -22,4 +22,5 @@ import Syntax.Module as X
 import Syntax.Name as X
 import Syntax.NameHint as X
 import Syntax.Pattern as X
+import Syntax.PreName as X
 import Syntax.Telescope as X

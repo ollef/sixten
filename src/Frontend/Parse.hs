@@ -4,6 +4,7 @@ module Frontend.Parse where
 import Control.Applicative((<**>), (<|>), Alternative)
 import Control.Monad.Except
 import Control.Monad.Reader
+import Data.Bifunctor
 import Data.Char
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
@@ -200,7 +201,7 @@ name :: Parser Name
 name = Parsix.ident idStyle
 
 qname :: Parser PreName
-qname = Parsix.ident qidStyle
+qname = uncurry PreName . first Just <$> located (Parsix.ident qidStyle)
 
 constructor :: Parser Constr
 constructor
@@ -210,7 +211,7 @@ constructor
 qconstructor :: Parser PreName
 qconstructor
   = Parsix.highlight Highlight.Constructor
-  $ Parsix.ident qidStyle
+  $ uncurry PreName . first Just <$> located (Parsix.ident qidStyle)
 
 modulName :: Parser ModuleName
 modulName = Parsix.ident qidStyle

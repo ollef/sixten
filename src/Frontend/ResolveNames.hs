@@ -4,6 +4,7 @@ module Frontend.ResolveNames where
 import Control.Monad.Except
 import Control.Monad.RWS
 import Data.Bitraversable
+import Data.Foldable
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
@@ -13,6 +14,7 @@ import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
 import qualified Frontend.Declassify as Declassify
+import Pretty
 import Syntax
 import qualified Syntax.Pre.Literal as Literal
 import Syntax.Pre.Pattern
@@ -54,14 +56,22 @@ resolveModule modul = do
 
   let aliases = localAliases (moduleContents modul) <> importedNameAliases
       lookupAlias preName
-        | HashSet.size candidates == 1 = return $ head $ HashSet.toList candidates
-        -- TODO: Error message, duplicate checking, tests
-        | otherwise = throwError $ TypeError ("resolveModule ambiguous" PP.<+> shower candidates) Nothing mempty
+        | HashSet.size candidates == 1 = return $ pure $ head $ HashSet.toList candidates
+        | otherwise = do
+          report
+            $ TypeError ("Ambiguous name" PP.<+> red (pretty preName)) (preNameSourceLoc preName) $ PP.vcat
+              [ "It could refer to" PP.<+> prettyHumanList "or" (dullBlue . pretty <$> toList candidates) <> "."
+              ]
+          (err, _) <- flip runResolveNames env $ resolveExpr $ Unscoped.App
+            (Unscoped.Var $ fromQName Builtin.StaticErrorName)
+            Explicit
+            (Literal.string "error\n")
+          return $ fromPreName <$> err
         where
           candidates = MultiHashMap.lookupDefault (HashSet.singleton $ fromPreName preName) preName aliases
 
   resolvedDefs <- forM checkedDefDeps $ \(n, loc, def, deps) -> do
-    def' <- traverse lookupAlias def
+    def' <- boundJoin <$> traverse lookupAlias def
     return (n, (loc, def' >>>= global), toHashSet def' <> deps)
 
   -- Each _usage_ of a class (potentially) depends on all its instances.

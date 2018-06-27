@@ -1,0 +1,7 @@
+test : Int
+test = 123
+
+f = 123
+
+test : Int
+test = 610
