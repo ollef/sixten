@@ -19,7 +19,7 @@ data Definition expr v
   = ConstantDefinition (ConstantDef expr v)
   | DataDefinition (DataDef expr v)
   | ClassDefinition (ClassDef expr v)
-  | InstanceDefinition (PatInstanceDef expr v)
+  | InstanceDefinition (InstanceDef expr v)
   deriving (Foldable, Functor, Show, Traversable)
 
 data Clause expr v = Clause
@@ -31,7 +31,7 @@ data ConstantDef expr v
   = ConstantDef Abstract IsInstance (NonEmpty (Clause expr v)) (Maybe (expr v))
   deriving (Foldable, Functor, Show, Traversable)
 
-data PatInstanceDef expr v = PatInstanceDef
+data InstanceDef expr v = InstanceDef
   { instanceType :: expr v
   , instanceMethods :: Vector (Name, SourceLoc, ConstantDef expr v)
   }
@@ -112,11 +112,11 @@ instance Bound ConstantDef where
 instance GBound ConstantDef where
   gbound f (ConstantDef a i cls mtyp) = ConstantDef a i (gbound f <$> cls) (gbind f <$> mtyp)
 
-instance Bound PatInstanceDef where
-  PatInstanceDef typ ms >>>= f = PatInstanceDef (typ >>= f) $ (\(name, loc, def) -> (name, loc, def >>>= f)) <$> ms
+instance Bound InstanceDef where
+  InstanceDef typ ms >>>= f = InstanceDef (typ >>= f) $ (\(name, loc, def) -> (name, loc, def >>>= f)) <$> ms
 
-instance GBound PatInstanceDef where
-  gbound f (PatInstanceDef typ ms) = PatInstanceDef (gbind f typ) $ (\(name, loc, def) -> (name, loc, gbound f def)) <$> ms
+instance GBound InstanceDef where
+  gbound f (InstanceDef typ ms) = InstanceDef (gbind f typ) $ (\(name, loc, def) -> (name, loc, gbound f def)) <$> ms
 
 $(return mempty)
 
@@ -163,7 +163,7 @@ instance (Pretty (expr v), Monad expr, v ~ Doc)  => PrettyNamed (ConstantDef exp
 instance (Eq1 expr, Monad expr) => Eq1 (ConstantDef expr) where
   liftEq = $(makeLiftEq ''ConstantDef)
 
-instance (Pretty (expr v), Monad expr, v ~ Doc) => PrettyNamed (PatInstanceDef expr v) where
-  prettyNamed name (PatInstanceDef typ ms) = name <+> "=" <+> "instance" <+> prettyM typ <+> "where" <$$> do
+instance (Pretty (expr v), Monad expr, v ~ Doc) => PrettyNamed (InstanceDef expr v) where
+  prettyNamed name (InstanceDef typ ms) = name <+> "=" <+> "instance" <+> prettyM typ <+> "where" <$$> do
     let go (n, _, m) = prettyNamed (prettyM n) m
     indent 2 (vcat $ go <$> ms)

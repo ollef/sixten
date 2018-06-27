@@ -117,9 +117,9 @@ classConstr qname@(QName _ name) = QConstr qname $ fromName $ "Mk" <> name
 deinstance
   :: QName
   -> SourceLoc
-  -> PatInstanceDef Expr Void
+  -> InstanceDef Expr Void
   -> VIX [(QName, SourceLoc, Definition Expr Void)]
-deinstance qname@(QName modName name) loc (PatInstanceDef typ methods) = located loc $ do
+deinstance qname@(QName modName name) loc (InstanceDef typ methods) = located loc $ do
   className <- getClass typ
   mnames <- liftVIX $ gets $ HashMap.lookup className . vixClassMethods
   case mnames of

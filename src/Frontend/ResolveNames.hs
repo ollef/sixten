@@ -138,7 +138,7 @@ instances
   :: [(QName, (SourceLoc, Scoped.Definition Scoped.Expr void), a)]
   -> VIX (MultiHashMap QName QName)
 instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, (_, def), _) -> case def of
-  Scoped.InstanceDefinition (Scoped.PatInstanceDef typ _) -> do
+  Scoped.InstanceDefinition (Scoped.InstanceDef typ _) -> do
     c <- Declassify.getClass typ
     return [(c, name)]
   _ -> return mempty
@@ -198,7 +198,7 @@ resolveTopLevelDefinition (Unscoped.TopLevelInstanceDefinition typ ms) = do
   ms' <- mapM (\(loc, m) -> (,) loc <$> resolveDefinition m) ms
   return
     $ Scoped.InstanceDefinition
-    $ Scoped.PatInstanceDef typ'
+    $ Scoped.InstanceDef typ'
     $ Vector.fromList
     $ (\(loc, (n, d)) -> (n, loc, d))
     <$> ms'
