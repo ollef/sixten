@@ -103,9 +103,11 @@ unify' cxt touchable type1 type2 = case (type1, type2) of
           logMeta 30 ("solving normlamt " <> show (metaId m)) normLamt
           occurs cxt l m normLamt
           lamtType <- typeOf normLamt
-          closedLamt <- traverse (\v -> error $ "Unify TODO error message" ++ shower (pretty v)) normLamt
-          recurse cxt (vacuous $ metaType m) lamtType
-          solve m closedLamt
+          case closed normLamt of
+            Nothing -> can'tUnify
+            Just closedLamt -> do
+              recurse cxt (vacuous $ metaType m) lamtType
+              solve m closedLamt
         Right c -> recurse cxt (apps (vacuous c) $ second pure <$> pvs) t
 
     sameVar m pes1 pes2 = do
@@ -126,22 +128,21 @@ unify' cxt touchable type1 type2 = case (type1, type2) of
         prunedM'Type <- prune m'Type
         normM'Type <- normalise prunedM'Type
 
-        let typeFvs = toHashSet normM'Type
-        if HashSet.null typeFvs then do
-          Left l <- solution m
-          m' <- existsAtLevel
-            (metaHint m)
-            (metaPlicitness m)
-            (assertClosed normM'Type)
-            (Vector.length vs')
-            (metaSourceLoc m)
-            l
-          let e = Meta m' $ (\v -> (varData v, pure v)) <$> vs'
-              e' = lams vs e
-          solve m $ assertClosed e'
-          unify cxt type1 type2
-        else
-          can'tUnify
+        case closed normM'Type of
+          Nothing -> can'tUnify
+          Just closedM'Type -> do
+            Left l <- solution m
+            m' <- existsAtLevel
+              (metaHint m)
+              (metaPlicitness m)
+              closedM'Type
+              (Vector.length vs')
+              (metaSourceLoc m)
+              l
+            let e = Meta m' $ (\v -> (varData v, pure v)) <$> vs'
+                e' = lams vs e
+            solve m $ assertClosed e'
+            unify cxt type1 type2
       where
         assertClosed :: Functor f => f FreeV -> f Void
         assertClosed = fmap $ error "unify sameVar assertClosed"
