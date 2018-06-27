@@ -16,7 +16,7 @@ import Data.Void
 
 import {-# SOURCE #-} Inference.Constraint
 import Analysis.Simplify
-import qualified Inference.Equality as Equality
+import qualified Inference.Equal as Equal
 import Inference.MetaVar
 import Inference.MetaVar.Zonk
 import Inference.Monad
@@ -148,7 +148,7 @@ unify' cxt touchable type1 type2 = case (type1, type2) of
         assertClosed = fmap $ error "unify sameVar assertClosed"
 
     can'tUnify = do
-      equal <- Equality.exec $ Equality.expr type1 type2
+      equal <- Equal.exec $ Equal.expr type1 type2
       unless equal typeMismatch
 
     typeMismatch = do

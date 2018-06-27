@@ -1,5 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
-module Inference.Equality where
+module Inference.Equal where
 
 import Control.Applicative
 import Control.Monad.Except

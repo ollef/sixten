@@ -49,7 +49,7 @@ executable sixten
                        Inference.Constraint
                        Inference.Constructor
                        Inference.Cycle
-                       Inference.Equality
+                       Inference.Equal
                        Inference.Generalise
                        Inference.Match
                        Inference.MetaVar
