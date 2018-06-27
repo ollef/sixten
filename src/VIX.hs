@@ -19,7 +19,6 @@ import Data.List as List
 import Data.String
 import Data.Text(Text)
 import qualified Data.Text.IO as Text
-import Data.Vector(Vector)
 import Data.Void
 import Data.Word
 import qualified LLVM.IRBuilder as IRBuilder
@@ -45,7 +44,7 @@ data VIXState = VIXState
   , vixModuleNames :: MultiHashMap ModuleName QName
   , vixConvertedSignatures :: HashMap QName Lifted.FunSignature
   , vixSignatures :: HashMap QName (Signature ReturnIndirect)
-  , vixClassMethods :: HashMap QName (Vector Name)
+  , vixClassMethods :: HashMap QName [(Name, SourceLoc)]
   , vixClassInstances :: HashMap QName [(QName, Type Void Void)]
   , vixIndent :: !Int
   , vixFresh :: !Int

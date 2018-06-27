@@ -1,0 +1,8 @@
+main =
+  let
+    g : Unit -> Int
+    g _ = f
+
+    f : Int
+    f = g MkUnit
+  printInt f

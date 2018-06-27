@@ -31,12 +31,6 @@ data ConstantDef expr v
   = ConstantDef Abstract IsInstance (NonEmpty (Clause expr v)) (Maybe (expr v))
   deriving (Foldable, Functor, Show, Traversable)
 
-data InstanceDef expr v = InstanceDef
-  { instanceType :: expr v
-  , instanceMethods :: Vector (Name, SourceLoc, ConstantDef expr v)
-  }
-  deriving (Foldable, Functor, Show, Traversable)
-
 instantiateLetConstantDef
   :: Monad expr
   => (b -> expr v)
@@ -85,6 +79,11 @@ abstractClause f (Clause pats s) = Clause (fmap (first $ fmap go) <$> pats) (go 
       Nothing -> F v
       Just b -> B b
 
+data InstanceDef expr v = InstanceDef
+  { instanceType :: expr v
+  , instanceMethods :: [Method (ConstantDef expr v)]
+  } deriving (Foldable, Functor, Show, Traversable)
+
 -------------------------------------------------------------------------------
 -- Instances
 instance Traversable expr => Functor (Clause expr) where
@@ -96,27 +95,21 @@ instance Traversable expr => Traversable (Clause expr) where
 
 instance Bound Definition where
   ConstantDefinition d >>>= f = ConstantDefinition $ d >>>= f
-  DataDefinition ddef >>>= f = DataDefinition $ ddef >>>= f
-  ClassDefinition classDef >>>= f = ClassDefinition $ classDef >>>= f
-  InstanceDefinition instanceDef >>>= f = InstanceDefinition $ instanceDef >>>= f
+  DataDefinition d >>>= f = DataDefinition $ d >>>= f
+  ClassDefinition d >>>= f = ClassDefinition $ d >>>= f
+  InstanceDefinition d >>>= f = InstanceDefinition $ d >>>= f
 
 instance GBound Definition where
   gbound f (ConstantDefinition d) = ConstantDefinition $ gbound f d
-  gbound f (DataDefinition ddef) = DataDefinition $ gbound f ddef
-  gbound f (ClassDefinition classDef) = ClassDefinition $ gbound f classDef
-  gbound f (InstanceDefinition instanceDef) = InstanceDefinition $ gbound f instanceDef
+  gbound f (DataDefinition d) = DataDefinition $ gbound f d
+  gbound f (ClassDefinition d) = ClassDefinition $ gbound f d
+  gbound f (InstanceDefinition d) = InstanceDefinition $ gbound f d
 
 instance Bound ConstantDef where
   ConstantDef a i cls mtyp >>>= f = ConstantDef a i ((>>>= f) <$> cls) ((>>= f) <$> mtyp)
 
 instance GBound ConstantDef where
   gbound f (ConstantDef a i cls mtyp) = ConstantDef a i (gbound f <$> cls) (gbind f <$> mtyp)
-
-instance Bound InstanceDef where
-  InstanceDef typ ms >>>= f = InstanceDef (typ >>= f) $ (\(name, loc, def) -> (name, loc, def >>>= f)) <$> ms
-
-instance GBound InstanceDef where
-  gbound f (InstanceDef typ ms) = InstanceDef (gbind f typ) $ (\(name, loc, def) -> (name, loc, gbound f def)) <$> ms
 
 $(return mempty)
 
@@ -163,7 +156,12 @@ instance (Pretty (expr v), Monad expr, v ~ Doc)  => PrettyNamed (ConstantDef exp
 instance (Eq1 expr, Monad expr) => Eq1 (ConstantDef expr) where
   liftEq = $(makeLiftEq ''ConstantDef)
 
+instance Bound InstanceDef where
+  InstanceDef typ ms >>>= f = InstanceDef (typ >>= f) $ fmap (>>>= f) <$> ms
+
+instance GBound InstanceDef where
+  gbound f (InstanceDef typ ms) = InstanceDef (gbind f typ) $ fmap (gbound f) <$> ms
+
 instance (Pretty (expr v), Monad expr, v ~ Doc) => PrettyNamed (InstanceDef expr v) where
-  prettyNamed name (InstanceDef typ ms) = name <+> "=" <+> "instance" <+> prettyM typ <+> "where" <$$> do
-    let go (n, _, m) = prettyNamed (prettyM n) m
-    indent 2 (vcat $ go <$> ms)
+  prettyNamed name (InstanceDef typ ms) = name <+> "=" <+> "instance" <+> prettyM typ <+> "where" <$$>
+    indent 2 (vcat $ prettyMethodDef <$> ms)

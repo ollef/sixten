@@ -30,7 +30,6 @@ import qualified Backend.Generate as Generate
 import Backend.Lift
 import qualified Backend.SLam as SLam
 import Backend.Target
-import qualified Frontend.Declassify as Declassify
 import qualified Frontend.Parse as Parse
 import qualified Frontend.ResolveNames as ResolveNames
 import qualified Inference.Monad as TypeCheck
@@ -61,9 +60,6 @@ frontend k
   = resolveProgramNames
   >>=> prettyPreGroup "Pre-syntax" absurd
 
-  >=> declassifyGroup
-
-  >>=> prettyPreGroup "Declassified" absurd
   >=> typeCheckGroup
 
   >=> prettyTypedGroup 9 "Core syntax" absurd
@@ -191,17 +187,6 @@ resolveProgramNames modul = do
         ]
   addModule (moduleName modul) connames $ defnames <> methods
   return res
-
-declassifyGroup
-  :: [(QName, SourceLoc, Pre.Definition Pre.Expr Void)]
-  -> VIX [[(QName, SourceLoc, Pre.Definition Pre.Expr Void)]]
-declassifyGroup xs = do
-  results <- forM xs $
-    \(name, loc, def) -> Declassify.declassify name loc def
-  let (preResults, postResults) = unzip results
-      postResults' = concat postResults
-      preResults' = concat preResults
-  return $ preResults' : [postResults' | not $ null postResults']
 
 typeCheckGroup
   :: [(QName, SourceLoc, Pre.Definition Pre.Expr Void)]

@@ -44,7 +44,6 @@ executable sixten
                        Command.Test
                        Error
                        FreeVar
-                       Frontend.Declassify
                        Frontend.Parse
                        Frontend.ResolveNames
                        Inference.Constraint
@@ -58,6 +57,7 @@ executable sixten
                        Inference.Monad
                        Inference.Normalise
                        Inference.Subtype
+                       Inference.TypeCheck.Class
                        Inference.TypeCheck.Clause
                        Inference.TypeCheck.Data
                        Inference.TypeCheck.Definition

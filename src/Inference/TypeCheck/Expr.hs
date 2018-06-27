@@ -1,4 +1,4 @@
-{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE OverloadedStrings, RecursiveDo #-}
 module Inference.TypeCheck.Expr where
 
 import Control.Monad.Except
@@ -6,6 +6,7 @@ import Control.Monad.ST
 import Data.HashSet(HashSet)
 import Data.Monoid
 import Data.STRef
+import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import Analysis.Simplify
@@ -16,7 +17,7 @@ import Inference.Match
 import Inference.MetaVar as MetaVar
 import Inference.Monad
 import Inference.Subtype
-import Inference.TypeCheck.Definition
+import Inference.TypeCheck.Clause
 import Inference.TypeCheck.Pattern
 import Inference.TypeOf
 import Inference.Unify
@@ -173,31 +174,7 @@ tcRho expr expected expectedAppResult = case expr of
         arg' <- checkPoly arg argType
         let fun'' = f1 fun'
         return $ f2 $ Core.App fun'' p arg'
-  Pre.Let ds scope -> enterLevel $ do
-    evars <- forM ds $ \(_, name, _) -> do
-      typ <- existsType name
-      forall name Explicit typ
-    let instantiatedDs
-          = (\(loc, _, def) ->
-              ( loc
-              , Pre.ConstantDefinition $ Pre.instantiateLetConstantDef pure evars def
-              )) <$> ds
-    ds' <- checkAndGeneraliseDefs False (Vector.zip evars instantiatedDs)
-    let evars' = fst <$> ds'
-        eabstr = letAbstraction evars'
-    let ds'' = LetRec
-          $ flip fmap ds'
-          $ \(v, ConstantDefinition _ _ e) -> LetBinding (varHint v) (abstract eabstr e) $ varType v
-    mdo
-      let inst = instantiateLet pure vars
-      vars <- iforMLet ds'' $ \i h s t -> do
-        let (_, ConstantDefinition a _ _) = ds' Vector.! i
-        case a of
-          Abstract -> forall h Explicit t
-          Concrete -> letVar h Explicit (inst s) t
-      let abstr = letAbstraction vars
-      body <- withVars vars $ tcRho (instantiateLet pure vars scope) expected expectedAppResult
-      return $ Core.Let ds'' $ abstract abstr body
+  Pre.Let ds scope -> tcLet ds scope expected expectedAppResult
   Pre.Case e brs -> tcBranches e brs expected expectedAppResult
   Pre.ExternCode c -> do
     c' <- mapM (\e -> fst <$> inferRho e (InstUntil Explicit) Nothing) c
@@ -210,6 +187,50 @@ tcRho expr expected expectedAppResult = case expr of
     x <- exists mempty Explicit t
     return $ f x
   Pre.SourceLoc loc e -> located loc $ tcRho e expected expectedAppResult
+
+tcLet
+  :: Vector (SourceLoc, NameHint, Pre.ConstantDef Pre.Expr (Var LetVar FreeV))
+  -> Scope LetVar Pre.Expr FreeV
+  -> Expected Rhotype
+  -> Maybe Rhotype
+  -> Infer CoreM
+tcLet ds scope expected expectedAppResult = do
+  varDefs <- forM ds $ \(loc, h, def) -> do
+    typ <- existsType h
+    var <- forall h Explicit typ
+    return (var, loc, def)
+
+  let vars = fst3 <$> varDefs
+
+  ds' <- withVars vars $ do
+    instDefs <- forM varDefs $ \(var, loc, def) -> located loc $ do
+      let instDef@(Pre.ConstantDef _ _ mtyp) = Pre.instantiateLetConstantDef pure vars def
+      case mtyp of
+        Just typ -> do
+          typ' <- checkPoly typ Builtin.Type
+          unify [] (varType var) typ'
+        Nothing -> return ()
+      return (var, loc, instDef)
+
+    forM instDefs $ \(var, loc, def) -> located loc $ do
+      def' <- checkConstantDef def $ varType var
+      return (var, loc, def')
+
+  let abstr = letAbstraction vars
+      ds'' = LetRec
+        $ flip fmap ds'
+        $ \(v, _, (_, e)) -> LetBinding (varHint v) (abstract abstr e) $ varType v
+
+  mdo
+    let inst = instantiateLet pure vars'
+    vars' <- iforMLet ds'' $ \i h s t -> do
+      let (_, _, (a, _)) = ds' Vector.! i
+      case a of
+        Abstract -> forall h Explicit t
+        Concrete -> letVar h Explicit (inst s) t
+    let abstr' = letAbstraction vars'
+    body <- withVars vars' $ tcRho (instantiateLet pure vars' scope) expected expectedAppResult
+    return $ Core.Let ds'' $ abstract abstr' body
 
 tcBranches
   :: PreM

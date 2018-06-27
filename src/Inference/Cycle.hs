@@ -25,25 +25,25 @@ import Util.TopoSort
 import VIX
 
 detectTypeRepCycles
-  :: Vector (SourceLoc, (FreeV, Definition (Expr MetaVar) FreeV))
+  :: Pretty name
+  => Vector (FreeV, name, SourceLoc, Definition (Expr MetaVar) FreeV)
   -> Infer ()
 detectTypeRepCycles defs = do
   reps <- traverse
     (bitraverse pure zonk)
-    [(v, rep) | (_, (v, DataDefinition _ rep)) <- toList defs]
-  let locMap = HashMap.fromList [(v, loc) | (loc, (v, _)) <- toList defs]
+    [(v, rep) | (v, _, _, DataDefinition _ rep) <- toList defs]
+  let locMap = HashMap.fromList [(v, (name, loc)) | (v, name, loc, _) <- toList defs]
   case cycles reps of
     firstCycle:_ -> do
       let headVar = head firstCycle
-          loc = locMap HashMap.! headVar
-      let printedHeadVar = pretty headVar
-          printedCycle = map pretty $ drop 1 firstCycle ++ [headVar]
+          (headName, loc) = locMap HashMap.! headVar
+      let printedCycle = map (pretty . fst . (locMap HashMap.!)) $ drop 1 firstCycle ++ [headVar]
       report
         $ TypeError
           "Type has potentially infinite memory representation"
           (Just loc)
           $ PP.vcat
-            ([ "The size in memory of the type " <> red printedHeadVar <> " might be infinite."
+            ([ "The size in memory of the type " <> red (pretty headName) <> " might be infinite."
             , "Its size depends on the size of " <> dullBlue (head printedCycle)
             ] ++
             ["which depends on the size of " <> dullBlue v' | v' <- drop 1 printedCycle]
@@ -85,10 +85,11 @@ detectTypeRepCycles defs = do
 -- We also peel off any lets at the top-level of all definitions and include
 -- them in the analysis.
 detectDefCycles
-  :: Vector (SourceLoc, (FreeV, Definition (Expr MetaVar) FreeV))
+  :: Pretty name
+  => Vector (FreeV, name, SourceLoc, Definition (Expr MetaVar) FreeV)
   -> Infer ()
 detectDefCycles defs = do
-  (peeledDefExprs, locMap) <- peelLets [(loc, v, e) | (loc, (v, ConstantDefinition _ _ e)) <- Vector.toList defs]
+  (peeledDefExprs, locMap) <- peelLets [(name, loc, v, e) | (v, name, loc, ConstantDefinition _ _ e) <- Vector.toList defs]
   forM_ (topoSortWith fst snd peeledDefExprs) $ \scc -> case scc of
     AcyclicSCC _ -> return ()
     CyclicSCC defExprs -> do
@@ -99,42 +100,41 @@ detectDefCycles defs = do
       forM_ defExprs $ \(var, expr) -> case expr of
         Lam {} -> return ()
         _ -> do
-          let loc = locMap HashMap.! var
+          let (name, loc) = locMap HashMap.! var
               constantsInAllOccs = toHashSet expr `HashSet.intersection` constants
               functionsInImmAppOccs = possiblyImmediatelyAppliedVars expr `HashSet.intersection` functions
               circularOccs = constantsInAllOccs <> functionsInImmAppOccs
           unless (HashSet.null circularOccs) $ do
-            let printedVar = pretty var
-                printedOccs = map pretty $ HashSet.toList circularOccs
+            let printedOccs = map pretty $ HashSet.toList circularOccs
             report
               $ TypeError
                 "Circular definition"
                 (Just loc)
                 $ PP.vcat
-                  [ "The definition of " <> red printedVar <> " is circular."
+                  [ "The definition of " <> red (pretty name) <> " is circular."
                   , "It depends on " <> prettyHumanList "and" (dullBlue <$> printedOccs) <> " from the same binding group."
                   ]
 
 peelLets
-  :: [(SourceLoc, FreeV, CoreM)]
-  -> Infer ([(FreeV, CoreM)], HashMap FreeV SourceLoc)
+  :: [(name, SourceLoc, FreeV, CoreM)]
+  -> Infer ([(FreeV, CoreM)], HashMap FreeV (name, SourceLoc))
 peelLets = fmap fold . mapM go
   where
     go
-     :: (SourceLoc, FreeV, CoreM)
-     -> Infer ([(FreeV, CoreM)], HashMap FreeV SourceLoc)
-    go (loc, v, e) = do
-      e' <- zonk e
-      case e' of
+     :: (name, SourceLoc, FreeV, CoreM)
+     -> Infer ([(FreeV, CoreM)], HashMap FreeV (name, SourceLoc))
+    go (name, loc, var, expr) = do
+      expr' <- zonk expr
+      case expr' of
         Let ds scope -> do
           vs <- forMLet ds $ \h _ t ->
             forall h Explicit t
           let inst = instantiateLet pure vs
           es <- forMLet ds $ \_ s _ ->
             return $ inst s
-          let ds' = (loc, v, inst scope) : Vector.toList (Vector.zipWith ((,,) loc) vs es)
+          let ds' = (name, loc, var, inst scope) : Vector.toList (Vector.zipWith (\v e -> (name, loc, v, e)) vs es)
           peelLets ds'
-        _ -> return ([(v, e')], HashMap.singleton v loc)
+        _ -> return ([(var, expr')], HashMap.singleton var (name, loc))
 
 possiblyImmediatelyAppliedVars
   :: (Eq v, Hashable v)

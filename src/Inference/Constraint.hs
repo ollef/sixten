@@ -63,7 +63,9 @@ elabUnsolvedConstraint m = inUpdatedContext (const mempty) $ do
             sol <- assertClosed $ lams vs matchingInstance
             solve m sol
             return $ Just sol
-      _ -> throwLocated "Malformed constraint" -- TODO error message
+      _ -> do
+        logMeta 25 "Malformed" typ'
+        throwLocated "Malformed constraint" -- TODO error message
   where
     assertClosed :: (Traversable f, Monad m) => f FreeV -> m (f Void)
     assertClosed = traverse $ \v -> error $ "elabUnsolvedConstraint assertClosed " <> shower (varId v)
@@ -96,12 +98,12 @@ elabDef (DataDefinition (DataDef ps constrs) rep) = do
   return $ DataDefinition (dataDef vs constrs') rep'
 
 elabRecursiveDefs
-  :: Vector (FreeV, Definition (Expr MetaVar) FreeV)
-  -> Infer (Vector (FreeV, Definition (Expr MetaVar) FreeV))
-elabRecursiveDefs defs = forM defs $ \(v, def) -> do
+  :: Vector (FreeV, name, loc, Definition (Expr MetaVar) FreeV)
+  -> Infer (Vector (FreeV, name, loc, Definition (Expr MetaVar) FreeV))
+elabRecursiveDefs defs = forM defs $ \(v, name, loc, def) -> do
   def' <- elabDef def
   _typ' <- elabExpr $ varType v
-  return (v, def')
+  return (v, name, loc, def')
 
 mergeConstraintVars
   :: HashSet MetaVar

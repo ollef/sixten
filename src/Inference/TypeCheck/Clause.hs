@@ -27,10 +27,10 @@ import VIX
 checkConstantDef
   :: Pre.ConstantDef Pre.Expr FreeV
   -> CoreM
-  -> Infer (Definition (Core.Expr MetaVar) FreeV)
+  -> Infer (Abstract, IsInstance, CoreM)
 checkConstantDef (Pre.ConstantDef a i clauses _) typ = do
   e' <- checkClauses clauses typ
-  return $ ConstantDefinition a i e'
+  return (a, i, e')
 
 checkClauses
   :: NonEmpty (Pre.Clause Pre.Expr FreeV)

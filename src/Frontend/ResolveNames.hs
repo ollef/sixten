@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, MonadComprehensions, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, MonadComprehensions, OverloadedStrings, ViewPatterns #-}
 module Frontend.ResolveNames where
 
 import Control.Monad.Except
@@ -13,7 +13,6 @@ import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
-import qualified Frontend.Declassify as Declassify
 import Pretty
 import Syntax
 import qualified Syntax.Pre.Literal as Literal
@@ -139,7 +138,7 @@ instances
   -> VIX (MultiHashMap QName QName)
 instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, (_, def), _) -> case def of
   Scoped.InstanceDefinition (Scoped.InstanceDef typ _) -> do
-    c <- Declassify.getClass typ
+    c <- getClass typ
     return [(c, name)]
   _ -> return mempty
 
@@ -199,8 +198,7 @@ resolveTopLevelDefinition (Unscoped.TopLevelInstanceDefinition typ ms) = do
   return
     $ Scoped.InstanceDefinition
     $ Scoped.InstanceDef typ'
-    $ Vector.fromList
-    $ (\(loc, (n, d)) -> (n, loc, d))
+    $ (\(loc, (n, d)) -> Method n loc d)
     <$> ms'
 
 resolveParams
@@ -304,3 +302,20 @@ resolvePat pat = case pat of
   AnnoPat p t -> AnnoPat <$> resolvePat p <*> resolveExpr t
   ViewPat t p -> ViewPat <$> resolveExpr t <*> resolvePat p
   PatLoc loc p -> PatLoc loc <$> resolvePat p
+
+getClass
+  :: Scoped.Expr v
+  -> VIX QName
+getClass (Scoped.Pi _ _ s) = getClass $ fromScope s
+getClass (Scoped.SourceLoc loc e) = located loc $ getClass e
+getClass (Scoped.appsView -> (Scoped.Global g, _)) = return g
+getClass _ = throwInvalidInstance
+
+throwInvalidInstance :: VIX a
+throwInvalidInstance
+  = throwLocated
+  $ PP.vcat
+  [ "Invalid instance"
+  , "Instance types must return a class"
+  , bold "Expected:" PP.<+> "an instance of the form" PP.<+> dullGreen "instance ... => C as where ..." <> ", where" PP.<+> dullGreen "C" PP.<+> "is a class."
+  ]

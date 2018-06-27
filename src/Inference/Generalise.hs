@@ -36,11 +36,15 @@ generaliseDefs
   -> GeneraliseDefsMode
   -> Vector
     ( FreeV
+    , QName
+    , SourceLoc
     , Definition (Expr MetaVar) FreeV
     )
   -> Infer
     ( Vector
       ( FreeV
+      , QName
+      , SourceLoc
       , Definition (Expr MetaVar) FreeV
       )
     , FreeV -> FreeV
@@ -61,6 +65,8 @@ collectMetas
   -> GeneraliseDefsMode
   -> Vector
     ( FreeV
+    , QName
+    , SourceLoc
     , Definition (Expr MetaVar) FreeV
     )
   -> Infer (HashSet MetaVar)
@@ -76,10 +82,10 @@ collectMetas mpred mode defs = do
 
   defVars <- case mode of
     GeneraliseType -> return mempty
-    GeneraliseAll -> forM defs $ \(_, def) ->
+    GeneraliseAll -> forM defs $ \(_, _, _, def) ->
       filterMSet isLocalConstraint =<< definitionMetaVars def
 
-  typeVars <- forM defs $ \(v, _) -> do
+  typeVars <- forM defs $ \(v, _, _, _) -> do
     metas <- metaVars $ varType v
     logShow 30 "collectMetas" metas
     filtered <- filterMSet (\m -> if not (mpred m) then return False else isLocalMeta m) metas
@@ -124,22 +130,26 @@ replaceMetas
   :: HashMap MetaVar FreeV
   -> Vector
     ( FreeV
+    , QName
+    , SourceLoc
     , Definition (Expr MetaVar) FreeV
     )
   -> Infer
     ( Vector
       ( FreeV
+      , QName
+      , SourceLoc
       , Definition (Expr MetaVar) FreeV
       , CoreM
       )
     )
-replaceMetas varMap defs = forM defs $ \(v, d) -> do
+replaceMetas varMap defs = forM defs $ \(v, name, loc, d) -> do
   logShow 30 "replaceMetas varMap" varMap
   logDefMeta 30 "replaceMetas def" d
   d' <- bindDefMetas' go d
   t' <- bindMetas' go $ varType v
   logDefMeta 30 "replaceMetas def result" d'
-  return (v, d', t')
+  return (v, name, loc, d', t')
   where
     go m es = do
       sol <- solution m
@@ -176,27 +186,31 @@ collectDefDeps
   :: HashSet FreeV
   -> Vector
     ( FreeV
+    , QName
+    , SourceLoc
     , Definition (Expr MetaVar) FreeV
     , CoreM
     )
   -> Vector
     ( FreeV
-    , ( Definition (Expr MetaVar) FreeV
+    , ( QName
+      , SourceLoc
+      , Definition (Expr MetaVar) FreeV
       , CoreM
       , [FreeV]
       )
     )
 collectDefDeps vars defs = do
-  let allDeps = flip fmap defs $ \(v, def, typ) -> do
+  let allDeps = flip fmap defs $ \(v, name, loc, def, typ) -> do
         let d = toHashSet def
             t = toHashSet typ
-        (v, (def, typ, d <> t))
+        (v, (name, loc, def, typ, d <> t))
       sat
         = fmap acyclic
         . topoSortWith id (toHashSet . varType)
         . HashSet.intersection vars
-        . saturate (\v -> fold (fmap thd3 $ hashedLookup allDeps v) <> toHashSet (varType v))
-  fmap (\(def, typ, deps) -> (def, typ, sat deps)) <$> allDeps
+        . saturate (\v -> fold (fmap (\(_, _, _, _, deps) -> deps) $ hashedLookup allDeps v) <> toHashSet (varType v))
+  fmap (\(name, loc, def, typ, deps) -> (name, loc, def, typ, sat deps)) <$> allDeps
   where
     acyclic (AcyclicSCC a) = a
     acyclic (CyclicSCC _) = error "collectDefDeps"
@@ -204,7 +218,9 @@ collectDefDeps vars defs = do
 replaceDefs
   :: Vector
     ( FreeV
-    , ( Definition (Expr MetaVar) FreeV
+    , ( QName
+      , SourceLoc
+      , Definition (Expr MetaVar) FreeV
       , CoreM
       , [FreeV]
       )
@@ -212,6 +228,8 @@ replaceDefs
   -> Infer
     ( Vector
       ( FreeV
+      , QName
+      , SourceLoc
       , Definition (Expr MetaVar) FreeV
       )
     , FreeV -> FreeV
@@ -219,11 +237,11 @@ replaceDefs
 replaceDefs defs = do
   let appSubMap
         = toHashMap
-        $ (\(v, (_, _, vs)) -> (v, apps (pure v) ((\v' -> (implicitise $ varData v', pure v')) <$> vs)))
+        $ (\(v, (_, _, _, _, vs)) -> (v, apps (pure v) ((\v' -> (implicitise $ varData v', pure v')) <$> vs)))
         <$> defs
       appSub v = HashMap.lookupDefault (pure v) v appSubMap
 
-  subbedDefs <- forM defs $ \(oldVar, (def, typ, vs)) -> do
+  subbedDefs <- forM defs $ \(oldVar, (name, loc, def, typ, vs)) -> do
     logShow 30 "replaceDefs vs" (varId <$> vs)
     logDefMeta 30 "replaceDefs def" def
     logMeta 30 "replaceDefs type" typ
@@ -233,15 +251,15 @@ replaceDefs defs = do
     logDefMeta 30 "replaceDefs subbedDef" subbedDef
     logMeta 30 "replaceDefs subbedType" subbedType
     newVar <- forall (varHint oldVar) (varData oldVar) typ'
-    return (oldVar, newVar, def')
+    return (oldVar, newVar, name, loc, def')
 
   let renameMap
         = toHashMap
-        $ (\(oldVar, newVar, _) -> (oldVar, newVar)) <$> subbedDefs
+        $ (\(oldVar, newVar, _, _, _) -> (oldVar, newVar)) <$> subbedDefs
       rename v = HashMap.lookupDefault v v renameMap
 
       renamedDefs
-        = (\(_, newVar, def) -> (newVar { varType = rename <$> varType newVar }, rename <$> def))
+        = (\(_, newVar, name, loc, def) -> (newVar { varType = rename <$> varType newVar }, name, loc, rename <$> def))
         <$> subbedDefs
 
   return (renamedDefs, rename)

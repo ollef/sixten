@@ -1,0 +1,11 @@
+type List a = Nil | Cons a (Ptr (List a))
+
+main =
+  let
+    oneTwos = Ref (Cons 1 twoOnes)
+    twoOnes = Ref (Cons 2 oneTwos)
+
+    test = case oneTwos of
+      Ref (Cons 1 (Ref (Cons 2 (Ref (Cons 1 (Ref (Cons 2 _))))))) -> 111
+      _ -> 222
+  printInt test
