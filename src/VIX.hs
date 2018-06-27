@@ -197,8 +197,8 @@ addContext prog = liftVIX $ modify $ \s -> s
       = unions
       $ flip map (HashMap.toList prog) $ \(defName, (def, typ)) -> case def of
         DataDefinition {} -> mempty
-        Definition _ IsConstant _ -> mempty
-        Definition _ IsInstance _ -> do
+        ConstantDefinition _ IsConstant _ -> mempty
+        ConstantDefinition _ IsInstance _ -> do
           let (_, s) = pisView typ
           case appsView $ fromScope s of
             (Global className, _) -> HashMap.singleton className [(defName, typ)]
@@ -246,7 +246,7 @@ qconstructor qc@(QConstr n c) = do
         [] -> throwLocated $ "Not in scope: constructor " <> pretty qc
         [cdef] -> return $ constrType cdef
         _ -> throwLocated $ "Ambiguous constructor: " <> pretty qc
-    Definition {} -> no
+    ConstantDefinition {} -> no
   where
     no = throwLocated $ "Not a data type: " <> pretty n
 

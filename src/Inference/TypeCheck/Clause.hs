@@ -30,7 +30,7 @@ checkConstantDef
   -> Infer (Definition (Core.Expr MetaVar) FreeV)
 checkConstantDef (Pre.ConstantDef a i clauses _) typ = do
   e' <- checkClauses clauses typ
-  return $ Definition a i e'
+  return $ ConstantDefinition a i e'
 
 checkClauses
   :: NonEmpty (Pre.Clause Pre.Expr FreeV)

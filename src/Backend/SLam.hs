@@ -119,5 +119,5 @@ slamExtern (Extern lang parts)
 slamDef
   :: Definition (Core.Expr MetaVar) FreeV
   -> SLam (Anno SLambda.Expr FreeV)
-slamDef (Definition _ _ e) = slamAnno e
+slamDef (ConstantDefinition _ _ e) = slamAnno e
 slamDef (DataDefinition _ e) = slamAnno e

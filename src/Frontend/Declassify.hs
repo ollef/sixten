@@ -12,7 +12,7 @@ import qualified Data.Vector as Vector
 import Data.Void
 
 import Error
-import Syntax hiding (Definition, DataDefinition)
+import Syntax hiding (Definition(..))
 import Syntax.Pre.Scoped
 import Util
 import VIX

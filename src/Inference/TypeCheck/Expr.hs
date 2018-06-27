@@ -187,11 +187,11 @@ tcRho expr expected expectedAppResult = case expr of
         eabstr = letAbstraction evars'
     let ds'' = LetRec
           $ flip fmap ds'
-          $ \(v, Definition _ _ e) -> LetBinding (varHint v) (abstract eabstr e) $ varType v
+          $ \(v, ConstantDefinition _ _ e) -> LetBinding (varHint v) (abstract eabstr e) $ varType v
     mdo
       let inst = instantiateLet pure vars
       vars <- iforMLet ds'' $ \i h s t -> do
-        let (_, Definition a _ _) = ds' Vector.! i
+        let (_, ConstantDefinition a _ _) = ds' Vector.! i
         case a of
           Abstract -> forall h Explicit t
           Concrete -> letVar h Explicit (inst s) t

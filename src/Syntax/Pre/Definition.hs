@@ -12,7 +12,7 @@ import Data.Traversable
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 
-import Syntax hiding (Definition, DataDefinition)
+import Syntax hiding (Definition(..))
 import Syntax.Pre.Pattern
 
 data Definition expr v

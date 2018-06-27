@@ -88,7 +88,7 @@ detectDefCycles
   :: Vector (SourceLoc, (FreeV, Definition (Expr MetaVar) FreeV))
   -> Infer ()
 detectDefCycles defs = do
-  (peeledDefExprs, locMap) <- peelLets [(loc, v, e) | (loc, (v, Definition _ _ e)) <- Vector.toList defs]
+  (peeledDefExprs, locMap) <- peelLets [(loc, v, e) | (loc, (v, ConstantDefinition _ _ e)) <- Vector.toList defs]
   forM_ (topoSortWith fst snd peeledDefExprs) $ \scc -> case scc of
     AcyclicSCC _ -> return ()
     CyclicSCC defExprs -> do
