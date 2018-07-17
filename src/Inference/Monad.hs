@@ -38,7 +38,6 @@ shouldInst _ _ = True
 
 data InferEnv = InferEnv
   { localVariables :: Tsil FreeV
-  , inferLevel :: !Level
   , inferTouchables :: !(MetaVar -> Bool)
   }
 
@@ -48,28 +47,20 @@ newtype Infer a = InferMonad (ReaderT InferEnv VIX a)
 runInfer :: Infer a -> VIX a
 runInfer (InferMonad i) = runReaderT i InferEnv
   { localVariables = mempty
-  , inferLevel = 1
   , inferTouchables = const True
   }
 
 instance MonadContext FreeV Infer where
   localVars = InferMonad $ asks localVariables
 
-  inUpdatedContext f (InferMonad m) = do
-    InferMonad $ do
-      vs <- asks localVariables
-      let vs' = f vs
-      logShow 30 "local variable scope" (varId <$> toList vs')
-      indentLog $ do
-        local
-          (\env -> env { localVariables = vs' })
-          m
-
-level :: Infer Level
-level = InferMonad $ asks inferLevel
-
-enterLevel :: Infer a -> Infer a
-enterLevel (InferMonad m) = InferMonad $ local (\e -> e { inferLevel = inferLevel e + 1 }) m
+  inUpdatedContext f (InferMonad m) = InferMonad $ do
+    vs <- asks localVariables
+    let vs' = f vs
+    logShow 30 "local variable scope" (varId <$> toList vs')
+    indentLog $
+      local
+        (\env -> env { localVariables = vs' })
+        m
 
 exists
   :: NameHint
@@ -82,7 +73,7 @@ exists hint d typ = do
   logMeta 30 "exists typ" typ
   typ'' <- traverse (error "exists not closed") typ'
   loc <- currentLocation
-  v <- existsAtLevel hint d typ'' (Vector.length locals) loc =<< level
+  v <- explicitExists hint d typ'' (Vector.length locals) loc
   return $ Core.Meta v $ (\fv -> (varData fv, pure fv)) <$> locals
 
 existsType

@@ -77,7 +77,7 @@ collectMetas mpred mode defs = do
   -- instances), so we can't be sure that we have a single cycle. Therefore we
   -- separately compute dependencies for each definition.
   let isLocalConstraint m@MetaVar { metaPlicitness = Constraint }
-        | mpred m = isLocalMeta m
+        | mpred m = isUnsolved m
       isLocalConstraint _ = return False
 
   defVars <- case mode of
@@ -88,7 +88,7 @@ collectMetas mpred mode defs = do
   typeVars <- forM defs $ \(v, _, _, _) -> do
     metas <- metaVars $ varType v
     logShow 30 "collectMetas" metas
-    filtered <- filterMSet (\m -> if not (mpred m) then return False else isLocalMeta m) metas
+    filtered <- filterMSet (\m -> if not (mpred m) then return False else isUnsolved m) metas
     logShow 30 "collectMetas filtered" filtered
     return filtered
 
@@ -110,12 +110,12 @@ generaliseMetas metas = do
   flip execStateT mempty $ forM_ sortedMetas $ \(m, (instVs, instTyp, _deps)) -> do
     sub <- get
     let go m' es = do
-          sol <- solution m'
-          case sol of
-            Left _ -> return $ case HashMap.lookup m' sub of
+          msol <- solution m'
+          case msol of
+            Nothing -> return $ case HashMap.lookup m' sub of
               Nothing -> Meta m' es
               Just v -> pure v
-            Right e -> bindMetas' go $ betaApps (vacuous e) es
+            Just e -> bindMetas' go $ betaApps (vacuous e) es
     instTyp' <- bindMetas' go instTyp
     let localDeps = toHashSet instTyp' `HashSet.intersection` toHashSet instVs
     when (HashSet.null localDeps) $ do
@@ -152,12 +152,12 @@ replaceMetas varMap defs = forM defs $ \(v, name, loc, d) -> do
   return (v, name, loc, d', t')
   where
     go m es = do
-      sol <- solution m
-      case sol of
-        Left _ -> case HashMap.lookup m varMap of
+      msol <- solution m
+      case msol of
+        Nothing -> case HashMap.lookup m varMap of
           Nothing -> do
-            local <- isLocalMeta m
-            if local then do
+            unsolved <- isUnsolved m
+            if unsolved then do
               let Just typ = typeApps (vacuous $ metaType m) es
               typ' <- bindMetas' go typ
               reportUnresolvedMetaError typ'
@@ -166,7 +166,7 @@ replaceMetas varMap defs = forM defs $ \(v, name, loc, d) -> do
             else
               return $ Meta m es
           Just v -> return $ pure v
-        Right e -> bindMetas' go $ betaApps (vacuous e) es
+        Just e -> bindMetas' go $ betaApps (vacuous e) es
       where
         varKind = case metaPlicitness m of
           Constraint -> "constraint"
@@ -176,11 +176,6 @@ replaceMetas varMap defs = forM defs $ \(v, name, loc, d) -> do
           printedTyp <- prettyMeta typ
           report $ TypeError ("Unresolved " <> varKind) (metaSourceLoc m)
             $ "A " <> varKind <> " of type " <> red printedTyp <> " could not be resolved."
-
-isLocalMeta :: MetaVar -> Infer Bool
-isLocalMeta m = do
-  l <- level
-  either (>= l) (const False) <$> solution m
 
 collectDefDeps
   :: HashSet FreeV

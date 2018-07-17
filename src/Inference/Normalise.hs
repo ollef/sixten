@@ -29,11 +29,7 @@ whnf
   -> m CoreM
 whnf expr = whnf' WhnfArgs
   { expandTypeReps = False
-  , handleMetaVar = \m -> do
-    sol <- solution m
-    case sol of
-      Left _ -> return Nothing
-      Right e -> return $ Just e
+  , handleMetaVar = solution
   }
   expr
   mempty
@@ -44,11 +40,7 @@ whnfExpandingTypeReps
   -> m CoreM
 whnfExpandingTypeReps expr = whnf' WhnfArgs
   { expandTypeReps = True
-  , handleMetaVar = \m -> do
-    sol <- solution m
-    case sol of
-      Left _ -> return Nothing
-      Right e -> return $ Just e
+  , handleMetaVar = solution
   }
   expr
   mempty
@@ -149,12 +141,12 @@ normalise' expr exprs = do
         Just (inlined, es') -> normalise' inlined es'
     go e@(Var FreeVar { varValue = Nothing }) es = irreducible e es
     go (Meta m mes) es = do
-      sol <- solution m
-      case sol of
-        Left _ -> do
+      msol <- solution m
+      case msol of
+        Nothing -> do
           mes' <- mapM (mapM normalise) mes
           irreducible (Meta m mes') es
-        Right e -> normalise' (vacuous e) $ toList mes ++ es
+        Just e -> normalise' (vacuous e) $ toList mes ++ es
     go e@(Global g) es = do
       (d, _) <- definition g
       case d of

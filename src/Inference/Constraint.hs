@@ -30,11 +30,11 @@ elabMetaVar
   :: MetaVar
   -> Infer (Maybe (Expr MetaVar Void))
 elabMetaVar m = do
-  sol <- solution m
-  case (sol, metaPlicitness m) of
-    (Left _, Constraint) -> elabUnsolvedConstraint m
-    (Left _, _) -> return Nothing
-    (Right e, _) -> return $ Just e
+  msol <- solution m
+  case (msol, metaPlicitness m) of
+    (Nothing, Constraint) -> elabUnsolvedConstraint m
+    (Nothing, _) -> return Nothing
+    (Just e, _) -> return $ Just e
 
 elabUnsolvedConstraint
   :: MetaVar
@@ -119,21 +119,17 @@ mergeConstraintVars vars = do
       let arity = metaArity m
       sol <- solution m
       case sol of
-        Right _ -> return varTypes
-        Left l -> do
+        Just _ -> return varTypes
+        Nothing -> do
           typ <- zonk $ metaType m
           case Map.lookup (arity, typ) varTypes of
             Just m' -> do
-              sol' <- solution m'
-              case sol' of
-                Right _ -> return $ Map.insert (arity, typ) m varTypes
-                Left l'
-                  | l < l' -> do
-                    solveVar m m'
-                    return varTypes
-                  | otherwise -> do
-                    solveVar m' m
-                    return varTypes
+              msol' <- solution m'
+              case msol' of
+                Just _ -> return $ Map.insert (arity, typ) m varTypes
+                Nothing -> do
+                  solveVar m m'
+                  return varTypes
             Nothing -> return $ Map.insert (arity, typ) m varTypes
     go varTypes _ = return varTypes
     solveVar m m' = do

@@ -1,13 +1,13 @@
-{-# LANGUAGE FlexibleContexts, GeneralizedNewtypeDeriving, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Inference.MetaVar where
 
 import Control.Monad.Except
 import Control.Monad.ST
 import Control.Monad.State
 import Data.Bitraversable
-import Data.Either
 import Data.Function
 import Data.Hashable
+import Data.Maybe
 import Data.Monoid
 import Data.STRef
 import Data.String
@@ -25,13 +25,7 @@ import TypedFreeVar
 import Util
 import VIX
 
-newtype Level = Level Int
-  deriving (Eq, Num, Ord, Show)
-
-instance Pretty Level where
-  pretty (Level i) = pretty i
-
-type MetaRef = STRef RealWorld (Either Level (Expr MetaVar Void))
+type MetaRef = STRef RealWorld (Maybe (Expr MetaVar Void))
 
 type FreeV = FreeVar Plicitness (Expr MetaVar)
 
@@ -65,18 +59,17 @@ instance Show MetaVar where
     showsPrec 11 (pretty <$> loc) . showChar ' ' .
     showString "<Ref>"
 
-existsAtLevel
+explicitExists
   :: (MonadVIX m, MonadIO m)
   => NameHint
   -> Plicitness
   -> Expr MetaVar Void
   -> Int
   -> Maybe SourceLoc
-  -> Level
   -> m MetaVar
-existsAtLevel hint p typ a loc l = do
+explicitExists hint p typ a loc = do
   i <- fresh
-  ref <- liftST $ newSTRef $ Left l
+  ref <- liftST $ newSTRef Nothing
   logVerbose 20 $ "exists: " <> shower i
   logMeta 20 "exists typ: " typ
   return $ MetaVar i typ a hint p loc ref
@@ -84,7 +77,7 @@ existsAtLevel hint p typ a loc l = do
 solution
   :: MonadIO m
   => MetaVar
-  -> m (Either Level (Expr MetaVar Void))
+  -> m (Maybe (Expr MetaVar Void))
 solution = liftST . readSTRef . metaRef
 
 solve
@@ -92,13 +85,13 @@ solve
   => MetaVar
   -> Expr MetaVar Void
   -> m ()
-solve m x = liftST $ writeSTRef (metaRef m) $ Right x
+solve m x = liftST $ writeSTRef (metaRef m) $ Just x
 
 isSolved :: MonadIO m => MetaVar -> m Bool
-isSolved = fmap isRight . solution
+isSolved = fmap isJust . solution
 
 isUnsolved :: MonadIO m => MetaVar -> m Bool
-isUnsolved = fmap isLeft . solution
+isUnsolved = fmap isNothing . solution
 
 data WithVar a = WithVar !MetaVar a
 
@@ -114,10 +107,10 @@ prettyMetaVar
   -> m Doc
 prettyMetaVar x = do
   let name = "?" <> fromNameHint "" fromName (metaHint x) <> shower (metaId x) <> "[" <> shower (metaArity x) <> "]"
-  esol <- solution x
-  case esol of
-    Left _ -> return name
-    Right sol -> do
+  msol <- solution x
+  case msol of
+    Nothing -> return name
+    Just sol -> do
       v <- liftVIX $ gets vixVerbosity
       sol' <- prettyMeta sol
       if v <= 30 then

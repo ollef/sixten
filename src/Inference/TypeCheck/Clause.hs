@@ -7,7 +7,6 @@ import Data.Foldable as Foldable
 import Data.HashSet(HashSet)
 import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
-import Data.Monoid
 import qualified Data.Vector as Vector
 
 import {-# SOURCE #-} Inference.TypeCheck.Expr
@@ -53,8 +52,7 @@ checkClauses clauses polyType = indentLog $ do
 
     res <- checkClausesRho equalisedClauses rhoType
 
-    l <- level
-    logMeta 20 ("checkClauses res " <> show l) res
+    logMeta 20 "checkClauses res" res
 
     return $ f res
   where
