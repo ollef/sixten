@@ -59,7 +59,7 @@ instance MonadContext FreeV Infer where
     InferMonad $ do
       vs <- asks localVariables
       let vs' = f vs
-      logShow 30 "local variable scope" (varId <$> toList vs)
+      logShow 30 "local variable scope" (varId <$> toList vs')
       indentLog $ do
         local
           (\env -> env { localVariables = vs' })
