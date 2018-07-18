@@ -140,8 +140,8 @@ checkAndGeneraliseDefs defs = withVars ((\(v, _, _, _) -> v) <$> defs) $ do
     -- binding group unless we know we're going to generalise
     divide = bimap Vector.fromList Vector.fromList . foldMap go
       where
-        go (v, name, loc, def@(Pre.ConstantDefinition (Pre.ConstantDef _ _ _ (Just typ)))) = ([], [(v, name, loc, def, typ)])
-        go (v, name, loc, def@(Pre.ConstantDefinition (Pre.ConstantDef _ _ _ Nothing))) = ([(v, name, loc, def)], [])
+        go (v, name, loc, def@(Pre.ConstantDefinition (Pre.ConstantDef _ _ (Just typ)))) = ([], [(v, name, loc, def, typ)])
+        go (v, name, loc, def@(Pre.ConstantDefinition (Pre.ConstantDef _ _ Nothing))) = ([(v, name, loc, def)], [])
         go (v, name, loc, def@(Pre.DataDefinition (DataDef tele _))) = ([], [(v, name, loc, def, Pre.telePis tele $ Pre.Global Builtin.TypeName)])
         go (v, name, loc, def@(Pre.ClassDefinition (ClassDef tele _))) = ([], [(v, name, loc, def, Pre.telePis tele $ Pre.Global Builtin.TypeName)])
         go (v, name, loc, def@(Pre.InstanceDefinition (Pre.InstanceDef typ _))) = ([], [(v, name, loc, def, typ)])
@@ -173,8 +173,8 @@ checkDef
   -> Infer (Vector (FreeV, QName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
 checkDef v name loc def = case def of
   Pre.ConstantDefinition d -> do
-    (a, i, e) <- checkConstantDef d $ varType v
-    return $ pure (v, name, loc, ConstantDefinition a i e)
+    (a, e) <- checkConstantDef d $ varType v
+    return $ pure (v, name, loc, ConstantDefinition a e)
   Pre.DataDefinition d -> do
     (d', rep) <- checkDataDef v d
     return $ pure (v, name, loc, DataDefinition d' rep)

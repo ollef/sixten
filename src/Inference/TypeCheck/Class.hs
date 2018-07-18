@@ -112,7 +112,7 @@ desugarClassDef classVar name loc def@(ClassDef params ms) = do
   methodDefs <- forM (zip conArgVars ms') $ \(v, Method mname mloc mtyp) -> do
     let fullType = Core.pis implicitParamVars $ Core.pi_ lamVar mtyp
         mdef
-          = ConstantDefinition Concrete IsConstant
+          = ConstantDefinition Concrete
           $ Core.lams implicitParamVars
           $ Core.lam lamVar
           $ Core.Case
@@ -164,7 +164,7 @@ checkInstance ivar iname iloc (Pre.InstanceDef _instanceType methods) =
             (duplicates names')
         else do
           methodDefs' <- forM (zip methodDefs methods')
-            $ \(Method name _defLoc defType, Method _name loc (Pre.ConstantDef a _ clauses mtyp)) -> located loc $ do
+            $ \(Method name _defLoc defType, Method _name loc (Pre.ConstantDef a clauses mtyp)) -> located loc $ do
               let instMethodType
                     = instantiateTele snd (toVector args)
                     $ bimapScope absurd absurd defType
@@ -177,7 +177,7 @@ checkInstance ivar iname iloc (Pre.InstanceDef _instanceType methods) =
                   return $ f expr
               v <- forall (fromName name) Explicit $ Core.pis skolemVars instMethodType
               let qname = QName (qnameModule iname) (qnameName iname <> "-" <> name)
-              return (v, qname, loc, ConstantDefinition a IsConstant $ Core.lams skolemVars expr)
+              return (v, qname, loc, ConstantDefinition a $ Core.lams skolemVars expr)
           let skolemArgs = (\v -> (varData v, pure v)) <$> skolemVars
               methodArgs = (\(v, _, _, _) -> (Explicit, Core.apps (pure v) skolemArgs)) <$> methodDefs'
               implicitArgs = first implicitise <$> args
@@ -186,7 +186,7 @@ checkInstance ivar iname iloc (Pre.InstanceDef _instanceType methods) =
               ( ivar
               , iname
               , iloc
-              , ConstantDefinition Concrete IsInstance
+              , ConstantDefinition Concrete
                 $ skolemFun
                 $ Core.lams skolemVars
                 $ Core.apps (Core.Con $ classConstr className) $ implicitArgs <> methodArgs

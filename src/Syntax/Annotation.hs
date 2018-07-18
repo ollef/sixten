@@ -49,12 +49,3 @@ data Abstract = Abstract | Concrete
 instance Pretty Abstract where
   prettyM Abstract = "abstract"
   prettyM Concrete = "concrete"
-
-data IsInstance
-  = IsConstant
-  | IsInstance
-  deriving (Eq, Ord, Show)
-
-instance Pretty IsInstance where
-  prettyM IsConstant = mempty
-  prettyM IsInstance = "instance"

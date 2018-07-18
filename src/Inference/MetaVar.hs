@@ -184,7 +184,7 @@ bindDefMetas
   -> Definition (Expr meta) (FreeBindVar meta')
   -> m (Definition (Expr meta') (FreeBindVar meta'))
 bindDefMetas f def = case def of
-  ConstantDefinition a i e -> ConstantDefinition a i <$> bindMetas f e
+  ConstantDefinition a e -> ConstantDefinition a <$> bindMetas f e
   DataDefinition d rep -> DataDefinition <$> bindDataDefMetas f d <*> bindMetas f rep
 
 bindDefMetas'

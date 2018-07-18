@@ -83,12 +83,12 @@ whnf' args expr exprs = indentLog $ do
     go e@(Global g) es = do
       (d, _) <- definition g
       case d of
-        ConstantDefinition Concrete _ e' -> do
+        ConstantDefinition Concrete e' -> do
           minlined <- normaliseDef whnf0 e' es
           case minlined of
             Nothing -> return $ apps e es
             Just (inlined, es') -> whnf' args inlined es'
-        ConstantDefinition Abstract _ _ -> return $ apps e es
+        ConstantDefinition Abstract _ -> return $ apps e es
         DataDefinition _ rep
           | expandTypeReps args -> do
             minlined <- normaliseDef whnf0 rep es
@@ -150,12 +150,12 @@ normalise' expr exprs = do
     go e@(Global g) es = do
       (d, _) <- definition g
       case d of
-        ConstantDefinition Concrete _ e' -> do
+        ConstantDefinition Concrete e' -> do
           minlined <- normaliseDef normalise e' es
           case minlined of
             Nothing -> irreducible e es
             Just (inlined, es') -> normalise' inlined es'
-        ConstantDefinition Abstract _ _ -> irreducible e es
+        ConstantDefinition Abstract _ -> irreducible e es
         DataDefinition {} -> irreducible e es
     go e@(Con _) es = irreducible e es
     go e@(Lit _) es = irreducible e es

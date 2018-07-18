@@ -26,10 +26,10 @@ import VIX
 checkConstantDef
   :: Pre.ConstantDef Pre.Expr FreeV
   -> CoreM
-  -> Infer (Abstract, IsInstance, CoreM)
-checkConstantDef (Pre.ConstantDef a i clauses _) typ = do
+  -> Infer (Abstract, CoreM)
+checkConstantDef (Pre.ConstantDef a clauses _) typ = do
   e' <- checkClauses clauses typ
-  return (a, i, e')
+  return (a, e')
 
 checkClauses
   :: NonEmpty (Pre.Clause Pre.Expr FreeV)

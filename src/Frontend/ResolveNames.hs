@@ -217,7 +217,7 @@ resolveDefinition
   :: Unscoped.Definition Unscoped.Expr
   -> ResolveNames (Name, Scoped.ConstantDef Scoped.Expr PreName)
 resolveDefinition (Unscoped.Definition name a clauses mtyp) = do
-  res <- Scoped.ConstantDef a IsConstant <$> mapM resolveClause clauses <*> mapM resolveExpr mtyp
+  res <- Scoped.ConstantDef a <$> mapM resolveClause clauses <*> mapM resolveExpr mtyp
   return (name, res)
 
 resolveClause

@@ -28,7 +28,7 @@ data Clause expr v = Clause
   } deriving Show
 
 data ConstantDef expr v
-  = ConstantDef Abstract IsInstance (NonEmpty (Clause expr v)) (Maybe (expr v))
+  = ConstantDef Abstract (NonEmpty (Clause expr v)) (Maybe (expr v))
   deriving (Foldable, Functor, Show, Traversable)
 
 instantiateLetConstantDef
@@ -44,16 +44,16 @@ instantiateConstantDef
   => (b -> expr v)
   -> ConstantDef expr (Var b v)
   -> ConstantDef expr v
-instantiateConstantDef f (ConstantDef a i cls mtyp)
-  = ConstantDef a i (instantiateClause f <$> cls) ((>>= unvar f pure) <$> mtyp)
+instantiateConstantDef f (ConstantDef a cls mtyp)
+  = ConstantDef a (instantiateClause f <$> cls) ((>>= unvar f pure) <$> mtyp)
 
 abstractConstantDef
   :: Monad expr
   => (v -> Maybe b)
   -> ConstantDef expr v
   -> ConstantDef expr (Var b v)
-abstractConstantDef f (ConstantDef a i cls mtyp)
-  = ConstantDef a i (abstractClause f <$> cls) (fmap go <$> mtyp)
+abstractConstantDef f (ConstantDef a cls mtyp)
+  = ConstantDef a (abstractClause f <$> cls) (fmap go <$> mtyp)
   where
     go v = case f v of
       Nothing -> F v
@@ -106,10 +106,10 @@ instance GBound Definition where
   gbound f (InstanceDefinition d) = InstanceDefinition $ gbound f d
 
 instance Bound ConstantDef where
-  ConstantDef a i cls mtyp >>>= f = ConstantDef a i ((>>>= f) <$> cls) ((>>= f) <$> mtyp)
+  ConstantDef a cls mtyp >>>= f = ConstantDef a ((>>>= f) <$> cls) ((>>= f) <$> mtyp)
 
 instance GBound ConstantDef where
-  gbound f (ConstantDef a i cls mtyp) = ConstantDef a i (gbound f <$> cls) (gbind f <$> mtyp)
+  gbound f (ConstantDef a cls mtyp) = ConstantDef a (gbound f <$> cls) (gbind f <$> mtyp)
 
 $(return mempty)
 
@@ -151,7 +151,7 @@ instance (Pretty (expr v), Monad expr, Eq1 expr, v ~ Doc)
   prettyNamed name (InstanceDefinition i) = prettyNamed name i
 
 instance (Pretty (expr v), Monad expr, v ~ Doc)  => PrettyNamed (ConstantDef expr v) where
-  prettyNamed name (ConstantDef a i clauses mtyp) = prettyM a <+> prettyM i <$$> vcat ([prettyM name <+> ":" <+> prettyM typ | Just typ <- [mtyp]] ++ toList (prettyNamed name <$> clauses))
+  prettyNamed name (ConstantDef a clauses mtyp) = prettyM a <$$> vcat ([prettyM name <+> ":" <+> prettyM typ | Just typ <- [mtyp]] ++ toList (prettyNamed name <$> clauses))
 
 instance (Eq1 expr, Monad expr) => Eq1 (ConstantDef expr) where
   liftEq = $(makeLiftEq ''ConstantDef)

@@ -82,8 +82,8 @@ elabExpr = bindMetas $ \m es -> do
 elabDef
   :: Definition (Expr MetaVar) FreeV
   -> Infer (Definition (Expr MetaVar) FreeV)
-elabDef (ConstantDefinition i a e)
-  = ConstantDefinition i a <$> elabExpr e
+elabDef (ConstantDefinition a e)
+  = ConstantDefinition a <$> elabExpr e
 elabDef (DataDefinition (DataDef ps constrs) rep) = do
   vs <- forTeleWithPrefixM ps $ \h p s vs -> do
     let t = instantiateTele pure vs s

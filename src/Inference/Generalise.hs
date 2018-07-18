@@ -265,10 +265,10 @@ abstractDefImplicits
   -> Definition (Expr MetaVar) FreeV
   -> CoreM
   -> Infer (Definition (Expr MetaVar) FreeV, CoreM)
-abstractDefImplicits vs (ConstantDefinition a i e) t = do
+abstractDefImplicits vs (ConstantDefinition a e) t = do
   let ge = abstractImplicits vs lam e
       gt = abstractImplicits vs pi_ t
-  return (ConstantDefinition a i ge, gt)
+  return (ConstantDefinition a ge, gt)
 abstractDefImplicits vs (DataDefinition (DataDef ps cs) rep) typ = do
   vs' <- forTeleWithPrefixM ps $ \h p s vs' -> do
     let t = instantiateTele pure vs' s
