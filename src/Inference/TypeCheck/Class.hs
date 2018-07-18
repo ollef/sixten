@@ -140,9 +140,8 @@ checkInstance
   -> SourceLoc
   -> Pre.InstanceDef Pre.Expr FreeV
   -> Infer (Vector (FreeV, QName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
-checkInstance ivar iname iloc (Pre.InstanceDef instanceType methods) = do
-  instanceType' <- checkPoly instanceType Builtin.Type
-  deepSkolemiseInner instanceType' mempty $ \skolemVars innerInstanceType skolemFun -> do
+checkInstance ivar iname iloc (Pre.InstanceDef _instanceType methods) = do
+  deepSkolemiseInner (varType ivar) mempty $ \skolemVars innerInstanceType skolemFun -> do
     innerInstanceType' <- whnf innerInstanceType
     case Core.appsView innerInstanceType' of
       (Core.Global className, args) -> do
