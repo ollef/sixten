@@ -28,6 +28,7 @@ import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import qualified TypeRep
 import Util
+import qualified Util.MultiHashMap as MultiHashMap
 import VIX
 
 checkClassDef
@@ -145,6 +146,11 @@ checkInstance ivar iname iloc (Pre.InstanceDef _instanceType methods) = do
     innerInstanceType' <- whnf innerInstanceType
     case Core.appsView innerInstanceType' of
       (Core.Global className, args) -> do
+        liftVIX $ modify $ \s -> s
+          { vixClassInstances
+            = MultiHashMap.insert className iname
+            $ vixClassInstances s
+          }
         ClassDef _params methodDefs <- getClassDef className
         let names = methodName <$> methodDefs
             methods' = sortOn (hashedElemIndex (toVector names) . methodName) methods

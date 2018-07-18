@@ -12,6 +12,7 @@ import Control.Monad.Trans.Control
 import Control.Monad.Trans.Identity
 import Control.Monad.Writer
 import Data.Bifunctor
+import Data.Foldable
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
@@ -45,7 +46,7 @@ data VIXState = VIXState
   , vixConvertedSignatures :: HashMap QName Lifted.FunSignature
   , vixSignatures :: HashMap QName (Signature ReturnIndirect)
   , vixClassMethods :: HashMap QName [(Name, SourceLoc)]
-  , vixClassInstances :: HashMap QName [(QName, Type Void Void)]
+  , vixClassInstances :: MultiHashMap QName QName
   , vixIndent :: !Int
   , vixFresh :: !Int
   , vixLogHandle :: !Handle
@@ -190,19 +191,7 @@ logFreeVar v s x = whenVerbose v $ do
 addContext :: MonadVIX m => HashMap QName (Definition (Expr Void) Void, Type Void Void) -> m ()
 addContext prog = liftVIX $ modify $ \s -> s
   { vixContext = prog <> vixContext s
-  , vixClassInstances = HashMap.unionWith (<>) instances $ vixClassInstances s
-  } where
-    unions = foldl' (HashMap.unionWith (<>)) mempty
-    instances
-      = unions
-      $ flip map (HashMap.toList prog) $ \(defName, (def, typ)) -> case def of
-        DataDefinition {} -> mempty
-        ConstantDefinition _ IsConstant _ -> mempty
-        ConstantDefinition _ IsInstance _ -> do
-          let (_, s) = pisView typ
-          case appsView $ fromScope s of
-            (Global className, _) -> HashMap.singleton className [(defName, typ)]
-            _ -> mempty
+  }
 
 throwLocated
   :: (MonadError Error m, MonadVIX m)
@@ -224,6 +213,19 @@ definition name = do
   maybe (throwLocated $ "Not in scope: " <> pretty name)
         (return . bimap (bimapDefinition absurd absurd) bivacuous)
         mres
+
+instances
+  :: MonadVIX m
+  => QName
+  -> m [(QName, Expr meta v)]
+instances className = do
+  instanceNames <- liftVIX $ gets $ MultiHashMap.lookup className . vixClassInstances
+  fmap concat $ forM (toList instanceNames) $ \instanceName ->
+    liftVIX
+      $ gets
+      $ maybe mempty (pure . bimap (const instanceName) (bimap absurd absurd))
+        . HashMap.lookup instanceName
+        . vixContext
 
 addModule
   :: MonadVIX m

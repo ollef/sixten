@@ -2,10 +2,8 @@
 module Inference.Constraint where
 
 import Control.Monad.Except
-import Control.Monad.State
 import Data.Bifunctor
 import Data.Foldable
-import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
 import qualified Data.Map as Map
 import Data.Maybe
@@ -47,10 +45,12 @@ elabUnsolvedConstraint m = inUpdatedContext (const mempty) $ do
     case typ' of
       (appsView -> (Global className, _)) -> do
         -- Try subsumption on all instances of the class until a match is found
-        globalClassInstances <- liftVIX $ gets $ HashMap.lookupDefault mempty className . vixClassInstances
+        globalClassInstances <- instances className
         let candidates = [(Global g, bimap absurd absurd t) | (g, t) <- globalClassInstances]
               <> [(pure v, varType v) | v <- toList vs, varData v == Constraint]
         matchingInstances <- forM candidates $ \(inst, instanceType) -> tryMaybe $ do
+          logMeta 35 "candidate instance" inst
+          logMeta 35 "candidate instance type" instanceType
           f <- untouchable $ subtype instanceType typ'
           return $ f inst
         case catMaybes matchingInstances of

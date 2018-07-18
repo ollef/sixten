@@ -23,7 +23,7 @@ import Util
 import Util.MultiHashMap(MultiHashMap)
 import qualified Util.MultiHashMap as MultiHashMap
 import Util.TopoSort
-import VIX
+import VIX hiding (instances)
 
 newtype Env = Env
   { scopeConstrs :: PreName -> HashSet QConstr
