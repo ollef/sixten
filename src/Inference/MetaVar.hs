@@ -25,13 +25,13 @@ import TypedFreeVar
 import Util
 import VIX
 
-type MetaRef = STRef RealWorld (Maybe (Expr MetaVar Void))
+type MetaRef = STRef RealWorld (Maybe (Closed (Expr MetaVar)))
 
 type FreeV = FreeVar Plicitness (Expr MetaVar)
 
 data MetaVar = MetaVar
   { metaId :: !Int
-  , metaType :: Expr MetaVar Void
+  , metaType :: Closed (Expr MetaVar)
   , metaArity :: !Int
   , metaHint :: !NameHint
   , metaPlicitness :: !Plicitness
@@ -49,10 +49,10 @@ instance Hashable MetaVar where
   hashWithSalt s = hashWithSalt s . metaId
 
 instance Show MetaVar where
-  showsPrec d (MetaVar i t a h p loc _) = showParen (d > 10) $
+  showsPrec d (MetaVar i (Closed t) a h p loc _) = showParen (d > 10) $
     showString "MetaVar" . showChar ' ' .
     showsPrec 11 i . showChar ' ' .
-    showsPrec 11 t . showChar ' ' .
+    showsPrec 11 (t :: Expr MetaVar Void) . showChar ' ' .
     showsPrec 11 a . showChar ' ' .
     showsPrec 11 h . showChar ' ' .
     showsPrec 11 p . showChar ' ' .
@@ -63,7 +63,7 @@ explicitExists
   :: (MonadVIX m, MonadIO m)
   => NameHint
   -> Plicitness
-  -> Expr MetaVar Void
+  -> Closed (Expr MetaVar)
   -> Int
   -> Maybe SourceLoc
   -> m MetaVar
@@ -71,19 +71,19 @@ explicitExists hint p typ a loc = do
   i <- fresh
   ref <- liftST $ newSTRef Nothing
   logVerbose 20 $ "exists: " <> shower i
-  logMeta 20 "exists typ: " typ
+  logMeta 20 "exists typ: " (open typ :: Expr MetaVar Doc)
   return $ MetaVar i typ a hint p loc ref
 
 solution
   :: MonadIO m
   => MetaVar
-  -> m (Maybe (Expr MetaVar Void))
+  -> m (Maybe (Closed (Expr MetaVar)))
 solution = liftST . readSTRef . metaRef
 
 solve
   :: MonadIO m
   => MetaVar
-  -> Expr MetaVar Void
+  -> Closed (Expr MetaVar)
   -> m ()
 solve m x = liftST $ writeSTRef (metaRef m) $ Just x
 
@@ -112,7 +112,7 @@ prettyMetaVar x = do
     Nothing -> return name
     Just sol -> do
       v <- liftVIX $ gets vixVerbosity
-      sol' <- prettyMeta sol
+      sol' <- prettyMeta (open sol :: Expr MetaVar Doc)
       if v <= 30 then
         return $ PP.parens $ sol'
       else
@@ -169,7 +169,7 @@ instantiatedMetaType'
   => Int
   -> MetaVar
   -> m (Vector FreeV, Expr MetaVar (FreeBindVar MetaVar))
-instantiatedMetaType' arity m = go mempty arity (vacuous $ metaType m)
+instantiatedMetaType' arity m = go mempty arity (open $ metaType m)
   where
     go vs 0 t = return (toVector $ reverse vs, t)
     go vs n (Pi h a t s) = do

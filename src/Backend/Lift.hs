@@ -11,7 +11,6 @@ import qualified Data.HashSet as HashSet
 import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
-import Data.Void
 
 import MonadFresh
 import Syntax
@@ -70,7 +69,7 @@ runLift (QName mname name) (Lift l)
 
 type FV = FreeVar () Lifted.Expr
 
-type LambdaLift = Lift (Sized.Function Lifted.Expr Void) VIX
+type LambdaLift = Lift (Closed (Sized.Function Lifted.Expr)) VIX
 
 liftExpr
   :: SLambda.Expr FV
@@ -110,7 +109,7 @@ liftLambda tele lamScope = do
   let fun = Sized.functionTyped params lamBody
   logFreeVar 20 "liftLambda result" fun
 
-  g <- liftThing $ error "liftLambda not closed" <$> fun
+  g <- liftThing $ close (error "liftLambda not closed") fun
 
   return $ addArgs $ global g
 
@@ -185,7 +184,7 @@ liftLet ds scope = do
               Just i -> snd $ subVec Vector.! i
               Nothing -> error "liftLet g"
         (params, lamBody) <- closeLambda (subBound lamTele) (subBound lamScope) sortedFvs
-        liftNamedThing g $ error "liftLet not closed" <$> Sized.functionTyped params lamBody
+        liftNamedThing g $ close (error "liftLet not closed") $ Sized.functionTyped params lamBody
         return $ addArgs $ global g
       _ -> liftExpr $ subBind body
 
@@ -220,24 +219,30 @@ lets = flip $ foldr go
     go _ = error "Circular Lift lets"
 
 liftToDefinitionM
-  :: Anno SLambda.Expr Void
-  -> LambdaLift (Sized.Definition Lifted.Expr Void)
-liftToDefinitionM (Anno (SLambda.Lams tele bodyScope) _) = do
+  :: Closed (Anno SLambda.Expr)
+  -> LambdaLift (Closed (Sized.Definition Lifted.Expr))
+liftToDefinitionM (Closed (Anno (SLambda.Lams tele bodyScope) _)) = do
   vs <- forTeleWithPrefixM tele $ \h () s vs -> do
-    let e = instantiateTele pure vs $ vacuous s
+    let e = instantiateTele pure vs s
     e' <- liftExpr e
     freeVar h () e'
-  let body = instantiateAnnoTele pure vs $ vacuous bodyScope
+  let body = instantiateAnnoTele pure vs bodyScope
   body' <- liftAnnoExpr body
-  return $ Sized.FunctionDef Public Sized.NonClosure $ error "liftToDefinitionM" <$> Sized.functionTyped vs body'
-liftToDefinitionM sexpr = do
-  sexpr' <- liftAnnoExpr $ vacuous sexpr
+  return
+    $ close (error "liftToDefinitionM")
+    $ Sized.FunctionDef Public Sized.NonClosure
+    $ Sized.functionTyped vs body'
+liftToDefinitionM (Closed sexpr) = do
+  sexpr' <- liftAnnoExpr sexpr
   logFreeVar 20 "liftToDefinitionM sexpr'" sexpr'
-  return $ Sized.ConstantDef Public $ Sized.Constant $ error "liftToDefinitionM 2" <$> sexpr'
+  return
+    $ close (error "liftToDefinitionM 2")
+    $ Sized.ConstantDef Public
+    $ Sized.Constant sexpr'
 
 liftToDefinition
   :: QName
-  -> Anno SLambda.Expr Void
-  -> VIX (Sized.Definition Lifted.Expr Void, [(QName, Sized.Function Lifted.Expr Void)])
+  -> Closed (Anno SLambda.Expr)
+  -> VIX (Closed (Sized.Definition Lifted.Expr), [(QName, Closed (Sized.Function Lifted.Expr))])
 liftToDefinition (QName mname name) expr
   = runLift (QName mname $ name <> "-lifted") (liftToDefinitionM expr)

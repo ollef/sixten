@@ -22,7 +22,7 @@ type ExprFreeVar meta = FreeVar Plicitness (Expr meta)
 type MonadTypeOf meta m = (Show meta, MonadIO m, MonadVIX m, MonadError Error m, MonadContext (ExprFreeVar meta) m, MonadFix m)
 
 data Args meta m = Args
-  { typeOfMeta :: !(meta -> Expr meta Void)
+  { typeOfMeta :: !(meta -> Closed (Expr meta))
   , normaliseArgs :: !(Normalise.Args meta m)
   }
 
@@ -45,7 +45,7 @@ typeOf' args expr = case expr of
     (_, typ) <- definition v
     return typ
   Var v -> return $ varType v
-  Meta m es -> case typeApps (vacuous $ typeOfMeta args m) es of
+  Meta m es -> case typeApps (open $ typeOfMeta args m) es of
     Nothing -> error "typeOf meta typeApps"
     Just t -> return t
   Con qc -> qconstructor qc

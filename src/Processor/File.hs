@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, ScopedTypeVariables, OverloadedStrings #-}
 module Processor.File where
 
 import Control.Monad.Except
@@ -52,59 +52,54 @@ process
 process = frontend backend
 
 frontend
-  :: ([(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)] -> VIX [k])
+  :: ([(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)] -> VIX [k])
   -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [k]
 frontend k
   = resolveProgramNames
-  >>=> prettyPreGroup "Pre-syntax" absurd
+  >>=> prettyPreGroup "Pre-syntax"
 
   >=> typeCheckGroup
 
-  >=> prettyTypedGroup 9 "Core syntax" absurd
+  >=> prettyTypedGroup 9 "Core syntax"
 
   >=> simplifyGroup
-  >=> prettyTypedGroup 8 "Simplified" absurd
+  >=> prettyTypedGroup 8 "Simplified"
 
   >=> addGroupToContext
   >=> k
 
 backend
-  :: [(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)]
+  :: [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
   -> VIX [Generate.GeneratedSubmodule]
 backend
   = slamGroup
-  >=> prettyGroup "SLammed" vac
+  >=> prettyGroup "SLammed"
 
   >=> denatGroup
-  >=> prettyGroup "Denaturalised" vac
+  >=> prettyGroup "Denaturalised"
 
   >=> liftGroup
-  >>=> prettyGroup "Lambda-lifted" vac
+  >>=> prettyGroup "Lambda-lifted"
 
   >=> closureConvertGroup
-  >>=> prettyGroup "Closure-converted" vac
+  >>=> prettyGroup "Closure-converted"
 
   >=> processConvertedGroup
-  where
-    vac :: Functor e => e Void -> e Doc
-    vac = vacuous
 
 processConvertedGroup
-  :: [(QName, Sized.Definition Lifted.Expr Void)]
+  :: [(QName, Closed (Sized.Definition Lifted.Expr))]
   -> VIX [Generate.GeneratedSubmodule]
 processConvertedGroup
   = inferGroupDirections
   >=> addSignaturesToContext
-  >=> prettyGroup "Directed (lifted)" vac
+  >=> prettyGroup "Directed (lifted)"
 
   >=> extractExternGroup
-  >=> prettyGroup "Extern extracted" (vac . Extracted.submoduleContents)
+  -- TODO
+  -- >=> prettyGroup "Extern extracted"
 
   >=> generateGroup
-  where
-    vac :: Functor e => e Void -> e Doc
-    vac = vacuous
 
 infixr 1 >>=>
 (>>=>) :: Monad m => (a -> m [b]) -> (b -> m [c]) -> a -> m [c]
@@ -113,64 +108,58 @@ infixr 1 >>=>
 prettyPreGroup
   :: (Pretty (e Doc), Monad e, Traversable e, Eq1 e)
   => Text
-  -> (v -> QName)
-  -> [(QName, SourceLoc, Pre.Definition e v)]
-  -> VIX [(QName, SourceLoc, Pre.Definition e v)]
-prettyPreGroup str f defs = do
-  let toDoc :: QName -> Doc
-      toDoc = fromQName
+  -> [(QName, SourceLoc, Closed (Pre.Definition e))]
+  -> VIX [(QName, SourceLoc, Closed (Pre.Definition e))]
+prettyPreGroup str defs = do
   whenVerbose 10 $ do
     VIX.log $ "----- " <> str <> " -----"
-    forM_ defs $ \(n, _, d) -> do
+    forM_ defs $ \(n, _, Closed d) -> do
       VIX.log
         $ showWide
         $ pretty
-        $ prettyNamed (prettyM n) (toDoc . f <$> d)
+        $ prettyNamed (prettyM n) d
       VIX.log ""
   return defs
 
 prettyTypedGroup
   :: Int
   -> Text
-  -> (v -> QName)
-  -> [(QName, Definition (Core.Expr Void) v, Core.Expr Void v)]
-  -> VIX [(QName, Definition (Core.Expr Void) v, Core.Expr Void v)]
-prettyTypedGroup v str f defs = do
+  -> [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
+  -> VIX [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
+prettyTypedGroup v str defs = do
   whenVerbose v $ do
     VIX.log $ "----- " <> str <> " -----"
-    forM_ defs $ \(n, d, t) -> do
-      let t' = fromQName . f <$> t
+    forM_ defs $ \(n, ClosedDefinition d, Biclosed t) -> do
       VIX.log
         $ showWide
         $ pretty
-        $ prettyM n <+> ":" <+> prettyM t'
+        $ prettyM n <+> ":" <+> prettyM (t :: Core.Expr Void Doc)
       VIX.log
         $ showWide
         $ pretty
-        $ prettyNamed (prettyM n) (fromQName . f <$> d)
+        $ prettyNamed (prettyM n) (d :: Definition (Core.Expr Void) Doc)
       VIX.log ""
   return defs
 
 prettyGroup
-  :: Pretty p
+  :: forall e. Pretty (e Doc)
   => Text
-  -> (e -> p)
-  -> [(QName, e)]
-  -> VIX [(QName, e)]
-prettyGroup str f defs = do
+  -> [(QName, Closed e)]
+  -> VIX [(QName, Closed e)]
+prettyGroup str defs = do
   whenVerbose 10 $ do
     VIX.log $ "----- " <> str <> " -----"
-    forM_ defs $ \(n, d) -> do
+    forM_ defs $ \(n, Closed d) -> do
       VIX.log
         $ showWide
         $ pretty
-        $ prettyM n <+> "=" <+> prettyM (f d)
+        $ prettyM n <+> "=" <+> prettyM (d :: e Doc)
       VIX.log ""
   return defs
 
 resolveProgramNames
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
-  -> VIX [[(QName, SourceLoc, Pre.Definition Pre.Expr Void)]]
+  -> VIX [[(QName, SourceLoc, Closed (Pre.Definition Pre.Expr))]]
 resolveProgramNames modul = do
   res <- ResolveNames.resolveModule modul
   let defnames = HashSet.fromMap $ void $ moduleContents modul
@@ -188,61 +177,60 @@ resolveProgramNames modul = do
   return res
 
 typeCheckGroup
-  :: [(QName, SourceLoc, Pre.Definition Pre.Expr Void)]
-  -> VIX [(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)]
+  :: [(QName, SourceLoc, Closed (Pre.Definition Pre.Expr))]
+  -> VIX [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
 typeCheckGroup
   = fmap Vector.toList . TypeCheck.runInfer . TypeCheck.checkAndGeneraliseTopLevelDefs . Vector.fromList
 
 simplifyGroup
-  :: [(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)]
-  -> VIX [(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)]
-simplifyGroup defs = forM defs $ \(x, def, typ) ->
-  return (x, simplifyDef globTerm def, simplifyExpr globTerm 0 typ)
+  :: [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
+  -> VIX [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
+simplifyGroup defs = forM defs $ \(x, ClosedDefinition def, Biclosed typ) ->
+  return (x, closeDefinition id id $ simplifyDef globTerm def, biclose id id $ simplifyExpr globTerm 0 typ)
   where
     globTerm x = not $ HashSet.member x names
     names = HashSet.fromList $ fst3 <$> defs
 
 addGroupToContext
-  :: [(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)]
-  -> VIX [(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)]
+  :: [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
+  -> VIX [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
 addGroupToContext defs = do
   addContext $ HashMap.fromList $ (\(n, d, t) -> (n, (d, t))) <$> defs
   return defs
 
 slamGroup
-  :: [(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)]
-  -> VIX [(QName, Anno SLambda.Expr Void)]
-slamGroup defs = forM defs $ \(x, d, _t) -> do
-  d' <- SLam.runSlam $ SLam.slamDef $ vacuous d
-  d'' <- traverse (internalError . ("slamGroup" PP.<+>) . shower) d'
-  return (x, d'')
+  :: [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
+  -> VIX [(QName, Closed (Anno SLambda.Expr))]
+slamGroup defs = forM defs $ \(x, ClosedDefinition d, _t) -> do
+  d' <- SLam.runSlam $ SLam.slamDef d
+  return (x, close (error "slamGroup") d')
 
 denatGroup
-  :: [(QName, Anno SLambda.Expr Void)]
-  -> VIX [(QName, Anno SLambda.Expr Void)]
-denatGroup defs = return [(n, denatAnno def) | (n, def) <- defs]
+  :: [(QName, Closed (Anno SLambda.Expr))]
+  -> VIX [(QName, Closed (Anno SLambda.Expr))]
+denatGroup defs = return [(n, close id $ denatAnno def) | (n, Closed def) <- defs]
 
 liftGroup
-  :: [(QName, Anno SLambda.Expr Void)]
-  -> VIX [[(QName, Sized.Definition Lifted.Expr Void)]]
+  :: [(QName, Closed (Anno SLambda.Expr))]
+  -> VIX [[(QName, Closed (Sized.Definition Lifted.Expr))]]
 liftGroup defs = fmap (Sized.dependencyOrder . concat) $ forM defs $ \(name, e) -> do
   (e', fs) <- liftToDefinition name e
-  return $ (name, e') : fmap (second $ Sized.FunctionDef Private Sized.NonClosure) fs
+  return $ (name, e') : fmap (second $ mapClosed $ Sized.FunctionDef Private Sized.NonClosure) fs
 
 closureConvertGroup
-  :: [(QName, Sized.Definition Lifted.Expr Void)]
-  -> VIX [[(QName, Sized.Definition Lifted.Expr Void)]]
+  :: [(QName, Closed (Sized.Definition Lifted.Expr))]
+  -> VIX [[(QName, Closed (Sized.Definition Lifted.Expr))]]
 closureConvertGroup = ClosureConvert.convertDefinitions
 
 inferGroupDirections
-  :: [(QName, Sized.Definition Lifted.Expr Void)]
-  -> VIX [(QName, Sized.Definition Lifted.Expr Void, Signature ReturnIndirect)]
+  :: [(QName, Closed (Sized.Definition Lifted.Expr))]
+  -> VIX [(QName, Closed (Sized.Definition Lifted.Expr), Signature ReturnIndirect)]
 inferGroupDirections
   = fmap Vector.toList . ReturnDirection.inferRecursiveDefs . Vector.fromList
 
 addSignaturesToContext
-  :: [(QName, Sized.Definition Lifted.Expr Void, Signature ReturnIndirect)]
-  -> VIX [(QName, Sized.Definition Lifted.Expr Void)]
+  :: [(QName, Closed (Sized.Definition Lifted.Expr), Signature ReturnIndirect)]
+  -> VIX [(QName, Closed (Sized.Definition Lifted.Expr))]
 addSignaturesToContext defs = do
   let sigs = HashMap.fromList [(n, sig) | (n, _, sig) <- defs]
   logShow 11 "signatures" sigs
@@ -250,18 +238,18 @@ addSignaturesToContext defs = do
   return [(n, def) | (n, def, _) <- defs]
 
 extractExternGroup
-  :: [(QName, Sized.Definition Lifted.Expr Void)]
-  -> VIX [(QName, Extracted.Submodule (Sized.Definition Extracted.Expr Void))]
+  :: [(QName, Closed (Sized.Definition Lifted.Expr))]
+  -> VIX [(QName, Extracted.Submodule (Closed (Sized.Definition Extracted.Expr)))]
 extractExternGroup defs = do
   target <- getTarget
   concat <$> forM defs (uncurry $ ExtractExtern.extractDef target)
 
 generateGroup
-  :: [(QName, Extracted.Submodule (Sized.Definition Extracted.Expr Void))]
+  :: [(QName, Extracted.Submodule (Closed (Sized.Definition Extracted.Expr)))]
   -> VIX [Generate.GeneratedSubmodule]
 generateGroup defs =
   forM defs $ \(x, m) ->
-    Generate.generateSubmodule x $ vacuous <$> m
+    Generate.generateSubmodule x m
 
 data ProcessFileArgs = ProcessFileArgs
   { procFile :: FilePath

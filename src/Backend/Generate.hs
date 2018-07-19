@@ -39,6 +39,7 @@ import qualified Builtin.Names as Builtin
 import Paths_sixten
 import Syntax.Annotation
 import Syntax.Branches
+import Syntax.Closed
 import Syntax.Direction
 import Syntax.Extern(Language)
 import Syntax.Extern as Extern
@@ -759,7 +760,7 @@ data GeneratedSubmodule = GeneratedSubmodule
 
 generateSubmodule
   :: QName
-  -> Extracted.Submodule (Definition Expr Var)
+  -> Extracted.Submodule (Closed (Definition Expr))
   -> VIX GeneratedSubmodule
 generateSubmodule name modul = do
   let followAliases g = do
@@ -768,7 +769,7 @@ generateSubmodule name modul = do
           Just (AliasSig g') -> followAliases g'
           _ -> return g
 
-  def <- traverseGlobals followAliases $ submoduleContents modul
+  def <- traverseGlobals followAliases $ open $ submoduleContents modul
 
   let globalDeps
         = HashSet.toList

@@ -6,6 +6,7 @@ import Control.Monad.Morph
 import Data.Bifunctor
 import Data.Bitraversable
 import Data.Functor.Classes
+import Data.Void
 
 import Pretty
 import Syntax.Annotation
@@ -16,6 +17,16 @@ data Definition expr v
   = ConstantDefinition Abstract (expr v)
   | DataDefinition (DataDef expr v) (expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+newtype ClosedDefinition expr = ClosedDefinition { openDefinition :: forall a b. Definition (expr a) b }
+
+closeDefinition
+  :: Bifunctor expr
+  => (a -> Void)
+  -> (b -> Void)
+  -> Definition (expr a) b
+  -> ClosedDefinition expr
+closeDefinition f g def = ClosedDefinition $ bimapDefinition (absurd . f) (absurd . g) def
 
 instance MFunctor Definition where
   hoist f (ConstantDefinition a e) = ConstantDefinition a $ f e

@@ -10,7 +10,6 @@ import Data.List
 import Data.Monoid
 import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
-import Data.Void
 
 import {-# SOURCE #-} Inference.Constraint
 import Analysis.Simplify
@@ -102,9 +101,9 @@ unify' cxt touchable type1 type2 = case (type1, type2) of
             Nothing -> can'tUnify
             Just closedLamt -> do
               lamtType <- typeOf normLamt
-              recurse cxt (vacuous $ metaType m) lamtType
-              solve m closedLamt
-        Just c -> recurse cxt (apps (vacuous c) $ second pure <$> pvs) t
+              recurse cxt (open $ metaType m) lamtType
+              solve m $ close id closedLamt
+        Just c -> recurse cxt (apps (open c) $ second pure <$> pvs) t
 
     sameVar m pes1 pes2 = do
       when (Vector.length pes1 /= Vector.length pes2) $
@@ -130,16 +129,13 @@ unify' cxt touchable type1 type2 = case (type1, type2) of
             m' <- explicitExists
               (metaHint m)
               (metaPlicitness m)
-              newMetaType''
+              (close id newMetaType'')
               (Vector.length vs')
               (metaSourceLoc m)
             let e = Meta m' $ (\v -> (varData v, pure v)) <$> vs'
                 e' = lams vs e
-            solve m $ assertClosed e'
+            solve m $ close (error "unify sameVar not closed") e'
             unify cxt type1 type2
-      where
-        assertClosed :: Functor f => f FreeV -> f Void
-        assertClosed = fmap $ error "unify sameVar assertClosed"
 
     can'tUnify = do
       equal <- Equal.exec $ Equal.expr type1 type2
@@ -205,7 +201,7 @@ prune allowed expr = indentLog $ do
       case sol of
         Just e -> do
           -- VIX.logShow 30 "prune solved" ()
-          bindMetas go $ betaApps (vacuous e) es
+          bindMetas go $ betaApps (open e) es
         Nothing -> do
           es' <- mapM (mapM whnf) es
           localAllowed <- toHashSet <$> localVars
@@ -229,7 +225,7 @@ prune allowed expr = indentLog $ do
                     m' <- explicitExists
                       (metaHint m)
                       (metaPlicitness m)
-                      newMetaType'''
+                      (close id newMetaType''')
                       (Vector.length vs')
                       (metaSourceLoc m)
                     let e = Meta m' $ (\v -> (varData v, pure v)) <$> vs'
@@ -244,14 +240,14 @@ prune allowed expr = indentLog $ do
                         return $ Meta m es'
                       Just closedSol -> do
                         logMeta 30 "prune closed" closedSol
-                        solve m closedSol
+                        solve m $ close id closedSol
                         return e
               | otherwise -> return $ Meta m es'
               where
                 vs = snd <$> pvs
                 vs' = Vector.filter (`HashSet.member` (allowed <> localAllowed)) vs
                 plicitVs = (\(p, v) -> v { varData = p }) <$> pvs
-                Just mType = typeApps (vacuous $ metaType m) es
+                Just mType = typeApps (open $ metaType m) es
 
 distinctVars :: (Eq v, Hashable v, Traversable t) => t (p, Expr m v) -> Maybe (t (p, v))
 distinctVars es = case traverse isVar es of

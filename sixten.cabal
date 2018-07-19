@@ -81,6 +81,7 @@ executable sixten
                        Syntax.Data
                        Syntax.Definition
                        Syntax.Direction
+                       Syntax.Closed
                        Syntax.Extern
                        Syntax.GlobalBind
                        Syntax.Let

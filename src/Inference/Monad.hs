@@ -71,7 +71,7 @@ exists hint d typ = do
   locals <- toVector . Tsil.filter (isNothing . varValue) <$> localVars
   let typ' = Core.pis locals typ
   logMeta 30 "exists typ" typ
-  typ'' <- traverse (error "exists not closed") typ'
+  let typ'' = close (error "exists not closed") typ'
   loc <- currentLocation
   v <- explicitExists hint d typ'' (Vector.length locals) loc
   return $ Core.Meta v $ (\fv -> (varData fv, pure fv)) <$> locals

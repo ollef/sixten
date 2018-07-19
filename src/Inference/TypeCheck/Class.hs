@@ -10,7 +10,6 @@ import Data.List
 import Data.Monoid
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
-import Data.Void
 
 import qualified Builtin.Names as Builtin
 import Inference.Constraint
@@ -166,8 +165,7 @@ checkInstance ivar iname iloc (Pre.InstanceDef _instanceType methods) =
           methodDefs' <- forM (zip methodDefs methods')
             $ \(Method name _defLoc defType, Method _name loc (Pre.ConstantDef a clauses mtyp)) -> located loc $ do
               let instMethodType
-                    = instantiateTele snd (toVector args)
-                    $ bimapScope absurd absurd defType
+                    = instantiateTele snd (toVector args) defType
               expr <- case mtyp of
                 Nothing -> checkClauses clauses instMethodType
                 Just typ -> do

@@ -27,7 +27,7 @@ data Args meta m = Args
   { expandTypeReps :: !Bool
     -- ^ Should types be reduced to type representations (i.e. forget what the
     -- type is and only remember its representation)?
-  , handleMetaVar :: !(meta -> m (Maybe (Expr meta Void)))
+  , handleMetaVar :: !(meta -> m (Maybe (Closed (Expr meta))))
     -- ^ Allows whnf to try to solve unsolved class constraints when they're
     -- encountered.
   }
@@ -88,7 +88,7 @@ whnf' args expr exprs = indentLog $ do
           mes' <- mapM (mapM whnf0) mes
           es' <- mapM (mapM whnf0) es
           return $ apps (Meta m mes') es'
-        Just e' -> whnf' args (vacuous e') $ toList mes ++ es
+        Just e' -> whnf' args (open e') $ toList mes ++ es
     go e@(Global g) es = do
       (d, _) <- definition g
       case d of
@@ -156,7 +156,7 @@ normalise' args expr exprs = do
         Nothing -> do
           mes' <- mapM (mapM normalise0) mes
           irreducible (Meta m mes') es
-        Just e -> normalise' args (vacuous e) $ toList mes ++ es
+        Just e -> normalise' args (open e) $ toList mes ++ es
     go e@(Global g) es = do
       (d, _) <- definition g
       case d of

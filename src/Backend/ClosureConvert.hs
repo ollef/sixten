@@ -10,7 +10,6 @@ import Data.Maybe
 import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
-import Data.Void
 
 import Backend.Lift(runLift, liftThing, Lift)
 import qualified Builtin
@@ -25,35 +24,35 @@ import Util
 import VIX
 
 type FV = FreeVar ()
-type ClosureConvert = Lift (Sized.Function Expr Void) VIX
+type ClosureConvert = Lift (Closed (Sized.Function Expr)) VIX
 
 convertDefinitions
-  :: [(QName, Sized.Definition Expr Void)]
-  -> VIX [[(QName, Sized.Definition Expr Void)]]
+  :: [(QName, Closed (Sized.Definition Expr))]
+  -> VIX [[(QName, Closed (Sized.Definition Expr))]]
 convertDefinitions [] = return []
 convertDefinitions ds@((QName mname name, _):_) = do
   (ds', fs) <- runLift (QName mname $ name <> "-converted") (convertDefinitionsM ds)
   return
     $ Sized.dependencyOrder
-    $ ds' <|> second (Sized.FunctionDef Private Sized.IsClosure) <$> fs
+    $ ds' <|> second (mapClosed $ Sized.FunctionDef Private Sized.IsClosure) <$> fs
 
 convertDefinitionsM
-  :: [(QName, Sized.Definition Expr Void)]
-  -> ClosureConvert [(QName, Sized.Definition Expr Void)]
+  :: [(QName, Closed (Sized.Definition Expr))]
+  -> ClosureConvert [(QName, Closed (Sized.Definition Expr))]
 convertDefinitionsM defs = do
-  funSigs <- forM defs $ \(name, def) -> case def of
+  funSigs <- forM defs $ \(name, def) -> case open def of
     Sized.FunctionDef _ _ (Sized.Function tele scope) -> do
       vs <- forMTele tele $ \h () _ ->
         freeVar h ()
 
       es <- forMTele tele $ \_ () s ->
-        convertExpr $ instantiateTele pure vs $ vacuous s
+        convertExpr $ instantiateTele pure vs s
 
-      let Anno _ t = instantiateAnnoTele pure vs $ vacuous scope
+      let Anno _ t = instantiateAnnoTele pure vs scope
       convertedType <- convertExpr t
 
-      let tele' = error "convertDefinitions" <$> varTelescope (Vector.zip vs es)
-          typeScope = error "convertDefinitions" <$> abstract (teleAbstraction vs) convertedType
+      let tele' = close (error "convertDefinitions") $ varTelescope (Vector.zip vs es)
+          typeScope = close (error "convertDefinitions") $ abstract (teleAbstraction vs) convertedType
       return $ Just (name, (tele', typeScope))
     Sized.ConstantDef _ (Sized.Constant (Anno (Global glob) _)) -> do
       msig <- convertedSignature glob
@@ -67,39 +66,39 @@ convertDefinitionsM defs = do
     return (name, def')
 
 convertDefinition
-  :: Sized.Definition Expr Void
-  -> ClosureConvert (Sized.Definition Expr Void)
-convertDefinition (Sized.FunctionDef vis cl (Sized.Function tele scope)) = do
+  :: Closed (Sized.Definition Expr)
+  -> ClosureConvert (Closed (Sized.Definition Expr))
+convertDefinition (Closed (Sized.FunctionDef vis cl (Sized.Function tele scope))) = do
   vs <- forMTele tele $ \h () _ ->
     freeVar h ()
 
   es <- forMTele tele $ \_ () s ->
-    convertExpr $ instantiateTele pure vs $ vacuous s
+    convertExpr $ instantiateTele pure vs s
 
-  let expr = instantiateAnnoTele pure vs $ vacuous scope
+  let expr = instantiateAnnoTele pure vs scope
   expr' <- convertAnnoExpr expr
   return
+    $ close (error "convertDefinition Function")
     $ Sized.FunctionDef vis cl
-    $ error "convertDefinition Function"
-    <$> Sized.function (Vector.zip vs es) expr'
-convertDefinition (Sized.ConstantDef vis (Sized.Constant expr@(Anno (Global glob) sz))) = do
+    $ Sized.function (Vector.zip vs es) expr'
+convertDefinition (Closed (Sized.ConstantDef vis (Sized.Constant expr@(Anno (Global glob) sz)))) = do
   msig <- convertedSignature glob
   expr' <- case msig of
-    Nothing -> convertAnnoExpr $ vacuous expr
+    Nothing -> convertAnnoExpr expr
     Just _ -> do
-      sz' <- convertExpr $ vacuous sz
+      sz' <- convertExpr sz
       return $ Anno (Global glob) sz'
   return
+    $ close (error "convertDefinition Constant")
     $ Sized.ConstantDef vis
-    $ Sized.Constant
-    $ error "convertDefinition Constant" <$> expr'
-convertDefinition (Sized.ConstantDef vis (Sized.Constant expr)) = do
-  expr' <- convertAnnoExpr $ vacuous expr
+    $ Sized.Constant expr'
+convertDefinition (Closed (Sized.ConstantDef vis (Sized.Constant expr))) = do
+  expr' <- convertAnnoExpr expr
   return
+    $ close (error "convertDefinition Constant")
     $ Sized.ConstantDef vis
-    $ Sized.Constant
-    $ error "convertDefinition Constant" <$> expr'
-convertDefinition Sized.AliasDef = return Sized.AliasDef
+    $ Sized.Constant expr'
+convertDefinition (Closed Sized.AliasDef) = return $ close id Sized.AliasDef
 
 convertAnnoExpr :: Anno Expr FV -> ClosureConvert (Anno Expr FV)
 convertAnnoExpr (Anno expr typ) = Anno <$> convertExpr expr <*> convertExpr typ
@@ -155,12 +154,12 @@ knownCall
   -> FunSignature
   -> Vector (Anno Expr FV)
   -> ClosureConvert (Expr FV)
-knownCall f (tele, returnTypeScope) args
+knownCall f (Closed tele, Closed returnTypeScope) args
   | numArgs < arity = do
     target <- getTarget
     piRep <- Lit . TypeRep <$> getPiRep
     intRep <- Lit . TypeRep <$> getIntRep
-    fNumArgs <- liftClosureFun f (tele, returnTypeScope) numArgs
+    fNumArgs <- liftClosureFun f (close id tele, close id returnTypeScope) numArgs
     return
       $ Con Builtin.Ref
       $ pure
@@ -181,10 +180,10 @@ liftClosureFun
   -> FunSignature
   -> Int
   -> ClosureConvert QName
-liftClosureFun f (tele, returnTypeScope) numCaptured = do
+liftClosureFun f (Closed tele, Closed returnTypeScope) numCaptured = do
   vs <- forTeleWithPrefixM tele $ \h _ s vs -> do
     v <- freeVar h ()
-    return (v, instantiateTele pure (fst <$> vs) $ vacuous s)
+    return (v, instantiateTele pure (fst <$> vs) s)
 
   typeRep <- MkType <$> getTypeRep
   ptrRep <- MkType <$> getPtrRep
@@ -211,7 +210,7 @@ liftClosureFun f (tele, returnTypeScope) numCaptured = do
       funArgs = capturedArgs <> remainingParams'
       funArgs' = flip fmap funArgs $ \(v, t) -> Anno (pure v) t
 
-      returnType = instantiateTele pure (fst <$> vs) $ vacuous returnTypeScope
+      returnType = instantiateTele pure (fst <$> vs) returnTypeScope
       fReturnType
         | any (\x -> HashSet.member x $ toHashSet returnType) $ fst <$> capturedArgs =
           Case (Anno (Builtin.deref $ pure this) (Global "ClosureConvert.knownCall.unknownSize"))
@@ -219,7 +218,7 @@ liftClosureFun f (tele, returnTypeScope) numCaptured = do
         | otherwise = returnType
 
   liftThing
-    $ fmap (error "liftClosureFun")
+    $ close (error "liftClosureFun")
     $ Sized.function funParams
     $ Anno
       (Case (Anno (Builtin.deref $ pure this) (Global "ClosureConvert.knownCall.unknownSize"))

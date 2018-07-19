@@ -10,10 +10,9 @@ import Data.STRef
 import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
-import Data.Void
 
 import FreeVar
-import Syntax hiding (Definition, bitraverseDefinition)
+import Syntax hiding (Definition)
 import Syntax.Sized.Anno
 import Syntax.Sized.Definition
 import Syntax.Sized.Lifted
@@ -238,13 +237,13 @@ generaliseDefs
   $ bitraverse pure (traverse $ toReturnIndirect Projection)
 
 inferRecursiveDefs
-  :: Vector (QName, Definition Expr Void)
-  -> VIX (Vector (QName, Definition Expr Void, Signature ReturnIndirect))
+  :: Vector (QName, Closed (Definition Expr))
+  -> VIX (Vector (QName, Closed (Definition Expr), Signature ReturnIndirect))
 inferRecursiveDefs defs = do
   let names = fst <$> defs
 
-  evars <- Vector.forM defs $ \(v, d) -> do
-    logPretty 30 "InferDirection.inferRecursiveDefs 1" (v, shower <$> d)
+  evars <- Vector.forM defs $ \(v, Closed d) -> do
+    logPretty 30 "InferDirection.inferRecursiveDefs 1" (v, d)
     let h = fromQName v
         funSig = case d of
           FunctionDef _ cl (Function args s) ->
@@ -268,8 +267,8 @@ inferRecursiveDefs defs = do
           $ fromMaybe (error "InferDirection.inferRecursiveDefs expose")
           $ evars Vector.!? index
 
-  let exposedDefs = flip Vector.map defs $ \(_, e) ->
-        gbound expose $ vacuous e
+  let exposedDefs = flip Vector.map defs $ \(_, Closed e) ->
+        gbound expose e
 
   inferredDefs <- Vector.forM (Vector.zip evars exposedDefs) $ \(v, d) -> do
     logPretty 30 "InferDirection.inferRecursiveDefs 2" (show v, shower <$> d)
@@ -289,4 +288,4 @@ inferRecursiveDefs defs = do
   forM (Vector.zip names genDefs) $ \(name, (def ,sig)) -> do
     let unexposedDef = def >>>= unexpose
     unexposedDef' <- traverse vf unexposedDef
-    return (name, unexposedDef', sig)
+    return (name, close id unexposedDef', sig)

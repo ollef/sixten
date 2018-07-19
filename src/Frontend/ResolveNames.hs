@@ -38,7 +38,7 @@ runResolveNames m env = do
 
 resolveModule
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
-  -> VIX [[(QName, SourceLoc, Scoped.Definition Scoped.Expr void)]]
+  -> VIX [[(QName, SourceLoc, Closed (Scoped.Definition Scoped.Expr))]]
 resolveModule modul = do
   let imports
         = Import Builtin.BuiltinModuleName Builtin.BuiltinModuleName AllExposed
@@ -93,7 +93,7 @@ resolveModule modul = do
 
   let sortedDefGroups = flattenSCC <$> topoSortWith fst3 (addExtraDeps . thd3) resolvedDefs
 
-  return [[(n, loc, def) | (n, (loc, def), _) <- defs] | defs <- sortedDefGroups]
+  return [[(n, loc, close id def) | (n, (loc, def), _) <- defs] | defs <- sortedDefGroups]
 
 localConstrAliases
   :: HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)

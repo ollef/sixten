@@ -11,7 +11,6 @@ import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Monoid
 import Data.Vector(Vector)
-import Data.Void
 
 import Analysis.Simplify
 import qualified Builtin.Names as Builtin
@@ -115,7 +114,7 @@ generaliseMetas metas = do
             Nothing -> return $ case HashMap.lookup m' sub of
               Nothing -> Meta m' es
               Just v -> pure v
-            Just e -> bindMetas' go $ betaApps (vacuous e) es
+            Just e -> bindMetas' go $ betaApps (open e) es
     instTyp' <- bindMetas' go instTyp
     let localDeps = toHashSet instTyp' `HashSet.intersection` toHashSet instVs
     when (HashSet.null localDeps) $ do
@@ -158,7 +157,7 @@ replaceMetas varMap defs = forM defs $ \(v, name, loc, d) -> do
           Nothing -> do
             unsolved <- isUnsolved m
             if unsolved then do
-              let Just typ = typeApps (vacuous $ metaType m) es
+              let Just typ = typeApps (open $ metaType m) es
               typ' <- bindMetas' go typ
               reportUnresolvedMetaError typ'
               -- TODO use actual error in expression when strings are faster
@@ -166,7 +165,7 @@ replaceMetas varMap defs = forM defs $ \(v, name, loc, d) -> do
             else
               return $ Meta m es
           Just v -> return $ pure v
-        Just e -> bindMetas' go $ betaApps (vacuous e) es
+        Just e -> bindMetas' go $ betaApps (open e) es
       where
         varKind = case metaPlicitness m of
           Constraint -> "constraint"

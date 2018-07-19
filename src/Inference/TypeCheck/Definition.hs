@@ -3,12 +3,9 @@ module Inference.TypeCheck.Definition where
 
 import Control.Monad.Except
 import Data.Bifunctor
-import Data.Bitraversable
 import Data.Monoid
-import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
-import Data.Void
 
 import qualified Builtin.Names as Builtin
 import Inference.Cycle
@@ -33,26 +30,26 @@ checkAndGeneraliseTopLevelDefs
   :: Vector
     ( QName
     , SourceLoc
-    , Pre.Definition Pre.Expr Void
+    , Closed (Pre.Definition Pre.Expr)
     )
   -> Infer
     (Vector
       ( QName
-      , Definition (Core.Expr Void) Void
-      , Core.Type Void Void
+      , ClosedDefinition Core.Expr
+      , Biclosed Core.Type
       )
     )
 checkAndGeneraliseTopLevelDefs defs = do
   varDefs <- forM defs $ \(name, loc, def) -> do
     let hint = fromQName name
     typ <- existsType hint
-    var <- forall hint (defPlicitness def) typ
+    var <- forall hint (defPlicitness $ open def) typ
     return (var, name, loc, def)
 
   let lookupNameVar = hashedLookup [(name, var) | (var, name, _, _) <- varDefs]
       expose name = maybe (global name) pure $ lookupNameVar name
 
-      exposedDefs = [(var, name, loc, gbound expose $ vacuous def) | (var, name, loc, def) <- varDefs]
+      exposedDefs = [(var, name, loc, gbound expose $ open def) | (var, name, loc, def) <- varDefs]
 
   checkedDefs <- checkAndGeneraliseDefs exposedDefs
 
@@ -68,16 +65,13 @@ checkAndGeneraliseTopLevelDefs defs = do
         unexposedTyp = typ >>= unexpose
     -- logDefMeta 20 ("checkAndGeneraliseTopLevelDefs unexposedDef " ++ show (pretty name)) unexposedDef
     logMeta 20 ("checkAndGeneraliseTopLevelDefs unexposedTyp " ++ show (pretty name)) unexposedTyp
-    unexposedDef' <- bitraverseDefinition noMeta noVar unexposedDef
-    unexposedTyp' <- bitraverse noMeta noVar unexposedTyp
-    return (name, unexposedDef', unexposedTyp')
+    return (name, closeDefinition noMeta noVar unexposedDef, biclose noMeta noVar unexposedTyp)
   where
-    noVar :: FreeV -> Infer b
-    noVar v = internalError $ "checkAndGeneraliseTopLevelDefs" PP.<+> shower v
-    noMeta :: MetaVar -> Infer b
-    noMeta v = do
-      sol <- solution v
-      internalError $ "checkAndGeneraliseTopLevelDefs" PP.<+> shower v PP.<+> "SOL" PP.<+> shower sol
+    noVar :: FreeV -> b
+    noVar v = error $ "checkAndGeneraliseTopLevelDefs " <> shower v
+    noMeta :: MetaVar -> b
+    noMeta v = error
+      $ "checkAndGeneraliseTopLevelDefs " <> shower v
 
 checkAndGeneraliseDefs
   :: Vector

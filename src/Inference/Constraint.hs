@@ -26,7 +26,7 @@ import VIX
 
 elabMetaVar
   :: MetaVar
-  -> Infer (Maybe (Expr MetaVar Void))
+  -> Infer (Maybe (Closed (Expr MetaVar)))
 elabMetaVar m = do
   msol <- solution m
   case (msol, metaPlicitness m) of
@@ -36,7 +36,7 @@ elabMetaVar m = do
 
 elabUnsolvedConstraint
   :: MetaVar
-  -> Infer (Maybe (Expr MetaVar Void))
+  -> Infer (Maybe (Closed (Expr MetaVar)))
 elabUnsolvedConstraint m = inUpdatedContext (const mempty) $ do
   logShow 25 "elabUnsolvedConstraint" $ metaId m
   (vs, typ) <- instantiatedMetaType m
@@ -60,15 +60,12 @@ elabUnsolvedConstraint m = inUpdatedContext (const mempty) $ do
           matchingInstance:_ -> do
             logMeta 25 "Matching instance" matchingInstance
             logMeta 25 "Matching instance typ" typ'
-            sol <- assertClosed $ lams vs matchingInstance
+            let sol = close (error "elabUnsolvedConstraint not closed") $ lams vs matchingInstance
             solve m sol
             return $ Just sol
       _ -> do
         logMeta 25 "Malformed" typ'
         throwLocated "Malformed constraint" -- TODO error message
-  where
-    assertClosed :: (Traversable f, Monad m) => f FreeV -> m (f Void)
-    assertClosed = traverse $ \v -> error $ "elabUnsolvedConstraint assertClosed " <> shower (varId v)
 
 elabExpr
   :: CoreM
@@ -77,7 +74,7 @@ elabExpr = bindMetas $ \m es -> do
   sol <- elabMetaVar m
   case sol of
     Nothing -> Meta m <$> traverse (traverse elabExpr) es
-    Just e -> elabExpr $ betaApps (vacuous e) es
+    Just e -> elabExpr $ betaApps (open e) es
 
 elabDef
   :: Definition (Expr MetaVar) FreeV
@@ -117,30 +114,29 @@ mergeConstraintVars vars = do
   where
     go varTypes m@MetaVar { metaPlicitness = Constraint } = do
       let arity = metaArity m
-      sol <- solution m
-      case sol of
+      msol <- solution m
+      case msol of
         Just _ -> return varTypes
         Nothing -> do
-          typ <- zonk $ metaType m
-          case Map.lookup (arity, typ) varTypes of
+          typ <- zonk $ open $ metaType m
+          let ctyp = close id typ
+          case Map.lookup (arity, ctyp) varTypes of
             Just m' -> do
               msol' <- solution m'
               case msol' of
-                Just _ -> return $ Map.insert (arity, typ) m varTypes
+                Just _ -> return $ Map.insert (arity, ctyp) m varTypes
                 Nothing -> do
                   solveVar m m'
                   return varTypes
-            Nothing -> return $ Map.insert (arity, typ) m varTypes
+            Nothing -> return $ Map.insert (arity, ctyp) m varTypes
     go varTypes _ = return varTypes
     solveVar m m' = do
       (vs, _) <- instantiatedMetaType m'
       solve m'
-        $ assertClosed
+        $ close (error "mergeConstraintVars not closed")
         $ lams vs
         $ Meta m
         $ (\v -> (varData v, pure v)) <$> vs
-    assertClosed :: Functor f => f FreeV -> f Void
-    assertClosed = fmap $ error "mergeConstraintVars assertClosed"
 
 whnf :: CoreM -> Infer CoreM
 whnf e = Normalise.whnf' Normalise.Args

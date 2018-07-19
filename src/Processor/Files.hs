@@ -111,7 +111,7 @@ compileBuiltins = do
       let builtinDefNames = HashSet.fromMap $ void context
           builtinConstrNames = HashSet.fromList
             [ QConstr n c
-            | (n, (DataDefinition d _, _)) <- HashMap.toList context
+            | (n, (ClosedDefinition (DataDefinition d _), _)) <- HashMap.toList context
             , c <- constrNames d
             ]
       addModule "Sixten.Builtin" builtinConstrNames builtinDefNames

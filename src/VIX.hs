@@ -20,7 +20,6 @@ import Data.List as List
 import Data.String
 import Data.Text(Text)
 import qualified Data.Text.IO as Text
-import Data.Void
 import Data.Word
 import qualified LLVM.IRBuilder as IRBuilder
 import System.IO
@@ -40,7 +39,7 @@ import qualified Util.MultiHashMap as MultiHashMap
 
 data VIXState = VIXState
   { vixLocation :: Maybe SourceLoc
-  , vixContext :: HashMap QName (Definition (Expr Void) Void, Type Void Void)
+  , vixContext :: HashMap QName (ClosedDefinition Expr, Biclosed Type)
   , vixModuleConstrs :: MultiHashMap ModuleName QConstr
   , vixModuleNames :: MultiHashMap ModuleName QName
   , vixConvertedSignatures :: HashMap QName Lifted.FunSignature
@@ -188,7 +187,7 @@ logFreeVar v s x = whenVerbose v $ do
 
 -------------------------------------------------------------------------------
 -- Working with abstract syntax
-addContext :: MonadVIX m => HashMap QName (Definition (Expr Void) Void, Type Void Void) -> m ()
+addContext :: MonadVIX m => HashMap QName (ClosedDefinition Expr, Biclosed Type) -> m ()
 addContext prog = liftVIX $ modify $ \s -> s
   { vixContext = prog <> vixContext s
   }
@@ -211,7 +210,7 @@ definition
 definition name = do
   mres <- liftVIX $ gets $ HashMap.lookup name . vixContext
   maybe (throwLocated $ "Not in scope: " <> pretty name)
-        (return . bimap (bimapDefinition absurd absurd) bivacuous)
+        (return . bimap openDefinition biopen)
         mres
 
 instances
@@ -223,7 +222,7 @@ instances className = do
   fmap concat $ forM (toList instanceNames) $ \instanceName ->
     liftVIX
       $ gets
-      $ maybe mempty (pure . bimap (const instanceName) (bimap absurd absurd))
+      $ maybe mempty (pure . bimap (const instanceName) biopen)
         . HashMap.lookup instanceName
         . vixContext
 
@@ -297,7 +296,7 @@ constrIndex
 constrIndex (QConstr n c) = do
   mres <- liftVIX $ gets $ HashMap.lookup n . vixContext
   return $ case mres of
-    Just (DataDefinition (DataDef _ constrDefs@(_:_:_)) _, _) ->
+    Just (ClosedDefinition (DataDefinition (DataDef _ constrDefs@(_:_:_)) _), _) ->
       findIndex ((== c) . constrName) constrDefs
     _ -> Nothing
 

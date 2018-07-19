@@ -19,8 +19,8 @@ zonk = hoistMetas $ \m es -> do
   case msol of
     Nothing -> return $ Meta m es
     Just e -> do
-      e' <- zonk e
-      solve m e'
+      e' <- zonk $ open e
+      solve m $ close id e'
       return $ betaApps (vacuous e') es
 
 metaVars :: MonadIO m => Expr MetaVar v -> m (HashSet MetaVar)
@@ -32,8 +32,8 @@ metaVars expr = execStateT (hoistMetas_ go expr) mempty
         put $ HashSet.insert m visited
         msol <- solution m
         case msol of
-          Nothing -> hoistMetas_ go $ metaType m
-          Just e -> hoistMetas_ go e
+          Nothing -> hoistMetas_ go $ open $ metaType m
+          Just e -> hoistMetas_ go $ open e
 
 definitionMetaVars
   :: MonadIO m

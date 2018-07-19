@@ -131,7 +131,6 @@ instance (Pretty (expr v), Monad expr, v ~ Doc)
       let go (p, pat)
             = prettyAnnotation p
             $ prettyM $ first (instantiatePattern (pure . fromName) ns) pat
-          -- removeVoid = mapBound $ unvar id absurd
       prettyApps name (go <$> renamePatterns ns pats)
         <+> "=" <+> prettyM (instantiatePattern (pure . fromName) ns s)
 
