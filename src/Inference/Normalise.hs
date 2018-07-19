@@ -19,51 +19,60 @@ import qualified TypeRep
 import Util
 import VIX
 
-type MonadNormalise m = (MonadIO m, MonadVIX m, MonadContext FreeV m, MonadError Error m, MonadFix m)
+type ExprFreeVar meta = FreeVar Plicitness (Expr meta)
 
--------------------------------------------------------------------------------
--- * Weak head normal forms
-whnf
-  :: MonadNormalise m
-  => CoreM
-  -> m CoreM
-whnf expr = whnf' WhnfArgs
-  { expandTypeReps = False
-  , handleMetaVar = solution
-  }
-  expr
-  mempty
+type MonadNormalise meta m = (MonadIO m, MonadVIX m, MonadContext (ExprFreeVar meta) m, MonadError Error m, MonadFix m)
 
-whnfExpandingTypeReps
-  :: MonadNormalise m
-  => CoreM
-  -> m CoreM
-whnfExpandingTypeReps expr = whnf' WhnfArgs
-  { expandTypeReps = True
-  , handleMetaVar = solution
-  }
-  expr
-  mempty
-
-data WhnfArgs m = WhnfArgs
+data Args meta m = Args
   { expandTypeReps :: !Bool
     -- ^ Should types be reduced to type representations (i.e. forget what the
     -- type is and only remember its representation)?
-  , handleMetaVar :: !(MetaVar -> m (Maybe (Expr MetaVar Void)))
+  , handleMetaVar :: !(meta -> m (Maybe (Expr meta Void)))
     -- ^ Allows whnf to try to solve unsolved class constraints when they're
     -- encountered.
   }
 
-whnf'
-  :: MonadNormalise m
-  => WhnfArgs m
-  -> CoreM -- ^ Expression to normalise
-  -> [(Plicitness, CoreM)] -- ^ Arguments to the expression
+metaVarSolutionArgs :: MonadIO m => Args MetaVar m
+metaVarSolutionArgs = Args
+  { expandTypeReps = False
+  , handleMetaVar = solution
+  }
+
+expandTypeRepsArgs :: MonadIO m => Args MetaVar m
+expandTypeRepsArgs = metaVarSolutionArgs
+  { expandTypeReps = True
+  }
+
+voidArgs :: Args Void m
+voidArgs = Args
+  { expandTypeReps = False
+  , handleMetaVar = absurd
+  }
+
+-------------------------------------------------------------------------------
+-- * Weak head normal forms
+whnf
+  :: MonadNormalise MetaVar m
+  => CoreM
   -> m CoreM
+whnf expr = whnf' metaVarSolutionArgs expr mempty
+
+whnfExpandingTypeReps
+  :: MonadNormalise MetaVar m
+  => CoreM
+  -> m CoreM
+whnfExpandingTypeReps expr = whnf' expandTypeRepsArgs expr mempty
+
+whnf'
+  :: MonadNormalise meta m
+  => Args meta m
+  -> Expr meta (ExprFreeVar meta) -- ^ Expression to normalise
+  -> [(Plicitness, Expr meta (ExprFreeVar meta))] -- ^ Arguments to the expression
+  -> m (Expr meta (ExprFreeVar meta))
 whnf' args expr exprs = indentLog $ do
-  logMeta 40 "whnf e" $ apps expr exprs
+  -- logMeta 40 "whnf e" $ apps expr exprs
   res <- normaliseBuiltins go expr exprs
-  logMeta 40 "whnf res" res
+  -- logMeta 40 "whnf res" res
   return res
   where
     go e@(Var FreeVar { varValue = Just e' }) es = do
@@ -118,60 +127,67 @@ whnf' args expr exprs = indentLog $ do
     whnf0 e = whnf' args e mempty
 
 normalise
-  :: MonadNormalise m
+  :: MonadNormalise MetaVar m
   => CoreM
   -> m CoreM
-normalise e = normalise' e mempty
+normalise e = normalise' metaVarSolutionArgs e mempty
 
 normalise'
-  :: MonadNormalise m
-  => CoreM -- ^ Expression to normalise
-  -> [(Plicitness, CoreM)] -- ^ Arguments to the expression
-  -> m CoreM
-normalise' expr exprs = do
-  logMeta 40 "normalise e" $ apps expr exprs
+  :: MonadNormalise meta m
+  => Args meta m
+  -> Expr meta (ExprFreeVar meta) -- ^ Expression to normalise
+  -> [(Plicitness, Expr meta (ExprFreeVar meta))] -- ^ Arguments to the expression
+  -> m (Expr meta (ExprFreeVar meta))
+normalise' args expr exprs = do
+  -- logMeta 40 "normalise e" $ apps expr exprs
   res <- normaliseBuiltins go expr exprs
-  logMeta 40 "normalise res" res
+  -- logMeta 40 "normalise res" res
   return res
   where
     go e@(Var FreeVar { varValue = Just e' }) es = do
-      minlined <- normaliseDef normalise e' es
+      minlined <- normaliseDef normalise0 e' es
       case minlined of
         Nothing -> irreducible e es
-        Just (inlined, es') -> normalise' inlined es'
+        Just (inlined, es') -> normalise' args inlined es'
     go e@(Var FreeVar { varValue = Nothing }) es = irreducible e es
     go (Meta m mes) es = do
-      msol <- solution m
+      msol <- handleMetaVar args m
       case msol of
         Nothing -> do
-          mes' <- mapM (mapM normalise) mes
+          mes' <- mapM (mapM normalise0) mes
           irreducible (Meta m mes') es
-        Just e -> normalise' (vacuous e) $ toList mes ++ es
+        Just e -> normalise' args (vacuous e) $ toList mes ++ es
     go e@(Global g) es = do
       (d, _) <- definition g
       case d of
         ConstantDefinition Concrete e' -> do
-          minlined <- normaliseDef normalise e' es
+          minlined <- normaliseDef normalise0 e' es
           case minlined of
             Nothing -> irreducible e es
-            Just (inlined, es') -> normalise' inlined es'
+            Just (inlined, es') -> normalise' args inlined es'
         ConstantDefinition Abstract _ -> irreducible e es
-        DataDefinition {} -> irreducible e es
+        DataDefinition _ rep
+          | expandTypeReps args -> do
+            minlined <- normaliseDef normalise0 rep es
+            case minlined of
+              Nothing -> irreducible e es
+              Just (inlined, es') -> whnf' args inlined es'
+          | otherwise -> irreducible e es
     go e@(Con _) es = irreducible e es
     go e@(Lit _) es = irreducible e es
     go (Pi h p t s) es = normaliseScope pi_ h p t s es
     -- TODO sharing
-    go (Lam _ p1 _ s) ((p2, e):es) | p1 == p2 = normalise' (Util.instantiate1 e s) es
+    go (Lam _ p1 _ s) ((p2, e):es) | p1 == p2 = normalise' args (Util.instantiate1 e s) es
     go (Lam h p t s) es = normaliseScope lam h p t s es
-    go (App e1 p e2) es = normalise' e1 ((p, e2) : es)
+    go (App e1 p e2) es = normalise' args e1 ((p, e2) : es)
     go (Let ds scope) es = do
       e <- instantiateLetM ds scope
-      normalise' e es
+      normalise' args e es
     go (Case e brs retType) es = do
-      e' <- normalise e
+      e' <- normalise0 e
       case chooseBranch e' brs of
         Nothing -> do
-          retType' <- normalise retType
+          retType' <- normalise0 retType
           brs' <- case brs of
             ConBranches cbrs -> ConBranches
               <$> sequence
@@ -179,29 +195,31 @@ normalise' expr exprs = do
                 | ConBranch qc tele s <- cbrs
                 ]
             LitBranches lbrs def -> LitBranches
-              <$> sequence [LitBranch l <$> normalise br | LitBranch l br <- lbrs]
-              <*> normalise def
+              <$> sequence [LitBranch l <$> normalise0 br | LitBranch l br <- lbrs]
+              <*> normalise0 def
           irreducible (Case e' brs' retType') es
-        Just chosen -> normalise' chosen es
+        Just chosen -> normalise' args chosen es
     go (ExternCode c retType) es = do
-      c' <- mapM normalise c
-      retType' <- normalise retType
+      c' <- mapM normalise0 c
+      retType' <- normalise0 retType
       irreducible (ExternCode c' retType') es
 
-    irreducible e es = apps e <$> mapM (mapM normalise) es
+    irreducible e es = apps e <$> mapM (mapM normalise0) es
 
     normaliseConBranch qc tele scope = do
       vs <- forTeleWithPrefixM tele $ \h p s vs -> do
-        t' <- normalise $ instantiateTele pure vs s
+        t' <- withVars vs $ normalise0 $ instantiateTele pure vs s
         forall h p t'
-      e' <- withVars vs $ normalise $ instantiateTele pure vs scope
+      e' <- withVars vs $ normalise0 $ instantiateTele pure vs scope
       return $ conBranchTyped qc vs e'
 
     normaliseScope c h p t s es = do
-      t' <- normalise t
+      t' <- normalise0 t
       x <- forall h p t'
-      e <- withVar x $ normalise $ Util.instantiate1 (pure x) s
+      e <- withVar x $ normalise0 $ Util.instantiate1 (pure x) s
       irreducible (c x e) es
+
+    normalise0 e = normalise' args e mempty
 
 normaliseBuiltins
   :: Monad m
@@ -298,10 +316,10 @@ chooseBranch _ _ = Nothing
 -- hopefully rarely the case in practice.
 normaliseDef
   :: Monad m
-  => (CoreM -> m CoreM) -- ^ How to normalise case scrutinees
-  -> CoreM -- ^ The definition
-  -> [(Plicitness, CoreM)] -- ^ Arguments
-  -> m (Maybe (CoreM, [(Plicitness, CoreM)]))
+  => (Expr meta (ExprFreeVar meta) -> m (Expr meta (ExprFreeVar meta))) -- ^ How to normalise case scrutinees
+  -> Expr meta (ExprFreeVar meta) -- ^ The definition
+  -> [(Plicitness, Expr meta (ExprFreeVar meta))] -- ^ Arguments
+  -> m (Maybe (Expr meta (ExprFreeVar meta), [(Plicitness, Expr meta (ExprFreeVar meta))]))
   -- ^ The definition body applied to some arguments and any arguments that are still left
 normaliseDef norm = lambdas
   where
@@ -319,9 +337,9 @@ normaliseDef norm = lambdas
 
 instantiateLetM
   :: (MonadFix m, MonadIO m, MonadVIX m)
-  => LetRec (Expr MetaVar) FreeV
-  -> Scope LetVar (Expr MetaVar) FreeV
-  -> m CoreM
+  => LetRec (Expr meta) (ExprFreeVar meta)
+  -> Scope LetVar (Expr meta) (ExprFreeVar meta)
+  -> m (Expr meta (ExprFreeVar meta))
 instantiateLetM ds scope = mdo
   vs <- forMLet ds $ \h s t -> letVar h Explicit (instantiateLet pure vs s) t
   return $ instantiateLet pure vs scope

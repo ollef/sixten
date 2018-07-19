@@ -2,7 +2,6 @@
 module Processor.File where
 
 import Control.Monad.Except
-import Control.Monad.Identity
 import Control.Monad.State
 import Data.Bifunctor
 import Data.Char
@@ -214,7 +213,7 @@ slamGroup
   :: [(QName, Definition (Core.Expr Void) Void, Core.Expr Void Void)]
   -> VIX [(QName, Anno SLambda.Expr Void)]
 slamGroup defs = forM defs $ \(x, d, _t) -> do
-  d' <- SLam.runSlam $ SLam.slamDef $ hoist (runIdentity . Core.hoistMetas absurd) $ vacuous d
+  d' <- SLam.runSlam $ SLam.slamDef $ vacuous d
   d'' <- traverse (internalError . ("slamGroup" PP.<+>) . shower) d'
   return (x, d'')
 

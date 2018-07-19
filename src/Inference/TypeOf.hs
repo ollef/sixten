@@ -9,7 +9,7 @@ import Data.Void
 import qualified Builtin.Names as Builtin
 import Inference.MetaVar
 import Inference.Monad
-import Inference.Normalise
+import qualified Inference.Normalise as Normalise
 import MonadContext
 import Syntax
 import Syntax.Core
@@ -17,18 +17,35 @@ import TypedFreeVar
 import Util
 import VIX
 
-type MonadTypeOf m = (MonadIO m, MonadVIX m, MonadError Error m, MonadContext FreeV m, MonadFix m)
+type ExprFreeVar meta = FreeVar Plicitness (Expr meta)
 
-typeOf
-  :: MonadTypeOf m
-  => CoreM
-  -> m CoreM
-typeOf expr = case expr of
+type MonadTypeOf meta m = (Show meta, MonadIO m, MonadVIX m, MonadError Error m, MonadContext (ExprFreeVar meta) m, MonadFix m)
+
+data Args meta m = Args
+  { typeOfMeta :: !(meta -> Expr meta Void)
+  , normaliseArgs :: !(Normalise.Args meta m)
+  }
+
+metaVarArgs :: MonadIO m => Args MetaVar m
+metaVarArgs = Args metaType Normalise.metaVarSolutionArgs
+
+voidArgs :: Args Void m
+voidArgs = Args absurd Normalise.voidArgs
+
+typeOf :: MonadTypeOf MetaVar m => CoreM -> m CoreM
+typeOf = typeOf' metaVarArgs
+
+typeOf'
+  :: MonadTypeOf meta m
+  => Args meta m
+  -> Expr meta (ExprFreeVar meta)
+  -> m (Expr meta (ExprFreeVar meta))
+typeOf' args expr = case expr of
   Global v -> do
     (_, typ) <- definition v
     return typ
   Var v -> return $ varType v
-  Meta m es -> case typeApps (vacuous $ metaType m) es of
+  Meta m es -> case typeApps (vacuous $ typeOfMeta args m) es of
     Nothing -> error "typeOf meta typeApps"
     Just t -> return t
   Con qc -> qconstructor qc
@@ -36,18 +53,18 @@ typeOf expr = case expr of
   Pi {} -> return Builtin.Type
   Lam h p t s -> do
     x <- forall h p t
-    resType  <- withVar x $ typeOf $ instantiate1 (pure x) s
+    resType <- withVar x $ typeOf' args $ instantiate1 (pure x) s
     return $ pi_ x resType
   App e1 p e2 -> do
-    e1type <- typeOf e1
-    e1type' <- whnf e1type
+    e1type <- typeOf' args e1
+    e1type' <- Normalise.whnf' (normaliseArgs args) e1type mempty
     case e1type' of
       Pi _ p' _ resType | p == p' -> return $ instantiate1 e2 resType
       _ -> internalError $ "typeOf: expected" PP.<+> shower p PP.<+> "pi type"
         <> PP.line <> "actual type: " PP.<+> shower e1type'
   Let ds s -> do
     xs <- forMLet ds $ \h _ t -> forall h Explicit t
-    withVars xs $ typeOf $ instantiateLet pure xs s
+    withVars xs $ typeOf' args $ instantiateLet pure xs s
   Case _ _ retType -> return retType
   ExternCode _ retType -> return retType
 

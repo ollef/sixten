@@ -143,7 +143,7 @@ mergeConstraintVars vars = do
     assertClosed = fmap $ error "mergeConstraintVars assertClosed"
 
 whnf :: CoreM -> Infer CoreM
-whnf e = Normalise.whnf' Normalise.WhnfArgs
+whnf e = Normalise.whnf' Normalise.Args
   { Normalise.expandTypeReps = False
   , Normalise.handleMetaVar = elabMetaVar
   }
@@ -151,7 +151,7 @@ whnf e = Normalise.whnf' Normalise.WhnfArgs
   mempty
 
 whnfExpandingTypeReps :: CoreM -> Infer CoreM
-whnfExpandingTypeReps e = Normalise.whnf' Normalise.WhnfArgs
+whnfExpandingTypeReps e = Normalise.whnf' Normalise.Args
   { Normalise.expandTypeReps = True
   , Normalise.handleMetaVar = elabMetaVar
   }
