@@ -2,6 +2,7 @@
 module Inference.Monad where
 
 import Control.Monad.Except
+import Control.Monad.Fail
 import Control.Monad.Reader
 import Data.Foldable
 import Data.Maybe
@@ -37,38 +38,29 @@ shouldInst _ _ = True
 
 data InferEnv = InferEnv
   { localVariables :: Tsil FreeV
-  , inferLevel :: !Level
   , inferTouchables :: !(MetaVar -> Bool)
   }
 
 newtype Infer a = InferMonad (ReaderT InferEnv VIX a)
-  deriving (Functor, Applicative, Monad, MonadIO, MonadFix, MonadError Error, MonadFresh, MonadReport, MonadVIX)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadFail, MonadFix, MonadError Error, MonadFresh, MonadReport, MonadVIX)
 
 runInfer :: Infer a -> VIX a
 runInfer (InferMonad i) = runReaderT i InferEnv
   { localVariables = mempty
-  , inferLevel = 1
   , inferTouchables = const True
   }
 
 instance MonadContext FreeV Infer where
   localVars = InferMonad $ asks localVariables
 
-  inUpdatedContext f (InferMonad m) = do
-    InferMonad $ do
-      vs <- asks localVariables
-      let vs' = f vs
-      logShow 30 "local variable scope" (varId <$> toList vs)
-      indentLog $ do
-        local
-          (\env -> env { localVariables = vs' })
-          m
-
-level :: Infer Level
-level = InferMonad $ asks inferLevel
-
-enterLevel :: Infer a -> Infer a
-enterLevel (InferMonad m) = InferMonad $ local (\e -> e { inferLevel = inferLevel e + 1 }) m
+  inUpdatedContext f (InferMonad m) = InferMonad $ do
+    vs <- asks localVariables
+    let vs' = f vs
+    logShow 30 "local variable scope" (varId <$> toList vs')
+    indentLog $
+      local
+        (\env -> env { localVariables = vs' })
+        m
 
 exists
   :: NameHint
@@ -79,9 +71,9 @@ exists hint d typ = do
   locals <- toVector . Tsil.filter (isNothing . varValue) <$> localVars
   let typ' = Core.pis locals typ
   logMeta 30 "exists typ" typ
-  typ'' <- traverse (error "exists not closed") typ'
+  let typ'' = close (error "exists not closed") typ'
   loc <- currentLocation
-  v <- existsAtLevel hint d typ'' (Vector.length locals) loc =<< level
+  v <- explicitExists hint d typ'' (Vector.length locals) loc
   return $ Core.Meta v $ (\fv -> (varData fv, pure fv)) <$> locals
 
 existsType

@@ -5,11 +5,11 @@ import Bound
 import Control.Monad.Morph
 import Data.Monoid
 import Data.Vector(Vector)
-import Data.Void
 
 import FreeVar
 import Pretty
 import Syntax.Annotation
+import Syntax.Closed
 import Syntax.GlobalBind
 import Syntax.Module
 import Syntax.Name
@@ -55,9 +55,9 @@ functionTyped vs = Function (Typed.varTelescope vs) . abstractAnno (teleAbstract
 
 dependencyOrder
   :: (GBind expr, Foldable expr)
-  => [(QName, Definition expr Void)]
-  -> [[(QName, Definition expr Void)]]
-dependencyOrder = fmap flattenSCC . topoSortWith fst (gbound pure . vacuous . snd)
+  => [(QName, Closed (Definition expr))]
+  -> [[(QName, Closed (Definition expr))]]
+dependencyOrder = fmap flattenSCC . topoSortWith fst (gbound pure . open . snd)
 
 -------------------------------------------------------------------------------
 -- Instances

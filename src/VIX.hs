@@ -3,6 +3,7 @@ module VIX where
 
 import Control.Monad.Base
 import Control.Monad.Except
+import Control.Monad.Fail
 import Control.Monad.Identity
 import Control.Monad.Reader
 import Control.Monad.ST
@@ -11,6 +12,7 @@ import Control.Monad.Trans.Control
 import Control.Monad.Trans.Identity
 import Control.Monad.Writer
 import Data.Bifunctor
+import Data.Foldable
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
@@ -18,8 +20,6 @@ import Data.List as List
 import Data.String
 import Data.Text(Text)
 import qualified Data.Text.IO as Text
-import Data.Vector(Vector)
-import Data.Void
 import Data.Word
 import qualified LLVM.IRBuilder as IRBuilder
 import System.IO
@@ -39,13 +39,13 @@ import qualified Util.MultiHashMap as MultiHashMap
 
 data VIXState = VIXState
   { vixLocation :: Maybe SourceLoc
-  , vixContext :: HashMap QName (Definition (Expr Void) Void, Type Void Void)
+  , vixContext :: HashMap QName (ClosedDefinition Expr, Biclosed Type)
   , vixModuleConstrs :: MultiHashMap ModuleName QConstr
   , vixModuleNames :: MultiHashMap ModuleName QName
   , vixConvertedSignatures :: HashMap QName Lifted.FunSignature
   , vixSignatures :: HashMap QName (Signature ReturnIndirect)
-  , vixClassMethods :: HashMap QName (Vector Name)
-  , vixClassInstances :: HashMap QName [(QName, Type Void Void)]
+  , vixClassMethods :: HashMap QName [(Name, SourceLoc)]
+  , vixClassInstances :: MultiHashMap QName QName
   , vixIndent :: !Int
   , vixFresh :: !Int
   , vixLogHandle :: !Handle
@@ -90,7 +90,7 @@ emptyVIXState target handle verbosity silent = VIXState
   }
 
 newtype VIX a = VIX { unVIX :: StateT VIXState (ExceptT Error IO) a }
-  deriving (Functor, Applicative, Monad, MonadFix, MonadError Error, MonadIO, MonadBase IO, MonadBaseControl IO)
+  deriving (Functor, Applicative, Monad, MonadFail, MonadFix, MonadError Error, MonadIO, MonadBase IO, MonadBaseControl IO)
 
 instance MonadVIX VIX where
   liftVIX (StateT s) = VIX $ StateT $ pure . runIdentity . s
@@ -187,22 +187,10 @@ logFreeVar v s x = whenVerbose v $ do
 
 -------------------------------------------------------------------------------
 -- Working with abstract syntax
-addContext :: MonadVIX m => HashMap QName (Definition (Expr Void) Void, Type Void Void) -> m ()
+addContext :: MonadVIX m => HashMap QName (ClosedDefinition Expr, Biclosed Type) -> m ()
 addContext prog = liftVIX $ modify $ \s -> s
   { vixContext = prog <> vixContext s
-  , vixClassInstances = HashMap.unionWith (<>) instances $ vixClassInstances s
-  } where
-    unions = foldl' (HashMap.unionWith (<>)) mempty
-    instances
-      = unions
-      $ flip map (HashMap.toList prog) $ \(defName, (def, typ)) -> case def of
-        DataDefinition {} -> mempty
-        Definition _ IsConstant _ -> mempty
-        Definition _ IsInstance _ -> do
-          let (_, s) = pisView typ
-          case appsView $ fromScope s of
-            (Global className, _) -> HashMap.singleton className [(defName, typ)]
-            _ -> mempty
+  }
 
 throwLocated
   :: (MonadError Error m, MonadVIX m)
@@ -222,8 +210,21 @@ definition
 definition name = do
   mres <- liftVIX $ gets $ HashMap.lookup name . vixContext
   maybe (throwLocated $ "Not in scope: " <> pretty name)
-        (return . bimap (bimapDefinition absurd absurd) bivacuous)
+        (return . bimap openDefinition biopen)
         mres
+
+instances
+  :: MonadVIX m
+  => QName
+  -> m [(QName, Expr meta v)]
+instances className = do
+  instanceNames <- liftVIX $ gets $ MultiHashMap.lookup className . vixClassInstances
+  fmap concat $ forM (toList instanceNames) $ \instanceName ->
+    liftVIX
+      $ gets
+      $ maybe mempty (pure . bimap (const instanceName) biopen)
+        . HashMap.lookup instanceName
+        . vixContext
 
 addModule
   :: MonadVIX m
@@ -246,7 +247,7 @@ qconstructor qc@(QConstr n c) = do
         [] -> throwLocated $ "Not in scope: constructor " <> pretty qc
         [cdef] -> return $ constrType cdef
         _ -> throwLocated $ "Ambiguous constructor: " <> pretty qc
-    Definition {} -> no
+    ConstantDefinition {} -> no
   where
     no = throwLocated $ "Not a data type: " <> pretty n
 
@@ -295,7 +296,7 @@ constrIndex
 constrIndex (QConstr n c) = do
   mres <- liftVIX $ gets $ HashMap.lookup n . vixContext
   return $ case mres of
-    Just (DataDefinition (DataDef _ constrDefs@(_:_:_)) _, _) ->
+    Just (ClosedDefinition (DataDefinition (DataDef _ constrDefs@(_:_:_)) _), _) ->
       findIndex ((== c) . constrName) constrDefs
     _ -> Nothing
 

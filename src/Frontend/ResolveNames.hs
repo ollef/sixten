@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, MonadComprehensions, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, MonadComprehensions, OverloadedStrings, ViewPatterns #-}
 module Frontend.ResolveNames where
 
 import Control.Monad.Except
@@ -13,7 +13,6 @@ import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
-import qualified Frontend.Declassify as Declassify
 import Pretty
 import Syntax
 import qualified Syntax.Pre.Literal as Literal
@@ -24,7 +23,7 @@ import Util
 import Util.MultiHashMap(MultiHashMap)
 import qualified Util.MultiHashMap as MultiHashMap
 import Util.TopoSort
-import VIX
+import VIX hiding (instances)
 
 newtype Env = Env
   { scopeConstrs :: PreName -> HashSet QConstr
@@ -39,7 +38,7 @@ runResolveNames m env = do
 
 resolveModule
   :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
-  -> VIX [[(QName, SourceLoc, Scoped.Definition Scoped.Expr void)]]
+  -> VIX [[(QName, SourceLoc, Closed (Scoped.Definition Scoped.Expr))]]
 resolveModule modul = do
   let imports
         = Import Builtin.BuiltinModuleName Builtin.BuiltinModuleName AllExposed
@@ -94,7 +93,7 @@ resolveModule modul = do
 
   let sortedDefGroups = flattenSCC <$> topoSortWith fst3 (addExtraDeps . thd3) resolvedDefs
 
-  return [[(n, loc, def) | (n, (loc, def), _) <- defs] | defs <- sortedDefGroups]
+  return [[(n, loc, close id def) | (n, (loc, def), _) <- defs] | defs <- sortedDefGroups]
 
 localConstrAliases
   :: HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
@@ -138,8 +137,8 @@ instances
   :: [(QName, (SourceLoc, Scoped.Definition Scoped.Expr void), a)]
   -> VIX (MultiHashMap QName QName)
 instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, (_, def), _) -> case def of
-  Scoped.InstanceDefinition (Scoped.PatInstanceDef typ _) -> do
-    c <- Declassify.getClass typ
+  Scoped.InstanceDefinition (Scoped.InstanceDef typ _) -> do
+    c <- getClass typ
     return [(c, name)]
   _ -> return mempty
 
@@ -198,9 +197,8 @@ resolveTopLevelDefinition (Unscoped.TopLevelInstanceDefinition typ ms) = do
   ms' <- mapM (\(loc, m) -> (,) loc <$> resolveDefinition m) ms
   return
     $ Scoped.InstanceDefinition
-    $ Scoped.PatInstanceDef typ'
-    $ Vector.fromList
-    $ (\(loc, (n, d)) -> (n, loc, d))
+    $ Scoped.InstanceDef typ'
+    $ (\(loc, (n, d)) -> Method n loc d)
     <$> ms'
 
 resolveParams
@@ -219,7 +217,7 @@ resolveDefinition
   :: Unscoped.Definition Unscoped.Expr
   -> ResolveNames (Name, Scoped.ConstantDef Scoped.Expr PreName)
 resolveDefinition (Unscoped.Definition name a clauses mtyp) = do
-  res <- Scoped.ConstantDef a IsConstant <$> mapM resolveClause clauses <*> mapM resolveExpr mtyp
+  res <- Scoped.ConstantDef a <$> mapM resolveClause clauses <*> mapM resolveExpr mtyp
   return (name, res)
 
 resolveClause
@@ -304,3 +302,20 @@ resolvePat pat = case pat of
   AnnoPat p t -> AnnoPat <$> resolvePat p <*> resolveExpr t
   ViewPat t p -> ViewPat <$> resolveExpr t <*> resolvePat p
   PatLoc loc p -> PatLoc loc <$> resolvePat p
+
+getClass
+  :: Scoped.Expr v
+  -> VIX QName
+getClass (Scoped.Pi _ _ s) = getClass $ fromScope s
+getClass (Scoped.SourceLoc loc e) = located loc $ getClass e
+getClass (Scoped.appsView -> (Scoped.Global g, _)) = return g
+getClass _ = throwInvalidInstance
+
+throwInvalidInstance :: VIX a
+throwInvalidInstance
+  = throwLocated
+  $ PP.vcat
+  [ "Invalid instance"
+  , "Instance types must return a class"
+  , bold "Expected:" PP.<+> "an instance of the form" PP.<+> dullGreen "instance ... => C as where ..." <> ", where" PP.<+> dullGreen "C" PP.<+> "is a class."
+  ]

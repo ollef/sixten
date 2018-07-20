@@ -24,7 +24,7 @@ import Text.Parsix(Position(Position, visualRow, visualColumn), (<?>))
 
 import Error
 import Processor.Result
-import Syntax hiding (dataDef)
+import Syntax hiding (classDef, dataDef)
 import Syntax.Pre.Literal
 import Syntax.Pre.Pattern
 import Syntax.Pre.Unscoped as Unscoped
@@ -464,7 +464,7 @@ classDef :: Parser TopLevelDefinition
 classDef = TopLevelClassDefinition <$ reserved "class" <*>% name <*> manyTypedBindings
   <*% reserved "where" <*> manyIndentedOrSameCol (mkMethodDef <$> located ((,) <$> name <*% symbol ":" <*>% expr))
   where
-    mkMethodDef (loc, (n, e)) = MethodDef n loc e
+    mkMethodDef (loc, (n, e)) = Method n loc e
 
 
 instanceDef :: Parser TopLevelDefinition

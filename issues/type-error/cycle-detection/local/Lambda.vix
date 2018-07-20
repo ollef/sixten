@@ -1,0 +1,5 @@
+main =
+  let
+    f : Int
+    f = (\x. f) 1
+  printInt f

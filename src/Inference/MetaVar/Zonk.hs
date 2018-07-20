@@ -15,12 +15,12 @@ import Syntax.Core
 
 zonk :: MonadIO m => Expr MetaVar v -> m (Expr MetaVar v)
 zonk = hoistMetas $ \m es -> do
-  sol <- solution m
-  case sol of
-    Left _ -> return $ Meta m es
-    Right e -> do
-      e' <- zonk e
-      solve m e'
+  msol <- solution m
+  case msol of
+    Nothing -> return $ Meta m es
+    Just e -> do
+      e' <- zonk $ open e
+      solve m $ close id e'
       return $ betaApps (vacuous e') es
 
 metaVars :: MonadIO m => Expr MetaVar v -> m (HashSet MetaVar)
@@ -30,10 +30,10 @@ metaVars expr = execStateT (hoistMetas_ go expr) mempty
       visited <- get
       unless (m `HashSet.member` visited) $ do
         put $ HashSet.insert m visited
-        sol <- solution m
-        case sol of
-          Left _ -> hoistMetas_ go $ metaType m
-          Right e -> hoistMetas_ go e
+        msol <- solution m
+        case msol of
+          Nothing -> hoistMetas_ go $ open $ metaType m
+          Just e -> hoistMetas_ go $ open e
 
 definitionMetaVars
   :: MonadIO m

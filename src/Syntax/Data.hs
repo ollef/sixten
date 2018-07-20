@@ -20,8 +20,7 @@ import Util
 data DataDef typ v = DataDef
   { dataParams :: Telescope Plicitness typ v
   , dataConstructors :: [ConstrDef (Scope TeleVar typ v)]
-  }
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 dataDef
   :: Monad typ

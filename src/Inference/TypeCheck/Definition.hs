@@ -1,26 +1,21 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MonadComprehensions, OverloadedStrings #-}
 module Inference.TypeCheck.Definition where
 
-import Control.Applicative
 import Control.Monad.Except
 import Data.Bifunctor
-import Data.Bitraversable
-import qualified Data.List.NonEmpty as NonEmpty
-import Data.Maybe
 import Data.Monoid
-import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
-import Data.Void
 
-import {-# SOURCE #-} Inference.TypeCheck.Expr
 import qualified Builtin.Names as Builtin
 import Inference.Cycle
 import Inference.Generalise
 import Inference.MetaVar
 import Inference.Monad
+import Inference.TypeCheck.Class
 import Inference.TypeCheck.Clause
 import Inference.TypeCheck.Data
+import Inference.TypeCheck.Expr
 import Inference.Unify
 import MonadContext
 import MonadFresh
@@ -31,29 +26,77 @@ import TypedFreeVar
 import Util
 import VIX
 
-checkAndGeneraliseDefs
-  :: Bool
-  -> Vector
-    ( FreeV
-    , ( SourceLoc
-      , Pre.Definition Pre.Expr FreeV
+checkAndGeneraliseTopLevelDefs
+  :: Vector
+    ( QName
+    , SourceLoc
+    , Closed (Pre.Definition Pre.Expr)
+    )
+  -> Infer
+    (Vector
+      ( QName
+      , ClosedDefinition Core.Expr
+      , Biclosed Core.Type
       )
+    )
+checkAndGeneraliseTopLevelDefs defs = do
+  varDefs <- forM defs $ \(name, loc, def) -> do
+    let hint = fromQName name
+    typ <- existsType hint
+    var <- forall hint (defPlicitness $ open def) typ
+    return (var, name, loc, def)
+
+  let lookupNameVar = hashedLookup [(name, var) | (var, name, _, _) <- varDefs]
+      expose name = maybe (global name) pure $ lookupNameVar name
+
+      exposedDefs = [(var, name, loc, gbound expose $ open def) | (var, name, loc, def) <- varDefs]
+
+  checkedDefs <- checkAndGeneraliseDefs exposedDefs
+
+  let varNames = (\(var, name, _, _) -> (var, name)) <$> checkedDefs
+      lookupVarName = hashedLookup varNames
+      unexpose v = maybe (pure v) global $ lookupVarName v
+
+  forM checkedDefs $ \(v, name, _loc, def) -> do
+    let typ = varType v
+    -- logDefMeta 20 ("checkAndGeneraliseTopLevelDefs def " ++ show (pretty name)) def
+    logMeta 20 ("checkAndGeneraliseTopLevelDefs typ " ++ show (pretty name)) typ
+    let unexposedDef = def >>>= unexpose
+        unexposedTyp = typ >>= unexpose
+    -- logDefMeta 20 ("checkAndGeneraliseTopLevelDefs unexposedDef " ++ show (pretty name)) unexposedDef
+    logMeta 20 ("checkAndGeneraliseTopLevelDefs unexposedTyp " ++ show (pretty name)) unexposedTyp
+    return (name, closeDefinition noMeta noVar unexposedDef, biclose noMeta noVar unexposedTyp)
+  where
+    noVar :: FreeV -> b
+    noVar v = error $ "checkAndGeneraliseTopLevelDefs " <> shower v
+    noMeta :: MetaVar -> b
+    noMeta v = error
+      $ "checkAndGeneraliseTopLevelDefs " <> shower v
+
+checkAndGeneraliseDefs
+  :: Vector
+    ( FreeV
+    , QName
+    , SourceLoc
+    , Pre.Definition Pre.Expr FreeV
     )
   -> Infer
     (Vector
       ( FreeV
+      , QName
+      , SourceLoc
       , Definition (Core.Expr MetaVar) FreeV
       )
     )
-checkAndGeneraliseDefs forceGeneralisation defs = withDefVars $ do
+checkAndGeneraliseDefs defs = withVars ((\(v, _, _, _) -> v) <$> defs) $ do
   -- Divide the definitions into ones with and without type signature.
   let (noSigDefs, sigDefs) = divide defs
 
   -- Assume that the specified type signatures are correct.
-  sigDefs' <- forM sigDefs $ \(evar, (loc, def, typ)) -> do
+  sigDefs' <- forM sigDefs $ \(var, name, loc, def, typ) -> do
     typ' <- checkPoly typ Builtin.Type
-    unify [] (varType evar) typ'
-    return (evar, (loc, def))
+    unify [] (varType var) typ'
+    return (var, name, loc, def)
 
   preId <- fresh
 
@@ -61,23 +104,19 @@ checkAndGeneraliseDefs forceGeneralisation defs = withDefVars $ do
   -- signatures of the others.
   noSigResult <- checkDefs noSigDefs
 
-  result <- case (Vector.null sigDefs, gen) of
-    (_, False) -> do
-      sigResult <- checkDefs sigDefs'
-      return $ noSigResult <> sigResult
-    (True, True) -> do
+  result <- if Vector.null sigDefs then do
       -- There are no definitions with signature, so generalise the ones
       -- without signature fully
       (genNoSigResult, _) <- generaliseDefs (const True) GeneraliseAll noSigResult
       return genNoSigResult
-    (False, True) -> do
+    else do
       -- Generalise the definitions without signature, but don't generalise
       -- metavariables created during type-checking the type signatures above
       (genNoSigResult, noSigSub) <- generaliseDefs ((> preId) . metaId) GeneraliseAll noSigResult
 
-      subbedSigDefs <- forM sigDefs' $ \(v, (loc, def)) -> do
+      subbedSigDefs <- forM sigDefs' $ \(v, name, loc, def) -> do
         let def' = def >>>= pure . noSigSub
-        return (v, (loc, def'))
+        return (v, name, loc, def')
 
       sigResult <- checkDefs subbedSigDefs
 
@@ -86,136 +125,63 @@ checkAndGeneraliseDefs forceGeneralisation defs = withDefVars $ do
       (genResult, _) <- generaliseDefs (const True) GeneraliseType $ genNoSigResult <> sigResult
       return genResult
 
-  let locs = (\(_, (loc, _)) -> loc) <$> noSigDefs
-        <|> (\(_, (loc, _)) -> loc) <$> sigDefs'
+  detectTypeRepCycles result
+  detectDefCycles result
 
-  unless (Vector.length locs == Vector.length result) $
-    internalError "checkAndGeneraliseDefs unmatched length"
-
-  let locResult = Vector.zip locs result
-
-  detectTypeRepCycles locResult
-  detectDefCycles locResult
-
-  let permutation = Vector.zip (fst <$> defs) (fst <$> noSigDefs <|> fst <$> sigDefs)
-  return $ unpermute permutation result
+  return result
   where
-    gen = forceGeneralisation || shouldGeneralise defs
     -- Prevent metavariables to recursively refer to the bindings in this
     -- binding group unless we know we're going to generalise
-    withDefVars = if gen then withVars (fst <$> defs) else id
     divide = bimap Vector.fromList Vector.fromList . foldMap go
       where
-        go (v, (loc, def@(Pre.ConstantDefinition (Pre.ConstantDef _ _ _ (Just typ))))) = ([], [(v, (loc, def, typ))])
-        go (v, (loc, def@(Pre.ConstantDefinition (Pre.ConstantDef _ _ _ Nothing)))) = ([(v, (loc, def))], [])
-        go (v, (loc, def@(Pre.DataDefinition (DataDef tele _)))) = ([], [(v, (loc, def, Pre.telePis tele $ Pre.Global Builtin.TypeName))])
-        go _ = error "checkAndGeneraliseDefs divide"
-
-checkDef
-  :: FreeV
-  -> Pre.Definition Pre.Expr FreeV
-  -> Infer (Definition (Core.Expr MetaVar) FreeV)
-checkDef v def = case def of
-  Pre.ConstantDefinition def' -> checkConstantDef def' $ varType v
-  Pre.DataDefinition d -> checkDataDef v d
-  -- Should be removed by Declassify:
-  Pre.ClassDefinition _ -> error "checkDef class"
-  Pre.InstanceDefinition _ -> error "checkDef instance"
+        go (v, name, loc, def@(Pre.ConstantDefinition (Pre.ConstantDef _ _ (Just typ)))) = ([], [(v, name, loc, def, typ)])
+        go (v, name, loc, def@(Pre.ConstantDefinition (Pre.ConstantDef _ _ Nothing))) = ([(v, name, loc, def)], [])
+        go (v, name, loc, def@(Pre.DataDefinition (DataDef tele _))) = ([], [(v, name, loc, def, Pre.telePis tele $ Pre.Global Builtin.TypeName)])
+        go (v, name, loc, def@(Pre.ClassDefinition (ClassDef tele _))) = ([], [(v, name, loc, def, Pre.telePis tele $ Pre.Global Builtin.TypeName)])
+        go (v, name, loc, def@(Pre.InstanceDefinition (Pre.InstanceDef typ _))) = ([], [(v, name, loc, def, typ)])
 
 checkDefs
   :: Vector
     ( FreeV
-    , ( SourceLoc
-      , Pre.Definition Pre.Expr FreeV
-      )
+    , QName
+    , SourceLoc
+    , Pre.Definition Pre.Expr FreeV
     )
   -> Infer
     (Vector
       ( FreeV
+      , QName
+      , SourceLoc
       , Definition (Core.Expr MetaVar) FreeV
       )
     )
 checkDefs defs = indentLog $
-  forM defs $ \(var, (loc, def)) -> do
-    def' <- located loc $ checkDef var def
-    return (var, def')
+  fmap join $ forM defs $ \(var, name, loc, def) ->
+    located loc $ checkDef var name loc def
 
-checkAndGeneraliseTopLevelDefs
-  :: Vector
-    ( QName
-    , SourceLoc
-    , Pre.Definition Pre.Expr Void
-    )
-  -> Infer
-    (Vector
-      ( QName
-      , Definition (Core.Expr Void) Void
-      , Core.Type Void Void
-      )
-    )
-checkAndGeneraliseTopLevelDefs defs = do
-  let names = (\(v, _, _) -> v) <$> defs
-
-  vars <- forM defs $ \(name, _, def) -> do
-    let hint = fromQName name
-    typ <- existsType hint
-    forall hint (defPlicitness def) typ
-
-  let nameIndex = hashedElemIndex names
-      expose name = case nameIndex name of
-        Nothing -> global name
-        Just index -> pure
-          $ fromMaybe (error "checkAndGeneraliseTopLevelDefs 1")
-          $ vars Vector.!? index
-
-  let exposedDefs = flip fmap defs $ \(_, loc, def) ->
-        (loc, gbound expose $ vacuous def)
-
-  checkedDefs <- checkAndGeneraliseDefs True (Vector.zip vars exposedDefs)
-
-  let vars' = fst <$> checkedDefs
-
-  let varIndex = hashedElemIndex vars'
-      unexpose v = fromMaybe (pure v) $ (fmap global . (names Vector.!?)) =<< varIndex v
-      vf :: FreeV -> Infer b
-      vf v = internalError $ "checkAndGeneraliseTopLevelDefs" PP.<+> shower v
-      mf :: MetaVar -> Infer b
-      mf v = do
-        sol <- solution v
-        internalError $ "checkAndGeneraliseTopLevelDefs" PP.<+> shower v PP.<+> "SOL" PP.<+> shower sol
-
-  forM (Vector.zip names checkedDefs) $ \(name, (v, def)) -> do
-    let typ = varType v
-    logDefMeta 20 ("checkAndGeneraliseTopLevelDefs def " ++ show (pretty name)) def
-    logMeta 20 ("checkAndGeneraliseTopLevelDefs typ " ++ show (pretty name)) typ
-    let unexposedDef = def >>>= unexpose
-        unexposedTyp = typ >>= unexpose
-    logDefMeta 20 ("checkAndGeneraliseTopLevelDefs unexposedDef " ++ show (pretty name)) unexposedDef
-    logMeta 20 ("checkAndGeneraliseTopLevelDefs unexposedTyp " ++ show (pretty name)) unexposedTyp
-    unexposedDef' <- bitraverseDefinition mf vf unexposedDef
-    unexposedTyp' <- bitraverse mf vf unexposedTyp
-    return (name, unexposedDef', unexposedTyp')
-
-shouldGeneralise
-  :: Vector
-    ( FreeV
-    , ( SourceLoc
-      , Pre.Definition Pre.Expr FreeV
-      )
-    )
-  -> Bool
-shouldGeneralise = all (\(_, (_, def)) -> shouldGeneraliseDef def)
-  where
-    shouldGeneraliseDef (Pre.ConstantDefinition (Pre.ConstantDef _ _ (Pre.Clause ps _ NonEmpty.:| _) _)) = Vector.length ps > 0
-    shouldGeneraliseDef Pre.DataDefinition {} = True
-    shouldGeneraliseDef Pre.ClassDefinition {} = True
-    shouldGeneraliseDef Pre.InstanceDefinition {} = True
+checkDef
+  :: FreeV
+  -> QName
+  -> SourceLoc
+  -> Pre.Definition Pre.Expr FreeV
+  -> Infer (Vector (FreeV, QName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
+checkDef v name loc def = case def of
+  Pre.ConstantDefinition d -> do
+    (a, e) <- checkConstantDef d $ varType v
+    return $ pure (v, name, loc, ConstantDefinition a e)
+  Pre.DataDefinition d -> do
+    (d', rep) <- checkDataDef v d
+    return $ pure (v, name, loc, DataDefinition d' rep)
+  Pre.ClassDefinition d -> do
+    d' <- checkClassDef v d
+    desugarClassDef v name loc d'
+  Pre.InstanceDefinition d ->
+    checkInstance v name loc d
 
 defPlicitness
   :: Pre.Definition e v
   -> Plicitness
-defPlicitness (Pre.ConstantDefinition (Pre.ConstantDef _ IsInstance _ _)) = Constraint
 defPlicitness Pre.ConstantDefinition {} = Explicit
 defPlicitness Pre.DataDefinition {} = Explicit
 defPlicitness Pre.ClassDefinition {} = Explicit
-defPlicitness Pre.InstanceDefinition {} = Explicit
+defPlicitness Pre.InstanceDefinition {} = Constraint

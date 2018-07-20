@@ -2,10 +2,8 @@
 module Inference.Constraint where
 
 import Control.Monad.Except
-import Control.Monad.State
 import Data.Bifunctor
 import Data.Foldable
-import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
 import qualified Data.Map as Map
 import Data.Maybe
@@ -28,17 +26,17 @@ import VIX
 
 elabMetaVar
   :: MetaVar
-  -> Infer (Maybe (Expr MetaVar Void))
+  -> Infer (Maybe (Closed (Expr MetaVar)))
 elabMetaVar m = do
-  sol <- solution m
-  case (sol, metaPlicitness m) of
-    (Left _, Constraint) -> elabUnsolvedConstraint m
-    (Left _, _) -> return Nothing
-    (Right e, _) -> return $ Just e
+  msol <- solution m
+  case (msol, metaPlicitness m) of
+    (Nothing, Constraint) -> elabUnsolvedConstraint m
+    (Nothing, _) -> return Nothing
+    (Just e, _) -> return $ Just e
 
 elabUnsolvedConstraint
   :: MetaVar
-  -> Infer (Maybe (Expr MetaVar Void))
+  -> Infer (Maybe (Closed (Expr MetaVar)))
 elabUnsolvedConstraint m = inUpdatedContext (const mempty) $ do
   logShow 25 "elabUnsolvedConstraint" $ metaId m
   (vs, typ) <- instantiatedMetaType m
@@ -47,10 +45,12 @@ elabUnsolvedConstraint m = inUpdatedContext (const mempty) $ do
     case typ' of
       (appsView -> (Global className, _)) -> do
         -- Try subsumption on all instances of the class until a match is found
-        globalClassInstances <- liftVIX $ gets $ HashMap.lookupDefault mempty className . vixClassInstances
+        globalClassInstances <- instances className
         let candidates = [(Global g, bimap absurd absurd t) | (g, t) <- globalClassInstances]
               <> [(pure v, varType v) | v <- toList vs, varData v == Constraint]
         matchingInstances <- forM candidates $ \(inst, instanceType) -> tryMaybe $ do
+          logMeta 35 "candidate instance" inst
+          logMeta 35 "candidate instance type" instanceType
           f <- untouchable $ subtype instanceType typ'
           return $ f inst
         case catMaybes matchingInstances of
@@ -60,13 +60,12 @@ elabUnsolvedConstraint m = inUpdatedContext (const mempty) $ do
           matchingInstance:_ -> do
             logMeta 25 "Matching instance" matchingInstance
             logMeta 25 "Matching instance typ" typ'
-            sol <- assertClosed $ lams vs matchingInstance
+            let sol = close (error "elabUnsolvedConstraint not closed") $ lams vs matchingInstance
             solve m sol
             return $ Just sol
-      _ -> throwLocated "Malformed constraint" -- TODO error message
-  where
-    assertClosed :: (Traversable f, Monad m) => f FreeV -> m (f Void)
-    assertClosed = traverse $ \v -> error $ "elabUnsolvedConstraint assertClosed " <> shower (varId v)
+      _ -> do
+        logMeta 25 "Malformed" typ'
+        throwLocated "Malformed constraint" -- TODO error message
 
 elabExpr
   :: CoreM
@@ -75,13 +74,13 @@ elabExpr = bindMetas $ \m es -> do
   sol <- elabMetaVar m
   case sol of
     Nothing -> Meta m <$> traverse (traverse elabExpr) es
-    Just e -> elabExpr $ betaApps (vacuous e) es
+    Just e -> elabExpr $ betaApps (open e) es
 
 elabDef
   :: Definition (Expr MetaVar) FreeV
   -> Infer (Definition (Expr MetaVar) FreeV)
-elabDef (Definition i a e)
-  = Definition i a <$> elabExpr e
+elabDef (ConstantDefinition a e)
+  = ConstantDefinition a <$> elabExpr e
 elabDef (DataDefinition (DataDef ps constrs) rep) = do
   vs <- forTeleWithPrefixM ps $ \h p s vs -> do
     let t = instantiateTele pure vs s
@@ -96,12 +95,12 @@ elabDef (DataDefinition (DataDef ps constrs) rep) = do
   return $ DataDefinition (dataDef vs constrs') rep'
 
 elabRecursiveDefs
-  :: Vector (FreeV, Definition (Expr MetaVar) FreeV)
-  -> Infer (Vector (FreeV, Definition (Expr MetaVar) FreeV))
-elabRecursiveDefs defs = forM defs $ \(v, def) -> do
+  :: Vector (FreeV, name, loc, Definition (Expr MetaVar) FreeV)
+  -> Infer (Vector (FreeV, name, loc, Definition (Expr MetaVar) FreeV))
+elabRecursiveDefs defs = forM defs $ \(v, name, loc, def) -> do
   def' <- elabDef def
   _typ' <- elabExpr $ varType v
-  return (v, def')
+  return (v, name, loc, def')
 
 mergeConstraintVars
   :: HashSet MetaVar
@@ -115,37 +114,32 @@ mergeConstraintVars vars = do
   where
     go varTypes m@MetaVar { metaPlicitness = Constraint } = do
       let arity = metaArity m
-      sol <- solution m
-      case sol of
-        Right _ -> return varTypes
-        Left l -> do
-          typ <- zonk $ metaType m
-          case Map.lookup (arity, typ) varTypes of
+      msol <- solution m
+      case msol of
+        Just _ -> return varTypes
+        Nothing -> do
+          typ <- zonk $ open $ metaType m
+          let ctyp = close id typ
+          case Map.lookup (arity, ctyp) varTypes of
             Just m' -> do
-              sol' <- solution m'
-              case sol' of
-                Right _ -> return $ Map.insert (arity, typ) m varTypes
-                Left l'
-                  | l < l' -> do
-                    solveVar m m'
-                    return varTypes
-                  | otherwise -> do
-                    solveVar m' m
-                    return varTypes
-            Nothing -> return $ Map.insert (arity, typ) m varTypes
+              msol' <- solution m'
+              case msol' of
+                Just _ -> return $ Map.insert (arity, ctyp) m varTypes
+                Nothing -> do
+                  solveVar m m'
+                  return varTypes
+            Nothing -> return $ Map.insert (arity, ctyp) m varTypes
     go varTypes _ = return varTypes
     solveVar m m' = do
       (vs, _) <- instantiatedMetaType m'
       solve m'
-        $ assertClosed
+        $ close (error "mergeConstraintVars not closed")
         $ lams vs
         $ Meta m
         $ (\v -> (varData v, pure v)) <$> vs
-    assertClosed :: Functor f => f FreeV -> f Void
-    assertClosed = fmap $ error "mergeConstraintVars assertClosed"
 
 whnf :: CoreM -> Infer CoreM
-whnf e = Normalise.whnf' Normalise.WhnfArgs
+whnf e = Normalise.whnf' Normalise.Args
   { Normalise.expandTypeReps = False
   , Normalise.handleMetaVar = elabMetaVar
   }
@@ -153,7 +147,7 @@ whnf e = Normalise.whnf' Normalise.WhnfArgs
   mempty
 
 whnfExpandingTypeReps :: CoreM -> Infer CoreM
-whnfExpandingTypeReps e = Normalise.whnf' Normalise.WhnfArgs
+whnfExpandingTypeReps e = Normalise.whnf' Normalise.Args
   { Normalise.expandTypeReps = True
   , Normalise.handleMetaVar = elabMetaVar
   }

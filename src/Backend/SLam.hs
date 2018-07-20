@@ -1,17 +1,17 @@
-{-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving, MonadComprehensions, MultiParamTypeClasses, OverloadedStrings, TypeSynonymInstances, ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances, GeneralizedNewtypeDeriving, MonadComprehensions, MultiParamTypeClasses, OverloadedStrings, TypeSynonymInstances, ViewPatterns #-}
 module Backend.SLam where
 
 import Bound.Scope hiding (instantiate1)
 import Control.Monad.Except
+import Control.Monad.Fail
 import Data.Monoid
 import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
+import Data.Void
 
 import qualified Builtin.Names as Builtin
-import Inference.MetaVar
-import Inference.Monad
-import Inference.Normalise
-import Inference.TypeOf
+import qualified Inference.Normalise as Normalise
+import qualified Inference.TypeOf as TypeOf
 import MonadContext
 import MonadFresh
 import Syntax
@@ -22,30 +22,41 @@ import TypedFreeVar
 import Util
 import VIX
 
+type FreeV = FreeVar Plicitness (Core.Expr Void)
+
 newtype SLam a = SLam { runSlam :: VIX a }
-  deriving (Functor, Applicative, Monad, MonadFix, MonadIO, MonadVIX, MonadFresh, MonadError Error)
+  deriving (Functor, Applicative, Monad, MonadFail, MonadFix, MonadIO, MonadVIX, MonadFresh, MonadError Error)
+
+whnf :: Core.Expr Void FreeV -> SLam (Core.Expr Void FreeV)
+whnf e = Normalise.whnf' Normalise.Args
+  { Normalise.expandTypeReps = True
+  , Normalise.handleMetaVar = absurd
+  } e mempty
+
+typeOf :: Core.Expr Void FreeV -> SLam (Core.Expr Void FreeV)
+typeOf = TypeOf.typeOf' TypeOf.voidArgs
 
 -- | Dummy instance, since we don't use the context
 instance MonadContext FreeV SLam where
   localVars = return mempty
   inUpdatedContext _ m = m
 
-slamAnno :: CoreM -> SLam (Anno SLambda.Expr FreeV)
-slamAnno e = Anno <$> slam e <*> (slam =<< whnfExpandingTypeReps =<< typeOf e)
+slamAnno :: Core.Expr Void FreeV -> SLam (Anno SLambda.Expr FreeV)
+slamAnno e = Anno <$> slam e <*> (slam =<< whnf =<< typeOf e)
 
-slam :: CoreM -> SLam (SLambda.Expr FreeV)
+slam :: Core.Expr Void FreeV -> SLam (SLambda.Expr FreeV)
 slam expr = do
-  logMeta 20 "slam expr" expr
+  logPretty 20 "slam expr" $ pretty <$> expr
   res <- indentLog $ case expr of
     Core.Var v -> return $ SLambda.Var v
-    Core.Meta _ _ -> error "slam Meta"
+    Core.Meta m _ -> absurd m
     Core.Global g -> return $ SLambda.Global g
     Core.Lit l -> return $ SLambda.Lit l
     Core.Pi {} -> do
-      t <- whnfExpandingTypeReps $ Core.Global Builtin.PiTypeName
+      t <- whnf $ Core.Global Builtin.PiTypeName
       slam t
     Core.Lam h p t s -> do
-      t' <- whnfExpandingTypeReps t
+      t' <- whnf t
       v <- freeVar h p t'
       e <- slamAnno $ instantiate1 (pure v) s
       rep <- slam t'
@@ -81,20 +92,20 @@ slam expr = do
       body <- slam $ instantiateLet pure vs scope
       return $ SLambda.letRec (Vector.zip vs ds') body
     Core.ExternCode c retType -> do
-        retType' <- slam =<< whnfExpandingTypeReps retType
+        retType' <- slam =<< whnf retType
         c' <- slamExtern c
         return $ SLambda.ExternCode c' retType'
   logPretty 20 "slam res" $ pretty <$> res
   return res
 
 slamBranches
-  :: Branches Plicitness (Core.Expr MetaVar) FreeV
+  :: Branches Plicitness (Core.Expr Void) FreeV
   -> SLam (Branches () SLambda.Expr FreeV)
 slamBranches (ConBranches cbrs) = do
   cbrs' <- indentLog $ forM cbrs $ \(ConBranch c tele brScope) -> do
     vs <- forTeleWithPrefixM tele $ \h p s vs -> freeVar h p $ instantiateTele pure vs s
     reps <- forM vs $ \v -> do
-      t' <- whnfExpandingTypeReps $ varType v
+      t' <- whnf $ varType v
       slam t'
 
     brExpr <- slam $ instantiateTele pure vs brScope
@@ -107,17 +118,17 @@ slamBranches (LitBranches lbrs d)
     <*> slam d
 
 slamExtern
-  :: Extern CoreM
+  :: Extern (Core.Expr Void FreeV)
   -> SLam (Extern (Anno SLambda.Expr FreeV))
 slamExtern (Extern lang parts)
   = fmap (Extern lang) $ forM parts $ \part -> case part of
     ExternPart str -> return $ ExternPart str
     ExprMacroPart e -> ExprMacroPart <$> slamAnno e
-    TypeMacroPart t -> TypeMacroPart <$> (slamAnno =<< whnfExpandingTypeReps t)
+    TypeMacroPart t -> TypeMacroPart <$> (slamAnno =<< whnf t)
     TargetMacroPart m -> return $ TargetMacroPart m
 
 slamDef
-  :: Definition (Core.Expr MetaVar) FreeV
+  :: Definition (Core.Expr Void) FreeV
   -> SLam (Anno SLambda.Expr FreeV)
-slamDef (Definition _ _ e) = slamAnno e
+slamDef (ConstantDefinition _ e) = slamAnno e
 slamDef (DataDefinition _ e) = slamAnno e

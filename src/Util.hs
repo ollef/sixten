@@ -31,7 +31,6 @@ import qualified Data.Vector as Vector
 import qualified Data.Vector.Generic as GVector
 import qualified Data.Vector.Generic.Base as BVector
 import qualified Data.Vector.Generic.Mutable as MVector
-import Data.Void
 import System.IO
 
 type Scope1 = Scope ()
@@ -252,6 +251,3 @@ filterMSet f s
 
 withFile :: MonadBaseControl IO m => FilePath -> IOMode -> (Handle -> m r) -> m r
 withFile name mode = liftBaseOp $ bracket (openFile name mode) hClose
-
-bivacuous :: Bifunctor f => f Void Void -> f a b
-bivacuous = bimap absurd absurd

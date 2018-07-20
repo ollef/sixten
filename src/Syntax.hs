@@ -11,6 +11,7 @@ import Pretty as X
 import Syntax.Annotation as X
 import Syntax.Branches as X
 import Syntax.Class as X
+import Syntax.Closed as X
 import Syntax.Data as X
 import Syntax.Definition as X
 import Syntax.Direction as X

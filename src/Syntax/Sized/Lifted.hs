@@ -5,14 +5,13 @@ import Control.Monad
 import Data.Deriving
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
-import Data.Void
 
+import FreeVar
 import Syntax hiding (Definition)
 import Syntax.Sized.Anno
+import qualified TypedFreeVar as Typed
 import TypeRep(TypeRep)
 import Util
-import qualified TypedFreeVar as Typed
-import FreeVar
 
 data Expr v
   = Var v
@@ -28,7 +27,7 @@ data Expr v
 
 type Type = Expr
 
-type FunSignature = (Telescope () Type Void, Scope TeleVar Type Void)
+type FunSignature = (Closed (Telescope () Type), Closed (Scope TeleVar Type))
 
 -------------------------------------------------------------------------------
 -- Helpers

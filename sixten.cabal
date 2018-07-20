@@ -18,6 +18,7 @@ data-files:
 
 executable sixten
   ghc-options:         -Wall
+                       -Wcompat
                        -funbox-strict-fields
   main-is:             Main.hs
   other-modules:
@@ -43,7 +44,6 @@ executable sixten
                        Command.Test
                        Error
                        FreeVar
-                       Frontend.Declassify
                        Frontend.Parse
                        Frontend.ResolveNames
                        Inference.Constraint
@@ -57,6 +57,7 @@ executable sixten
                        Inference.Monad
                        Inference.Normalise
                        Inference.Subtype
+                       Inference.TypeCheck.Class
                        Inference.TypeCheck.Clause
                        Inference.TypeCheck.Data
                        Inference.TypeCheck.Definition
@@ -80,6 +81,7 @@ executable sixten
                        Syntax.Data
                        Syntax.Definition
                        Syntax.Direction
+                       Syntax.Closed
                        Syntax.Extern
                        Syntax.GlobalBind
                        Syntax.Let

@@ -2,7 +2,7 @@ module Syntax.PreName where
 
 import Control.Applicative
 import Data.Hashable
-import Data.Monoid
+import Data.Semigroup
 import Data.String
 import Data.Text(Text)
 
@@ -28,9 +28,12 @@ instance Hashable PreName where
 instance IsString PreName where
   fromString = PreName Nothing . fromString
 
+instance Semigroup PreName where
+  PreName loc1 t1 <> PreName loc2 t2 = PreName (loc1 <|> loc2) (t1 <> t2)
+
 instance Monoid PreName where
   mempty = PreName Nothing mempty
-  mappend (PreName loc1 t1) (PreName loc2 t2) = PreName (loc1 <|> loc2) (t1 <> t2)
+  mappend = (<>)
 
 fromPreName :: IsString a => PreName -> a
 fromPreName (PreName _ t) = fromText t

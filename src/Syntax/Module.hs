@@ -6,7 +6,7 @@ import Data.Hashable
 import Data.HashSet(HashSet)
 import Data.List(intersperse, intercalate)
 import Data.List.Split
-import Data.Monoid
+import Data.Semigroup
 import Data.String
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
@@ -50,12 +50,12 @@ qconstrConstr (QConstr _ c) = c
 qconstrTypeName :: QConstr -> QName
 qconstrTypeName (QConstr n _) = n
 
-fromQConstr :: (IsString a, Monoid a) => QConstr -> a
+fromQConstr :: (IsString a, Semigroup a) => QConstr -> a
 fromQConstr (QConstr name constr) = fromQName name <> "." <> fromConstr constr
 
 newtype ModuleName
   = ModuleName (Vector Name)
-  deriving (Eq, Ord, Show, Monoid)
+  deriving (Eq, Ord, Show, Semigroup, Monoid)
 
 data Module contents = Module
   { moduleName :: !ModuleName
@@ -120,11 +120,14 @@ instance Pretty QConstr where
 instance Pretty ModuleName where
   prettyM (ModuleName parts) = hcat $ intersperse "." (prettyM <$> toList parts)
 
+instance Semigroup ExposedNames where
+  AllExposed <> _ = AllExposed
+  _ <> AllExposed = AllExposed
+  Exposed xs <> Exposed ys = Exposed $ xs <> ys
+
 instance Monoid ExposedNames where
   mempty = Exposed mempty
-  mappend AllExposed _ = AllExposed
-  mappend _ AllExposed = AllExposed
-  mappend (Exposed xs) (Exposed ys) = Exposed $ xs `mappend` ys
+  mappend = (<>)
 
 moduleDependencyOrder
   :: (Foldable t, Functor t)

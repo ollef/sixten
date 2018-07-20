@@ -11,3 +11,6 @@ class Pointed f where
 
 instance Pointed Maybe where
   point = Just
+
+instance Pointed Maybe2 where
+  point = Just

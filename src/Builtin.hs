@@ -10,7 +10,6 @@ import Data.Maybe
 import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
-import Data.Void
 
 import Backend.Target(Target)
 import Builtin.Names
@@ -24,7 +23,7 @@ import TypedFreeVar
 import qualified TypeRep
 import Util
 
-context :: Target -> HashMap QName (Definition (Expr Void) Void, Type Void Void)
+context :: Target -> HashMap QName (ClosedDefinition Expr, Biclosed Type)
 context target = HashMap.fromList
   [ (TypeName, dataType typeRep Type [])
   , (PtrName, dataType
@@ -44,7 +43,7 @@ context target = HashMap.fromList
     cl = fromMaybe (error "Builtin not closed") . closed
     -- TODO: Should be made nonmatchable
     opaqueData rep t = dataType rep t mempty
-    dataType rep typ xs = (DataDefinition (DataDef (piTelescope cltyp) xs) rep, cltyp)
+    dataType rep typ xs = (closeDefinition id id $ DataDefinition (DataDef (piTelescope cltyp) xs) rep, biclose id id $ cltyp)
       where
         cltyp = cl typ
 
@@ -52,7 +51,7 @@ context target = HashMap.fromList
     ptrRep = MkType $ TypeRep.ptrRep target
     typeRep = MkType $ TypeRep.typeRep target
 
-convertedContext :: Target -> HashMap QName (Sized.Definition Lifted.Expr Void)
+convertedContext :: Target -> HashMap QName (Closed (Sized.Definition Lifted.Expr))
 convertedContext target = HashMap.fromList $ concat
   [ [(papName left given, pap target left given)
     | given <- [1..maxArity - 1], left <- [1..maxArity - given]
@@ -65,8 +64,8 @@ convertedContext target = HashMap.fromList $ concat
 convertedSignatures :: Target -> HashMap QName Lifted.FunSignature
 convertedSignatures target
   = flip HashMap.mapMaybe (convertedContext target) $ \def ->
-    case def of
-      Sized.FunctionDef _ _ (Sized.Function tele (AnnoScope _ s)) -> Just (tele, s)
+    case open def of
+      Sized.FunctionDef _ _ (Sized.Function tele (AnnoScope _ s)) -> Just (close id tele, close id s)
       Sized.ConstantDef _ _ -> Nothing
       Sized.AliasDef -> Nothing
 
@@ -85,7 +84,7 @@ deref e
 maxArity :: Num n => n
 maxArity = 6
 
-apply :: Target -> Int -> Sized.Definition Lifted.Expr Void
+apply :: Target -> Int -> Closed (Sized.Definition Lifted.Expr)
 apply target numArgs = evalFresh $ do
   this <- freeVar "this" () ptrRep
   argTypes <- Vector.forM (Vector.enumFromN 0 numArgs) $ \i ->
@@ -125,7 +124,7 @@ apply target numArgs = evalFresh $ do
             (preArgs, postArgs) = Vector.splitAt arity args
 
   return
-    $ fmap (error "Builtin.apply")
+    $ close (error "Builtin.apply")
     $ Sized.FunctionDef Public Sized.NonClosure
     $ Sized.functionTyped funArgs
     $ flip Anno unknownSize
@@ -149,7 +148,7 @@ apply target numArgs = evalFresh $ do
     directPtr = Direct $ TypeRep.ptrRep target
     directType = Direct $ TypeRep.typeRep target
 
-pap :: Target -> Int -> Int -> Sized.Definition Lifted.Expr Void
+pap :: Target -> Int -> Int -> Closed (Sized.Definition Lifted.Expr)
 pap target k m = evalFresh $ do
   this <- freeVar "this" () ptrRep
   argTypes <- Vector.forM (Vector.enumFromN 0 k) $ \i ->
@@ -169,7 +168,7 @@ pap target k m = evalFresh $ do
       clArgs' = pure unused1 <> pure unused2 <> pure that <> clArgTypes <> clArgs
 
   return
-    $ fmap (error "Builtin.pap")
+    $ close (error "Builtin.pap")
     $ Sized.FunctionDef Public Sized.NonClosure
     $ Sized.functionTyped funArgs
     $ flip Anno unknownSize

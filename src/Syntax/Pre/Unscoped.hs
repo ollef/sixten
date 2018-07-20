@@ -37,7 +37,7 @@ definitionName (Definition n _ _ _) = n
 data TopLevelDefinition
   = TopLevelDefinition (Definition Expr)
   | TopLevelDataDefinition Name [(Plicitness, Name, Type)] [ConstrDef Expr]
-  | TopLevelClassDefinition Name [(Plicitness, Name, Type)] [MethodDef Expr]
+  | TopLevelClassDefinition Name [(Plicitness, Name, Type)] [Method Expr]
   | TopLevelInstanceDefinition Type [(SourceLoc, Definition Expr)]
   deriving (Show)
 

@@ -1,4 +1,5 @@
 main =
+  -- This doesn't work without let-generalisation
   let id x = x
   let unused = id True
   printInt (id 41)

@@ -1,6 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, MonadComprehensions, OverloadedStrings #-}
 module Backend.ExtractExtern where
 
+import Control.Monad.Fail
 import Control.Monad.State
 import Data.Foldable
 import qualified Data.HashMap.Lazy as HashMap
@@ -10,7 +11,6 @@ import qualified Data.Text as Text
 import Data.Text(Text)
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
-import Data.Void
 
 import Backend.Target
 import MonadFresh
@@ -58,14 +58,14 @@ data ExtractState = ExtractState
   { freshNames :: [QName]
   , extractedCode :: Tsil Text
   , extractedDecls :: Tsil Extracted.Declaration
-  , extractedCallbacks :: Tsil (QName, Sized.Function Extracted.Expr Void)
+  , extractedCallbacks :: Tsil (QName, Closed (Sized.Function Extracted.Expr))
   , target :: Target
   }
 
 newtype Extract a = Extract { unExtract :: StateT ExtractState VIX a }
-  deriving (Functor, Applicative, Monad, MonadState ExtractState, MonadFresh, MonadVIX, MonadIO)
+  deriving (Functor, Applicative, Monad, MonadState ExtractState, MonadFail, MonadFresh, MonadVIX, MonadIO)
 
-runExtract :: [QName] -> Target -> Extract a -> VIX ([(QName, Sized.Function Extracted.Expr Void)], Extracted.Submodule a)
+runExtract :: [QName] -> Target -> Extract a -> VIX ([(QName, Closed (Sized.Function Extracted.Expr))], Extracted.Submodule a)
 runExtract names tgt (Extract m) = do
   (a, s) <- runStateT m (ExtractState names mempty mempty mempty tgt)
   let decls = toList $ extractedDecls s
@@ -87,7 +87,7 @@ emitCode d = modify $ \s -> s { extractedCode = Snoc (extractedCode s) d }
 
 emitCallback
   :: QName
-  -> Sized.Function Extracted.Expr Void
+  -> Closed (Sized.Function Extracted.Expr)
   -> Extract ()
 emitCallback name fun = modify $ \s -> s { extractedCallbacks = Snoc (extractedCallbacks s) (name, fun) }
 
@@ -151,9 +151,7 @@ extractExtern retType (Extern C parts) = do
       let callbackFreeVars = toHashSet expr
           callbackParams = toVector $ acyclic <$> topoSortWith id varType callbackFreeVars
       callbackName <- freshName
-      let ensureVoid :: FV -> Void
-          ensureVoid = error "ExtractExtern: non-void"
-          function = ensureVoid <$> Sized.functionTyped callbackParams expr
+      let function = close (error "ExtractExtern: not closed") $ Sized.functionTyped callbackParams expr
       emitCallback callbackName function
       let callbackArgs = (typedArgsMap HashMap.!) <$> toList callbackFreeVars
           callbackArgNames = fst3 <$> callbackArgs
@@ -254,28 +252,30 @@ extractBranches (LitBranches lbrs def) = LitBranches <$> sequence
 extractDef
   :: Target
   -> QName
-  -> Sized.Definition Lifted.Expr Void
-  -> VIX [(QName, Extracted.Submodule (Sized.Definition Extracted.Expr Void))]
-extractDef tgt qname@(QName mname name) def = fmap flatten $ runExtract names tgt $ case def of
+  -> Closed (Sized.Definition Lifted.Expr)
+  -> VIX [(QName, Extracted.Submodule (Closed (Sized.Definition Extracted.Expr)))]
+extractDef tgt qname@(QName mname name) def = fmap flatten $ runExtract names tgt $ case open def of
   Sized.FunctionDef vis cl (Sized.Function tele scope) ->
-    fmap (Sized.FunctionDef vis cl . fmap noFV) $ do
-      vs <- forTeleWithPrefixM (vacuous tele) $ \h () s vs -> do
+    fmap (close noFV . Sized.FunctionDef vis cl) $ do
+      vs <- forTeleWithPrefixM tele $ \h () s vs -> do
         let e = instantiateTele pure vs s
         e' <- extractExpr e
         freeVar h () e'
-      let expr = instantiateAnnoTele pure vs $ vacuous scope
+      let expr = instantiateAnnoTele pure vs scope
       expr' <- extractAnnoExpr expr
       return $ Sized.functionTyped vs expr'
-  Sized.ConstantDef vis (Sized.Constant e) -> Sized.ConstantDef vis . fmap noFV
-    <$> (Sized.Constant <$> extractAnnoExpr (vacuous e))
-  Sized.AliasDef -> return Sized.AliasDef
+  Sized.ConstantDef vis (Sized.Constant e)
+    -> close noFV
+    . Sized.ConstantDef vis
+    . Sized.Constant <$> extractAnnoExpr e
+  Sized.AliasDef -> return $ close id Sized.AliasDef
   where
     flatten (cbs, def')
       = (qname, def')
-      : [ (n, Extracted.emptySubmodule $ Sized.FunctionDef Public Sized.NonClosure f)
+      : [ (n, Extracted.emptySubmodule $ mapClosed (Sized.FunctionDef Public Sized.NonClosure) f)
         | (n, f) <- cbs
         ]
-    noFV :: FV -> Void
+    noFV :: FV -> void
     noFV = error "ExtractExtern noFV"
     names =
       [ QName mname $ if n == 0

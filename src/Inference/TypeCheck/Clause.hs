@@ -7,7 +7,6 @@ import Data.Foldable as Foldable
 import Data.HashSet(HashSet)
 import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
-import Data.Monoid
 import qualified Data.Vector as Vector
 
 import {-# SOURCE #-} Inference.TypeCheck.Expr
@@ -27,10 +26,10 @@ import VIX
 checkConstantDef
   :: Pre.ConstantDef Pre.Expr FreeV
   -> CoreM
-  -> Infer (Definition (Core.Expr MetaVar) FreeV)
-checkConstantDef (Pre.ConstantDef a i clauses _) typ = do
+  -> Infer (Abstract, CoreM)
+checkConstantDef (Pre.ConstantDef a clauses _) typ = do
   e' <- checkClauses clauses typ
-  return $ Definition a i e'
+  return (a, e')
 
 checkClauses
   :: NonEmpty (Pre.Clause Pre.Expr FreeV)
@@ -53,8 +52,7 @@ checkClauses clauses polyType = indentLog $ do
 
     res <- checkClausesRho equalisedClauses rhoType
 
-    l <- level
-    logMeta 20 ("checkClauses res " <> show l) res
+    logMeta 20 "checkClauses res" res
 
     return $ f res
   where

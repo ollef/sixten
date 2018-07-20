@@ -1,13 +1,13 @@
-{-# LANGUAGE FlexibleContexts, GeneralizedNewtypeDeriving, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Inference.MetaVar where
 
 import Control.Monad.Except
 import Control.Monad.ST
 import Control.Monad.State
 import Data.Bitraversable
-import Data.Either
 import Data.Function
 import Data.Hashable
+import Data.Maybe
 import Data.Monoid
 import Data.STRef
 import Data.String
@@ -25,19 +25,13 @@ import TypedFreeVar
 import Util
 import VIX
 
-newtype Level = Level Int
-  deriving (Eq, Num, Ord, Show)
-
-instance Pretty Level where
-  pretty (Level i) = pretty i
-
-type MetaRef = STRef RealWorld (Either Level (Expr MetaVar Void))
+type MetaRef = STRef RealWorld (Maybe (Closed (Expr MetaVar)))
 
 type FreeV = FreeVar Plicitness (Expr MetaVar)
 
 data MetaVar = MetaVar
   { metaId :: !Int
-  , metaType :: Expr MetaVar Void
+  , metaType :: Closed (Expr MetaVar)
   , metaArity :: !Int
   , metaHint :: !NameHint
   , metaPlicitness :: !Plicitness
@@ -55,50 +49,49 @@ instance Hashable MetaVar where
   hashWithSalt s = hashWithSalt s . metaId
 
 instance Show MetaVar where
-  showsPrec d (MetaVar i t a h p loc _) = showParen (d > 10) $
+  showsPrec d (MetaVar i (Closed t) a h p loc _) = showParen (d > 10) $
     showString "MetaVar" . showChar ' ' .
     showsPrec 11 i . showChar ' ' .
-    showsPrec 11 t . showChar ' ' .
+    showsPrec 11 (t :: Expr MetaVar Void) . showChar ' ' .
     showsPrec 11 a . showChar ' ' .
     showsPrec 11 h . showChar ' ' .
     showsPrec 11 p . showChar ' ' .
     showsPrec 11 (pretty <$> loc) . showChar ' ' .
     showString "<Ref>"
 
-existsAtLevel
+explicitExists
   :: (MonadVIX m, MonadIO m)
   => NameHint
   -> Plicitness
-  -> Expr MetaVar Void
+  -> Closed (Expr MetaVar)
   -> Int
   -> Maybe SourceLoc
-  -> Level
   -> m MetaVar
-existsAtLevel hint p typ a loc l = do
+explicitExists hint p typ a loc = do
   i <- fresh
-  ref <- liftST $ newSTRef $ Left l
+  ref <- liftST $ newSTRef Nothing
   logVerbose 20 $ "exists: " <> shower i
-  logMeta 20 "exists typ: " typ
+  logMeta 20 "exists typ: " (open typ :: Expr MetaVar Doc)
   return $ MetaVar i typ a hint p loc ref
 
 solution
   :: MonadIO m
   => MetaVar
-  -> m (Either Level (Expr MetaVar Void))
+  -> m (Maybe (Closed (Expr MetaVar)))
 solution = liftST . readSTRef . metaRef
 
 solve
   :: MonadIO m
   => MetaVar
-  -> Expr MetaVar Void
+  -> Closed (Expr MetaVar)
   -> m ()
-solve m x = liftST $ writeSTRef (metaRef m) $ Right x
+solve m x = liftST $ writeSTRef (metaRef m) $ Just x
 
 isSolved :: MonadIO m => MetaVar -> m Bool
-isSolved = fmap isRight . solution
+isSolved = fmap isJust . solution
 
 isUnsolved :: MonadIO m => MetaVar -> m Bool
-isUnsolved = fmap isLeft . solution
+isUnsolved = fmap isNothing . solution
 
 data WithVar a = WithVar !MetaVar a
 
@@ -114,12 +107,12 @@ prettyMetaVar
   -> m Doc
 prettyMetaVar x = do
   let name = "?" <> fromNameHint "" fromName (metaHint x) <> shower (metaId x) <> "[" <> shower (metaArity x) <> "]"
-  esol <- solution x
-  case esol of
-    Left _ -> return name
-    Right sol -> do
+  msol <- solution x
+  case msol of
+    Nothing -> return name
+    Just sol -> do
       v <- liftVIX $ gets vixVerbosity
-      sol' <- prettyMeta sol
+      sol' <- prettyMeta (open sol :: Expr MetaVar Doc)
       if v <= 30 then
         return $ PP.parens $ sol'
       else
@@ -176,7 +169,7 @@ instantiatedMetaType'
   => Int
   -> MetaVar
   -> m (Vector FreeV, Expr MetaVar (FreeBindVar MetaVar))
-instantiatedMetaType' arity m = go mempty arity (vacuous $ metaType m)
+instantiatedMetaType' arity m = go mempty arity (open $ metaType m)
   where
     go vs 0 t = return (toVector $ reverse vs, t)
     go vs n (Pi h a t s) = do
@@ -191,7 +184,7 @@ bindDefMetas
   -> Definition (Expr meta) (FreeBindVar meta')
   -> m (Definition (Expr meta') (FreeBindVar meta'))
 bindDefMetas f def = case def of
-  Definition a i e -> Definition a i <$> bindMetas f e
+  ConstantDefinition a e -> ConstantDefinition a <$> bindMetas f e
   DataDefinition d rep -> DataDefinition <$> bindDataDefMetas f d <*> bindMetas f rep
 
 bindDefMetas'

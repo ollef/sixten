@@ -3,7 +3,7 @@ module Inference.TypeCheck.Data where
 import Control.Monad.Except
 import Data.Foldable as Foldable
 
-import {-# SOURCE #-} Inference.TypeCheck.Expr
+import Inference.TypeCheck.Expr
 import qualified Builtin.Names as Builtin
 import Inference.Constraint as Constraint
 import Inference.MetaVar
@@ -21,8 +21,8 @@ import VIX
 checkDataDef
   :: FreeV
   -> DataDef Pre.Expr FreeV
-  -> Infer (Definition (Core.Expr MetaVar) FreeV)
-checkDataDef name (DataDef ps cs) = do
+  -> Infer (DataDef (Core.Expr MetaVar) FreeV, CoreM)
+checkDataDef var (DataDef ps cs) = do
 
   -- TODO: These vars are typechecked twice (in checkAndGeneraliseDefs as the
 -- expected type and here). Can we clean this up?
@@ -32,9 +32,9 @@ checkDataDef name (DataDef ps cs) = do
     forall h p t'
 
   withVars vs $ do
-    unify [] (Core.pis vs Builtin.Type) $ varType name
+    unify [] (Core.pis vs Builtin.Type) $ varType var
 
-    let constrRetType = Core.apps (pure name) $ (\v -> (varData v, pure v)) <$> vs
+    let constrRetType = Core.apps (pure var) $ (\v -> (varData v, pure v)) <$> vs
 
     (cs', rets, sizes) <- fmap unzip3 $ forM cs $ \(ConstrDef c t) ->
       checkConstrDef $ ConstrDef c $ instantiateTele pure vs t
@@ -60,7 +60,7 @@ checkDataDef name (DataDef ps cs) = do
     typeRep' <- whnfExpandingTypeReps typeRep
     logMeta 20 "checkDataDef typeRep" typeRep'
 
-    return $ DataDefinition (dataDef vs cs') $ Core.lams vs typeRep'
+    return (dataDef vs cs', Core.lams vs typeRep')
 
 checkConstrDef
   :: ConstrDef PreM
