@@ -24,12 +24,6 @@ with ma f = do
     }
   return result
 
-currentBlock :: MonadIRBuilder m => m LLVM.Name
-currentBlock
-  = liftIRState
-  $ gets
-  $ maybe (LLVM.UnName 0) partialBlockName . builderBlock
-
 hinted :: MonadIRBuilder m => m a -> NameHint -> m a
 hinted gen NoHint = gen
 hinted gen (NameHint n) = gen `named` fromName n

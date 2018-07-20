@@ -328,7 +328,7 @@ To run tests, run:
 
 To build Sixten programs, you'll need:
 
-* LLVM and Clang 5. The `--llvm-config` flag can be used to tell `sixten` where
+* LLVM and Clang 6. The `--llvm-config` flag can be used to tell `sixten` where
   to look for these.
 * The Boehm–Demers–Weiser garbage collector library.
 * pkg-config (used to find the Boehm–Demers–Weiser GC library).

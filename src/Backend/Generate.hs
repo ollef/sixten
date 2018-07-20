@@ -345,7 +345,7 @@ generateFunOp (Global g) retDir argDirs = do
   let typ = case msig of
         Just sig -> signatureType sig
         Nothing -> functionType retDir argDirs
-  return $ LLVM.ConstantOperand $ LLVM.GlobalReference typ $ LLVM.Name $ fromQName g
+  return $ LLVM.ConstantOperand $ LLVM.GlobalReference (LLVM.ptr typ) $ LLVM.Name $ fromQName g
 generateFunOp e retDir argDirs = do
   piRep <- getPiRep
   funVar <- generateExpr e $ Lit $ TypeRep piRep
@@ -359,7 +359,7 @@ generateGlobal g = do
   msig <- signature g
   ptrRep <- getPtrRep
   let typ = signatureType $ fromMaybe (ConstantSig Indirect) msig
-      glob = LLVM.GlobalReference typ $ fromQName g
+      glob = LLVM.GlobalReference (LLVM.ptr typ) $ fromQName g
       globOperand = LLVM.ConstantOperand glob
   case msig of
     Just (ConstantSig (Direct TypeRep.UnitRep)) -> return VoidVar
@@ -572,12 +572,12 @@ generateConstant visibility name (Constant aexpr@(Anno expr _)) = do
             Indirect -> indirectType
             Direct TypeRep.UnitRep -> indirectType
             Direct rep -> directType rep
-      let glob = LLVM.GlobalReference typ gname
+      let glob = LLVM.GlobalReference (LLVM.ptr typ) gname
       emitDefn $ LLVM.GlobalDefinition LLVM.globalVariableDefaults
         { LLVM.Global.name = gname
         , LLVM.Global.linkage = linkage
         , LLVM.Global.unnamedAddr = Just LLVM.GlobalAddr
-        , LLVM.Global.initializer = Just $ LLVM.Null typ
+        , LLVM.Global.initializer = Just $ zeroInitializer typ
         -- , LLVM.Global.isConstant = True
         , LLVM.Global.type' = typ
         , LLVM.Global.alignment = align
@@ -603,7 +603,7 @@ generateConstant visibility name (Constant aexpr@(Anno expr _)) = do
             , LLVM.argumentTypes = []
             , LLVM.isVarArg = False
             }
-          initOperand = LLVM.ConstantOperand $ LLVM.GlobalReference voidFunType initName
+          initOperand = LLVM.ConstantOperand $ LLVM.GlobalReference (LLVM.ptr voidFunType) initName
       emitDefn $ LLVM.GlobalDefinition LLVM.functionDefaults
         { LLVM.Global.name = initName
         , LLVM.Global.callingConvention = CC.Fast
@@ -807,12 +807,12 @@ generateModule mname imports gens = do
   forM_ gens $ \gen -> forM (definitions gen) emitDefn
 
   let initName mn = LLVM.Name $ fromModuleName mn <> "-init"
-      initOperand mn = LLVM.ConstantOperand $ LLVM.GlobalReference voidFun $ initName mn
+      initOperand mn = LLVM.ConstantOperand $ LLVM.GlobalReference (LLVM.ptr voidFun) $ initName mn
       thisInitName = initName mname
       thisInitedName = LLVM.Name $ fromModuleName mname <> "-inited"
       thisInitedOperand
-        = LLVM.ConstantOperand $ LLVM.GlobalReference LLVM.i1 thisInitedName
-      gcInitOperand = LLVM.ConstantOperand $ LLVM.GlobalReference voidFun "GC_init"
+        = LLVM.ConstantOperand $ LLVM.GlobalReference (LLVM.ptr LLVM.i1) thisInitedName
+      gcInitOperand = LLVM.ConstantOperand $ LLVM.GlobalReference (LLVM.ptr voidFun) "GC_init"
       voidFun = LLVM.FunctionType
         { LLVM.resultType = LLVM.void
         , LLVM.argumentTypes = []
@@ -874,7 +874,7 @@ generateModule mname imports gens = do
         , LLVM.Constant.isPacked = False
         , LLVM.Constant.memberValues =
           [ LLVM.Int 32 610
-          , LLVM.GlobalReference voidFun thisInitName
+          , LLVM.GlobalReference (LLVM.ptr voidFun) thisInitName
           , LLVM.Null $ LLVM.ptr LLVM.i8
           ]
         }

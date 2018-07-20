@@ -40,6 +40,10 @@ directType (TypeRep.TypeRep sz)
 indirectType :: LLVM.Type
 indirectType = LLVM.ptr LLVM.i8
 
+zeroInitializer :: LLVM.Type -> LLVM.Constant
+zeroInitializer (LLVM.IntegerType width) = LLVM.Int width 0
+zeroInitializer typ = LLVM.Null typ
+
 loadDirect
   :: MonadIRBuilder m
   => TypeRep

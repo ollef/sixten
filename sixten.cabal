@@ -110,7 +110,7 @@ executable sixten
                        Util.Tsil
                        VIX
   build-depends:
-                       base >=4.8 && <4.11,
+                       base >=4.8 && <4.12,
                        bound,
                        bytestring,
                        containers,
@@ -146,14 +146,14 @@ executable sixten
 library
   hs-source-dirs:      src
   exposed-modules:
-  build-depends:       base >= 4.8 && < 4.11
+  build-depends:       base >= 4.8 && < 4.12
   default-language:    Haskell2010
 
 Test-suite test-sixten
   hs-source-dirs:      tests
   type:                exitcode-stdio-1.0
   main-is:             Main.hs
-  build-depends:       base >= 4.8 && < 4.11,
+  build-depends:       base >= 4.8 && < 4.12,
                        bytestring,
                        directory,
                        filepath,
