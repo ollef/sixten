@@ -7,7 +7,6 @@ import Data.Foldable
 import Data.HashSet(HashSet)
 import qualified Data.Map as Map
 import Data.Maybe
-import Data.Monoid
 import Data.Vector(Vector)
 import Data.Void
 

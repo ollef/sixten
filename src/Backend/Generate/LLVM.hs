@@ -1,7 +1,5 @@
 module Backend.Generate.LLVM where
 
-import Control.Monad.State
-import qualified LLVM.AST as LLVM
 import LLVM.AST.Instruction
 import LLVM.IRBuilder
 import LLVM.IRBuilder.Internal.SnocList

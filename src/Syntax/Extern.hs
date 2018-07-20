@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings, TemplateHaskell #-}
 module Syntax.Extern where
 
-import Data.Monoid
 import Data.Text(Text)
 import Data.Deriving
 

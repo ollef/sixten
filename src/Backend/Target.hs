@@ -2,7 +2,6 @@
 module Backend.Target where
 
 import qualified Data.List as List
-import Data.Monoid
 import Data.Word
 
 import Error

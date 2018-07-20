@@ -7,7 +7,6 @@ import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.List.NonEmpty
 import Data.Maybe
-import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 

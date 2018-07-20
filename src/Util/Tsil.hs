@@ -4,7 +4,6 @@ module Util.Tsil where
 import Control.Applicative
 import Control.Monad
 import Data.Foldable
-import Data.Semigroup
 
 data Tsil a
   = Nil | Snoc (Tsil a) a

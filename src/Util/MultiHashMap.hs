@@ -8,7 +8,6 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.Maybe as Maybe
-import Data.Semigroup
 
 newtype MultiHashMap k v = MultiHashMap { toMap :: HashMap k (HashSet v) }
   deriving (Eq, Show)

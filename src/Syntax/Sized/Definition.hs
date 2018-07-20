@@ -3,7 +3,6 @@ module Syntax.Sized.Definition where
 
 import Bound
 import Control.Monad.Morph
-import Data.Monoid
 import Data.Vector(Vector)
 
 import FreeVar

@@ -7,7 +7,6 @@ import Data.Bifunctor
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.Maybe
-import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 

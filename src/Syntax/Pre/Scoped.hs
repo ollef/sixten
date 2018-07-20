@@ -17,7 +17,6 @@ import Data.Foldable as Foldable
 import Data.Functor.Classes
 import Data.Hashable
 import Data.HashSet(HashSet)
-import Data.Monoid
 import Data.Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector

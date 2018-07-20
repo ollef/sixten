@@ -3,7 +3,6 @@ module Syntax.Sized.SLambda where
 
 import Control.Monad
 import Data.Deriving
-import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 

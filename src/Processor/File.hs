@@ -10,7 +10,6 @@ import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.Maybe
-import Data.Monoid
 import Data.Text(Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text

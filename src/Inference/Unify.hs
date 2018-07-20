@@ -7,7 +7,6 @@ import Data.Hashable
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.List
-import Data.Monoid
 import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 

@@ -7,7 +7,6 @@ import Data.Foldable
 import Data.Function
 import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
-import Data.Monoid
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 

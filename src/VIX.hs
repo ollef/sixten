@@ -9,7 +9,6 @@ import Control.Monad.Reader
 import Control.Monad.ST
 import Control.Monad.State
 import Control.Monad.Trans.Control
-import Control.Monad.Trans.Identity
 import Control.Monad.Writer
 import Data.Bifunctor
 import Data.Foldable

@@ -6,7 +6,6 @@ import Data.Hashable
 import Data.HashSet(HashSet)
 import Data.List(intersperse, intercalate)
 import Data.List.Split
-import Data.Semigroup
 import Data.String
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector

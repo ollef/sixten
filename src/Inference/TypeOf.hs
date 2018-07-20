@@ -2,7 +2,6 @@
 module Inference.TypeOf where
 
 import Control.Monad.Except
-import Data.Monoid
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Void
 

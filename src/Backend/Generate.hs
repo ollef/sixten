@@ -11,7 +11,6 @@ import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Maybe
-import Data.Monoid
 import Data.String
 import Data.Text(Text)
 import qualified Data.Text.IO as Text

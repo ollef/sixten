@@ -1,6 +1,5 @@
 module Command.Run where
 
-import Data.Monoid
 import Options.Applicative
 import System.Process
 

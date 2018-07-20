@@ -6,7 +6,6 @@ import Control.Monad.Except
 import Control.Monad.ST
 import Data.Bifunctor
 import Data.HashSet(HashSet)
-import Data.Monoid
 import Data.STRef
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)

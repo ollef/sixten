@@ -3,7 +3,6 @@ module Command.Test where
 
 import Data.Foldable
 import Data.List
-import Data.Monoid
 import Options.Applicative
 import System.Exit
 import System.Process

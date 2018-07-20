@@ -8,7 +8,6 @@ import Data.Bitraversable
 import Data.Function
 import Data.Hashable
 import Data.Maybe
-import Data.Monoid
 import Data.STRef
 import Data.String
 import qualified Data.Text.Prettyprint.Doc as PP

@@ -3,7 +3,6 @@ module Inference.Subtype where
 
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
-import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 

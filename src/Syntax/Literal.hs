@@ -2,7 +2,6 @@
 module Syntax.Literal where
 
 import Data.Word
-import Data.Monoid
 import qualified TypeRep
 
 import Pretty

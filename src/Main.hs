@@ -2,7 +2,6 @@
 module Main where
 
 import Control.Monad
-import Data.Monoid
 import Options.Applicative
 
 import qualified Command.Check as Check

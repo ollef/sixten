@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, GADTs, GeneralizedNewtypeDeriving, OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances, GADTs, OverloadedStrings #-}
 module Pretty
   ( AnsiStyle, bold, italicized, underlined, red, dullGreen, dullBlue
   , Doc
@@ -26,7 +26,6 @@ import Control.Monad.Reader
 import qualified Data.Foldable as Foldable
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
-import Data.Monoid
 import Data.Proxy
 import Data.String
 import Data.Text(Text)

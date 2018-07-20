@@ -7,7 +7,6 @@ import Data.Bifoldable
 import Data.Bifunctor
 import Data.Bitraversable
 import Data.Functor.Classes
-import Data.Monoid
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 

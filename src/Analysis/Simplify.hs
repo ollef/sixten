@@ -5,7 +5,6 @@ import Bound
 import Data.Bifunctor
 import Data.Foldable as Foldable
 import Data.Maybe
-import Data.Monoid
 import qualified Data.MultiSet as MultiSet
 import qualified Data.Set as Set
 import qualified Data.Vector as Vector

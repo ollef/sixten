@@ -9,7 +9,6 @@ import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
-import Data.Monoid
 import Data.Vector(Vector)
 
 import Analysis.Simplify

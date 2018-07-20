@@ -7,7 +7,6 @@ import Data.Bifunctor
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.List
-import Data.Monoid
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
 

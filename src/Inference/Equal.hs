@@ -4,7 +4,6 @@ module Inference.Equal where
 import Control.Applicative
 import Control.Monad.Except
 import qualified Data.List.NonEmpty as NonEmpty
-import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 

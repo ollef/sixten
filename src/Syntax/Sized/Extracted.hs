@@ -3,7 +3,6 @@ module Syntax.Sized.Extracted where
 
 import Control.Monad
 import Data.Deriving
-import Data.Semigroup
 import Data.Text(Text)
 import Data.Vector(Vector)
 

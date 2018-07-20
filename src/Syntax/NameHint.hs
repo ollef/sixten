@@ -1,6 +1,5 @@
 module Syntax.NameHint where
 
-import Data.Semigroup
 import Data.String
 
 import Syntax.Name

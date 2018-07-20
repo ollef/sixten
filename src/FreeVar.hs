@@ -4,7 +4,6 @@ module FreeVar where
 import Bound
 import Data.Function
 import Data.Hashable
-import Data.Monoid
 import Data.Vector(Vector)
 
 import MonadFresh

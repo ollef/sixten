@@ -12,7 +12,6 @@ import Bound.Scope
 import Data.Deriving
 import Data.Functor.Classes
 import Data.Maybe
-import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 

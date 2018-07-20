@@ -4,7 +4,6 @@ module Inference.Constructor where
 import Control.Monad.Except
 import qualified Data.HashSet as HashSet
 import Data.HashSet(HashSet)
-import Data.Monoid
 import qualified Data.Text.Prettyprint.Doc as PP
 
 import Inference.Constraint

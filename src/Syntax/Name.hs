@@ -4,7 +4,6 @@ module Syntax.Name where
 import Data.String
 import Data.Text(Text)
 import Data.Hashable
-import Data.Semigroup
 
 import Util
 

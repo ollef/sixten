@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, OverloadedStrings #-}
 module Syntax.Direction where
 
-import Data.Monoid
 import Data.Vector(Vector)
 
 import Pretty

@@ -4,7 +4,6 @@ module Inference.TypeCheck.Expr where
 import Control.Monad.Except
 import Control.Monad.ST
 import Data.HashSet(HashSet)
-import Data.Monoid
 import Data.STRef
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector

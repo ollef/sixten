@@ -2,7 +2,6 @@ module Syntax.PreName where
 
 import Control.Applicative
 import Data.Hashable
-import Data.Semigroup
 import Data.String
 import Data.Text(Text)
 

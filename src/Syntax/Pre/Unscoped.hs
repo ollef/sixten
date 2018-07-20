@@ -3,7 +3,6 @@ module Syntax.Pre.Unscoped where
 
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.List.NonEmpty(NonEmpty)
-import Data.Monoid
 import Data.Vector(Vector)
 
 import Syntax hiding (Definition)

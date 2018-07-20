@@ -2,7 +2,6 @@
 module Command.Compile where
 
 import qualified Data.List.NonEmpty as NonEmpty
-import Data.Monoid
 import GHC.IO.Handle
 import Options.Applicative
 import System.Directory

@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings, PatternSynonyms, ViewPatterns #-}
 module Builtin.Names where
 
-import Data.Monoid
 import Data.String
 
 import Syntax.Core

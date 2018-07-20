@@ -3,7 +3,6 @@ module Inference.TypeCheck.Definition where
 
 import Control.Monad.Except
 import Data.Bifunctor
-import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 

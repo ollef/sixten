@@ -6,7 +6,6 @@ import Control.Monad.State
 import Data.Foldable
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
-import Data.Monoid
 import qualified Data.Text as Text
 import Data.Text(Text)
 import Data.Vector(Vector)

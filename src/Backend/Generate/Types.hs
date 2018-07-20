@@ -2,7 +2,6 @@
 module Backend.Generate.Types where
 
 import Control.Applicative
-import Data.Monoid
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Word

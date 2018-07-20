@@ -7,7 +7,6 @@ import Data.Function
 import Data.Functor.Classes
 import Data.Hashable
 import qualified Data.HashSet as HashSet
-import Data.Monoid
 import qualified Data.Text as Text
 import Data.Vector(Vector)
 

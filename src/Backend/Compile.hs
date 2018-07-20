@@ -9,7 +9,6 @@ import Data.Char
 import Data.Foldable
 import Data.List (dropWhile, dropWhileEnd)
 import Data.Maybe
-import Data.Monoid
 import Data.Version
 import System.FilePath
 import System.Process

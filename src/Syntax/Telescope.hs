@@ -26,7 +26,6 @@ import Data.Functor.Classes
 import Data.Hashable
 import Data.List as List
 import Data.Maybe
-import Data.Monoid
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Traversable
 import Data.Vector(Vector)

@@ -7,7 +7,6 @@ import Data.Bifunctor
 import Data.Bitraversable
 import Data.Deriving
 import Data.Foldable as Foldable
-import Data.Monoid
 import Data.Vector(Vector)
 
 import Syntax

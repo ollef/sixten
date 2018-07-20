@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Command.Check where
 
-import Data.Monoid
 import qualified Data.Text.IO as Text
 import Options.Applicative
 import System.IO
