@@ -84,13 +84,13 @@ class PrettyNamed a where
 a <+> b = (PP.<+>) <$> a <*> b
 a <$$> b = (\x y -> x <> PP.line <> y) <$> a <*> b
 
-vcat :: Foldable f => f (PrettyDoc) -> PrettyDoc
+vcat :: Foldable f => f PrettyDoc -> PrettyDoc
 vcat xs = PP.vcat <$> sequence (Foldable.toList xs)
 
-hcat :: Foldable f => f (PrettyDoc) -> PrettyDoc
+hcat :: Foldable f => f PrettyDoc -> PrettyDoc
 hcat xs = PP.hcat <$> sequence (Foldable.toList xs)
 
-hsep :: Foldable f => f (PrettyDoc) -> PrettyDoc
+hsep :: Foldable f => f PrettyDoc -> PrettyDoc
 hsep xs = PP.hsep <$> sequence (Foldable.toList xs)
 
 align :: PrettyDoc -> PrettyDoc
