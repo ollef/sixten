@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -Wno-incomplete-patterns -Wno-incomplete-record-updates #-} -- llvm-hs forces a bunch of these
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Backend.Generate where
 
