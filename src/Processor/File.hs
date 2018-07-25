@@ -184,7 +184,8 @@ typeCheckGroup
 simplifyGroup
   :: [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
   -> VIX [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
-simplifyGroup defs = forM defs $ \(x, ClosedDefinition def, Biclosed typ) ->
+simplifyGroup defs = return $ do
+  (x, ClosedDefinition def, Biclosed typ) <- defs
   return (x, closeDefinition id id $ simplifyDef globTerm def, biclose id id $ simplifyExpr globTerm 0 typ)
   where
     globTerm x = not $ HashSet.member x names
