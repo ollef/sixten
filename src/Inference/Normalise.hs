@@ -246,6 +246,8 @@ normaliseBuiltins k e@(Global Builtin.MkTypeName) [(Explicit, x)] = do
   case x' of
     Lit (Integer i) -> return $ MkType $ TypeRep.TypeRep i
     _ -> return $ App e Explicit x'
+normaliseBuiltins k (Lit (Natural 0)) es = k Builtin.Zero es
+normaliseBuiltins k (Lit (Natural n)) es = k (Builtin.Succ $ Lit $ Natural $ n - 1) es
 normaliseBuiltins k e es = k e es
 
 binOp

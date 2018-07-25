@@ -37,6 +37,7 @@ import qualified Data.Text.Prettyprint.Doc.Render.Text as RenderText
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 import Data.Void
+import Numeric.Natural
 
 import Syntax.Name
 import Syntax.NameHint
@@ -209,6 +210,7 @@ instance Pretty Char where
 instance Pretty Int where pretty = fromString . show
 instance Pretty () where pretty = fromString . show
 instance Pretty Integer where pretty = fromString . show
+instance Pretty Natural where pretty = fromString . show
 instance Pretty Float  where pretty = fromString . show
 instance Pretty Double where pretty = fromString . show
 instance a ~ AnsiStyle => Pretty (PP.Doc a) where pretty = id

@@ -1,18 +1,16 @@
 {-# LANGUAGE BangPatterns #-}
 module Inference.TypeCheck.Literal where
 
-import Bound
 import Data.ByteString as ByteString
 import Data.Text(Text)
 import Data.Text.Encoding as Encoding
-import qualified Data.Vector as Vector
+import Numeric.Natural
 
 import qualified Builtin.Names as Builtin
 import Syntax.Annotation
 import qualified Syntax.Core as Core
 import qualified Syntax.Core.Pattern as Core
 import Syntax.GlobalBind
-import Syntax.Let
 import qualified Syntax.Literal as Core
 import qualified Syntax.Pre.Literal as Pre
 import Util
@@ -40,33 +38,25 @@ stringPat s
 
 byteArray :: ByteString -> Core.Expr m v
 byteArray bs
-  = Core.Let (LetRec lengths)
-  $ Scope
-  $ Core.apps (Core.Con Builtin.MkArrayConstr)
-    [ (Implicit, Builtin.ByteType)
-    , (Explicit, lenExpr)
-    , ( Explicit
-      , Core.apps (Core.Con Builtin.Ref)
-        [ (Implicit, byteVectorType lenExpr)
-        , ( Explicit
-          , fst $ ByteString.foldr go (Core.Con Builtin.MkUnitConstr, 0) bs
-          )
-        ]
-      )
-    ]
+  = Core.apps (Core.Con Builtin.MkArrayConstr)
+  [ (Implicit, Builtin.ByteType)
+  , (Explicit, lenExpr)
+  , ( Explicit
+    , Core.apps (Core.Con Builtin.Ref)
+      [ (Implicit, byteVectorType lenExpr)
+      , ( Explicit
+        , fst $ ByteString.foldr go (Core.Con Builtin.MkUnitConstr, 0) bs
+        )
+      ]
+    )
+  ]
   where
-    lenExpr = pure $ B $ LetVar len
-    lengths = Vector.generate (len + 1) $ \i -> natBinding $ case i of
-      0 -> nat (0 :: Integer)
-      _ -> Core.App (Core.Con Builtin.SuccConstr) Explicit $ pure $ B $ LetVar $ i - 1
-      where
-        natBinding e = LetBinding mempty (Scope e) Builtin.Nat
-
-    len = ByteString.length bs
+    lenExpr = nat len
+    len = fromIntegral $ ByteString.length bs
     go byte (rest, !i) =
       ( Core.apps (Core.Con Builtin.MkPairConstr)
         [ (Implicit, Builtin.ByteType)
-        , (Implicit, byteVectorType $ pure $ B $ LetVar i)
+        , (Implicit, byteVectorType $ nat i)
         , (Explicit, Core.Lit $ Core.Byte byte)
         , (Explicit, rest)
         ]
@@ -86,7 +76,7 @@ byteArrayPat bs
         (toVector [(Explicit, vecType)])
         (toVector
           [ ( Explicit
-            , fst $ ByteString.foldr go (Core.ConPat Builtin.MkUnitConstr mempty mempty, 0 :: Integer) bs
+            , fst $ ByteString.foldr go (Core.ConPat Builtin.MkUnitConstr mempty mempty, 0) bs
             , vecType
             )
           ]
@@ -96,7 +86,7 @@ byteArrayPat bs
     ]
   )
   where
-    len = ByteString.length bs
+    len = fromIntegral $ ByteString.length bs
     vecType = byteVectorType $ nat len
     go byte (rest, !restLen) =
       ( Core.ConPat Builtin.MkPairConstr
@@ -126,12 +116,8 @@ byteVectorType len = Core.apps
   , (Explicit, Builtin.ByteType)
   ]
 
-nat :: (Eq a, Num a) => a -> Core.Expr m v
-nat 0 = Core.Con Builtin.ZeroConstr
-nat n = Core.App (Core.Con Builtin.SuccConstr) Explicit (nat (n - 1))
+nat :: Natural -> Core.Expr m v
+nat = Core.Lit . Core.Natural
 
-natPat :: (Eq a, Num a) => a -> Core.Pat (Core.Expr m v) v'
-natPat 0 = Core.ConPat Builtin.ZeroConstr mempty mempty
-natPat n
-  = Core.ConPat Builtin.SuccConstr mempty
-  $ toVector [(Explicit, natPat (n - 1), Builtin.Nat)]
+natPat :: Natural -> Core.Pat (Core.Expr m v) v'
+natPat = Core.LitPat . Core.Natural

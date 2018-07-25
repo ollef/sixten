@@ -13,6 +13,7 @@ import Inference.Normalise
 import Syntax
 import Syntax.Core hiding (let_)
 import Util
+import qualified Builtin.Names as Builtin
 
 simplifyExpr
   :: (QName -> Bool)
@@ -23,6 +24,10 @@ simplifyExpr glob !applied expr = case expr of
   Var _ -> expr
   Meta v es -> Meta v $ fmap (simplifyExpr glob 0) <$> es
   Global _ -> expr
+  Builtin.Zero -> Lit $ Natural 0
+  Builtin.Succ n -> case simplifyExpr glob 0 n of
+    Lit (Natural n') -> Lit $ Natural $ n' + 1
+    n' -> Builtin.Succ n'
   Con _ -> expr
   Lit _ -> expr
   Pi h a t s -> Pi h a (simplifyExpr glob 0 t) $ hoist (simplifyExpr glob 0) s
@@ -57,6 +62,7 @@ letRec
   -> Expr meta v
 letRec glob ds scope
   | Vector.null ds' = instantiate (error "letRec empty") scope'
+  | Vector.length (unLetRec ds) /= Vector.length ds' = simplifyExpr glob 0 $ Let (LetRec ds') scope'
   | otherwise = Let (LetRec ds') scope'
   where
     occs = MultiSet.fromList (bindings scope)

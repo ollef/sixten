@@ -71,5 +71,6 @@ typeOfLiteral
   :: Literal
   -> Expr meta v
 typeOfLiteral Integer {} = Builtin.IntType
+typeOfLiteral Natural {} = Builtin.Nat
 typeOfLiteral Byte {} = Builtin.ByteType
 typeOfLiteral TypeRep {} = Builtin.Type

@@ -176,6 +176,7 @@ storeExpr expr typ out = case expr of
 
 literalRep :: Literal -> InstrGen TypeRep
 literalRep Integer {} = getIntRep
+literalRep Natural {} = getIntRep
 literalRep Byte {} = return TypeRep.ByteRep
 literalRep TypeRep {} = getTypeRep
 
@@ -183,6 +184,8 @@ literalConstant :: Literal -> InstrGen LLVM.Constant
 literalConstant (Integer i) = do
   bits <- getIntBits
   return $ LLVM.Int bits i
+literalConstant (Natural i) =
+  literalConstant $ Integer $ fromIntegral i
 literalConstant (Byte b) =
   return $ LLVM.Int 8 $ fromIntegral b
 literalConstant (TypeRep r) = do
@@ -511,6 +514,7 @@ generateBranches (Anno caseExpr caseExprType) branches brCont = do
 
       e0 <- case firstLit of
         Integer _ -> generateIntExpr caseExpr
+        Natural _ -> generateIntExpr caseExpr
         Byte _ -> generateByteExpr caseExpr
         TypeRep _ -> generateTypeExpr caseExpr >>= generateSizeOf
 
@@ -562,8 +566,9 @@ generateConstant visibility name (Constant aexpr@(Anno expr _)) = do
 
   case (expr, msig) of
     (Lit lit, Just (ConstantSig (Direct rep))) -> case lit of
-      Byte b -> directLit (LLVM.Int 8 $ fromIntegral b) rep
       Integer i -> directLit (LLVM.Int intBits i) rep
+      Natural n -> directLit (LLVM.Int intBits $ fromIntegral n) rep
+      Byte b -> directLit (LLVM.Int 8 $ fromIntegral b) rep
       TypeRep t -> directLit (LLVM.Int typeRepBits $ TypeRep.size t) rep
 
     (_, Just (ConstantSig dir)) -> do

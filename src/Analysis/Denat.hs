@@ -12,7 +12,7 @@ denat :: Expr v -> Expr v
 denat expr = case expr of
   Var _ -> expr
   Global _ -> expr
-  Lit _ -> expr
+  Lit l -> Lit $ denatLit l
   Con ZeroConstr _ -> Lit $ Integer 0
   Con SuccConstr xs -> succInt $ denatAnno $ Vector.head xs
   Con c es -> Con c $ denatAnno <$> es
@@ -21,6 +21,12 @@ denat expr = case expr of
   Let ds s -> Let (hoist denat ds) (hoist denat s)
   Case e brs -> denatCase (denatAnno e) brs
   ExternCode c retType -> ExternCode (denatAnno <$> c) (denat retType)
+
+denatLit :: Literal -> Literal
+denatLit l@Integer {} = l
+denatLit (Natural n) = Integer $ fromIntegral n
+denatLit l@Byte {} = l
+denatLit l@TypeRep {} = l
 
 succInt :: Anno Expr v -> Expr v
 succInt (Anno (Lit (Integer n)) _) = Lit $ Integer $! n + 1
@@ -58,4 +64,4 @@ denatCase expr (ConBranches cbrs)
 denatCase expr (LitBranches lbrs def)
   = Case
     expr
-    (LitBranches [LitBranch l (denat br) | LitBranch l br <- lbrs] (denat def))
+    (LitBranches [LitBranch (denatLit l) (denat br) | LitBranch l br <- lbrs] (denat def))
