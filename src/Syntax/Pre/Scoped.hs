@@ -23,6 +23,7 @@ import qualified Data.Vector as Vector
 
 import Syntax
 import Syntax.Pre.Definition as Definition
+import Syntax.Pre.Literal as Literal
 import Syntax.Pre.Pattern as Pattern
 import Util
 import Util.Tsil
@@ -30,7 +31,7 @@ import Util.Tsil
 data Expr v
   = Var v
   | Global QName
-  | Lit Literal
+  | Lit Literal.Literal
   | Con (HashSet QConstr)
   | Pi !Plicitness (Pat (HashSet QConstr) (PatternScope Type v) ()) (PatternScope Expr v)
   | Lam !Plicitness (Pat (HashSet QConstr) (PatternScope Type v) ()) (PatternScope Expr v)

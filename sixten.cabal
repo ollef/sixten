@@ -62,6 +62,7 @@ executable sixten
                        Inference.TypeCheck.Data
                        Inference.TypeCheck.Definition
                        Inference.TypeCheck.Expr
+                       Inference.TypeCheck.Literal
                        Inference.TypeCheck.Pattern
                        Inference.TypeOf
                        Inference.Unify

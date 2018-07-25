@@ -7,9 +7,9 @@ import qualified TypeRep
 import Pretty
 
 data Literal
-  = Integer Integer
-  | Byte Word8
-  | TypeRep TypeRep.TypeRep
+  = Integer !Integer
+  | Byte !Word8
+  | TypeRep !TypeRep.TypeRep
   deriving (Eq, Ord, Show)
 
 instance Pretty Literal where

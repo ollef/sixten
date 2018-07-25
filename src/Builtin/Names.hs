@@ -111,6 +111,8 @@ pattern Succ x = App (Con SuccConstr) Explicit x
 
 pattern StringName :: QName
 pattern StringName <- ((==) "Sixten.Builtin.String" -> True) where StringName = "Sixten.Builtin.String"
+pattern StringType :: Expr m t
+pattern StringType = Global StringName
 pattern MkStringName :: Constr
 pattern MkStringName <- ((==) "MkString" -> True) where MkStringName = "MkString"
 pattern MkStringConstr :: QConstr
@@ -122,6 +124,9 @@ pattern MkArrayName :: Constr
 pattern MkArrayName <- ((==) "MkArray" -> True) where MkArrayName = "MkArray"
 pattern MkArrayConstr :: QConstr
 pattern MkArrayConstr = QConstr ArrayName MkArrayName
+
+pattern VectorName :: QName
+pattern VectorName <- ((==) "Sixten.Builtin.Vector" -> True) where VectorName = "Sixten.Builtin.Vector"
 
 pattern PairName :: QName
 pattern PairName <- ((==) "Sixten.Builtin.Pair" -> True) where PairName = "Sixten.Builtin.Pair"

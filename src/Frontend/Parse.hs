@@ -25,7 +25,7 @@ import Text.Parsix(Position(Position, visualRow, visualColumn), (<?>))
 import Error
 import Processor.Result
 import Syntax hiding (classDef, dataDef)
-import Syntax.Pre.Literal
+import Syntax.Pre.Literal as Pre
 import Syntax.Pre.Pattern
 import Syntax.Pre.Unscoped as Unscoped
 
@@ -265,7 +265,7 @@ atomicPattern = locatedPat
   $ symbol "(" *>% pattern <*% symbol ")"
   <|> (\v -> VarPat (fromPreName v) v) <$> qname
   <|> WildcardPat <$ wildcard
-  <|> literalPat
+  <|> LitPat <$> literal
   <?> "atomic pattern"
 
 plicitPatternBinding :: Parser [(Plicitness, Pat PreName Type PreName)]
@@ -327,7 +327,7 @@ locatedExpr p = uncurry SourceLoc <$> located p
 
 atomicExpr :: Parser Expr
 atomicExpr = locatedExpr
-  $ literal
+  $ Lit <$> literal
   <|> Wildcard <$ wildcard
   <|> Var <$> qname
   <|> Unscoped.pis <$ reserved "forall" <*>% (fmap ((,) Implicit) <$> somePatterns) <*% symbol "." <*>% exprWithoutWhere
@@ -409,15 +409,10 @@ externCExpr
 
 -------------------------------------------------------------------------------
 -- * Literals
-literal :: Parser Expr
+literal :: Parser Pre.Literal
 literal
-  = Lit . Integer <$> integer
-  <|> string <$> Parsix.stringLiteral
-
-literalPat :: Parser (Pat PreName t n)
-literalPat
-  = LitPat . Integer <$> integer
-  <|> stringPat <$> Parsix.stringLiteral
+  = Pre.Integer <$> integer
+  <|> Pre.String <$> Parsix.stringLiteral
 
 -------------------------------------------------------------------------------
 -- * Definitions

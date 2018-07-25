@@ -6,13 +6,14 @@ import Data.List.NonEmpty(NonEmpty)
 import Data.Vector(Vector)
 
 import Syntax hiding (Definition)
+import Syntax.Pre.Literal as Literal
 import Syntax.Pre.Pattern
 
 type Con = Either Constr QConstr
 
 data Expr
   = Var PreName
-  | Lit Literal
+  | Lit Literal.Literal
   | Pi !Plicitness (Pat PreName Type PreName) Expr
   | Lam !Plicitness (Pat PreName Type PreName) Expr
   | App Expr !Plicitness Expr

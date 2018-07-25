@@ -61,11 +61,11 @@ resolveModule modul = do
             $ TypeError ("Ambiguous name" PP.<+> red (pretty preName)) (preNameSourceLoc preName) $ PP.vcat
               [ "It could refer to" PP.<+> prettyHumanList "or" (dullBlue . pretty <$> toList candidates) <> "."
               ]
-          (err, _) <- flip runResolveNames env $ resolveExpr $ Unscoped.App
-            (Unscoped.Var $ fromQName Builtin.StaticErrorName)
-            Explicit
-            (Literal.string "error\n")
-          return $ fromPreName <$> err
+          let err = Scoped.App
+                (global Builtin.StaticErrorName)
+                Explicit
+                (Scoped.Lit $ Literal.String "error\n")
+          return err
         where
           candidates = MultiHashMap.lookupDefault (HashSet.singleton $ fromPreName preName) preName aliases
 
@@ -274,13 +274,11 @@ resolveExpr expr = case expr of
   Unscoped.SourceLoc loc e -> Scoped.SourceLoc loc <$> resolveExpr e
   Unscoped.Error e -> do
     report e
-    resolveExpr
-      $ Unscoped.App
-        (Unscoped.Var $ fromQName Builtin.StaticErrorName)
+    return
+      $ Scoped.App
+        (global Builtin.StaticErrorName)
         Explicit
-        (Literal.string "error\n")
-        -- TODO use the actual error when strings are faster:
-        -- (Literal.string $ shower $ pretty e)
+        (Scoped.Lit $ Literal.String $ shower $ pretty e)
 
 resolvePat
   :: Pat PreName Unscoped.Expr PreName

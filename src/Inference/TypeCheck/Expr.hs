@@ -17,8 +17,8 @@ import Inference.MetaVar as MetaVar
 import Inference.Monad
 import Inference.Subtype
 import Inference.TypeCheck.Clause
+import Inference.TypeCheck.Literal
 import Inference.TypeCheck.Pattern
-import Inference.TypeOf
 import Inference.Unify
 import MonadContext
 import Syntax
@@ -118,8 +118,9 @@ tcRho expr expected expectedAppResult = case expr of
     f <- instExpected expected typ
     return $ f $ Core.Global g
   Pre.Lit l -> do
-    f <- instExpected expected $ typeOfLiteral l
-    return $ f $ Core.Lit l
+    let (e, typ) = inferLit l
+    f <- instExpected expected typ
+    return $ f e
   Pre.Con cons -> do
     qc <- resolveConstr cons expectedAppResult
     typ <- qconstructor qc

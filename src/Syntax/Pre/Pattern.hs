@@ -10,12 +10,13 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import Syntax
+import qualified Syntax.Pre.Literal as Pre
 import Util
 
 data Pat con typ b
   = VarPat !NameHint b
   | WildcardPat
-  | LitPat Literal
+  | LitPat Pre.Literal
   | ConPat con (Vector (Plicitness, Pat con typ b))
   | AnnoPat (Pat con typ b) typ
   | ViewPat typ (Pat con typ b)

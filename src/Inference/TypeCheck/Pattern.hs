@@ -17,7 +17,7 @@ import Inference.Constructor
 import Inference.MetaVar
 import Inference.Monad
 import Inference.Subtype
-import Inference.TypeOf
+import Inference.TypeCheck.Literal
 import MonadContext
 import Syntax
 import qualified Syntax.Core as Core
@@ -130,12 +130,10 @@ tcPat' p pat vs expected = case pat of
     v <- forall "_" p expectedType
     return (Core.VarPat "_" v, pure v, pure (WildcardBinding, v))
   Pre.LitPat lit -> do
-    (pat', expr) <- instPatExpected
-      expected
-      (typeOfLiteral lit)
-      (LitPat lit)
-      (Core.Lit lit)
-    return (pat', expr, mempty)
+    let (expr, typ) = inferLit lit
+        pat' = litPat lit
+    (pat'', expr') <- instPatExpected expected typ pat' expr
+    return (pat'', expr', mempty)
   Pre.ConPat cons pats -> do
     qc@(QConstr typeName _) <- resolveConstr cons $ case expected of
       CheckPat expectedType -> Just expectedType
