@@ -210,7 +210,7 @@ forwardDeclare name retType argDirs = do
 
 mangle :: QName -> Name
 mangle (QName (ModuleName parts) name)
-  = Name
+  = fromText
   $ Text.intercalate "__" (Vector.toList $ fromName <$> parts)
   <> "__" <> fromName name
 

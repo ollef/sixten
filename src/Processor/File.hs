@@ -326,7 +326,7 @@ dupCheck m = forM m $ flip evalStateT (0 :: Int) . foldM go mempty
       else return $ HashMap.insert qname (loc, def) defs
       where
         instanceNameEnding n
-          | Text.all (\b -> isAlphaNum b || isSpace b) n = Name $ "-" <> Text.map replaceSpace n
+          | Text.all (\b -> isAlphaNum b || isSpace b) n = fromText $ "-" <> Text.map replaceSpace n
           | otherwise = ""
         replaceSpace ' ' = '-'
         replaceSpace c = c
