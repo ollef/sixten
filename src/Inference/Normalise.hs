@@ -2,6 +2,7 @@
 module Inference.Normalise where
 
 import Control.Monad.Except
+import Data.Bifunctor
 import Data.Foldable
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Vector as Vector
@@ -70,9 +71,9 @@ whnf'
   -> [(Plicitness, Expr meta (ExprFreeVar meta))] -- ^ Arguments to the expression
   -> m (Expr meta (ExprFreeVar meta))
 whnf' args expr exprs = indentLog $ do
-  -- logMeta 40 "whnf e" $ apps expr exprs
+  logPretty 40 "whnf e" $ bimap (const "(meta)") pretty $ apps expr exprs
   res <- normaliseBuiltins go expr exprs
-  -- logMeta 40 "whnf res" res
+  logPretty 40 "whnf res" $ bimap (const "(meta)") pretty res
   return res
   where
     go e@(Var FreeVar { varValue = Just e' }) es = do
