@@ -171,7 +171,7 @@ normalise' args expr exprs = do
             minlined <- normaliseDef normalise0 rep es
             case minlined of
               Nothing -> irreducible e es
-              Just (inlined, es') -> whnf' args inlined es'
+              Just (inlined, es') -> normalise' args inlined es'
           | otherwise -> irreducible e es
     go e@(Con _) es = irreducible e es
     go e@(Lit _) es = irreducible e es
