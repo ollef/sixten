@@ -17,7 +17,10 @@ import Util
 import Util.TopoSort
 
 data QName = QName !ModuleName !Name
-  deriving (Eq, Generic, Ord, Show)
+  deriving (Generic, Ord, Show)
+
+instance Eq QName where
+  QName m1 n1 == QName m2 n2 = n1 == n2 && m1 == m2
 
 qnameModule :: QName -> ModuleName
 qnameModule (QName m _) = m
@@ -41,7 +44,10 @@ isUnqualified (QName (ModuleName vs) n)
   | otherwise = Nothing
 
 data QConstr = QConstr !QName !Constr
-  deriving (Eq, Generic, Ord, Show)
+  deriving (Generic, Ord, Show)
+
+instance Eq QConstr where
+  QConstr q1 n1 == QConstr q2 n2 = n1 == n2 && q1 == q2
 
 qconstrConstr :: QConstr -> Constr
 qconstrConstr (QConstr _ c) = c

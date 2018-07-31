@@ -2,7 +2,7 @@
 module Backend.ExtractExtern where
 
 import Control.Monad.Fail
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Data.Foldable
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet

@@ -3,7 +3,7 @@ module Inference.Generalise where
 
 import Control.Applicative
 import Control.Monad.Except
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Data.Foldable as Foldable
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap

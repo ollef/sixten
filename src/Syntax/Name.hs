@@ -7,14 +7,17 @@ import Data.Hashable
 
 import Util
 
-newtype Name = Name Text
-  deriving (Eq, Hashable, Ord, Show, IsString, Semigroup, Monoid)
+newtype Name = Name (Hashed Text)
+  deriving (Eq, Hashable, Ord, Show, IsString)
+
+instance Semigroup Name where
+  Name n1 <> Name n2 = Name $ hashed $ unhashed n1 <> unhashed n2
 
 fromName :: IsString a => Name -> a
-fromName (Name t) = fromText t
+fromName (Name t) = fromText $ unhashed t
 
-newtype Constr = Constr Text
-  deriving (Eq, Hashable, Ord, Show, IsString, Semigroup, Monoid)
+newtype Constr = Constr (Hashed Text)
+  deriving (Eq, Hashable, Ord, Show, IsString)
 
 fromConstr :: IsString a => Constr -> a
-fromConstr (Constr t) = fromText t
+fromConstr (Constr t) = fromText $ unhashed t

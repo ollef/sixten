@@ -2,7 +2,7 @@
 module Processor.File where
 
 import Control.Monad.Except
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Data.Bifunctor
 import Data.Char
 import Data.Functor.Classes

@@ -2,7 +2,7 @@
 module Syntax.Pattern where
 
 import Bound
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Data.Bitraversable
 import Data.Functor.Identity
 import Data.Hashable

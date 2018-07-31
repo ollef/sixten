@@ -3,7 +3,7 @@ module Error where
 
 import Control.Monad.Reader
 import Control.Monad.RWS
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Control.Monad.Trans.Identity
 import Control.Monad.Writer
 import Data.Text(Text)

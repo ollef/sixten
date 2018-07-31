@@ -2,7 +2,7 @@
 module Inference.MetaVar.Zonk where
 
 import Control.Monad.Except
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Data.Functor.Const
 import qualified Data.HashSet as HashSet
 import Data.HashSet(HashSet)

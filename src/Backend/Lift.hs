@@ -3,7 +3,7 @@ module Backend.Lift where
 
 import Control.Monad.Except
 import Control.Monad.Fail
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Data.Bifunctor
 import Data.Foldable
 import Data.HashSet(HashSet)

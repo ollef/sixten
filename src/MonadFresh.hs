@@ -5,7 +5,7 @@ module MonadFresh where
 
 import Control.Monad.Except
 import Control.Monad.Reader
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Control.Monad.Trans.Identity
 import Control.Monad.Writer
 

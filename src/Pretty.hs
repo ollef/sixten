@@ -24,6 +24,7 @@ module Pretty
 import Bound
 import Control.Monad.Reader
 import qualified Data.Foldable as Foldable
+import Data.Hashable
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Proxy
@@ -218,6 +219,7 @@ instance Pretty Text where pretty = fromString . Text.unpack
 instance Pretty Name where pretty (Name n) = pretty n
 instance Pretty Constr where pretty (Constr c) = pretty c
 instance Pretty Void where pretty = absurd
+instance Pretty a => Pretty (Hashed a) where pretty = pretty . unhashed
 
 instance Pretty a => Pretty [a] where prettyM = prettyList
 instance Pretty a => Pretty (Vector a) where prettyM = prettyM . Vector.toList

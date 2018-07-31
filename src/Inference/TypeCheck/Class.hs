@@ -2,7 +2,7 @@
 module Inference.TypeCheck.Class where
 
 import Control.Monad.Except
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Data.Bifunctor
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet

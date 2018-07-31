@@ -7,7 +7,7 @@ import Control.Applicative
 import Control.Exception.Lifted
 import Control.Monad.Except
 import Control.Monad.ST
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Control.Monad.Trans.Control
 import Data.Bifoldable
 import Data.Bifunctor

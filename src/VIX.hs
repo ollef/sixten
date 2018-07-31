@@ -7,7 +7,7 @@ import Control.Monad.Fail
 import Control.Monad.Identity
 import Control.Monad.Reader
 import Control.Monad.ST
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Control.Monad.Trans.Control
 import Control.Monad.Writer
 import Data.Bifunctor

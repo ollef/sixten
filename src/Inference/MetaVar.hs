@@ -3,7 +3,7 @@ module Inference.MetaVar where
 
 import Control.Monad.Except
 import Control.Monad.ST
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Data.Bitraversable
 import Data.Function
 import Data.Hashable
