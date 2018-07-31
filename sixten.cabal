@@ -132,7 +132,6 @@ executable sixten
                        prettyprinter,
                        prettyprinter-ansi-terminal,
                        process,
-                       semigroups,
                        split,
                        temporary,
                        text,
