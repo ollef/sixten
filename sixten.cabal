@@ -17,8 +17,14 @@ data-files:
                      rts/Builtin2.vix
 
 executable sixten
-  ghc-options:         -Wall
+  ghc-options:
+                       -Wall
                        -Wcompat
+                       -Widentities
+                       -Wmissing-home-modules
+                       -Wpartial-fields
+                       -Wredundant-constraints
+                       -Wtabs
                        -funbox-strict-fields
   main-is:             Main.hs
   other-modules:
