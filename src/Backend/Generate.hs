@@ -189,7 +189,7 @@ literalConstant (Byte b) =
   return $ LLVM.Int 8 $ fromIntegral b
 literalConstant (TypeRep r) = do
   bits <- getTypeRepBits
-  return $ LLVM.Int bits $ fromIntegral $ TypeRep.size r
+  return $ LLVM.Int bits $ TypeRep.size r
 
 storeLit :: Literal -> LLVM.Operand -> InstrGen ()
 storeLit lit out = do
