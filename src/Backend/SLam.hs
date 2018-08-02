@@ -4,10 +4,12 @@ module Backend.SLam where
 import Bound.Scope hiding (instantiate1)
 import Control.Monad.Except
 import Control.Monad.Fail
+import Data.Bifunctor
 import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
+import Data.Void
 import qualified Inference.Normalise as Normalise
 import qualified Inference.TypeOf as TypeOf
 import MonadContext
@@ -19,7 +21,6 @@ import qualified Syntax.Sized.SLambda as SLambda
 import TypedFreeVar
 import Util
 import VIX
-import Data.Void
 
 type FreeV = FreeVar Plicitness (Core.Expr ())
 
@@ -59,63 +60,67 @@ annotate e = do
   t' <- whnf t
   return $ Core.Meta () $ toVector [(Explicit, t'), (Explicit, e)]
 
-annotateType :: Core.Expr Void FreeV -> SLam (Core.Expr () FreeV)
-annotateType = annotateExpr >=> whnf
+annotateType :: (meta -> ()) -> Core.Expr meta FreeV -> SLam (Core.Expr () FreeV)
+annotateType meta t = do
+  t' <- whnf $ first meta t
+  annotateExpr id t'
 
-annotateExpr :: Core.Expr Void FreeV -> SLam (Core.Expr () FreeV)
-annotateExpr expr = annotate =<< case expr of
+annotateExpr :: (meta -> ()) -> Core.Expr meta FreeV -> SLam (Core.Expr () FreeV)
+annotateExpr meta expr = annotate =<< case expr of
   Core.Var v -> return $ Core.Var v
-  Core.Meta m _ -> absurd m
+  Core.Meta m es -> Core.Meta (meta m) <$> mapM (mapM $ annotateExpr meta) es
   Core.Global g -> return $ Core.Global g
   Core.Lit l -> return $ Core.Lit l
   Core.Pi h p t s -> do
-    t' <- annotateType t
+    t' <- annotateType meta t
     v <- freeVar h p t'
-    e <- annotateExpr $ instantiate1 (pure v) s
+    e <- annotateExpr meta $ instantiate1 (pure v) s
     return $ Core.pi_ v e
   Core.Lam h p t s -> do
-    t' <- annotateType t
+    t' <- annotateType meta t
     v <- freeVar h p t'
-    e <- annotateExpr $ instantiate1 (pure v) s
+    e <- annotateExpr meta $ instantiate1 (pure v) s
     return $ Core.lam v e
   Core.Con qc -> return $ Core.Con qc
-  Core.App e1 p e2 -> annotate =<< do
-    e1' <- annotateExpr e1
-    e2' <- annotateExpr e2
-    return $ Core.App e1' p e2'
+  (Core.appsView -> (e, es@(_:_))) -> do
+    e' <- annotateExpr meta e
+    es' <- mapM (mapM $ annotateExpr meta) es
+    return $ Core.apps e' es'
+  Core.App {} -> error "annotateExpr impossible"
   Core.Case e brs retType -> do
-    e' <- annotateExpr e
-    brs' <- annotateBranches brs
-    retType' <- annotateType retType
+    e' <- annotateExpr meta e
+    brs' <- annotateBranches meta brs
+    retType' <- annotateType meta retType
     return $ Core.Case e' brs' retType'
   Core.Let ds scope -> do
     vs <- forMLet ds $ \h _ t -> do
-      t' <- annotateType t
+      t' <- annotateType meta t
       freeVar h Explicit t'
     es' <- forMLet ds $ \_ s _ ->
-      annotateExpr $ instantiateLet pure vs s
-    body <- annotateExpr $ instantiateLet pure vs scope
+      annotateExpr meta $ instantiateLet pure vs s
+    body <- annotateExpr meta $ instantiateLet pure vs scope
     return $ Core.let_ (Vector.zip vs es') body
   Core.ExternCode c retType -> do
-    c' <- mapM annotateExpr c
-    retType' <- annotateType retType
+    c' <- mapM (annotateExpr meta) c
+    retType' <- annotateType meta retType
     return $ Core.ExternCode c' retType'
 
 annotateBranches
-  :: Branches Plicitness (Core.Expr Void) FreeV
+  :: (meta -> ())
+  -> Branches Plicitness (Core.Expr meta) FreeV
   -> SLam (Branches Plicitness (Core.Expr ()) FreeV)
-annotateBranches (ConBranches cbrs) = do
+annotateBranches meta (ConBranches cbrs) = do
   cbrs' <- forM cbrs $ \(ConBranch c tele brScope) -> do
     vs <- forTeleWithPrefixM tele $ \h p s vs -> do
-      t <- annotateType $ instantiateTele pure vs s
+      t <- annotateType meta $ instantiateTele pure vs s
       freeVar h p t
-    brExpr <- annotateExpr $ instantiateTele pure vs brScope
+    brExpr <- annotateExpr meta $ instantiateTele pure vs brScope
     return $ conBranchTyped c vs brExpr
   return $ ConBranches cbrs'
-annotateBranches (LitBranches lbrs d)
+annotateBranches meta (LitBranches lbrs d)
   = LitBranches
-    <$> sequence [LitBranch l <$> annotateExpr e | LitBranch l e <- lbrs]
-    <*> annotateExpr d
+    <$> sequence [LitBranch l <$> annotateExpr meta e | LitBranch l e <- lbrs]
+    <*> annotateExpr meta d
 
 -- | Dummy instance, since we don't use the context
 instance MonadContext FreeV SLam where
@@ -125,6 +130,10 @@ instance MonadContext FreeV SLam where
 slamAnno :: Core.Expr () FreeV -> SLam (Anno SLambda.Expr FreeV)
 slamAnno e = Anno <$> slam e <*> (slam =<< typeOf e)
 
+unMeta :: Core.Expr () v -> Core.Expr () v
+unMeta (Core.Meta () es) = snd $ es Vector.! 1
+unMeta e = e
+
 slam :: Core.Expr () FreeV -> SLam (SLambda.Expr FreeV)
 slam expr = do
   logPretty 20 "slam expr" $ pretty <$> expr
@@ -133,15 +142,13 @@ slam expr = do
     Core.Meta () es -> slam $ snd $ es Vector.! 1
     Core.Global g -> return $ SLambda.Global g
     Core.Lit l -> return $ SLambda.Lit l
-    Core.Pi {} -> do
-      t <- whnf $ Core.Global Builtin.PiTypeName
-      slam t
+    Core.Pi {} -> slam $ Core.Global Builtin.PiTypeName
     Core.Lam h p t s -> do
       v <- freeVar h p t
       e <- slamAnno $ instantiate1 (pure v) s
       rep <- slam t
       return $ SLambda.lam v rep e
-    (Core.appsView -> (Core.Con qc@(QConstr typeName _), es)) -> do
+    (Core.appsView -> (unMeta -> Core.Con qc@(QConstr typeName _), es)) -> do
       (DataDefinition (DataDef params _) _, _) <- definition typeName
       n <- constrArity qc
       case compare (length es) n of
@@ -151,6 +158,7 @@ slam expr = do
               es' = drop numParams es
           SLambda.Con qc <$> mapM slamAnno (Vector.fromList $ snd <$> es')
         LT -> do
+          VIX.log $ "eta expanding " <> shower (pretty qc) <> " " <> shower (length es) <> " " <> shower n
           conType <- qconstructor qc
           let Just appliedConType = Core.typeApps conType es
               tele = Core.piTelescope appliedConType
@@ -212,8 +220,16 @@ slamDef
   :: Definition (Core.Expr Void) FreeV
   -> SLam (Anno SLambda.Expr FreeV)
 slamDef (ConstantDefinition _ e) = do
-  e' <- annotateExpr e
-  slamAnno e'
+  VIX.log "Annotating"
+  e' <- annotateExpr absurd e
+  VIX.log "Annotation done, slamming"
+  res <- slamAnno e'
+  VIX.log "Slam done"
+  return res
 slamDef (DataDefinition _ e) = do
-  e' <- annotateExpr e
-  slamAnno e'
+  VIX.log "Annotating"
+  e' <- annotateExpr absurd e
+  VIX.log "Annotation done, slamming"
+  res <- slamAnno e'
+  VIX.log "Slam done"
+  return res

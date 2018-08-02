@@ -25,16 +25,17 @@ litPat (Pre.String s) = stringPat s
 
 string :: Text -> Core.Expr m v
 string s
-  = Core.apps
+  = Core.App
     (Core.Con Builtin.MkStringConstr)
-    [(Explicit, byteArray $ Encoding.encodeUtf8 s)]
+    Explicit
+    (byteArray $ Encoding.encodeUtf8 s)
 
 stringPat :: Text -> Core.Pat (Core.Expr m v) v'
 stringPat s
   = Core.ConPat
     Builtin.MkStringConstr
     mempty
-    (toVector [(Explicit, byteArrayPat $ Encoding.encodeUtf8 s, byteArrayType)])
+    (pure (Explicit, byteArrayPat $ Encoding.encodeUtf8 s, byteArrayType))
 
 byteArray :: ByteString -> Core.Expr m v
 byteArray bs
