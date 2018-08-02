@@ -95,7 +95,7 @@ varcpy dst (DirectVar rep src) _ = storeDirect rep src dst
 varcpy dst (IndirectVar src) rep = memcpy dst src rep
 
 varCall
-  :: (Foldable f, Functor f, MonadIRBuilder m)
+  :: (Foldable f, MonadIRBuilder m)
   => Maybe Language
   -> LLVM.Operand
   -> f Var

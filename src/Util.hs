@@ -35,7 +35,7 @@ import System.IO
 
 type Scope1 = Scope ()
 
-unusedVar :: (Monad f, Traversable f) => f (Var b a) -> Maybe (f a)
+unusedVar :: Traversable f => f (Var b a) -> Maybe (f a)
 unusedVar = traverse $ unvar (const Nothing) pure
 
 unusedScope :: (Monad f, Traversable f) => Scope b f a -> Maybe (f a)
@@ -241,7 +241,7 @@ saturate
 saturate f = fixPoint $ \s -> HashSet.unions $ s : map f (HashSet.toList s)
 
 filterMSet
-  :: (Applicative f, Eq a, Hashable a)
+  :: Applicative f
   => (a -> f Bool)
   -> HashSet a
   -> f (HashSet a)

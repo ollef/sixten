@@ -129,7 +129,7 @@ instance Monoid ExposedNames where
   mappend = (<>)
 
 moduleDependencyOrder
-  :: (Foldable t, Functor t)
+  :: Foldable t
   => t (Module contents)
   -> [SCC (Module contents)]
 moduleDependencyOrder = topoSortWith moduleName $ fmap importModule . moduleImports

@@ -289,7 +289,7 @@ constrArity
   . qconstructor
 
 constrIndex
-  :: (MonadVIX m, MonadError Error m)
+  :: MonadVIX m
   => QConstr
   -> m (Maybe Int)
 constrIndex (QConstr n c) = do

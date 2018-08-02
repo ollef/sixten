@@ -45,7 +45,7 @@ lookup
 lookup k (MultiHashMap m) = HashMap.lookupDefault mempty k m
 
 lookupDefault
-  :: (Eq k, Hashable k, Eq v, Hashable v)
+  :: (Eq k, Hashable k)
   => HashSet v
   -> k
   -> MultiHashMap k v
@@ -72,14 +72,14 @@ unions
 unions = foldl' union mempty
 
 intersection
-  :: (Eq k, Hashable k, Eq v, Hashable v)
+  :: (Eq k, Hashable k)
   => MultiHashMap k v
   -> MultiHashMap k w
   -> MultiHashMap k v
 intersection (MultiHashMap m1) (MultiHashMap m2) = MultiHashMap $ HashMap.intersection m1 m2
 
 setIntersection
-  :: (Eq k, Hashable k, Eq v, Hashable v)
+  :: (Eq k, Hashable k)
   => MultiHashMap k v
   -> HashSet k
   -> MultiHashMap k v
@@ -92,8 +92,7 @@ fromList
 fromList = foldr (uncurry insert) mempty
 
 toList
-  :: (Eq k, Hashable k, Eq v, Hashable v)
-  => MultiHashMap k v
+  :: MultiHashMap k v
   -> [(k, v)]
 toList m = [(k, v) | (k, s) <- toMultiList m, v <- HashSet.toList s]
 
@@ -104,13 +103,12 @@ fromMultiList
 fromMultiList = foldr (uncurry inserts) mempty
 
 toMultiList
-  :: (Eq k, Hashable k, Eq v, Hashable v)
-  => MultiHashMap k v
+  :: MultiHashMap k v
   -> [(k, HashSet v)]
 toMultiList (MultiHashMap m) = HashMap.toList m
 
 map
-  :: (Eq k, Hashable k, Eq v, Hashable v, Eq v', Hashable v')
+  :: (Eq v', Hashable v')
   => (v -> v')
   -> MultiHashMap k v
   -> MultiHashMap k v'
@@ -119,7 +117,7 @@ map f (MultiHashMap m)
   $ fmap (HashSet.map f) m
 
 mapMaybe
-  :: (Eq k, Hashable k, Eq v, Hashable v, Eq v', Hashable v')
+  :: (Eq v', Hashable v')
   => (v -> Maybe v')
   -> MultiHashMap k v
   -> MultiHashMap k v'
@@ -131,7 +129,7 @@ mapMaybe p (MultiHashMap m)
     nothingWhenEmpty xs = Just $ HashSet.fromList xs
 
 mapKeys
-  :: (Eq k, Hashable k, Eq k', Hashable k', Eq v, Hashable v)
+  :: (Eq k', Hashable k', Eq v, Hashable v)
   => (k -> k')
   -> MultiHashMap k v
   -> MultiHashMap k' v

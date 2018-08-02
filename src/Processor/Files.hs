@@ -77,7 +77,7 @@ processFiles args = do
     runVIX go (target args) (logHandle args) (verbosity args) (silentErrors args)
 
 cycleCheck
-  :: (Functor t, Foldable t, MonadError Error m)
+  :: (Foldable t, MonadError Error m)
   => t (Module contents)
   -> m [Module contents]
 cycleCheck modules = do

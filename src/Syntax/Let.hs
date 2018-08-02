@@ -100,7 +100,7 @@ letAbstraction :: (Eq a, Hashable a) => Vector a -> a -> Maybe LetVar
 letAbstraction vs = fmap LetVar . hashedElemIndex vs
 
 prettyLet
-  :: (Eq1 expr, Pretty (expr Doc), Monad expr)
+  :: (Pretty (expr Doc), Monad expr)
   => Vector Name
   -> LetRec expr Doc
   -> PrettyDoc

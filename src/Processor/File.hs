@@ -105,7 +105,7 @@ infixr 1 >>=>
 (f >>=> g) a = concat <$> (f a >>= mapM g)
 
 prettyPreGroup
-  :: (Pretty (e Doc), Monad e, Traversable e, Eq1 e)
+  :: (Pretty (e Doc), Monad e, Eq1 e)
   => Text
   -> [(QName, SourceLoc, Closed (Pre.Definition e))]
   -> VIX [(QName, SourceLoc, Closed (Pre.Definition e))]

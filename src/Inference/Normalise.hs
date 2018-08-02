@@ -339,7 +339,7 @@ normaliseDef norm = lambdas
     cases e = return $ Just e
 
 instantiateLetM
-  :: (MonadFix m, MonadIO m, MonadVIX m)
+  :: (MonadFix m, MonadVIX m)
   => LetRec (Expr meta) (ExprFreeVar meta)
   -> Scope LetVar (Expr meta) (ExprFreeVar meta)
   -> m (Expr meta (ExprFreeVar meta))
