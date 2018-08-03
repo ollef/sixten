@@ -47,6 +47,8 @@ expr' (Case e1 brs1 t1) (Case e2 brs2 t2)
   = Case <$> expr e1 e2 <*> branches brs1 brs2 <*> expr t1 t2
 expr' (ExternCode e1 t1) (ExternCode e2 t2)
   = ExternCode <$> extern e1 e2 <*> expr t1 t2
+expr' (SourceLoc _ e1) e2 = expr' e1 e2
+expr' e1 (SourceLoc _ e2) = expr' e1 e2
 -- Eta-expand
 expr' (Lam h p t s) e2 = do
   v <- forall h p t

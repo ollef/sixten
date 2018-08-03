@@ -28,6 +28,7 @@ data Expr m v
   | Let (LetRec (Expr m) v) (Scope LetVar (Expr m) v)
   | Case (Expr m v) (Branches Plicitness (Expr m) v) (Type m v)
   | ExternCode (Extern (Expr m v)) (Type m v)
+  | SourceLoc !SourceLoc (Expr m v)
   deriving (Foldable, Functor, Traversable)
 
 -- | Synonym for documentation purposes
@@ -35,6 +36,10 @@ type Type = Expr
 
 -------------------------------------------------------------------------------
 -- Helpers
+unSourceLoc :: Expr m v -> Expr m v
+unSourceLoc (SourceLoc _ e) = unSourceLoc e
+unSourceLoc e = e
+
 type FreeExprVar m = FreeVar Plicitness (Expr m)
 
 lam :: FreeExprVar m -> Expr m (FreeExprVar m) -> Expr m (FreeExprVar m)
@@ -70,19 +75,19 @@ apps = Foldable.foldl' (uncurry . App)
 appsView :: Expr m v -> (Expr m v, [(Plicitness, Expr m v)])
 appsView = second toList . go
   where
-    go (App e1 p e2) = second (`Snoc` (p, e2)) $ go e1
+    go (unSourceLoc -> App e1 p e2) = second (`Snoc` (p, e2)) $ go e1
     go e = (e, Nil)
 
 piView :: Expr m v -> Maybe (NameHint, Plicitness, Type m v, Scope1 (Expr m) v)
-piView (Pi h a t s) = Just (h, a, t, s)
+piView (unSourceLoc -> Pi h a t s) = Just (h, a, t, s)
 piView _ = Nothing
 
 lamView :: Expr m v -> Maybe (NameHint, Plicitness, Type m v, Scope1 (Expr m) v)
-lamView (Lam h a t s) = Just (h, a, t, s)
+lamView (unSourceLoc -> Lam h a t s) = Just (h, a, t, s)
 lamView _ = Nothing
 
 typeApp :: Expr m v -> Plicitness -> Expr m v -> Maybe (Expr m v)
-typeApp (Pi _ p _ s) p' e | p == p' = Just $ Util.instantiate1 e s
+typeApp (piView -> Just (_, p, _, s)) p' e | p == p' = Just $ Util.instantiate1 e s
 typeApp _ _ _ = Nothing
 
 typeApps :: Foldable t => Expr m v -> t (Plicitness, Expr m v) -> Maybe (Expr m v)
@@ -91,7 +96,7 @@ typeApps = foldlM (\e (p, e') -> typeApp e p e')
 usedPiView
   :: Expr m v
   -> Maybe (NameHint, Plicitness, Expr m v, Scope1 (Expr m) v)
-usedPiView (Pi n p e s@(unusedScope -> Nothing)) = Just (n, p, e, s)
+usedPiView (piView -> Just (n, p, e, s@(unusedScope -> Nothing))) = Just (n, p, e, s)
 usedPiView _ = Nothing
 
 usedPisViewM :: Expr m v -> Maybe (Telescope Plicitness (Expr m) v, Scope TeleVar (Expr m) v)
@@ -144,6 +149,7 @@ instance Monad (Expr m) where
     Let ds scope -> Let (ds >>>= f) (scope >>>= f)
     Case e brs retType -> Case (e >>= f) (brs >>>= f) (retType >>= f)
     ExternCode c t -> ExternCode ((>>= f) <$> c) (t >>= f)
+    SourceLoc loc e -> SourceLoc loc (e >>= f)
 
 instance GBind (Expr m) where
   global = Global
@@ -159,6 +165,7 @@ instance GBind (Expr m) where
     Let ds scope -> Let (gbound f ds) (gbound f scope)
     Case e brs retType -> Case (gbind f e) (gbound f brs) (gbind f retType)
     ExternCode c t -> ExternCode (gbind f <$> c) (gbind f t)
+    SourceLoc loc e -> SourceLoc loc (gbind f e)
 
 instance Bifunctor Expr where bimap = bimapDefault
 instance Bifoldable Expr where bifoldMap = bifoldMapDefault
@@ -175,6 +182,7 @@ instance Bitraversable Expr where
     Let ds scope -> Let <$> bitraverseLet f g ds <*> bitraverseScope f g scope
     Case e brs retType -> Case <$> bitraverse f g e <*> bitraverseBranches f g brs <*> bitraverse f g retType
     ExternCode c t -> ExternCode <$> traverse (bitraverse f g) c <*> bitraverse f g t
+    SourceLoc loc e -> SourceLoc loc <$> bitraverse f g e
 
 hoistMetas
   :: Monad f
@@ -193,6 +201,7 @@ hoistMetas f expr = case expr of
   Let ds scope -> Let <$> transverseLet (hoistMetas f) ds <*> transverseScope (hoistMetas f) scope
   Case e brs retType -> Case <$> hoistMetas f e <*> transverseBranches (hoistMetas f) brs <*> hoistMetas f retType
   ExternCode c t -> ExternCode <$> traverse (hoistMetas f) c <*> hoistMetas f t
+  SourceLoc loc e -> SourceLoc loc <$> hoistMetas f e
 
 hoistMetas_
   :: Monad f
@@ -231,3 +240,4 @@ instance (v ~ Doc, Pretty m, Eq m) => Pretty (Expr m v) where
         <$$> indent 2 (prettyM brs)
     ExternCode c t -> parens `above` annoPrec $
       prettyM c <+> ":" <+> prettyM t
+    SourceLoc _ e -> prettyM e

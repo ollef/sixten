@@ -124,6 +124,7 @@ whnf' args expr exprs = indentLog $ do
       c' <- mapM whnf0 c
       retType' <- whnf0 retType
       return $ apps (ExternCode c' retType') es
+    go (SourceLoc _ e) es = go e es
 
     whnf0 e = whnf' args e mempty
 
@@ -204,6 +205,7 @@ normalise' args expr exprs = do
       c' <- mapM normalise0 c
       retType' <- normalise0 retType
       irreducible (ExternCode c' retType') es
+    go (SourceLoc _ e) es = go e es
 
     irreducible e es = apps e <$> mapM (mapM normalise0) es
 
@@ -249,6 +251,7 @@ normaliseBuiltins k e@(Global Builtin.MkTypeName) [(Explicit, x)] = do
     _ -> return $ App e Explicit x'
 normaliseBuiltins k (Lit (Natural 0)) es = k Builtin.Zero es
 normaliseBuiltins k (Lit (Natural n)) es = k (Builtin.Succ $ Lit $ Natural $ n - 1) es
+normaliseBuiltins k (SourceLoc _ e) es = normaliseBuiltins k e es
 normaliseBuiltins k e es = k e es
 
 binOp

@@ -251,6 +251,7 @@ bindMetas f expr = case expr of
       return $ let_ (Vector.zip vs es) e'
   Case e brs t -> Case <$> bindMetas f e <*> bindBranchMetas f brs <*> bindMetas f t
   ExternCode e t -> ExternCode <$> mapM (bindMetas f) e <*> bindMetas f t
+  SourceLoc loc e -> SourceLoc loc <$> bindMetas f e
 
 bindMetas'
   :: (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadVIX m, MonadIO m)

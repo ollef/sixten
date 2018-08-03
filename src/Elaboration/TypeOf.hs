@@ -66,6 +66,7 @@ typeOf' args expr = case expr of
     withVars xs $ typeOf' args $ instantiateLet pure xs s
   Case _ _ retType -> return retType
   ExternCode _ retType -> return retType
+  SourceLoc _ e -> typeOf' args e
 
 typeOfLiteral
   :: Literal

@@ -91,9 +91,10 @@ slam expr = do
       body <- slam $ instantiateLet pure vs scope
       return $ SLambda.letRec (Vector.zip vs ds') body
     Core.ExternCode c retType -> do
-        retType' <- slam =<< whnf retType
-        c' <- slamExtern c
-        return $ SLambda.ExternCode c' retType'
+      retType' <- slam =<< whnf retType
+      c' <- slamExtern c
+      return $ SLambda.ExternCode c' retType'
+    Core.SourceLoc _ e -> slam e
   logPretty 20 "slam res" $ pretty <$> res
   return res
 

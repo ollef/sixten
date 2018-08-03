@@ -94,9 +94,9 @@ detectDefCycles defs = do
     CyclicSCC defExprs -> do
       let (functions, constants) = foldMap go defExprs
             where
-              go (v, Lam {}) = (HashSet.singleton v, mempty)
+              go (v, unSourceLoc -> Lam {}) = (HashSet.singleton v, mempty)
               go (v, _) = (mempty, HashSet.singleton v)
-      forM_ defExprs $ \(var, expr) -> case expr of
+      forM_ defExprs $ \(var, expr) -> case unSourceLoc expr of
         Lam {} -> return ()
         _ -> do
           let (name, loc) = locMap HashMap.! var
@@ -124,7 +124,7 @@ peelLets = fmap fold . mapM go
      -> Elaborate ([(FreeV, CoreM)], HashMap FreeV (name, SourceLoc))
     go (name, loc, var, expr) = do
       expr' <- zonk expr
-      case expr' of
+      case unSourceLoc expr' of
         Let ds scope -> do
           vs <- forMLet ds $ \h _ t ->
             forall h Explicit t
@@ -141,7 +141,7 @@ possiblyImmediatelyAppliedVars
   -> HashSet v
 possiblyImmediatelyAppliedVars = go
   where
-    go (Var _) = mempty
-    go Lam {} = mempty
-    go (appsView -> (Con _, xs)) = HashSet.unions [go x | (_, x) <- xs]
+    go (unSourceLoc -> Var _) = mempty
+    go (unSourceLoc -> Lam {}) = mempty
+    go (appsView -> (unSourceLoc -> Con _, xs)) = HashSet.unions [go x | (_, x) <- xs]
     go e = toHashSet e

@@ -98,9 +98,6 @@ tcPat p pat vs expected = do
     logPretty 20 "tcPat" shownPat
   logPretty 30 "tcPat vs" vs
   (pat', patExpr, vs') <- indentLog $ tcPat' p pat vs expected
-  whenVerbose 20 $ do
-    let shownPat' = first show pat'
-    logShow 20 "tcPat res" shownPat'
   logPretty 30 "tcPat vs res" vs'
   return (pat', patExpr, vs')
 
@@ -173,7 +170,9 @@ tcPat' p pat vs expected = case pat of
     (pat''', patExpr') <- instPatExpected expected patType' pat'' patExpr
     return (pat''', patExpr', vs')
   Pre.ViewPat _ _ -> internalError "tcPat ViewPat undefined TODO"
-  Pre.PatLoc loc pat' -> located loc $ tcPat' p pat' vs expected
+  Pre.PatLoc loc pat' -> located loc $ do
+    (pat'', patExpr, vs') <- tcPat' p pat' vs expected
+    return (pat'', Core.SourceLoc loc patExpr, vs')
 
 instPatExpected
   :: ExpectedPat

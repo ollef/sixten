@@ -53,6 +53,7 @@ simplifyExpr glob !applied expr = case expr of
     ExternCode
       (simplifyExpr glob 0 <$> c)
       (simplifyExpr glob 0 retType)
+  SourceLoc loc e -> SourceLoc loc $ simplifyExpr glob applied e
 
 -- TODO: Inlining can expose more simplification opportunities that aren't exploited.
 letRec
@@ -151,6 +152,7 @@ duplicable expr = case expr of
   Case {} -> False
   Let {} -> False
   ExternCode {} -> False
+  SourceLoc _ e -> duplicable e
 
 terminates :: (QName -> Bool) -> Expr meta v -> Bool
 terminates glob expr = case expr of
@@ -165,6 +167,7 @@ terminates glob expr = case expr of
   Case {} -> False
   Let ds s -> all (terminates glob) (fromScope <$> letBodies ds) && terminates glob (fromScope s)
   ExternCode {} -> False
+  SourceLoc _ e -> terminates glob e
 
 terminatesWhenCalled :: (QName -> Bool) -> Expr meta v -> Bool
 terminatesWhenCalled glob expr = case expr of
@@ -179,3 +182,4 @@ terminatesWhenCalled glob expr = case expr of
   Case {} -> False
   Let ds s -> all (terminates glob) (fromScope <$> letBodies ds) && terminatesWhenCalled glob (fromScope s)
   ExternCode {} -> False
+  SourceLoc _ e -> terminatesWhenCalled glob e

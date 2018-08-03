@@ -52,7 +52,7 @@ checkPoly expr typ = do
 
 checkPoly' :: PreM -> Polytype -> Elaborate CoreM
 checkPoly' (Pre.SourceLoc loc e) polyType
-  = located loc $ checkPoly' e polyType
+  = located loc $ Core.SourceLoc loc <$> checkPoly' e polyType
 checkPoly' expr@(Pre.Lam Implicit _ _) polyType
   = checkRho expr polyType
 checkPoly' expr polyType
@@ -186,7 +186,9 @@ tcRho expr expected expectedAppResult = case expr of
     f <- instExpected expected t
     x <- exists mempty Explicit t
     return $ f x
-  Pre.SourceLoc loc e -> located loc $ tcRho e expected expectedAppResult
+  Pre.SourceLoc loc e -> located loc
+    $ Core.SourceLoc loc
+    <$> tcRho e expected expectedAppResult
 
 tcLet
   :: Vector (SourceLoc, NameHint, Pre.ConstantDef Pre.Expr (Var LetVar FreeV))

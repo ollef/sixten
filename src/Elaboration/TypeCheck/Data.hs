@@ -71,13 +71,15 @@ checkConstrDef (ConstrDef c typ) = do
   let size = foldl' productType (Core.MkType TypeRep.UnitRep) sizes
   return (ConstrDef c typ', ret, size)
   where
-    go :: CoreM -> Elaborate ([CoreM], CoreM)
     -- TODO: Check for escaping type variables?
-    go (Core.Pi h p t s) = do
+    go t = do
+      t' <- whnf t
+      go' t'
+    go' (Core.Pi h p t s) = do
       v <- forall h p t
       (sizes, ret) <- go $ instantiate1 (pure v) s
       return (t : sizes, ret)
-    go ret = return ([], ret)
+    go' ret = return ([], ret)
 
 -------------------------------------------------------------------------------
 -- Type helpers
