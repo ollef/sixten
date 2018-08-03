@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
-module Inference.Generalise where
+module Elaboration.Generalise where
 
 import Control.Applicative
 import Control.Monad.Except
@@ -13,10 +13,10 @@ import Data.Vector(Vector)
 
 import Analysis.Simplify
 import qualified Builtin.Names as Builtin
-import Inference.Constraint
-import Inference.MetaVar
-import Inference.MetaVar.Zonk
-import Inference.Monad
+import Elaboration.Constraint
+import Elaboration.MetaVar
+import Elaboration.MetaVar.Zonk
+import Elaboration.Monad
 import Syntax
 import Syntax.Core
 import TypedFreeVar

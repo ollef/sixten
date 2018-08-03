@@ -9,11 +9,11 @@ import qualified Data.MultiSet as MultiSet
 import qualified Data.Set as Set
 import qualified Data.Vector as Vector
 
-import Inference.Normalise
+import qualified Builtin.Names as Builtin
+import Elaboration.Normalise
 import Syntax
 import Syntax.Core hiding (let_)
 import Util
-import qualified Builtin.Names as Builtin
 
 simplifyExpr
   :: (QName -> Bool)

@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings, ViewPatterns #-}
-module Inference.Constraint where
+module Elaboration.Constraint where
 
 import Control.Monad.Except
 import Data.Bifunctor
@@ -11,11 +11,11 @@ import Data.Vector(Vector)
 import Data.Void
 
 import Analysis.Simplify
-import Inference.MetaVar
-import Inference.MetaVar.Zonk
-import Inference.Monad
-import qualified Inference.Normalise as Normalise
-import Inference.Subtype
+import Elaboration.MetaVar
+import Elaboration.MetaVar.Zonk
+import Elaboration.Monad
+import qualified Elaboration.Normalise as Normalise
+import Elaboration.Subtype
 import MonadContext
 import Syntax
 import Syntax.Core

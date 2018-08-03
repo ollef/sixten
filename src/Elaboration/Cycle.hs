@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, ViewPatterns #-}
-module Inference.Cycle where
+module Elaboration.Cycle where
 
 import Control.Monad.Except
 import Data.Bitraversable
@@ -13,10 +13,10 @@ import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 
+import Elaboration.MetaVar
+import Elaboration.MetaVar.Zonk
+import Elaboration.Monad
 import Error
-import Inference.MetaVar
-import Inference.MetaVar.Zonk
-import Inference.Monad
 import Syntax
 import Syntax.Core
 import Util

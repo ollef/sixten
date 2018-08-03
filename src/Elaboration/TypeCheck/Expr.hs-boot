@@ -1,6 +1,6 @@
-module Inference.TypeCheck.Expr where
+module Elaboration.TypeCheck.Expr where
 
-import Inference.Monad
+import Elaboration.Monad
 
 checkPoly :: PreM -> Polytype -> Infer CoreM
 checkRho :: PreM -> Rhotype -> Infer CoreM

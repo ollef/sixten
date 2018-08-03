@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, MonadComprehensions, OverloadedStrings, ViewPatterns #-}
-module Inference.TypeCheck.Class where
+module Elaboration.TypeCheck.Class where
 
 import Control.Monad.Except
 import Control.Monad.State
@@ -11,14 +11,14 @@ import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
 
 import qualified Builtin.Names as Builtin
-import Inference.Constraint
-import Inference.MetaVar
-import Inference.Monad
-import Inference.Subtype
-import Inference.TypeCheck.Clause
-import Inference.TypeCheck.Data
-import Inference.TypeCheck.Expr
-import Inference.Unify
+import Elaboration.Constraint
+import Elaboration.MetaVar
+import Elaboration.Monad
+import Elaboration.Subtype
+import Elaboration.TypeCheck.Clause
+import Elaboration.TypeCheck.Data
+import Elaboration.TypeCheck.Expr
+import Elaboration.Unify
 import MonadContext
 import Syntax
 import qualified Syntax.Core as Core

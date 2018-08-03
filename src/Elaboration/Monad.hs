@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving, MultiParamTypeClasses, OverloadedStrings, TypeSynonymInstances #-}
-module Inference.Monad where
+module Elaboration.Monad where
 
 import Control.Monad.Except
 import Control.Monad.Fail
@@ -9,7 +9,7 @@ import Data.Maybe
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
-import Inference.MetaVar
+import Elaboration.MetaVar
 import MonadContext
 import MonadFresh
 import Syntax

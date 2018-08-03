@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
-module Inference.Match where
+module Elaboration.Match where
 
 import Control.Monad.Except
 import Data.Bifunctor
@@ -12,10 +12,10 @@ import Data.Vector(Vector)
 
 import qualified Analysis.Simplify as Simplify
 import qualified Builtin.Names as Builtin
-import Inference.Constraint
-import Inference.MetaVar
-import Inference.Monad
-import Inference.TypeOf
+import Elaboration.Constraint
+import Elaboration.MetaVar
+import Elaboration.Monad
+import Elaboration.TypeOf
 import MonadContext
 import Syntax
 import Syntax.Core

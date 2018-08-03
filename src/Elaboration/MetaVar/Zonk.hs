@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
-module Inference.MetaVar.Zonk where
+module Elaboration.MetaVar.Zonk where
 
 import Control.Monad.Except
 import Control.Monad.State
@@ -9,7 +9,7 @@ import Data.HashSet(HashSet)
 import Data.Void
 
 import Analysis.Simplify
-import Inference.MetaVar
+import Elaboration.MetaVar
 import Syntax
 import Syntax.Core
 

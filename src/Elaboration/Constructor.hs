@@ -1,13 +1,13 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
-module Inference.Constructor where
+module Elaboration.Constructor where
 
 import Control.Monad.Except
 import qualified Data.HashSet as HashSet
 import Data.HashSet(HashSet)
 import qualified Data.Text.Prettyprint.Doc as PP
 
-import Inference.Constraint
-import Inference.Monad
+import Elaboration.Constraint
+import Elaboration.Monad
 import Syntax
 import qualified Syntax.Core as Core
 import TypedFreeVar

@@ -1,16 +1,16 @@
 {-# LANGUAGE MonadComprehensions #-}
-module Inference.Subtype where
+module Elaboration.Subtype where
 
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import {-# SOURCE #-} Inference.Constraint
+import {-# SOURCE #-} Elaboration.Constraint
 import Analysis.Simplify
-import Inference.MetaVar
-import Inference.Monad
-import Inference.Unify
+import Elaboration.MetaVar
+import Elaboration.Monad
+import Elaboration.Unify
 import MonadContext
 import Syntax
 import Syntax.Core as Core

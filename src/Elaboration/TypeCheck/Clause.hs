@@ -1,4 +1,4 @@
-module Inference.TypeCheck.Clause where
+module Elaboration.TypeCheck.Clause where
 
 import Control.Monad.Except
 import Data.Bifunctor
@@ -9,13 +9,13 @@ import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Vector as Vector
 
-import {-# SOURCE #-} Inference.TypeCheck.Expr
-import Inference.Constraint
-import Inference.Match as Match
-import Inference.MetaVar
-import Inference.Monad
-import Inference.Subtype
-import Inference.TypeCheck.Pattern
+import {-# SOURCE #-} Elaboration.TypeCheck.Expr
+import Elaboration.Constraint
+import Elaboration.Match as Match
+import Elaboration.MetaVar
+import Elaboration.Monad
+import Elaboration.Subtype
+import Elaboration.TypeCheck.Pattern
 import MonadContext
 import Syntax
 import qualified Syntax.Core as Core

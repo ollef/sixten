@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
-module Inference.MetaVar where
+module Elaboration.MetaVar where
 
 import Control.Monad.Except
 import Control.Monad.ST

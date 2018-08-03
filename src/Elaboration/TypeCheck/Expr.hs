@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, RecursiveDo #-}
-module Inference.TypeCheck.Expr where
+module Elaboration.TypeCheck.Expr where
 
 import Control.Monad.Except
 import Control.Monad.ST
@@ -10,16 +10,16 @@ import qualified Data.Vector as Vector
 
 import Analysis.Simplify
 import qualified Builtin.Names as Builtin
-import Inference.Constraint
-import Inference.Constructor
-import Inference.Match
-import Inference.MetaVar as MetaVar
-import Inference.Monad
-import Inference.Subtype
-import Inference.TypeCheck.Clause
-import Inference.TypeCheck.Literal
-import Inference.TypeCheck.Pattern
-import Inference.Unify
+import Elaboration.Constraint
+import Elaboration.Constructor
+import Elaboration.Match
+import Elaboration.MetaVar as MetaVar
+import Elaboration.Monad
+import Elaboration.Subtype
+import Elaboration.TypeCheck.Clause
+import Elaboration.TypeCheck.Literal
+import Elaboration.TypeCheck.Pattern
+import Elaboration.Unify
 import MonadContext
 import Syntax
 import qualified Syntax.Core as Core

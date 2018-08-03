@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings, ViewPatterns #-}
-module Inference.Unify where
+module Elaboration.Unify where
 
 import Control.Monad.Except
 import Data.Bifunctor
@@ -10,14 +10,14 @@ import Data.List
 import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 
-import {-# SOURCE #-} Inference.Constraint
+import {-# SOURCE #-} Elaboration.Constraint
 import Analysis.Simplify
-import qualified Inference.Equal as Equal
-import Inference.MetaVar
-import Inference.MetaVar.Zonk
-import Inference.Monad
-import Inference.Normalise hiding (whnf)
-import Inference.TypeOf
+import qualified Elaboration.Equal as Equal
+import Elaboration.MetaVar
+import Elaboration.MetaVar.Zonk
+import Elaboration.Monad
+import Elaboration.Normalise hiding (whnf)
+import Elaboration.TypeOf
 import MonadContext
 import Pretty
 import Syntax

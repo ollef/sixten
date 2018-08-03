@@ -1,5 +1,5 @@
 {-# LANGUAGE MonadComprehensions, OverloadedStrings #-}
-module Inference.TypeCheck.Definition where
+module Elaboration.TypeCheck.Definition where
 
 import Control.Monad.Except
 import Data.Bifunctor
@@ -7,15 +7,15 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
-import Inference.Cycle
-import Inference.Generalise
-import Inference.MetaVar
-import Inference.Monad
-import Inference.TypeCheck.Class
-import Inference.TypeCheck.Clause
-import Inference.TypeCheck.Data
-import Inference.TypeCheck.Expr
-import Inference.Unify
+import Elaboration.Cycle
+import Elaboration.Generalise
+import Elaboration.MetaVar
+import Elaboration.Monad
+import Elaboration.TypeCheck.Class
+import Elaboration.TypeCheck.Clause
+import Elaboration.TypeCheck.Data
+import Elaboration.TypeCheck.Expr
+import Elaboration.Unify
 import MonadContext
 import MonadFresh
 import Syntax

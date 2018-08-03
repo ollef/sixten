@@ -48,30 +48,30 @@ executable sixten
                        Command.Compile.Options
                        Command.Run
                        Command.Test
+                       Elaboration.Constraint
+                       Elaboration.Constructor
+                       Elaboration.Cycle
+                       Elaboration.Equal
+                       Elaboration.Generalise
+                       Elaboration.Match
+                       Elaboration.MetaVar
+                       Elaboration.MetaVar.Zonk
+                       Elaboration.Monad
+                       Elaboration.Normalise
+                       Elaboration.Subtype
+                       Elaboration.TypeCheck.Class
+                       Elaboration.TypeCheck.Clause
+                       Elaboration.TypeCheck.Data
+                       Elaboration.TypeCheck.Definition
+                       Elaboration.TypeCheck.Expr
+                       Elaboration.TypeCheck.Literal
+                       Elaboration.TypeCheck.Pattern
+                       Elaboration.TypeOf
+                       Elaboration.Unify
                        Error
                        FreeVar
                        Frontend.Parse
                        Frontend.ResolveNames
-                       Inference.Constraint
-                       Inference.Constructor
-                       Inference.Cycle
-                       Inference.Equal
-                       Inference.Generalise
-                       Inference.Match
-                       Inference.MetaVar
-                       Inference.MetaVar.Zonk
-                       Inference.Monad
-                       Inference.Normalise
-                       Inference.Subtype
-                       Inference.TypeCheck.Class
-                       Inference.TypeCheck.Clause
-                       Inference.TypeCheck.Data
-                       Inference.TypeCheck.Definition
-                       Inference.TypeCheck.Expr
-                       Inference.TypeCheck.Literal
-                       Inference.TypeCheck.Pattern
-                       Inference.TypeOf
-                       Inference.Unify
                        MonadContext
                        MonadFresh
                        Paths_sixten
@@ -83,12 +83,12 @@ executable sixten
                        Syntax.Annotation
                        Syntax.Branches
                        Syntax.Class
+                       Syntax.Closed
                        Syntax.Core
                        Syntax.Core.Pattern
                        Syntax.Data
                        Syntax.Definition
                        Syntax.Direction
-                       Syntax.Closed
                        Syntax.Extern
                        Syntax.GlobalBind
                        Syntax.Let

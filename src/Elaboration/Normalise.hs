@@ -1,5 +1,5 @@
 {-# LANGUAGE ConstraintKinds, FlexibleContexts, MonadComprehensions, ViewPatterns, RecursiveDo #-}
-module Inference.Normalise where
+module Elaboration.Normalise where
 
 import Control.Monad.Except
 import Data.Bifunctor
@@ -9,8 +9,8 @@ import qualified Data.Vector as Vector
 import Data.Void
 
 import qualified Builtin.Names as Builtin
-import Inference.MetaVar
-import Inference.Monad
+import Elaboration.MetaVar
+import Elaboration.Monad
 import MonadContext
 import Syntax
 import Syntax.Core

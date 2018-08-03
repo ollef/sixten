@@ -9,8 +9,8 @@ import qualified Data.Vector as Vector
 import Data.Void
 
 import qualified Builtin.Names as Builtin
-import qualified Inference.Normalise as Normalise
-import qualified Inference.TypeOf as TypeOf
+import qualified Elaboration.Normalise as Normalise
+import qualified Elaboration.TypeOf as TypeOf
 import MonadContext
 import MonadFresh
 import Syntax

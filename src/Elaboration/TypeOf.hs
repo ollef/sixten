@@ -1,14 +1,14 @@
 {-# LANGUAGE ConstraintKinds, FlexibleContexts, OverloadedStrings, TypeFamilies #-}
-module Inference.TypeOf where
+module Elaboration.TypeOf where
 
 import Control.Monad.Except
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Void
 
 import qualified Builtin.Names as Builtin
-import Inference.MetaVar
-import Inference.Monad
-import qualified Inference.Normalise as Normalise
+import Elaboration.MetaVar
+import Elaboration.Monad
+import qualified Elaboration.Normalise as Normalise
 import MonadContext
 import Syntax
 import Syntax.Core

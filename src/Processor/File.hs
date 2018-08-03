@@ -30,8 +30,8 @@ import qualified Backend.SLam as SLam
 import Backend.Target
 import qualified Frontend.Parse as Parse
 import qualified Frontend.ResolveNames as ResolveNames
-import qualified Inference.Monad as TypeCheck
-import qualified Inference.TypeCheck.Definition as TypeCheck
+import qualified Elaboration.Monad as TypeCheck
+import qualified Elaboration.TypeCheck.Definition as TypeCheck
 import Processor.Result
 import Syntax
 import qualified Syntax.Core as Core

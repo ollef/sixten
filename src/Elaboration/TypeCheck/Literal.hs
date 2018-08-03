@@ -1,5 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
-module Inference.TypeCheck.Literal where
+module Elaboration.TypeCheck.Literal where
 
 import Data.ByteString as ByteString
 import Data.Text(Text)

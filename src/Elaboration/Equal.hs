@@ -1,5 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
-module Inference.Equal where
+module Elaboration.Equal where
 
 import Control.Applicative
 import Control.Monad.Except
@@ -7,9 +7,9 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import Inference.MetaVar
-import Inference.Monad
-import Inference.Normalise
+import Elaboration.MetaVar
+import Elaboration.Monad
+import Elaboration.Normalise
 import MonadContext
 import Syntax
 import Syntax.Core

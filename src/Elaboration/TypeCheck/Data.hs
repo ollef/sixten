@@ -1,15 +1,15 @@
-module Inference.TypeCheck.Data where
+module Elaboration.TypeCheck.Data where
 
 import Control.Monad.Except
 import Data.Foldable as Foldable
 
-import Inference.TypeCheck.Expr
 import qualified Builtin.Names as Builtin
-import Inference.Constraint as Constraint
-import Inference.MetaVar
-import Inference.Monad
-import Inference.TypeOf
-import Inference.Unify
+import Elaboration.Constraint as Constraint
+import Elaboration.MetaVar
+import Elaboration.Monad
+import Elaboration.TypeCheck.Expr
+import Elaboration.TypeOf
+import Elaboration.Unify
 import MonadContext
 import Syntax
 import qualified Syntax.Core as Core
