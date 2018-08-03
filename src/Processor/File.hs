@@ -65,7 +65,7 @@ frontend k
   >=> simplifyGroup
   >=> prettyTypedGroup 8 "Simplified"
 
-  >=> addGroupToContext
+  >=> addGroupToEnvironment
   >=> k
 
 backend
@@ -91,7 +91,7 @@ processConvertedGroup
   -> VIX [Generate.GeneratedSubmodule]
 processConvertedGroup
   = inferGroupDirections
-  >=> addSignaturesToContext
+  >=> addSignaturesToEnvironment
   >=> prettyGroup "Directed (lifted)"
 
   >=> extractExternGroup
@@ -191,11 +191,11 @@ simplifyGroup defs = return $ do
     globTerm x = not $ HashSet.member x names
     names = HashSet.fromList $ fst3 <$> defs
 
-addGroupToContext
+addGroupToEnvironment
   :: [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
   -> VIX [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
-addGroupToContext defs = do
-  addContext $ HashMap.fromList $ (\(n, d, t) -> (n, (d, t))) <$> defs
+addGroupToEnvironment defs = do
+  addEnvironment $ HashMap.fromList $ (\(n, d, t) -> (n, (d, t))) <$> defs
   return defs
 
 slamGroup
@@ -228,10 +228,10 @@ inferGroupDirections
 inferGroupDirections
   = fmap Vector.toList . ReturnDirection.inferRecursiveDefs . Vector.fromList
 
-addSignaturesToContext
+addSignaturesToEnvironment
   :: [(QName, Closed (Sized.Definition Lifted.Expr), Signature ReturnIndirect)]
   -> VIX [(QName, Closed (Sized.Definition Lifted.Expr))]
-addSignaturesToContext defs = do
+addSignaturesToEnvironment defs = do
   let sigs = HashMap.fromList [(n, sig) | (n, _, sig) <- defs]
   logShow 11 "signatures" sigs
   addSignatures sigs

@@ -38,7 +38,7 @@ import qualified Util.MultiHashMap as MultiHashMap
 
 data VIXState = VIXState
   { vixLocation :: Maybe SourceLoc
-  , vixContext :: HashMap QName (ClosedDefinition Expr, Biclosed Type)
+  , vixEnvironment :: HashMap QName (ClosedDefinition Expr, Biclosed Type)
   , vixModuleConstrs :: MultiHashMap ModuleName QConstr
   , vixModuleNames :: MultiHashMap ModuleName QName
   , vixConvertedSignatures :: HashMap QName Lifted.FunSignature
@@ -72,7 +72,7 @@ instance MonadReport VIX where
 emptyVIXState :: Target -> Handle -> Int -> Bool -> VIXState
 emptyVIXState target handle verbosity silent = VIXState
   { vixLocation = Nothing
-  , vixContext = mempty
+  , vixEnvironment = mempty
   , vixModuleConstrs = mempty
   , vixModuleNames = mempty
   , vixConvertedSignatures = mempty
@@ -186,9 +186,9 @@ logFreeVar v s x = whenVerbose v $ do
 
 -------------------------------------------------------------------------------
 -- Working with abstract syntax
-addContext :: MonadVIX m => HashMap QName (ClosedDefinition Expr, Biclosed Type) -> m ()
-addContext prog = liftVIX $ modify $ \s -> s
-  { vixContext = prog <> vixContext s
+addEnvironment :: MonadVIX m => HashMap QName (ClosedDefinition Expr, Biclosed Type) -> m ()
+addEnvironment prog = liftVIX $ modify $ \s -> s
+  { vixEnvironment = prog <> vixEnvironment s
   }
 
 throwLocated
@@ -207,7 +207,7 @@ definition
   => QName
   -> m (Definition (Expr meta) v, Expr meta v)
 definition name = do
-  mres <- liftVIX $ gets $ HashMap.lookup name . vixContext
+  mres <- liftVIX $ gets $ HashMap.lookup name . vixEnvironment
   maybe (throwLocated $ "Not in scope: " <> pretty name)
         (return . bimap openDefinition biopen)
         mres
@@ -223,7 +223,7 @@ instances className = do
       $ gets
       $ maybe mempty (pure . bimap (const instanceName) biopen)
         . HashMap.lookup instanceName
-        . vixContext
+        . vixEnvironment
 
 addModule
   :: MonadVIX m
@@ -293,7 +293,7 @@ constrIndex
   => QConstr
   -> m (Maybe Int)
 constrIndex (QConstr n c) = do
-  mres <- liftVIX $ gets $ HashMap.lookup n . vixContext
+  mres <- liftVIX $ gets $ HashMap.lookup n . vixEnvironment
   return $ case mres of
     Just (ClosedDefinition (DataDefinition (DataDef _ constrDefs@(_:_:_)) _), _) ->
       findIndex ((== c) . constrName) constrDefs

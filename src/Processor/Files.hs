@@ -107,22 +107,22 @@ compileBuiltins = do
       <> PP.line <> PP.vcat (pretty <$> es)
     Success [builtins1, builtins2] -> do
       tgt <- getTarget
-      let context = Builtin.context tgt
-      let builtinDefNames = HashSet.fromMap $ void context
+      let env = Builtin.environment tgt
+      let builtinDefNames = HashSet.fromMap $ void env
           builtinConstrNames = HashSet.fromList
             [ QConstr n c
-            | (n, (ClosedDefinition (DataDefinition d _), _)) <- HashMap.toList context
+            | (n, (ClosedDefinition (DataDefinition d _), _)) <- HashMap.toList env
             , c <- constrNames d
             ]
       addModule "Sixten.Builtin" builtinConstrNames builtinDefNames
-      addContext context
+      addEnvironment env
       builtinResults1 <- File.process builtins1
-      let contextList = (\(n, (d, t)) -> (n, d, t)) <$> HashMap.toList context
-      contextResults <- File.backend contextList
+      let envList = (\(n, (d, t)) -> (n, d, t)) <$> HashMap.toList env
+      envResults <- File.backend envList
       addConvertedSignatures $ Builtin.convertedSignatures tgt
-      convertedResults <- File.processConvertedGroup $ HashMap.toList $ Builtin.convertedContext tgt
+      convertedResults <- File.processConvertedGroup $ HashMap.toList $ Builtin.convertedEnvironment tgt
       builtinResults2 <- File.process builtins2
-      let results = builtinResults1 <> contextResults <> convertedResults <> builtinResults2
+      let results = builtinResults1 <> envResults <> convertedResults <> builtinResults2
       return $ Module "Sixten.Builtin" AllExposed mempty results
     Success _ -> internalError "processBuiltins wrong number of builtins"
 

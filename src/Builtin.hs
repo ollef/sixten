@@ -22,8 +22,8 @@ import TypedFreeVar
 import qualified TypeRep
 import Util
 
-context :: Target -> HashMap QName (ClosedDefinition Expr, Biclosed Type)
-context target = HashMap.fromList
+environment :: Target -> HashMap QName (ClosedDefinition Expr, Biclosed Type)
+environment target = HashMap.fromList
   [ (TypeName, dataType typeRep Type [])
   , (PtrName, dataType
       (Lam mempty Explicit Type $ Scope ptrRep)
@@ -50,8 +50,8 @@ context target = HashMap.fromList
     ptrRep = MkType $ TypeRep.ptrRep target
     typeRep = MkType $ TypeRep.typeRep target
 
-convertedContext :: Target -> HashMap QName (Closed (Sized.Definition Lifted.Expr))
-convertedContext target = HashMap.fromList $ concat
+convertedEnvironment :: Target -> HashMap QName (Closed (Sized.Definition Lifted.Expr))
+convertedEnvironment target = HashMap.fromList $ concat
   [ [(papName left given, pap target left given)
     | given <- [1..maxArity - 1], left <- [1..maxArity - given]
     ]
@@ -62,7 +62,7 @@ convertedContext target = HashMap.fromList $ concat
 
 convertedSignatures :: Target -> HashMap QName Lifted.FunSignature
 convertedSignatures target
-  = flip HashMap.mapMaybe (convertedContext target) $ \def ->
+  = flip HashMap.mapMaybe (convertedEnvironment target) $ \def ->
     case open def of
       Sized.FunctionDef _ _ (Sized.Function tele (AnnoScope _ s)) -> Just (close id tele, close id s)
       Sized.ConstantDef _ _ -> Nothing
