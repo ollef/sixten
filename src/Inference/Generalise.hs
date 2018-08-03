@@ -48,7 +48,7 @@ generaliseDefs
     , FreeV -> FreeV
     )
 generaliseDefs mpred mode defs = do
-  defs' <- elabRecursiveDefs defs
+  defs' <- solveRecursiveDefConstraints defs
   metas <- collectMetas mpred mode defs'
   metas' <- mergeConstraintVars metas
   varMap <- generaliseMetas metas'

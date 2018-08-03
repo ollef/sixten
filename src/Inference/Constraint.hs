@@ -23,21 +23,21 @@ import TypedFreeVar
 import Util
 import VIX
 
-elabMetaVar
+trySolveMetaVar
   :: MetaVar
   -> Infer (Maybe (Closed (Expr MetaVar)))
-elabMetaVar m = do
+trySolveMetaVar m = do
   msol <- solution m
   case (msol, metaPlicitness m) of
-    (Nothing, Constraint) -> elabUnsolvedConstraint m
+    (Nothing, Constraint) -> trySolveConstraint m
     (Nothing, _) -> return Nothing
     (Just e, _) -> return $ Just e
 
-elabUnsolvedConstraint
+trySolveConstraint
   :: MetaVar
   -> Infer (Maybe (Closed (Expr MetaVar)))
-elabUnsolvedConstraint m = inUpdatedContext (const mempty) $ do
-  logShow 25 "elabUnsolvedConstraint" $ metaId m
+trySolveConstraint m = inUpdatedContext (const mempty) $ do
+  logShow 25 "trySolveConstraint" $ metaId m
   (vs, typ) <- instantiatedMetaType m
   withVars vs $ do
     typ' <- whnf typ
@@ -59,46 +59,46 @@ elabUnsolvedConstraint m = inUpdatedContext (const mempty) $ do
           matchingInstance:_ -> do
             logMeta 25 "Matching instance" matchingInstance
             logMeta 25 "Matching instance typ" typ'
-            let sol = close (error "elabUnsolvedConstraint not closed") $ lams vs matchingInstance
+            let sol = close (error "trySolveConstraint not closed") $ lams vs matchingInstance
             solve m sol
             return $ Just sol
       _ -> do
         logMeta 25 "Malformed" typ'
         throwLocated "Malformed constraint" -- TODO error message
 
-elabExpr
+solveExprConstraints
   :: CoreM
   -> Infer CoreM
-elabExpr = bindMetas $ \m es -> do
-  sol <- elabMetaVar m
+solveExprConstraints = bindMetas $ \m es -> do
+  sol <- trySolveMetaVar m
   case sol of
-    Nothing -> Meta m <$> traverse (traverse elabExpr) es
-    Just e -> elabExpr $ betaApps (open e) es
+    Nothing -> Meta m <$> traverse (traverse solveExprConstraints) es
+    Just e -> solveExprConstraints $ betaApps (open e) es
 
-elabDef
+solveDefConstraints
   :: Definition (Expr MetaVar) FreeV
   -> Infer (Definition (Expr MetaVar) FreeV)
-elabDef (ConstantDefinition a e)
-  = ConstantDefinition a <$> elabExpr e
-elabDef (DataDefinition (DataDef ps constrs) rep) = do
+solveDefConstraints (ConstantDefinition a e)
+  = ConstantDefinition a <$> solveExprConstraints e
+solveDefConstraints (DataDefinition (DataDef ps constrs) rep) = do
   vs <- forTeleWithPrefixM ps $ \h p s vs -> do
     let t = instantiateTele pure vs s
     forall h p t
 
   constrs' <- withVars vs $ forM constrs $ \(ConstrDef c s) -> do
     let e = instantiateTele pure vs s
-    e' <- elabExpr e
+    e' <- solveExprConstraints e
     return $ ConstrDef c e'
 
-  rep' <- elabExpr rep
+  rep' <- solveExprConstraints rep
   return $ DataDefinition (dataDef vs constrs') rep'
 
-elabRecursiveDefs
+solveRecursiveDefConstraints
   :: Vector (FreeV, name, loc, Definition (Expr MetaVar) FreeV)
   -> Infer (Vector (FreeV, name, loc, Definition (Expr MetaVar) FreeV))
-elabRecursiveDefs defs = forM defs $ \(v, name, loc, def) -> do
-  def' <- elabDef def
-  _typ' <- elabExpr $ varType v
+solveRecursiveDefConstraints defs = forM defs $ \(v, name, loc, def) -> do
+  def' <- solveDefConstraints def
+  _typ' <- solveExprConstraints $ varType v
   return (v, name, loc, def')
 
 mergeConstraintVars
@@ -140,7 +140,7 @@ mergeConstraintVars vars = do
 whnf :: CoreM -> Infer CoreM
 whnf e = Normalise.whnf' Normalise.Args
   { Normalise.expandTypeReps = False
-  , Normalise.handleMetaVar = elabMetaVar
+  , Normalise.handleMetaVar = trySolveMetaVar
   }
   e
   mempty
@@ -148,7 +148,7 @@ whnf e = Normalise.whnf' Normalise.Args
 whnfExpandingTypeReps :: CoreM -> Infer CoreM
 whnfExpandingTypeReps e = Normalise.whnf' Normalise.Args
   { Normalise.expandTypeReps = True
-  , Normalise.handleMetaVar = elabMetaVar
+  , Normalise.handleMetaVar = trySolveMetaVar
   }
   e
   mempty
