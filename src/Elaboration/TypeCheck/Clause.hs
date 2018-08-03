@@ -26,7 +26,7 @@ import VIX
 checkConstantDef
   :: Pre.ConstantDef Pre.Expr FreeV
   -> CoreM
-  -> Infer (Abstract, CoreM)
+  -> Elaborate (Abstract, CoreM)
 checkConstantDef (Pre.ConstantDef a clauses _) typ = do
   e' <- checkClauses clauses typ
   return (a, e')
@@ -34,7 +34,7 @@ checkConstantDef (Pre.ConstantDef a clauses _) typ = do
 checkClauses
   :: NonEmpty (Pre.Clause Pre.Expr FreeV)
   -> Polytype
-  -> Infer CoreM
+  -> Elaborate CoreM
 checkClauses clauses polyType = indentLog $ do
   forM_ clauses $ \clause -> logPretty 20 "checkClauses clause" $ pretty <$> clause
   logMeta 20 "checkClauses typ" polyType
@@ -61,12 +61,12 @@ checkClauses clauses polyType = indentLog $ do
       | Vector.length pats > 0 = InstUntil $ fst $ Vector.head pats
       | otherwise = instUntilExpr $ fromScope s
 
-    piPlicitnesses :: CoreM -> Infer [Plicitness]
+    piPlicitnesses :: CoreM -> Elaborate [Plicitness]
     piPlicitnesses t = do
       t' <- whnf t
       piPlicitnesses' t'
 
-    piPlicitnesses' :: CoreM -> Infer [Plicitness]
+    piPlicitnesses' :: CoreM -> Elaborate [Plicitness]
     piPlicitnesses' (Core.Pi h p t s) = do
       v <- forall h p t
       (:) p <$> piPlicitnesses (instantiate1 (pure v) s)
@@ -75,7 +75,7 @@ checkClauses clauses polyType = indentLog $ do
 checkClausesRho
   :: NonEmpty (Pre.Clause Pre.Expr FreeV)
   -> Rhotype
-  -> Infer CoreM
+  -> Elaborate CoreM
 checkClausesRho clauses rhoType = do
   forM_ clauses $ \clause -> logPretty 20 "checkClausesRho clause" $ pretty <$> clause
   logMeta 20 "checkClausesRho type" rhoType

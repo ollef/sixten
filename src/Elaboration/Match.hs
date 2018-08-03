@@ -52,7 +52,7 @@ matchSingle
   -> PatM
   -> CoreM
   -> CoreM
-  -> Infer ExprF
+  -> Elaborate ExprF
 matchSingle expr pat innerExpr retType = do
   failVar <- forall "fail" Explicit retType
   result <- withVar failVar $ match failVar retType [expr] [([pat], innerExpr)] innerExpr
@@ -62,7 +62,7 @@ matchCase
   :: CoreM
   -> [(PatM, CoreM)]
   -> CoreM
-  -> Infer ExprF
+  -> Elaborate ExprF
 matchCase expr pats retType = do
   failVar <- forall "fail" Explicit retType
   result <- withVar failVar $ match failVar retType [expr] (first pure <$> pats) (pure failVar)
@@ -72,7 +72,7 @@ matchClauses
   :: [CoreM]
   -> [([PatM], CoreM)]
   -> CoreM
-  -> Infer ExprF
+  -> Elaborate ExprF
 matchClauses exprs pats retType = do
   failVar <- forall "fail" Explicit retType
   result <- withVar failVar $ match failVar retType exprs pats (pure failVar)
@@ -84,7 +84,7 @@ type Match
   -> [CoreM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
   -> [Clause] -- ^ Clauses
   -> ExprF -- ^ The continuation for pattern match failure
-  -> Infer ExprF
+  -> Elaborate ExprF
 
 type NonEmptyMatch
   = FreeV -- ^ Failure variable
@@ -92,7 +92,7 @@ type NonEmptyMatch
   -> [CoreM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
   -> NonEmpty Clause -- ^ Clauses
   -> ExprF -- ^ The continuation for pattern match failure
-  -> Infer ExprF
+  -> Elaborate ExprF
 
 -- | Desugar pattern matching clauses
 match :: Match
@@ -158,7 +158,7 @@ matchCon expr failVar retType exprs clauses expr0 = do
 conPatArgs
   :: QConstr
   -> Vector (Plicitness, CoreM)
-  -> Infer (Vector FreeV)
+  -> Elaborate (Vector FreeV)
 conPatArgs c params = do
   ctype <- qconstructor c
   let (tele, _) = pisView ctype

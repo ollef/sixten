@@ -36,24 +36,24 @@ shouldInst _ (InstUntil Explicit) = True
 shouldInst p (InstUntil p') | p == p' = False
 shouldInst _ _ = True
 
-data InferEnv = InferEnv
+data ElabEnv = ElabEnv
   { localVariables :: Tsil FreeV
-  , inferTouchables :: !(MetaVar -> Bool)
+  , elabTouchables :: !(MetaVar -> Bool)
   }
 
-newtype Infer a = InferMonad (ReaderT InferEnv VIX a)
+newtype Elaborate a = Elaborate (ReaderT ElabEnv VIX a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadFail, MonadFix, MonadError Error, MonadFresh, MonadReport, MonadVIX)
 
-runInfer :: Infer a -> VIX a
-runInfer (InferMonad i) = runReaderT i InferEnv
+runElaborate :: Elaborate a -> VIX a
+runElaborate (Elaborate i) = runReaderT i ElabEnv
   { localVariables = mempty
-  , inferTouchables = const True
+  , elabTouchables = const True
   }
 
-instance MonadContext FreeV Infer where
-  localVars = InferMonad $ asks localVariables
+instance MonadContext FreeV Elaborate where
+  localVars = Elaborate $ asks localVariables
 
-  inUpdatedContext f (InferMonad m) = InferMonad $ do
+  inUpdatedContext f (Elaborate m) = Elaborate $ do
     vs <- asks localVariables
     let vs' = f vs
     logShow 30 "local variable scope" (varId <$> toList vs')
@@ -66,7 +66,7 @@ exists
   :: NameHint
   -> Plicitness
   -> CoreM
-  -> Infer CoreM
+  -> Elaborate CoreM
 exists hint d typ = do
   locals <- toVector . Tsil.filter (isNothing . varValue) <$> localVars
   let typ' = Core.pis locals typ
@@ -78,13 +78,13 @@ exists hint d typ = do
 
 existsType
   :: NameHint
-  -> Infer CoreM
+  -> Elaborate CoreM
 existsType n = exists n Explicit Builtin.Type
 
-getTouchable :: Infer (MetaVar -> Bool)
-getTouchable = InferMonad $ asks inferTouchables
+getTouchable :: Elaborate (MetaVar -> Bool)
+getTouchable = Elaborate $ asks elabTouchables
 
-untouchable :: Infer a -> Infer a
-untouchable (InferMonad i) = do
+untouchable :: Elaborate a -> Elaborate a
+untouchable (Elaborate i) = do
   v <- fresh
-  InferMonad $ local (\s -> s { inferTouchables = \m -> inferTouchables s m && metaId m > v }) i
+  Elaborate $ local (\s -> s { elabTouchables = \m -> elabTouchables s m && metaId m > v }) i

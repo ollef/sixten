@@ -179,7 +179,7 @@ typeCheckGroup
   :: [(QName, SourceLoc, Closed (Pre.Definition Pre.Expr))]
   -> VIX [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
 typeCheckGroup
-  = fmap Vector.toList . TypeCheck.runInfer . TypeCheck.checkAndGeneraliseTopLevelDefs . Vector.fromList
+  = fmap Vector.toList . TypeCheck.runElaborate . TypeCheck.checkAndGeneraliseTopLevelDefs . Vector.fromList
 
 simplifyGroup
   :: [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]

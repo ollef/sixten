@@ -33,7 +33,7 @@ data Expected typ
   | Check typ
 
 -- | instExpected t2 t1 = e => e : t1 -> t2
-instExpected :: Expected Rhotype -> Polytype -> Infer (CoreM -> CoreM)
+instExpected :: Expected Rhotype -> Polytype -> Elaborate (CoreM -> CoreM)
 instExpected (Infer r instUntil) t = do
   (t', f) <- instantiateForalls t instUntil
   liftST $ writeSTRef r t'
@@ -42,7 +42,7 @@ instExpected (Check t2) t1 = subtype t1 t2
 
 --------------------------------------------------------------------------------
 -- Polytypes
-checkPoly :: PreM -> Polytype -> Infer CoreM
+checkPoly :: PreM -> Polytype -> Elaborate CoreM
 checkPoly expr typ = do
   logPretty 20 "checkPoly expr" $ pretty <$> expr
   logMeta 20 "checkPoly type" typ
@@ -50,7 +50,7 @@ checkPoly expr typ = do
   logMeta 20 "checkPoly res expr" res
   return res
 
-checkPoly' :: PreM -> Polytype -> Infer CoreM
+checkPoly' :: PreM -> Polytype -> Elaborate CoreM
 checkPoly' (Pre.SourceLoc loc e) polyType
   = located loc $ checkPoly' e polyType
 checkPoly' expr@(Pre.Lam Implicit _ _) polyType
@@ -63,7 +63,7 @@ checkPoly' expr polyType
 instantiateForalls
   :: Polytype
   -> InstUntil
-  -> Infer (Rhotype, CoreM -> CoreM)
+  -> Elaborate (Rhotype, CoreM -> CoreM)
 instantiateForalls typ instUntil = do
   typ' <- whnf typ
   instantiateForalls' typ' instUntil
@@ -71,7 +71,7 @@ instantiateForalls typ instUntil = do
 instantiateForalls'
   :: Polytype
   -> InstUntil
-  -> Infer (Rhotype, CoreM -> CoreM)
+  -> Elaborate (Rhotype, CoreM -> CoreM)
 instantiateForalls' (Core.Pi h p t s) instUntil
   | shouldInst p instUntil = do
     v <- exists h p t
@@ -82,7 +82,7 @@ instantiateForalls' typ _ = return (typ, id)
 
 --------------------------------------------------------------------------------
 -- Rhotypes
-checkRho :: PreM -> Rhotype -> Infer CoreM
+checkRho :: PreM -> Rhotype -> Elaborate CoreM
 checkRho expr typ = do
   logPretty 20 "checkRho expr" $ pretty <$> expr
   logMeta 20 "checkRho type" typ
@@ -90,10 +90,10 @@ checkRho expr typ = do
   logMeta 20 "checkRho res expr" res
   return res
 
-checkRho' :: PreM -> Rhotype -> Infer CoreM
+checkRho' :: PreM -> Rhotype -> Elaborate CoreM
 checkRho' expr ty = tcRho expr (Check ty) (Just ty)
 
-inferRho :: PreM -> InstUntil -> Maybe Rhotype -> Infer (CoreM, Rhotype)
+inferRho :: PreM -> InstUntil -> Maybe Rhotype -> Elaborate (CoreM, Rhotype)
 inferRho expr instUntil expectedAppResult = do
   logPretty 20 "inferRho" $ pretty <$> expr
   (resExpr, resType) <- indentLog $ inferRho' expr instUntil expectedAppResult
@@ -101,14 +101,14 @@ inferRho expr instUntil expectedAppResult = do
   logMeta 20 "inferRho res typ" resType
   return (resExpr, resType)
 
-inferRho' :: PreM -> InstUntil -> Maybe Rhotype -> Infer (CoreM, Rhotype)
+inferRho' :: PreM -> InstUntil -> Maybe Rhotype -> Elaborate (CoreM, Rhotype)
 inferRho' expr instUntil expectedAppResult = do
   ref <- liftST $ newSTRef $ error "inferRho: empty result"
   expr' <- tcRho expr (Infer ref instUntil) expectedAppResult
   typ <- liftST $ readSTRef ref
   return (expr', typ)
 
-tcRho :: PreM -> Expected Rhotype -> Maybe Rhotype -> Infer CoreM
+tcRho :: PreM -> Expected Rhotype -> Maybe Rhotype -> Elaborate CoreM
 tcRho expr expected expectedAppResult = case expr of
   Pre.Var v -> do
     f <- instExpected expected $ varType v
@@ -193,7 +193,7 @@ tcLet
   -> Scope LetVar Pre.Expr FreeV
   -> Expected Rhotype
   -> Maybe Rhotype
-  -> Infer CoreM
+  -> Elaborate CoreM
 tcLet ds scope expected expectedAppResult = do
   varDefs <- forM ds $ \(loc, h, def) -> do
     typ <- existsType h
@@ -237,7 +237,7 @@ tcBranches
   -> [(Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) (), PatternScope Pre.Expr FreeV)]
   -> Expected Rhotype
   -> Maybe Rhotype
-  -> Infer CoreM
+  -> Elaborate CoreM
 tcBranches expr pbrs expected expectedAppResult = do
   (expr', exprType) <- inferRho expr (InstUntil Explicit) Nothing
 

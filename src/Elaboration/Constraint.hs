@@ -25,7 +25,7 @@ import VIX
 
 trySolveMetaVar
   :: MetaVar
-  -> Infer (Maybe (Closed (Expr MetaVar)))
+  -> Elaborate (Maybe (Closed (Expr MetaVar)))
 trySolveMetaVar m = do
   msol <- solution m
   case (msol, metaPlicitness m) of
@@ -35,7 +35,7 @@ trySolveMetaVar m = do
 
 trySolveConstraint
   :: MetaVar
-  -> Infer (Maybe (Closed (Expr MetaVar)))
+  -> Elaborate (Maybe (Closed (Expr MetaVar)))
 trySolveConstraint m = inUpdatedContext (const mempty) $ do
   logShow 25 "trySolveConstraint" $ metaId m
   (vs, typ) <- instantiatedMetaType m
@@ -68,7 +68,7 @@ trySolveConstraint m = inUpdatedContext (const mempty) $ do
 
 solveExprConstraints
   :: CoreM
-  -> Infer CoreM
+  -> Elaborate CoreM
 solveExprConstraints = bindMetas $ \m es -> do
   sol <- trySolveMetaVar m
   case sol of
@@ -77,7 +77,7 @@ solveExprConstraints = bindMetas $ \m es -> do
 
 solveDefConstraints
   :: Definition (Expr MetaVar) FreeV
-  -> Infer (Definition (Expr MetaVar) FreeV)
+  -> Elaborate (Definition (Expr MetaVar) FreeV)
 solveDefConstraints (ConstantDefinition a e)
   = ConstantDefinition a <$> solveExprConstraints e
 solveDefConstraints (DataDefinition (DataDef ps constrs) rep) = do
@@ -95,7 +95,7 @@ solveDefConstraints (DataDefinition (DataDef ps constrs) rep) = do
 
 solveRecursiveDefConstraints
   :: Vector (FreeV, name, loc, Definition (Expr MetaVar) FreeV)
-  -> Infer (Vector (FreeV, name, loc, Definition (Expr MetaVar) FreeV))
+  -> Elaborate (Vector (FreeV, name, loc, Definition (Expr MetaVar) FreeV))
 solveRecursiveDefConstraints defs = forM defs $ \(v, name, loc, def) -> do
   def' <- solveDefConstraints def
   _typ' <- solveExprConstraints $ varType v
@@ -103,7 +103,7 @@ solveRecursiveDefConstraints defs = forM defs $ \(v, name, loc, def) -> do
 
 mergeConstraintVars
   :: HashSet MetaVar
-  -> Infer (HashSet MetaVar) -- ^ The metavars that are still unsolved
+  -> Elaborate (HashSet MetaVar) -- ^ The metavars that are still unsolved
 mergeConstraintVars vars = do
   logShow 35 "mergeConstraintVars" vars
   _ <- foldlM go mempty vars
@@ -137,7 +137,7 @@ mergeConstraintVars vars = do
         $ Meta m
         $ (\v -> (varData v, pure v)) <$> vs
 
-whnf :: CoreM -> Infer CoreM
+whnf :: CoreM -> Elaborate CoreM
 whnf e = Normalise.whnf' Normalise.Args
   { Normalise.expandTypeReps = False
   , Normalise.handleMetaVar = trySolveMetaVar
@@ -145,7 +145,7 @@ whnf e = Normalise.whnf' Normalise.Args
   e
   mempty
 
-whnfExpandingTypeReps :: CoreM -> Infer CoreM
+whnfExpandingTypeReps :: CoreM -> Elaborate CoreM
 whnfExpandingTypeReps e = Normalise.whnf' Normalise.Args
   { Normalise.expandTypeReps = True
   , Normalise.handleMetaVar = trySolveMetaVar

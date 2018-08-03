@@ -17,7 +17,7 @@ import VIX
 resolveConstr
   :: HashSet QConstr
   -> Maybe Rhotype
-  -> Infer QConstr
+  -> Elaborate QConstr
 resolveConstr cs expected = do
   mExpectedTypeName <- expectedDataType
 
@@ -48,7 +48,7 @@ resolveConstr cs expected = do
       ]
   where
     expectedDataType = join <$> traverse findExpectedDataType expected
-    findExpectedDataType :: CoreM -> Infer (Maybe QName)
+    findExpectedDataType :: CoreM -> Elaborate (Maybe QName)
     findExpectedDataType typ = do
       typ' <- whnf typ
       case typ' of

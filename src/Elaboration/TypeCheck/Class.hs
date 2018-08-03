@@ -32,7 +32,7 @@ import VIX
 checkClassDef
   :: FreeV
   -> ClassDef Pre.Expr FreeV
-  -> Infer (ClassDef (Core.Expr MetaVar) FreeV)
+  -> Elaborate (ClassDef (Core.Expr MetaVar) FreeV)
 checkClassDef classVar (ClassDef params ms) = do
   -- TODO: These vars are typechecked twice (in checkAndGeneraliseDefs as the
   -- expected type and here). Can we clean this up?
@@ -66,7 +66,7 @@ desugarClassDef
   -> QName
   -> SourceLoc
   -> ClassDef (Core.Expr MetaVar) FreeV
-  -> Infer (Vector (FreeV, QName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
+  -> Elaborate (Vector (FreeV, QName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
 desugarClassDef classVar name loc def@(ClassDef params ms) = do
   liftVIX $ modify $ \s -> s
     { vixClassMethods
@@ -138,7 +138,7 @@ checkInstance
   -> QName
   -> SourceLoc
   -> Pre.InstanceDef Pre.Expr FreeV
-  -> Infer (Vector (FreeV, QName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
+  -> Elaborate (Vector (FreeV, QName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
 checkInstance ivar iname iloc (Pre.InstanceDef _instanceType methods) =
   deepSkolemiseInner (varType ivar) mempty $ \skolemVars innerInstanceType skolemFun -> do
     innerInstanceType' <- whnf innerInstanceType
@@ -198,7 +198,7 @@ checkInstance ivar iname iloc (Pre.InstanceDef _instanceType methods) =
         p [_] = False
         p _ = True
 
-getClassDef :: QName -> Infer (ClassDef (Core.Expr meta) v)
+getClassDef :: QName -> Elaborate (ClassDef (Core.Expr meta) v)
 getClassDef name = do
   mmnames <- liftVIX $ gets $ HashMap.lookup name . vixClassMethods
   case mmnames of

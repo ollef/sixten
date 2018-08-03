@@ -31,7 +31,7 @@ checkAndGeneraliseTopLevelDefs
     , SourceLoc
     , Closed (Pre.Definition Pre.Expr)
     )
-  -> Infer
+  -> Elaborate
     (Vector
       ( QName
       , ClosedDefinition Core.Expr
@@ -79,7 +79,7 @@ checkAndGeneraliseDefs
     , SourceLoc
     , Pre.Definition Pre.Expr FreeV
     )
-  -> Infer
+  -> Elaborate
     (Vector
       ( FreeV
       , QName
@@ -146,7 +146,7 @@ checkDefs
     , SourceLoc
     , Pre.Definition Pre.Expr FreeV
     )
-  -> Infer
+  -> Elaborate
     (Vector
       ( FreeV
       , QName
@@ -163,7 +163,7 @@ checkDef
   -> QName
   -> SourceLoc
   -> Pre.Definition Pre.Expr FreeV
-  -> Infer (Vector (FreeV, QName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
+  -> Elaborate (Vector (FreeV, QName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
 checkDef v name loc def = case def of
   Pre.ConstantDefinition d -> do
     (a, e) <- checkConstantDef d $ varType v

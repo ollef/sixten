@@ -26,7 +26,7 @@ import TypedFreeVar
 import Util
 import VIX
 
-unify :: [(CoreM, CoreM)] -> CoreM -> CoreM -> Infer ()
+unify :: [(CoreM, CoreM)] -> CoreM -> CoreM -> Elaborate ()
 unify cxt type1 type2 = do
   logMeta 30 "unify t1" type1
   logMeta 30 "      t2" type2
@@ -35,7 +35,7 @@ unify cxt type1 type2 = do
   touchable <- getTouchable
   unify' ((type1', type2') : cxt) touchable type1' type2'
 
-unify' :: [(CoreM, CoreM)] -> (MetaVar -> Bool) -> CoreM -> CoreM -> Infer ()
+unify' :: [(CoreM, CoreM)] -> (MetaVar -> Bool) -> CoreM -> CoreM -> Elaborate ()
 unify' cxt touchable type1 type2 = case (type1, type2) of
   (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
   (Lam h1 p1 t1 s1, Lam h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
@@ -159,7 +159,7 @@ occurs
   :: [(CoreM, CoreM)]
   -> MetaVar
   -> CoreM
-  -> Infer ()
+  -> Elaborate ()
 occurs cxt mv expr = do
   mvs <- metaVars expr
   when (mv `HashSet.member` mvs) $ do
@@ -187,7 +187,7 @@ occurs cxt mv expr = do
         , "while trying to unify"
         ] ++ intercalate ["", "while trying to unify"] explanation)
 
-prune :: HashSet FreeV -> CoreM -> Infer CoreM
+prune :: HashSet FreeV -> CoreM -> Elaborate CoreM
 prune allowed expr = indentLog $ do
   logMeta 35 "prune expr" expr
   res <- inUpdatedContext (const mempty) $ bindMetas go expr

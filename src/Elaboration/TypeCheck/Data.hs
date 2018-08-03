@@ -21,7 +21,7 @@ import VIX
 checkDataDef
   :: FreeV
   -> DataDef Pre.Expr FreeV
-  -> Infer (DataDef (Core.Expr MetaVar) FreeV, CoreM)
+  -> Elaborate (DataDef (Core.Expr MetaVar) FreeV, CoreM)
 checkDataDef var (DataDef ps cs) = do
 
   -- TODO: These vars are typechecked twice (in checkAndGeneraliseDefs as the
@@ -64,14 +64,14 @@ checkDataDef var (DataDef ps cs) = do
 
 checkConstrDef
   :: ConstrDef PreM
-  -> Infer (ConstrDef CoreM, CoreM, CoreM)
+  -> Elaborate (ConstrDef CoreM, CoreM, CoreM)
 checkConstrDef (ConstrDef c typ) = do
   typ' <- checkPoly typ Builtin.Type
   (sizes, ret) <- go typ'
   let size = foldl' productType (Core.MkType TypeRep.UnitRep) sizes
   return (ConstrDef c typ', ret, size)
   where
-    go :: CoreM -> Infer ([CoreM], CoreM)
+    go :: CoreM -> Elaborate ([CoreM], CoreM)
     -- TODO: Check for escaping type variables?
     go (Core.Pi h p t s) = do
       v <- forall h p t

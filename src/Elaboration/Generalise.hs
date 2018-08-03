@@ -38,7 +38,7 @@ generaliseDefs
     , SourceLoc
     , Definition (Expr MetaVar) FreeV
     )
-  -> Infer
+  -> Elaborate
     ( Vector
       ( FreeV
       , QName
@@ -67,7 +67,7 @@ collectMetas
     , SourceLoc
     , Definition (Expr MetaVar) FreeV
     )
-  -> Infer (HashSet MetaVar)
+  -> Elaborate (HashSet MetaVar)
 collectMetas mpred mode defs = do
   -- After type-checking we may actually be in a situation where a dependency
   -- we thought existed doesn't actually exist because of class instances being
@@ -94,7 +94,7 @@ collectMetas mpred mode defs = do
 
 generaliseMetas
   :: HashSet MetaVar
-  -> Infer (HashMap MetaVar FreeV)
+  -> Elaborate (HashMap MetaVar FreeV)
 generaliseMetas metas = do
   logShow 30 "generaliseMetas metas" metas
   instMetas <- forM (toList metas) $ \m -> do
@@ -132,7 +132,7 @@ replaceMetas
     , SourceLoc
     , Definition (Expr MetaVar) FreeV
     )
-  -> Infer
+  -> Elaborate
     ( Vector
       ( FreeV
       , QName
@@ -218,7 +218,7 @@ replaceDefs
       , [FreeV]
       )
     )
-  -> Infer
+  -> Elaborate
     ( Vector
       ( FreeV
       , QName
@@ -262,7 +262,7 @@ abstractDefImplicits
   => t FreeV
   -> Definition (Expr MetaVar) FreeV
   -> CoreM
-  -> Infer (Definition (Expr MetaVar) FreeV, CoreM)
+  -> Elaborate (Definition (Expr MetaVar) FreeV, CoreM)
 abstractDefImplicits vs (ConstantDefinition a e) t = do
   let ge = abstractImplicits vs lam e
       gt = abstractImplicits vs pi_ t

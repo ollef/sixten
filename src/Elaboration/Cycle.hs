@@ -26,7 +26,7 @@ import VIX
 detectTypeRepCycles
   :: Pretty name
   => Vector (FreeV, name, SourceLoc, Definition (Expr MetaVar) FreeV)
-  -> Infer ()
+  -> Elaborate ()
 detectTypeRepCycles defs = do
   reps <- traverse
     (bitraverse pure zonk)
@@ -86,7 +86,7 @@ detectTypeRepCycles defs = do
 detectDefCycles
   :: Pretty name
   => Vector (FreeV, name, SourceLoc, Definition (Expr MetaVar) FreeV)
-  -> Infer ()
+  -> Elaborate ()
 detectDefCycles defs = do
   (peeledDefExprs, locMap) <- peelLets [(name, loc, v, e) | (v, name, loc, ConstantDefinition _ e) <- Vector.toList defs]
   forM_ (topoSortWith fst snd peeledDefExprs) $ \scc -> case scc of
@@ -116,12 +116,12 @@ detectDefCycles defs = do
 
 peelLets
   :: [(name, SourceLoc, FreeV, CoreM)]
-  -> Infer ([(FreeV, CoreM)], HashMap FreeV (name, SourceLoc))
+  -> Elaborate ([(FreeV, CoreM)], HashMap FreeV (name, SourceLoc))
 peelLets = fmap fold . mapM go
   where
     go
      :: (name, SourceLoc, FreeV, CoreM)
-     -> Infer ([(FreeV, CoreM)], HashMap FreeV (name, SourceLoc))
+     -> Elaborate ([(FreeV, CoreM)], HashMap FreeV (name, SourceLoc))
     go (name, loc, var, expr) = do
       expr' <- zonk expr
       case expr' of

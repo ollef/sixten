@@ -50,14 +50,14 @@ checkPat
   -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
   -> BoundPatVars
   -> Polytype
-  -> Infer (Core.Pat CoreM FreeV, CoreM, PatVars)
+  -> Elaborate (Core.Pat CoreM FreeV, CoreM, PatVars)
 checkPat p pat vs expectedType = tcPat p pat vs $ CheckPat expectedType
 
 inferPat
   :: Plicitness
   -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
   -> BoundPatVars
-  -> Infer (Core.Pat CoreM FreeV, CoreM, PatVars, Polytype)
+  -> Elaborate (Core.Pat CoreM FreeV, CoreM, PatVars, Polytype)
 inferPat p pat vs = do
   ref <- liftST $ newSTRef $ error "inferPat: empty result"
   (pat', patExpr, vs') <- tcPat p pat vs $ InferPat ref
@@ -68,7 +68,7 @@ tcPats
   :: Vector (Plicitness, Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ())
   -> BoundPatVars
   -> Telescope Plicitness (Core.Expr MetaVar) FreeV
-  -> Infer (Vector (Core.Pat CoreM FreeV, CoreM, CoreM), PatVars)
+  -> Elaborate (Vector (Core.Pat CoreM FreeV, CoreM, CoreM), PatVars)
 tcPats pats vs tele = do
   unless (Vector.length pats == teleLength tele)
     $ internalError "tcPats length mismatch"
@@ -91,7 +91,7 @@ tcPat
   -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
   -> BoundPatVars
   -> ExpectedPat
-  -> Infer (Core.Pat CoreM FreeV, CoreM, PatVars)
+  -> Elaborate (Core.Pat CoreM FreeV, CoreM, PatVars)
 tcPat p pat vs expected = do
   whenVerbose 20 $ do
     let shownPat = first (pretty . fmap pretty . instantiatePattern pure vs) pat
@@ -109,7 +109,7 @@ tcPat'
   -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
   -> BoundPatVars
   -> ExpectedPat
-  -> Infer (Core.Pat CoreM FreeV, CoreM, PatVars)
+  -> Elaborate (Core.Pat CoreM FreeV, CoreM, PatVars)
 tcPat' p pat vs expected = case pat of
   Pre.VarPat h () -> do
     expectedType <- case expected of
@@ -180,7 +180,7 @@ instPatExpected
   -> Polytype -- ^ patType
   -> Core.Pat CoreM FreeV -- ^ pat
   -> CoreM -- ^ :: patType
-  -> Infer (Core.Pat CoreM FreeV, CoreM) -- ^ (pat :: expectedType, :: expectedType)
+  -> Elaborate (Core.Pat CoreM FreeV, CoreM) -- ^ (pat :: expectedType, :: expectedType)
 instPatExpected (CheckPat expectedType) patType pat patExpr = do
   f <- subtype expectedType patType
   viewPat expectedType pat patExpr f
@@ -193,7 +193,7 @@ viewPat
   -> Core.Pat CoreM FreeV -- ^ pat
   -> CoreM -- ^ :: patType
   -> (CoreM -> CoreM) -- ^ expectedType -> patType
-  -> Infer (Core.Pat CoreM FreeV, CoreM) -- ^ (expectedType, :: expectedType)
+  -> Elaborate (Core.Pat CoreM FreeV, CoreM) -- ^ (expectedType, :: expectedType)
 viewPat expectedType pat patExpr f = do
   x <- forall mempty Explicit expectedType
   let fx = f $ pure x
@@ -205,7 +205,7 @@ viewPat expectedType pat patExpr f = do
 
 patToTerm
   :: Core.Pat CoreM FreeV
-  -> Infer (Maybe CoreM)
+  -> Elaborate (Maybe CoreM)
 patToTerm pat = case pat of
   Core.VarPat _ v -> return $ Just $ Core.Var v
   Core.ConPat qc params pats -> do
@@ -224,7 +224,7 @@ exactlyEqualisePats
   :: Pretty c
   => [Plicitness]
   -> [(Plicitness, Pre.Pat c e ())]
-  -> Infer [(Plicitness, Pre.Pat c e ())]
+  -> Elaborate [(Plicitness, Pre.Pat c e ())]
 exactlyEqualisePats [] [] = return []
 exactlyEqualisePats [] ((p, pat):_)
   = throwLocated
@@ -259,7 +259,7 @@ equalisePats
   :: (Pretty c)
   => [Plicitness]
   -> [(Plicitness, Pre.Pat c e ())]
-  -> Infer [(Plicitness, Pre.Pat c e ())]
+  -> Elaborate [(Plicitness, Pre.Pat c e ())]
 equalisePats _ [] = return []
 equalisePats [] pats = return pats
 equalisePats (Constraint:ps) ((Constraint, pat):pats)
@@ -277,7 +277,7 @@ equalisePats (Explicit:_) ((Implicit, pat):_)
 equalisePats (Explicit:_) ((Constraint, pat):_)
   = throwExpectedExplicit pat
 
-throwExpectedExplicit :: (Pretty v, Pretty c) => Pre.Pat c e v -> Infer a
+throwExpectedExplicit :: (Pretty v, Pretty c) => Pre.Pat c e v -> Elaborate a
 throwExpectedExplicit pat
   = throwLocated
   $ PP.vcat

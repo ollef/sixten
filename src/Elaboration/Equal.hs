@@ -18,21 +18,21 @@ import Util
 import VIX
 
 exec
-  :: ExceptT () Infer a
-  -> Infer Bool
+  :: ExceptT () Elaborate a
+  -> Elaborate Bool
 exec m = do
   res <- runExceptT m
   case res of
     Left () -> return False
     Right _ -> return True
 
-expr :: CoreM -> CoreM -> ExceptT () Infer CoreM
+expr :: CoreM -> CoreM -> ExceptT () Elaborate CoreM
 expr type1 type2 = do
   type1' <- lift $ whnf type1
   type2' <- lift $ whnf type2
   expr' type1' type2'
 
-expr' :: CoreM -> CoreM -> ExceptT () Infer CoreM
+expr' :: CoreM -> CoreM -> ExceptT () Elaborate CoreM
 expr' (Var v1) (Var v2) = Var <$> eq v1 v2
 expr' (Meta m1 es1) (Meta m2 es2) = Meta <$> eq m1 m2 <*> arguments es1 es2
 expr' (Global g1) (Global g2) = Global <$> eq g1 g2
@@ -62,7 +62,7 @@ expr' _ _ = throwError ()
 arguments
   :: Vector (Plicitness, CoreM)
   -> Vector (Plicitness, CoreM)
-  -> ExceptT () Infer (Vector (Plicitness, CoreM))
+  -> ExceptT () Elaborate (Vector (Plicitness, CoreM))
 arguments es1 es2 = do
   guard $ Vector.length es1 == Vector.length es2
   let go (p1, e1) (p2, e2) = (,) <$> eq p1 p2 <*> expr e1 e2
@@ -72,7 +72,7 @@ abstraction
   :: (FreeV -> CoreM -> b)
   -> NameHint -> Plicitness -> CoreM -> Scope1 (Expr MetaVar) FreeV
   -> NameHint -> Plicitness -> CoreM -> Scope1 (Expr MetaVar) FreeV
-  -> ExceptT () Infer b
+  -> ExceptT () Elaborate b
 abstraction c h1 p1 t1 s1 h2 p2 t2 s2 = do
   let h = h1 <> h2
   p <- eq p1 p2
@@ -85,7 +85,7 @@ abstraction c h1 p1 t1 s1 h2 p2 t2 s2 = do
 branches
   :: Branches Plicitness (Expr MetaVar) FreeV
   -> Branches Plicitness (Expr MetaVar) FreeV
-  -> ExceptT () Infer (Branches Plicitness (Expr MetaVar) FreeV)
+  -> ExceptT () Elaborate (Branches Plicitness (Expr MetaVar) FreeV)
 branches (ConBranches cbrs1) (ConBranches cbrs2) = do
   guard $ length cbrs1 == length cbrs2
   ConBranches <$> zipWithM conBranch cbrs1 cbrs2
@@ -97,7 +97,7 @@ branches _ _ = throwError ()
 conBranch
   :: ConBranch Plicitness (Expr MetaVar) FreeV
   -> ConBranch Plicitness (Expr MetaVar) FreeV
-  -> ExceptT () Infer (ConBranch Plicitness (Expr MetaVar) FreeV)
+  -> ExceptT () Elaborate (ConBranch Plicitness (Expr MetaVar) FreeV)
 conBranch (ConBranch c1 tele1 s1) (ConBranch c2 tele2 s2) = do
   c <- eq c1 c2
   guard $ teleLength tele1 == teleLength tele2
@@ -118,11 +118,11 @@ conBranch (ConBranch c1 tele1 s1) (ConBranch c2 tele2 s2) = do
 litBranch
   :: LitBranch (Expr MetaVar) FreeV
   -> LitBranch (Expr MetaVar) FreeV
-  -> ExceptT () Infer (LitBranch (Expr MetaVar) FreeV)
+  -> ExceptT () Elaborate (LitBranch (Expr MetaVar) FreeV)
 litBranch (LitBranch l1 e1) (LitBranch l2 e2)
   = LitBranch <$> eq l1 l2 <*> expr e1 e2
 
-extern :: Extern CoreM -> Extern CoreM -> ExceptT () Infer (Extern CoreM)
+extern :: Extern CoreM -> Extern CoreM -> ExceptT () Elaborate (Extern CoreM)
 extern (Extern lang1 parts1) (Extern lang2 parts2) = do
   lang <- eq lang1 lang2
   guard $ length parts1 == length parts2
