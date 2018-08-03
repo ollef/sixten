@@ -28,6 +28,7 @@ executable sixten
                        -funbox-strict-fields
   main-is:             Main.hs
   other-modules:
+                       Analysis.Cycle
                        Analysis.Denat
                        Analysis.ReturnDirection
                        Analysis.Simplify
@@ -50,7 +51,6 @@ executable sixten
                        Command.Test
                        Elaboration.Constraint
                        Elaboration.Constructor
-                       Elaboration.Cycle
                        Elaboration.Equal
                        Elaboration.Generalise
                        Elaboration.Match

@@ -1,8 +1,7 @@
 {-# LANGUAGE OverloadedStrings, ViewPatterns #-}
-module Elaboration.Cycle where
+module Analysis.Cycle where
 
 import Control.Monad.Except
-import Data.Bitraversable
 import Data.Foldable as Foldable
 import Data.Hashable
 import Data.HashMap.Lazy(HashMap)
@@ -11,32 +10,47 @@ import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
-import Data.Vector(Vector)
 
-import Elaboration.MetaVar
-import Elaboration.MetaVar.Zonk
-import Elaboration.Monad
 import Error
 import Syntax
 import Syntax.Core
+import FreeVar
 import Util
 import Util.TopoSort
 import VIX
 
+type FreeV = FreeVar Plicitness
+
+cycleCheck
+  :: [(QName, SourceLoc, Definition (Expr m) FreeV, Expr m FreeV)]
+  -> VIX ()
+cycleCheck defs = do
+  vs <- forM defs $ \(name, _loc, _def, _typ) ->
+    freeVar (fromQName name) Explicit
+  let lookupName
+        = hashedLookup
+        $ toVector
+        $ zipWith (\(name, _, _, _) v -> (name, v)) defs vs
+      expose g = maybe (global g) pure $ lookupName g
+      exposedDefs = do
+        (v, (name, loc, def, _typ)) <- zip vs defs
+        let def' = gbound expose def
+        return (v, name, loc, def')
+  detectTypeRepCycles exposedDefs
+  detectDefCycles exposedDefs
+
 detectTypeRepCycles
   :: Pretty name
-  => Vector (FreeV, name, SourceLoc, Definition (Expr MetaVar) FreeV)
-  -> Elaborate ()
+  => [(FreeV, name, SourceLoc, Definition (Expr m) FreeV)]
+  -> VIX ()
 detectTypeRepCycles defs = do
-  reps <- traverse
-    (bitraverse pure zonk)
-    [(v, rep) | (v, _, _, DataDefinition _ rep) <- toList defs]
-  let locMap = HashMap.fromList [(v, (name, loc)) | (v, name, loc, _) <- toList defs]
+  let reps = [(v, rep) | (v, _, _, DataDefinition _ rep) <- defs]
+  let locMap = HashMap.fromList [(v, (name, loc)) | (v, name, loc, _) <- defs]
   case cycles reps of
     firstCycle:_ -> do
       let headVar = head firstCycle
           (headName, loc) = locMap HashMap.! headVar
-      let printedCycle = map (pretty . fst . (locMap HashMap.!)) $ drop 1 firstCycle ++ [headVar]
+          printedCycle = map (pretty . fst . (locMap HashMap.!)) $ drop 1 firstCycle ++ [headVar]
       report
         $ TypeError
           "Type has potentially infinite memory representation"
@@ -85,10 +99,10 @@ detectTypeRepCycles defs = do
 -- them in the analysis.
 detectDefCycles
   :: Pretty name
-  => Vector (FreeV, name, SourceLoc, Definition (Expr MetaVar) FreeV)
-  -> Elaborate ()
+  => [(FreeV, name, SourceLoc, Definition (Expr m) FreeV)]
+  -> VIX ()
 detectDefCycles defs = do
-  (peeledDefExprs, locMap) <- peelLets [(name, loc, v, e) | (v, name, loc, ConstantDefinition _ e) <- Vector.toList defs]
+  (peeledDefExprs, locMap) <- peelLets [(name, loc, v, e) | (v, name, loc, ConstantDefinition _ e) <- defs]
   forM_ (topoSortWith fst snd peeledDefExprs) $ \scc -> case scc of
     AcyclicSCC _ -> return ()
     CyclicSCC defExprs -> do
@@ -115,25 +129,23 @@ detectDefCycles defs = do
                   ]
 
 peelLets
-  :: [(name, SourceLoc, FreeV, CoreM)]
-  -> Elaborate ([(FreeV, CoreM)], HashMap FreeV (name, SourceLoc))
+  :: [(name, SourceLoc, FreeV, Expr m FreeV)]
+  -> VIX ([(FreeV, Expr m FreeV)], HashMap FreeV (name, SourceLoc))
 peelLets = fmap fold . mapM go
   where
     go
-     :: (name, SourceLoc, FreeV, CoreM)
-     -> Elaborate ([(FreeV, CoreM)], HashMap FreeV (name, SourceLoc))
-    go (name, loc, var, expr) = do
-      expr' <- zonk expr
-      case unSourceLoc expr' of
-        Let ds scope -> do
-          vs <- forMLet ds $ \h _ t ->
-            forall h Explicit t
-          let inst = instantiateLet pure vs
-          es <- forMLet ds $ \_ s _ ->
-            return $ inst s
-          let ds' = (name, loc, var, inst scope) : Vector.toList (Vector.zipWith (\v e -> (name, loc, v, e)) vs es)
-          peelLets ds'
-        _ -> return ([(var, expr')], HashMap.singleton var (name, loc))
+     :: (name, SourceLoc, FreeV, Expr m FreeV)
+     -> VIX ([(FreeV, Expr m FreeV)], HashMap FreeV (name, SourceLoc))
+    go (name, loc, var, expr) = case unSourceLoc expr of
+      Let ds scope -> do
+        vs <- forMLet ds $ \h _ _ ->
+          freeVar h Explicit
+        let inst = instantiateLet pure vs
+        es <- forMLet ds $ \_ s _ ->
+          return $ inst s
+        let ds' = (name, loc, var, inst scope) : Vector.toList (Vector.zipWith (\v e -> (name, loc, v, e)) vs es)
+        peelLets ds'
+      _ -> return ([(var, expr)], HashMap.singleton var (name, loc))
 
 possiblyImmediatelyAppliedVars
   :: (Eq v, Hashable v)

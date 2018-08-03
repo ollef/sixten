@@ -19,6 +19,7 @@ import Data.Void
 import Error
 import System.IO
 
+import Analysis.Cycle
 import Analysis.Denat
 import qualified Analysis.ReturnDirection as ReturnDirection
 import Analysis.Simplify
@@ -28,10 +29,10 @@ import qualified Backend.Generate as Generate
 import Backend.Lift
 import qualified Backend.SLam as SLam
 import Backend.Target
-import qualified Frontend.Parse as Parse
-import qualified Frontend.ResolveNames as ResolveNames
 import qualified Elaboration.Monad as TypeCheck
 import qualified Elaboration.TypeCheck.Definition as TypeCheck
+import qualified Frontend.Parse as Parse
+import qualified Frontend.ResolveNames as ResolveNames
 import Processor.Result
 import Syntax
 import qualified Syntax.Core as Core
@@ -61,6 +62,8 @@ frontend k
   >=> typeCheckGroup
 
   >=> prettyTypedGroup 9 "Core syntax"
+
+  >=> cycleCheckGroup
 
   >=> simplifyGroup
   >=> prettyTypedGroup 8 "Simplified"
@@ -180,6 +183,13 @@ typeCheckGroup
   -> VIX [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
 typeCheckGroup
   = fmap Vector.toList . TypeCheck.runElaborate . TypeCheck.checkAndGeneraliseTopLevelDefs . Vector.fromList
+
+cycleCheckGroup
+  :: [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
+  -> VIX [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
+cycleCheckGroup defs = do
+  cycleCheck [(x, loc, def, typ) | (x, loc, ClosedDefinition def, Biclosed typ) <- defs]
+  return defs
 
 simplifyGroup
   :: [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]

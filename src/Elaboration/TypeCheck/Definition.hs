@@ -7,7 +7,6 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
-import Elaboration.Cycle
 import Elaboration.Generalise
 import Elaboration.MetaVar
 import Elaboration.Monad
@@ -104,7 +103,7 @@ checkAndGeneraliseDefs defs = withVars ((\(v, _, _, _) -> v) <$> defs) $ do
   -- signatures of the others.
   noSigResult <- checkDefs noSigDefs
 
-  result <- if Vector.null sigDefs then do
+  if Vector.null sigDefs then do
       -- There are no definitions with signature, so generalise the ones
       -- without signature fully
       (genNoSigResult, _) <- generaliseDefs (const True) GeneraliseAll noSigResult
@@ -124,11 +123,6 @@ checkAndGeneraliseDefs defs = withVars ((\(v, _, _, _) -> v) <$> defs) $ do
       -- metavariables
       (genResult, _) <- generaliseDefs (const True) GeneraliseType $ genNoSigResult <> sigResult
       return genResult
-
-  detectTypeRepCycles result
-  detectDefCycles result
-
-  return result
   where
     -- Prevent metavariables to recursively refer to the bindings in this
     -- binding group unless we know we're going to generalise
