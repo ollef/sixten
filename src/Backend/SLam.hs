@@ -65,6 +65,91 @@ annotateType meta t = do
   t' <- whnf $ first meta t
   annotateExpr id t'
 
+annotate' :: Core.Expr () FreeV -> Core.Expr () FreeV -> (Core.Expr () FreeV, Core.Expr () FreeV)
+annotate' e t = (Core.Meta () $ toVector [(Explicit, t), (Explicit, e)], t)
+
+annotateExpr'
+  :: Core.Expr Void FreeV
+  -> SLam (Core.Expr () FreeV, Core.Expr () FreeV)
+annotateExpr' expr = uncurry annotate' <$> case expr of
+  Core.Var v -> return (Core.Var v, varType v)
+  Core.Meta m _ -> absurd m
+  Core.Global g -> do
+    (_, typ) <- definition g
+    typ' <- whnf typ
+    return (Core.Global g, typ')
+  Core.Lit l -> return (Core.Lit l, TypeOf.typeOfLiteral l)
+  Core.Pi h p t s -> do
+    (t', _) <- annotateExpr' t
+    t'' <- whnf t'
+    v <- freeVar h p t''
+    (e, _) <- annotateExpr' $ instantiate1 (pure v) s
+    typ <- whnf Builtin.Type
+    return (Core.pi_ v e, typ)
+  Core.Lam h p t s -> do
+    (t', _) <- annotateExpr' t
+    t'' <- whnf t'
+    v <- freeVar h p t''
+    (body, bodyType) <- annotateExpr' $ instantiate1 (pure v) s
+    return (Core.lam v body, Core.pi_ v bodyType)
+  Core.Con qc -> do
+    typ <- qconstructor qc
+    typ' <- whnf typ
+    return (Core.Con qc, typ')
+  (Core.appsView -> (e, es@(_:_))) -> do
+    (e', eType) <- annotateExpr' e
+    es' <- mapM (mapM (fmap fst . annotateExpr')) es
+    resType <- appType eType es'
+    return (Core.apps e' es', resType)
+  Core.App {} -> error "annotateExpr impossible"
+  Core.Case e brs retType -> do
+    (e', _) <- annotateExpr' e
+    brs' <- annotateBranches' brs
+    (retType', _) <- annotateExpr' retType
+    retType'' <- whnf retType'
+    return (Core.Case e' brs' retType'', retType'')
+  Core.Let ds scope -> do
+    vs <- forMLet ds $ \h _ t -> do
+      (t', _) <- annotateExpr' t
+      t'' <- whnf t'
+      freeVar h Explicit t''
+    es' <- forMLet ds $ \_ s _ -> do
+      (e, _) <- annotateExpr' $ instantiateLet pure vs s
+      return e
+    (body, bodyType) <- annotateExpr' $ instantiateLet pure vs scope
+    let ves = Vector.zip vs es'
+    resType <- whnf $ Core.let_ ves bodyType
+    return (Core.let_ ves body, resType)
+  Core.ExternCode c retType -> do
+    c' <- mapM (fmap fst . annotateExpr') c
+    (retType', _) <- annotateExpr' retType
+    retType'' <- whnf retType'
+    return (Core.ExternCode c' retType'', retType'')
+  where
+    appType typ es = do
+      typ' <- whnf typ
+      appType' typ' es
+    appType' typ [] = return typ
+    appType' (Core.Pi _ p _ s) ((p', e):es) | p == p' = appType (instantiate1 e s) es
+    appType' _ _ = error "SLam appType"
+
+annotateBranches'
+  :: Branches Plicitness (Core.Expr Void) FreeV
+  -> SLam (Branches Plicitness (Core.Expr ()) FreeV)
+annotateBranches' (ConBranches cbrs) = do
+  cbrs' <- forM cbrs $ \(ConBranch c tele brScope) -> do
+    vs <- forTeleWithPrefixM tele $ \h p s vs -> do
+      (t, _) <- annotateExpr' $ instantiateTele pure vs s
+      t' <- whnf t
+      freeVar h p t'
+    (brExpr, _) <- annotateExpr' $ instantiateTele pure vs brScope
+    return $ conBranchTyped c vs brExpr
+  return $ ConBranches cbrs'
+annotateBranches' (LitBranches lbrs d)
+  = LitBranches
+    <$> sequence [LitBranch l . fst <$> annotateExpr' e | LitBranch l e <- lbrs]
+    <*> fmap fst (annotateExpr' d)
+
 annotateExpr :: (meta -> ()) -> Core.Expr meta FreeV -> SLam (Core.Expr () FreeV)
 annotateExpr meta expr = annotate =<< case expr of
   Core.Var v -> return $ Core.Var v
@@ -221,14 +306,14 @@ slamDef
   -> SLam (Anno SLambda.Expr FreeV)
 slamDef (ConstantDefinition _ e) = do
   VIX.log "Annotating"
-  e' <- annotateExpr absurd e
+  (e', _) <- annotateExpr' e
   VIX.log "Annotation done, slamming"
   res <- slamAnno e'
   VIX.log "Slam done"
   return res
 slamDef (DataDefinition _ e) = do
   VIX.log "Annotating"
-  e' <- annotateExpr absurd e
+  (e', _) <- annotateExpr' e
   VIX.log "Annotation done, slamming"
   res <- slamAnno e'
   VIX.log "Slam done"
