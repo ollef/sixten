@@ -192,7 +192,7 @@ hashedElemIndex xs
   | Vector.length xs <= 16 = flip Vector.elemIndex xs
   | otherwise = flip HashMap.lookup m
   where
-    m = HashMap.fromList $ zip (Vector.toList xs) [0..]
+    m = toHashMap $ Vector.imap (\i x -> (x, i)) xs
 
 hashedLookup
   :: (Eq a, Hashable a)
@@ -204,7 +204,7 @@ hashedLookup xs
   | Vector.length xs <= 16 = \a -> snd <$> Vector.find ((== a) . fst) xs
   | otherwise = flip HashMap.lookup m
   where
-    m = HashMap.fromList $ toList xs
+    m = toHashMap xs
 
 tryMaybe :: MonadError b m => m a -> m (Maybe a)
 tryMaybe m = fmap Just m `catchError` const (pure Nothing)
