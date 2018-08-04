@@ -188,8 +188,15 @@ cycleCheckGroup
   :: [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
   -> VIX [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
 cycleCheckGroup defs = do
-  cycleCheck [(x, loc, def, typ) | (x, loc, ClosedDefinition def, Biclosed typ) <- defs]
-  return defs
+  defs' <- cycleCheck [(x, loc, def, typ) | (x, loc, ClosedDefinition def, Biclosed typ) <- defs]
+  return $ do
+    (x, loc, def, typ) <- defs'
+    return
+      ( x
+      , loc
+      , closeDefinition id (error "cycleCheckGroup close def") def
+      , biclose id (error "cycleCheckGroup close typ") typ
+      )
 
 simplifyGroup
   :: [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
