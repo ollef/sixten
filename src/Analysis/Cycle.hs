@@ -138,10 +138,10 @@ peelLets = fmap fold . mapM go
      -> VIX ([(FreeV, Expr m FreeV)], HashMap FreeV (name, SourceLoc))
     go (name, loc, var, expr) = case unSourceLoc expr of
       Let ds scope -> do
-        vs <- forMLet ds $ \h _ _ ->
+        vs <- forMLet ds $ \h _ _ _ ->
           freeVar h Explicit
         let inst = instantiateLet pure vs
-        es <- forMLet ds $ \_ s _ ->
+        es <- forMLet ds $ \_ _ s _ ->
           return $ inst s
         let ds' = (name, loc, var, inst scope) : Vector.toList (Vector.zipWith (\v e -> (name, loc, v, e)) vs es)
         peelLets ds'

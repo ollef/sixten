@@ -68,13 +68,13 @@ letRec glob ds scope
   where
     occs = MultiSet.fromList (bindings scope)
       <> foldMap (MultiSet.fromList . bindings) (letBodies ds)
-    dsFilter = iforLet ds $ \i h s t -> do
+    dsFilter = iforLet ds $ \i h loc s t -> do
       let e = fromScope s
           v = LetVar i
           s' = rebind rebinding s
       if duplicable e || MultiSet.occur v occs <= 1 && terminates glob e
         then (mempty, s')
-        else (pure (v, LetBinding h s' t), Scope $ pure $ B $ permute v)
+        else (pure (v, LetBinding h loc s' t), Scope $ pure $ B $ permute v)
     rebinding (LetVar v) = snd $ dsFilter Vector.! v
     oldVarsNewDs = Vector.concatMap fst dsFilter
     permute = LetVar . fromJust . hashedElemIndex (fst <$> oldVarsNewDs)
@@ -85,14 +85,15 @@ letRec glob ds scope
 let_
   :: (QName -> Bool)
   -> NameHint
+  -> SourceLoc
   -> Expr meta v
   -> Type meta v
   -> Scope1 (Expr meta) v
   -> Expr meta v
-let_ glob h e t s
+let_ glob h loc e t s
   = letRec
     glob
-    (LetRec $ pure $ LetBinding h (abstractNone e) t)
+    (LetRec $ pure $ LetBinding h loc (abstractNone e) t)
     (mapBound (\() -> 0) s)
 
 simplifyDef
@@ -128,7 +129,7 @@ etaLams glob applied tele scope = case go 0 $ fromScope scope of
     as = teleAnnotations tele
 
 betaApp ::  Expr meta v -> Plicitness -> Expr meta v -> Expr meta v
-betaApp (Lam h a1 t s) a2 e2 | a1 == a2 = let_ (const True) h e2 t s
+betaApp (sourceLocView -> (loc, Lam h a1 t s)) a2 e2 | a1 == a2 = let_ (const True) h loc e2 t s
 betaApp e1 a e2 = App e1 a e2
 
 betaApps

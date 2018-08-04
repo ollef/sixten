@@ -347,7 +347,7 @@ instantiateLetM
   -> Scope LetVar (Expr meta) (ExprFreeVar meta)
   -> m (Expr meta (ExprFreeVar meta))
 instantiateLetM ds scope = mdo
-  vs <- forMLet ds $ \h s t -> letVar h Explicit (instantiateLet pure vs s) t
+  vs <- forMLet ds $ \h _ s t -> letVar h Explicit (instantiateLet pure vs s) t
   return $ instantiateLet pure vs scope
 
 etaReduce :: Expr meta v -> Maybe (Expr meta v)

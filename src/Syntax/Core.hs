@@ -40,6 +40,10 @@ unSourceLoc :: Expr m v -> Expr m v
 unSourceLoc (SourceLoc _ e) = unSourceLoc e
 unSourceLoc e = e
 
+sourceLocView :: Expr m v -> (SourceLoc, Expr m v)
+sourceLocView (SourceLoc loc (unSourceLoc -> e)) = (loc, e)
+sourceLocView e = (noSourceLoc "sourceLocView", e)
+
 type FreeExprVar m = FreeVar Plicitness (Expr m)
 
 lam :: FreeExprVar m -> Expr m (FreeExprVar m) -> Expr m (FreeExprVar m)
@@ -55,14 +59,14 @@ pis :: Foldable t => t (FreeExprVar m) -> Expr m (FreeExprVar m) -> Expr m (Free
 pis xs e = foldr pi_ e xs
 
 let_
-  :: Vector (FreeExprVar m, Expr m (FreeExprVar m))
+  :: Vector (FreeExprVar m, SourceLoc, Expr m (FreeExprVar m))
   -> Expr m (FreeExprVar m)
   -> Expr m (FreeExprVar m)
 let_ ds body = do
-  let abstr = letAbstraction $ fst <$> ds
+  let abstr = letAbstraction $ fst3 <$> ds
       ds' = LetRec
-        [ LetBinding (varHint v) (abstract abstr e) (varType v)
-        | (v, e) <- ds
+        [ LetBinding (varHint v) loc (abstract abstr e) (varType v)
+        | (v, loc, e) <- ds
         ]
   Let ds' $ abstract abstr body
 

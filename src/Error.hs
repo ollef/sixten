@@ -23,6 +23,14 @@ data SourceLoc = SourceLocation
   , sourceLocHighlights :: Highlights
   } deriving (Eq, Ord, Show)
 
+noSourceLoc :: FilePath -> SourceLoc
+noSourceLoc fp = SourceLocation
+  { sourceLocFile = "<no source location (" ++ fp ++ ")>"
+  , sourceLocSpan = Span (Position 0 0 0) (Position 0 0 0)
+  , sourceLocSource = mempty
+  , sourceLocHighlights = mempty
+  }
+
 -- | Gives a summary (fileName:row:column) of the location
 instance Pretty SourceLoc where
   pretty src

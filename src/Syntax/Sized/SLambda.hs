@@ -36,7 +36,7 @@ lam v t = Lam (varHint v) t . abstract1Anno v
 
 letRec :: Vector (FreeVar d e, Anno Expr (FreeVar d e)) -> Expr (FreeVar d e) -> Expr (FreeVar d e)
 letRec ds expr = do
-  let ds' = [LetBinding (varHint v) (abstr e) t | (v, Anno e t) <- ds]
+  let ds' = [LetBinding (varHint v) (noSourceLoc "SLambda") (abstr e) t | (v, Anno e t) <- ds]
   Let (LetRec ds') $ abstr expr
   where
     abstr = abstract $ letAbstraction $ fst <$> ds
@@ -52,7 +52,7 @@ lamView (Lam h e s) = Just (h, (), e, s)
 lamView _ = Nothing
 
 let_ :: NameHint -> Expr v -> Type v -> Scope1 Expr v -> Expr v
-let_ h e t s = Let (LetRec $ pure $ LetBinding h (abstractNone e) t) (mapBound (\() -> 0) s)
+let_ h e t s = Let (LetRec $ pure $ LetBinding h (noSourceLoc "SLambda") (abstractNone e) t) (mapBound (\() -> 0) s)
 
 -------------------------------------------------------------------------------
 -- Instances

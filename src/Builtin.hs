@@ -9,7 +9,6 @@ import Data.List.NonEmpty
 import Data.Maybe
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
-import Text.Parsix.Position
 
 import Backend.Target(Target)
 import Builtin.Names
@@ -24,12 +23,7 @@ import qualified TypeRep
 import Util
 
 builtinSourceLoc :: SourceLoc
-builtinSourceLoc = SourceLocation
-  { sourceLocFile = "<compiler builtin>"
-  , sourceLocSpan = Span (Position 0 0 0) (Position 0 0 0)
-  , sourceLocSource = mempty
-  , sourceLocHighlights = mempty
-  }
+builtinSourceLoc = noSourceLoc "(compiler builtin)"
 
 environment :: Target -> HashMap QName (SourceLoc, ClosedDefinition Expr, Biclosed Type)
 environment target = HashMap.fromList

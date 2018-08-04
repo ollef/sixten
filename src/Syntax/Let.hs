@@ -22,6 +22,7 @@ import Data.Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
+import Error
 import Pretty
 import Syntax.GlobalBind
 import Syntax.Name
@@ -40,46 +41,49 @@ newtype LetRec expr v = LetRec (Vector (LetBinding expr v))
 unLetRec :: LetRec expr v -> Vector (LetBinding expr v)
 unLetRec (LetRec xs) = xs
 
-data LetBinding expr v = LetBinding !NameHint !(Scope LetVar expr v) (expr v)
+data LetBinding expr v = LetBinding !NameHint !SourceLoc !(Scope LetVar expr v) (expr v)
   deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
 
 forLet
   :: LetRec expr v
-  -> (NameHint -> Scope LetVar expr v -> expr v -> a)
+  -> (NameHint -> SourceLoc -> Scope LetVar expr v -> expr v -> a)
   -> Vector a
-forLet (LetRec xs) f = (\(LetBinding h s t) -> f h s t) <$> xs
+forLet (LetRec xs) f = (\(LetBinding h loc s t) -> f h loc s t) <$> xs
 
 iforLet
   :: LetRec expr v
-  -> (Int -> NameHint -> Scope LetVar expr v -> expr v -> a)
+  -> (Int -> NameHint -> SourceLoc -> Scope LetVar expr v -> expr v -> a)
   -> Vector a
-iforLet (LetRec xs) f = imap (\i (LetBinding h s t) -> f i h s t) xs
+iforLet (LetRec xs) f = imap (\i (LetBinding h loc s t) -> f i h loc s t) xs
 
 letNameHints :: LetRec expr v -> Vector NameHint
-letNameHints l = forLet l $ \h _ _ -> h
+letNameHints l = forLet l $ \h _ _ _ -> h
+
+letSourceLocs :: LetRec expr v -> Vector SourceLoc
+letSourceLocs l = forLet l $ \_ loc _ _ -> loc
 
 letBodies :: LetRec expr v -> Vector (Scope LetVar expr v)
-letBodies l = forLet l $ \_ s _ -> s
+letBodies l = forLet l $ \_ _ s _ -> s
 
 letTypes :: LetRec expr v -> Vector (expr v)
-letTypes l = forLet l $ \_ _ t -> t
+letTypes l = forLet l $ \_ _ _ t -> t
 
 forMLet
   :: Monad m
   => LetRec expr v
-  -> (NameHint -> Scope LetVar expr v -> expr v -> m a)
+  -> (NameHint -> SourceLoc -> Scope LetVar expr v -> expr v -> m a)
   -> m (Vector a)
-forMLet (LetRec xs) f = forM xs $ \(LetBinding h s t) -> f h s t
+forMLet (LetRec xs) f = forM xs $ \(LetBinding h loc s t) -> f h loc s t
 
 iforMLet
   :: Monad m
   => LetRec expr v
-  -> (Int -> NameHint -> Scope LetVar expr v -> expr v -> m a)
+  -> (Int -> NameHint -> SourceLoc -> Scope LetVar expr v -> expr v -> m a)
   -> m (Vector a)
-iforMLet (LetRec xs) f = iforM xs $ \i (LetBinding h s t) -> f i h s t
+iforMLet (LetRec xs) f = iforM xs $ \i (LetBinding h loc s t) -> f i h loc s t
 
 letNames :: LetRec expr v -> Vector NameHint
-letNames (LetRec xs) = (\(LetBinding name _ _) -> name) <$> xs
+letNames (LetRec xs) = (\(LetBinding name _ _ _) -> name) <$> xs
 
 withLetHints
   :: LetRec expr v
@@ -106,7 +110,7 @@ prettyLet
   -> PrettyDoc
 prettyLet ns (LetRec xs) = vcat $ imap go xs
   where
-    go i (LetBinding _ s t)
+    go i (LetBinding _ _ s t)
       = n <+> ":" <+> prettyM t
       <$$> n <+> "=" <+> prettyM (instantiateLet (pure . fromName) ns s)
       where
@@ -121,7 +125,7 @@ bitraverseLet
 bitraverseLet f g (LetRec xs)
   = LetRec
   <$> traverse
-    (\(LetBinding h s t) -> LetBinding h <$> bitraverseScope f g s <*> bitraverse f g t)
+    (\(LetBinding h loc s t) -> LetBinding h loc <$> bitraverseScope f g s <*> bitraverse f g t)
     xs
 
 transverseLet
@@ -136,7 +140,7 @@ transverseLetBinding
   => (forall r. expr r -> f (expr' r))
   -> LetBinding expr a
   -> f (LetBinding expr' a)
-transverseLetBinding f (LetBinding h s t) = LetBinding h <$> transverseScope f s <*> f t
+transverseLetBinding f (LetBinding h loc s t) = LetBinding h loc <$> transverseScope f s <*> f t
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -146,15 +150,15 @@ instance (Eq1 expr, v ~ Doc, Pretty (expr v), Monad expr)
 
 instance Bound LetRec where
   LetRec xs >>>= f
-    = LetRec $ (\(LetBinding h s t) -> LetBinding h (s >>>= f) (t >>= f)) <$> xs
+    = LetRec $ (\(LetBinding h loc s t) -> LetBinding h loc (s >>>= f) (t >>= f)) <$> xs
 
 instance GBound LetRec where
   gbound f (LetRec xs)
-    = LetRec $ (\(LetBinding h s t) -> LetBinding h (gbound f s) (gbind f t)) <$> xs
+    = LetRec $ (\(LetBinding h loc s t) -> LetBinding h loc (gbound f s) (gbind f t)) <$> xs
 
 instance MFunctor LetRec where
   hoist f (LetRec xs)
-    = LetRec $ (\(LetBinding h s t) -> LetBinding h (hoist f s) (f t)) <$> xs
+    = LetRec $ (\(LetBinding h loc s t) -> LetBinding h loc (hoist f s) (f t)) <$> xs
 
 $(return mempty)
 

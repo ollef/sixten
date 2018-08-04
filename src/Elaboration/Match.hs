@@ -40,6 +40,7 @@ fatBar failVar e e' = case filter (== failVar) $ toList e of
   _ -> Simplify.let_
     (const False)
     mempty
+    (noSourceLoc "fatBar")
     (Lam mempty Explicit Builtin.UnitType $ abstractNone e')
     (Pi mempty Explicit Builtin.UnitType $ abstractNone $ varType failVar)
     $ abstract1 failVar

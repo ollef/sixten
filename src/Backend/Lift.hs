@@ -145,7 +145,7 @@ liftLet
   -> Scope LetVar SLambda.Expr FV
   -> LambdaLift (Lifted.Expr FV)
 liftLet ds scope = do
-  vs <- forMLet ds $ \h _ t -> do
+  vs <- forMLet ds $ \h _ _ t -> do
     t' <- liftExpr t
     freeVar h () t'
 

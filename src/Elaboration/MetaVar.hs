@@ -239,16 +239,16 @@ bindMetas f expr = case expr of
     return $ lam v e'
   App e1 p e2 -> App <$> bindMetas f e1 <*> pure p <*> bindMetas f e2
   Let ds scope -> do
-    vs <- forMLet ds $ \h _ t -> do
+    vs <- forMLet ds $ \h _ _ t -> do
       t' <- bindMetas f t
       forall h Explicit t'
     withVars vs $ do
-      es <- forMLet ds $ \_ s _ -> do
+      es <- forMLet ds $ \_ _ s _ -> do
         let e = instantiateLet pure vs s
         bindMetas f e
       let e = instantiateLet pure vs scope
       e' <- bindMetas f e
-      return $ let_ (Vector.zip vs es) e'
+      return $ let_ (Vector.zip3 vs (letSourceLocs ds) es) e'
   Case e brs t -> Case <$> bindMetas f e <*> bindBranchMetas f brs <*> bindMetas f t
   ExternCode e t -> ExternCode <$> mapM (bindMetas f) e <*> bindMetas f t
   SourceLoc loc e -> SourceLoc loc <$> bindMetas f e

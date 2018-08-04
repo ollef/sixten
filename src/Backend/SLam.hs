@@ -83,8 +83,8 @@ slam expr = do
     Core.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamAnno e2
     Core.Case e brs _retType -> SLambda.Case <$> slamAnno e <*> slamBranches brs
     Core.Let ds scope -> do
-      vs <- forMLet ds $ \h _ t -> freeVar h Explicit t
-      ds' <- forMLet ds $ \_ s t -> do
+      vs <- forMLet ds $ \h _ _ t -> freeVar h Explicit t
+      ds' <- forMLet ds $ \_ _ s t -> do
         e <- slam $ instantiateLet pure vs s
         t' <- slam t
         return $ Anno e t'

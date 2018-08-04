@@ -221,11 +221,11 @@ tcLet ds scope expected expectedAppResult = do
   let abstr = letAbstraction vars
       ds'' = LetRec
         $ flip fmap ds'
-        $ \(v, _, (_, e)) -> LetBinding (varHint v) (abstract abstr e) $ varType v
+        $ \(v, loc, (_, e)) -> LetBinding (varHint v) loc (abstract abstr e) $ varType v
 
   mdo
     let inst = instantiateLet pure vars'
-    vars' <- iforMLet ds'' $ \i h s t -> do
+    vars' <- iforMLet ds'' $ \i h _ s t -> do
       let (_, _, (a, _)) = ds' Vector.! i
       case a of
         Abstract -> forall h Explicit t
