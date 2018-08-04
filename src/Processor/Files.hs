@@ -111,13 +111,13 @@ compileBuiltins = do
       let builtinDefNames = HashSet.fromMap $ void env
           builtinConstrNames = HashSet.fromList
             [ QConstr n c
-            | (n, (ClosedDefinition (DataDefinition d _), _)) <- HashMap.toList env
+            | (n, (_, ClosedDefinition (DataDefinition d _), _)) <- HashMap.toList env
             , c <- constrNames d
             ]
       addModule "Sixten.Builtin" builtinConstrNames builtinDefNames
       addEnvironment env
       builtinResults1 <- File.process builtins1
-      let envList = (\(n, (d, t)) -> (n, d, t)) <$> HashMap.toList env
+      let envList = (\(n, (loc, d, t)) -> (n, loc, d, t)) <$> HashMap.toList env
       envResults <- File.backend envList
       addConvertedSignatures $ Builtin.convertedSignatures tgt
       convertedResults <- File.processConvertedGroup $ HashMap.toList $ Builtin.convertedEnvironment tgt

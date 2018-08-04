@@ -1,4 +1,4 @@
-{-# LANGUAGE MonadComprehensions, OverloadedStrings, ViewPatterns #-}
+{-# LANGUAGE MonadComprehensions, OverloadedStrings #-}
 module Builtin where
 
 import Control.Applicative
@@ -9,6 +9,7 @@ import Data.List.NonEmpty
 import Data.Maybe
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
+import Text.Parsix.Position
 
 import Backend.Target(Target)
 import Builtin.Names
@@ -22,7 +23,15 @@ import TypedFreeVar
 import qualified TypeRep
 import Util
 
-environment :: Target -> HashMap QName (ClosedDefinition Expr, Biclosed Type)
+builtinSourceLoc :: SourceLoc
+builtinSourceLoc = SourceLocation
+  { sourceLocFile = "<compiler builtin>"
+  , sourceLocSpan = Span (Position 0 0 0) (Position 0 0 0)
+  , sourceLocSource = mempty
+  , sourceLocHighlights = mempty
+  }
+
+environment :: Target -> HashMap QName (SourceLoc, ClosedDefinition Expr, Biclosed Type)
 environment target = HashMap.fromList
   [ (TypeName, dataType typeRep Type [])
   , (PtrName, dataType
@@ -42,7 +51,7 @@ environment target = HashMap.fromList
     cl = fromMaybe (error "Builtin not closed") . closed
     -- TODO: Should be made nonmatchable
     opaqueData rep t = dataType rep t mempty
-    dataType rep typ xs = (closeDefinition id id $ DataDefinition (DataDef (piTelescope cltyp) xs) rep, biclose id id $ cltyp)
+    dataType rep typ xs = (builtinSourceLoc, closeDefinition id id $ DataDefinition (DataDef (piTelescope cltyp) xs) rep, biclose id id $ cltyp)
       where
         cltyp = cl typ
 

@@ -34,6 +34,7 @@ checkAndGeneraliseTopLevelDefs
   -> Elaborate
     (Vector
       ( QName
+      , SourceLoc
       , ClosedDefinition Core.Expr
       , Biclosed Core.Type
       )
@@ -56,7 +57,7 @@ checkAndGeneraliseTopLevelDefs defs = do
       lookupVarName = hashedLookup varNames
       unexpose v = maybe (pure v) global $ lookupVarName v
 
-  forM checkedDefs $ \(v, name, _loc, def) -> do
+  forM checkedDefs $ \(v, name, loc, def) -> do
     let typ = varType v
     -- logDefMeta 20 ("checkAndGeneraliseTopLevelDefs def " ++ show (pretty name)) def
     logMeta 20 ("checkAndGeneraliseTopLevelDefs typ " ++ show (pretty name)) typ
@@ -64,7 +65,7 @@ checkAndGeneraliseTopLevelDefs defs = do
         unexposedTyp = typ >>= unexpose
     -- logDefMeta 20 ("checkAndGeneraliseTopLevelDefs unexposedDef " ++ show (pretty name)) unexposedDef
     logMeta 20 ("checkAndGeneraliseTopLevelDefs unexposedTyp " ++ show (pretty name)) unexposedTyp
-    return (name, closeDefinition noMeta noVar unexposedDef, biclose noMeta noVar unexposedTyp)
+    return (name, loc, closeDefinition noMeta noVar unexposedDef, biclose noMeta noVar unexposedTyp)
   where
     noVar :: FreeV -> b
     noVar v = error $ "checkAndGeneraliseTopLevelDefs " <> shower v

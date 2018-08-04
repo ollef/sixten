@@ -51,7 +51,7 @@ process
 process = frontend backend
 
 frontend
-  :: ([(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)] -> VIX [k])
+  :: ([(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)] -> VIX [k])
   -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [k]
 frontend k
@@ -69,7 +69,7 @@ frontend k
   >=> k
 
 backend
-  :: [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
+  :: [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
   -> VIX [Generate.GeneratedSubmodule]
 backend
   = slamGroup
@@ -123,12 +123,12 @@ prettyPreGroup str defs = do
 prettyTypedGroup
   :: Int
   -> Text
-  -> [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
-  -> VIX [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
+  -> [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
+  -> VIX [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
 prettyTypedGroup v str defs = do
   whenVerbose v $ do
     VIX.log $ "----- " <> str <> " -----"
-    forM_ defs $ \(n, ClosedDefinition d, Biclosed t) -> do
+    forM_ defs $ \(n, _, ClosedDefinition d, Biclosed t) -> do
       VIX.log
         $ showWide
         $ pretty
@@ -177,31 +177,31 @@ resolveProgramNames modul = do
 
 typeCheckGroup
   :: [(QName, SourceLoc, Closed (Pre.Definition Pre.Expr))]
-  -> VIX [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
+  -> VIX [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
 typeCheckGroup
   = fmap Vector.toList . TypeCheck.runElaborate . TypeCheck.checkAndGeneraliseTopLevelDefs . Vector.fromList
 
 simplifyGroup
-  :: [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
-  -> VIX [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
+  :: [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
+  -> VIX [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
 simplifyGroup defs = return $ do
-  (x, ClosedDefinition def, Biclosed typ) <- defs
-  return (x, closeDefinition id id $ simplifyDef globTerm def, biclose id id $ simplifyExpr globTerm 0 typ)
+  (x, loc, ClosedDefinition def, Biclosed typ) <- defs
+  return (x, loc, closeDefinition id id $ simplifyDef globTerm def, biclose id id $ simplifyExpr globTerm 0 typ)
   where
     globTerm x = not $ HashSet.member x names
-    names = HashSet.fromList $ fst3 <$> defs
+    names = HashSet.fromList $ (\(x, _, _, _) -> x) <$> defs
 
 addGroupToEnvironment
-  :: [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
-  -> VIX [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
+  :: [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
+  -> VIX [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
 addGroupToEnvironment defs = do
-  addEnvironment $ HashMap.fromList $ (\(n, d, t) -> (n, (d, t))) <$> defs
+  addEnvironment $ HashMap.fromList $ (\(n, loc, d, t) -> (n, (loc, d, t))) <$> defs
   return defs
 
 slamGroup
-  :: [(QName, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
+  :: [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
   -> VIX [(QName, Closed (Anno SLambda.Expr))]
-slamGroup defs = forM defs $ \(x, ClosedDefinition d, _t) -> do
+slamGroup defs = forM defs $ \(x, _, ClosedDefinition d, _t) -> do
   d' <- SLam.runSlam $ SLam.slamDef d
   return (x, close (error "slamGroup") d')
 

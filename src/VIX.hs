@@ -10,7 +10,6 @@ import Control.Monad.ST
 import Control.Monad.State
 import Control.Monad.Trans.Control
 import Control.Monad.Writer
-import Data.Bifunctor
 import Data.Foldable
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
@@ -38,7 +37,7 @@ import qualified Util.MultiHashMap as MultiHashMap
 
 data VIXState = VIXState
   { vixLocation :: Maybe SourceLoc
-  , vixEnvironment :: HashMap QName (ClosedDefinition Expr, Biclosed Type)
+  , vixEnvironment :: HashMap QName (SourceLoc, ClosedDefinition Expr, Biclosed Type)
   , vixModuleConstrs :: MultiHashMap ModuleName QConstr
   , vixModuleNames :: MultiHashMap ModuleName QName
   , vixConvertedSignatures :: HashMap QName Lifted.FunSignature
@@ -186,7 +185,7 @@ logFreeVar v s x = whenVerbose v $ do
 
 -------------------------------------------------------------------------------
 -- Working with abstract syntax
-addEnvironment :: MonadVIX m => HashMap QName (ClosedDefinition Expr, Biclosed Type) -> m ()
+addEnvironment :: MonadVIX m => HashMap QName (SourceLoc, ClosedDefinition Expr, Biclosed Type) -> m ()
 addEnvironment prog = liftVIX $ modify $ \s -> s
   { vixEnvironment = prog <> vixEnvironment s
   }
@@ -209,7 +208,7 @@ definition
 definition name = do
   mres <- liftVIX $ gets $ HashMap.lookup name . vixEnvironment
   maybe (throwLocated $ "Not in scope: " <> pretty name)
-        (return . bimap openDefinition biopen)
+        (\(_, ClosedDefinition d, Biclosed t) -> pure (d, t))
         mres
 
 instances
@@ -221,7 +220,7 @@ instances className = do
   fmap concat $ forM (toList instanceNames) $ \instanceName ->
     liftVIX
       $ gets
-      $ maybe mempty (pure . bimap (const instanceName) biopen)
+      $ maybe mempty (\(_, _, Biclosed t) -> pure (instanceName, t))
         . HashMap.lookup instanceName
         . vixEnvironment
 
@@ -295,7 +294,7 @@ constrIndex
 constrIndex (QConstr n c) = do
   mres <- liftVIX $ gets $ HashMap.lookup n . vixEnvironment
   return $ case mres of
-    Just (ClosedDefinition (DataDefinition (DataDef _ constrDefs@(_:_:_)) _), _) ->
+    Just (_, ClosedDefinition (DataDefinition (DataDef _ constrDefs@(_:_:_)) _), _) ->
       findIndex ((== c) . constrName) constrDefs
     _ -> Nothing
 
