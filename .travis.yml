@@ -44,6 +44,6 @@ cache:
   directories:
   - "$HOME/.stack"
   - "$HOME/.local/bin"
-  - "$HOME/build/ollef/sixten/.stack-work"
+  - "$TRAVIS_BUILD_DIR/.stack-work"
   # Allow more time for new caches to be uploaded
   timeout: 1000
