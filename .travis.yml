@@ -14,10 +14,12 @@ before_install:
 - mkdir -p $HOME/.local/bin
 - export PATH=$HOME/.local/bin:$PATH
 - |
-  if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
-    travis_retry curl --insecure -L https://www.stackage.org/stack/osx-x86_64 | tar xz --strip-components=1 --include '*/stack' -C $HOME/.local/bin
-  else
-    travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C $HOME/.local/bin '*/stack'
+  if [ ! -f $HOME/.local/bin/stack ]; then
+    if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+      travis_retry curl --insecure -L https://www.stackage.org/stack/osx-x86_64 | tar xz --strip-components=1 --include '*/stack' -C $HOME/.local/bin
+    else
+      travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C $HOME/.local/bin '*/stack'
+    fi
   fi
 
 - |
@@ -42,3 +44,6 @@ cache:
   directories:
   - "$HOME/.stack"
   # - "$HOME/build/ollef/sixten/.stack-work"
+  - "$HOME/.local/bin"
+  # Allow more time for new caches to be uploaded
+  timeout: 1000
