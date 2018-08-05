@@ -43,7 +43,7 @@ script:
 cache:
   directories:
   - "$HOME/.stack"
-  # - "$HOME/build/ollef/sixten/.stack-work"
   - "$HOME/.local/bin"
+  - "$HOME/build/ollef/sixten/.stack-work"
   # Allow more time for new caches to be uploaded
   timeout: 1000
