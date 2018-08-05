@@ -3,7 +3,6 @@ module Elaboration.Unify where
 
 import Control.Monad.Except
 import Data.Bifunctor
-import Data.Hashable
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.List
@@ -56,18 +55,18 @@ unify' cxt touchable type1 type2 = case (type1, type2) of
   (appsView -> (Meta m1 es1, es1'), appsView -> (Meta m2 es2, es2')) -> do
     let argVec1 = es1 <> toVector es1'
         argVec2 = es2 <> toVector es2'
-    case (distinctVars argVec1, distinctVars argVec2) of
+    case (distinctVarView argVec1, distinctVarView argVec2) of
       _ | m1 == m2 -> sameVar m1 argVec1 argVec2
       (Just pvs, _) | touchable m1 -> solveVar unify m1 pvs type2
       (_, Just pvs) | touchable m2 -> solveVar (flip . unify) m2 pvs type1
       _ -> can'tUnify
   (appsView -> (Meta m es, es'), _)
     | touchable m
-    , Just pvs <- distinctVars (es <> toVector es')
+    , Just pvs <- distinctVarView (es <> toVector es')
     -> solveVar unify m pvs type2
   (_, appsView -> (Meta m es, es'))
     | touchable m
-    , Just pvs <- distinctVars (es <> toVector es')
+    , Just pvs <- distinctVarView (es <> toVector es')
     -> solveVar (flip . unify) m pvs type1
   -- Since we've already tried reducing the application, we can only hope to
   -- unify it pointwise.
@@ -108,7 +107,7 @@ unify' cxt touchable type1 type2 = case (type1, type2) of
       when (Vector.length pes1 /= Vector.length pes2) $
         error "sameVar mismatched length"
 
-      let keepArg (isVar -> Just v1) (isVar -> Just v2) | v1 /= v2 = False
+      let keepArg (p1, varView -> Just v1) (p2, varView -> Just v2) | p1 /= p2 || v1 /= v2 = False
           keepArg _ _ = True
           keep = Vector.zipWith keepArg pes1 pes2
       if and keep then
@@ -204,7 +203,7 @@ prune allowed expr = indentLog $ do
         Nothing -> do
           es' <- mapM (mapM whnf) es
           localAllowed <- toHashSet <$> localVars
-          case distinctVars es' of
+          case distinctVarView es' of
             Nothing -> do
               -- VIX.logShow 30 "prune not distinct" ()
               return $ Meta m es'
@@ -247,15 +246,3 @@ prune allowed expr = indentLog $ do
                 vs' = Vector.filter (`HashSet.member` (allowed <> localAllowed)) vs
                 plicitVs = (\(p, v) -> v { varData = p }) <$> pvs
                 Just mType = typeApps (open $ metaType m) es
-
-distinctVars :: (Eq v, Hashable v, Traversable t) => t (p, Expr m v) -> Maybe (t (p, v))
-distinctVars es = case traverse isVar es of
-  Just es' | distinct (snd <$> es') -> Just es'
-  _ -> Nothing
-
-isVar :: (p, Expr m a) -> Maybe (p, a)
-isVar (p, Var v) = Just (p, v)
-isVar _ = Nothing
-
-distinct :: (Foldable t, Hashable a, Eq a) => t a -> Bool
-distinct es = HashSet.size (toHashSet es) == length es

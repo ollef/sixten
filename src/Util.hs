@@ -251,3 +251,6 @@ filterMSet f s
 
 withFile :: MonadBaseControl IO m => FilePath -> IOMode -> (Handle -> m r) -> m r
 withFile name mode = liftBaseOp $ bracket (openFile name mode) hClose
+
+distinct :: (Foldable t, Hashable a, Eq a) => t a -> Bool
+distinct es = HashSet.size (toHashSet es) == length es

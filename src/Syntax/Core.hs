@@ -7,13 +7,14 @@ import Data.Bifunctor
 import Data.Bitraversable
 import Data.Deriving
 import Data.Foldable as Foldable
+import Data.Hashable
 import Data.Vector(Vector)
 
 import Syntax
+import TypedFreeVar
 import TypeRep(TypeRep)
 import Util
 import Util.Tsil
-import TypedFreeVar
 
 -- | Expressions with meta-variables of type @m@ and variables of type @v@.
 data Expr m v
@@ -81,6 +82,15 @@ appsView = second toList . go
   where
     go (unSourceLoc -> App e1 p e2) = second (`Snoc` (p, e2)) $ go e1
     go e = (e, Nil)
+
+varView :: Expr m a -> Maybe a
+varView (unSourceLoc -> Var v) = Just v
+varView _ = Nothing
+
+distinctVarView :: (Eq v, Hashable v, Traversable t) => t (p, Expr m v) -> Maybe (t (p, v))
+distinctVarView es = case traverse (traverse varView) es of
+  Just es' | distinct (snd <$> es') -> Just es'
+  _ -> Nothing
 
 piView :: Expr m v -> Maybe (NameHint, Plicitness, Type m v, Scope1 (Expr m) v)
 piView (unSourceLoc -> Pi h a t s) = Just (h, a, t, s)
