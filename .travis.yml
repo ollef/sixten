@@ -11,13 +11,13 @@ matrix:
 
 before_install:
 # stack
-- mkdir -p ~/.local/bin
+- mkdir -p $HOME/.local/bin
 - export PATH=$HOME/.local/bin:$PATH
 - |
   if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
-    travis_retry curl --insecure -L https://www.stackage.org/stack/osx-x86_64 | tar xz --strip-components=1 --include '*/stack' -C ~/.local/bin
+    travis_retry curl --insecure -L https://www.stackage.org/stack/osx-x86_64 | tar xz --strip-components=1 --include '*/stack' -C $HOME/.local/bin
   else
-    travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
+    travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C $HOME/.local/bin '*/stack'
   fi
 
 - |
