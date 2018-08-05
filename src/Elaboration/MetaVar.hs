@@ -2,13 +2,12 @@
 module Elaboration.MetaVar where
 
 import Control.Monad.Except
-import Control.Monad.ST
 import Control.Monad.State
 import Data.Bitraversable
 import Data.Function
 import Data.Hashable
+import Data.IORef
 import Data.Maybe
-import Data.STRef
 import Data.String
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
@@ -24,7 +23,7 @@ import TypedFreeVar
 import Util
 import VIX
 
-type MetaRef = STRef RealWorld (Maybe (Closed (Expr MetaVar)))
+type MetaRef = IORef (Maybe (Closed (Expr MetaVar)))
 
 type FreeV = FreeVar Plicitness (Expr MetaVar)
 
@@ -68,7 +67,7 @@ explicitExists
   -> m MetaVar
 explicitExists hint p typ a loc = do
   i <- fresh
-  ref <- liftST $ newSTRef Nothing
+  ref <- liftIO $ newIORef Nothing
   logVerbose 20 $ "exists: " <> shower i
   logMeta 20 "exists typ: " (open typ :: Expr MetaVar Doc)
   return $ MetaVar i typ a hint p loc ref
@@ -77,14 +76,14 @@ solution
   :: MonadIO m
   => MetaVar
   -> m (Maybe (Closed (Expr MetaVar)))
-solution = liftST . readSTRef . metaRef
+solution = liftIO . readIORef . metaRef
 
 solve
   :: MonadIO m
   => MetaVar
   -> Closed (Expr MetaVar)
   -> m ()
-solve m x = liftST $ writeSTRef (metaRef m) $ Just x
+solve m x = liftIO $ writeIORef (metaRef m) $ Just x
 
 isSolved :: MonadIO m => MetaVar -> m Bool
 isSolved = fmap isJust . solution

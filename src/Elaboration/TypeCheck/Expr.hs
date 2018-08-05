@@ -2,9 +2,8 @@
 module Elaboration.TypeCheck.Expr where
 
 import Control.Monad.Except
-import Control.Monad.ST
 import Data.HashSet(HashSet)
-import Data.STRef
+import Data.IORef
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
@@ -29,14 +28,14 @@ import Util
 import VIX
 
 data Expected typ
-  = Infer (STRef RealWorld typ) InstUntil
+  = Infer (IORef typ) InstUntil
   | Check typ
 
 -- | instExpected t2 t1 = e => e : t1 -> t2
 instExpected :: Expected Rhotype -> Polytype -> Elaborate (CoreM -> CoreM)
 instExpected (Infer r instUntil) t = do
   (t', f) <- instantiateForalls t instUntil
-  liftST $ writeSTRef r t'
+  liftIO $ writeIORef r t'
   return f
 instExpected (Check t2) t1 = subtype t1 t2
 
@@ -103,9 +102,9 @@ inferRho expr instUntil expectedAppResult = do
 
 inferRho' :: PreM -> InstUntil -> Maybe Rhotype -> Elaborate (CoreM, Rhotype)
 inferRho' expr instUntil expectedAppResult = do
-  ref <- liftST $ newSTRef $ error "inferRho: empty result"
+  ref <- liftIO $ newIORef $ error "inferRho: empty result"
   expr' <- tcRho expr (Infer ref instUntil) expectedAppResult
-  typ <- liftST $ readSTRef ref
+  typ <- liftIO $ readIORef ref
   return (expr', typ)
 
 tcRho :: PreM -> Expected Rhotype -> Maybe Rhotype -> Elaborate CoreM

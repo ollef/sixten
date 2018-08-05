@@ -3,10 +3,9 @@ module Elaboration.TypeCheck.Pattern where
 
 import Control.Applicative
 import Control.Monad.Except
-import Control.Monad.ST
 import Data.Bifunctor
 import Data.HashSet(HashSet)
-import Data.STRef
+import Data.IORef
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
@@ -28,7 +27,7 @@ import Util
 import VIX
 
 data ExpectedPat
-  = InferPat (STRef RealWorld CoreM)
+  = InferPat (IORef CoreM)
   | CheckPat CoreM
 
 data BindingType = WildcardBinding | VarBinding
@@ -59,9 +58,9 @@ inferPat
   -> BoundPatVars
   -> Elaborate (Core.Pat CoreM FreeV, CoreM, PatVars, Polytype)
 inferPat p pat vs = do
-  ref <- liftST $ newSTRef $ error "inferPat: empty result"
+  ref <- liftIO $ newIORef $ error "inferPat: empty result"
   (pat', patExpr, vs') <- tcPat p pat vs $ InferPat ref
-  t <- liftST $ readSTRef ref
+  t <- liftIO $ readIORef ref
   return (pat', patExpr, vs', t)
 
 tcPats
@@ -112,7 +111,7 @@ tcPat' p pat vs expected = case pat of
     expectedType <- case expected of
       InferPat ref -> do
         expectedType <- existsType h
-        liftST $ writeSTRef ref expectedType
+        liftIO $ writeIORef ref expectedType
         return expectedType
       CheckPat expectedType -> return expectedType
     v <- forall h p expectedType
@@ -121,7 +120,7 @@ tcPat' p pat vs expected = case pat of
     expectedType <- case expected of
       InferPat ref -> do
         expectedType <- existsType "_"
-        liftST $ writeSTRef ref expectedType
+        liftIO $ writeIORef ref expectedType
         return expectedType
       CheckPat expectedType -> return expectedType
     v <- forall "_" p expectedType
@@ -184,7 +183,7 @@ instPatExpected (CheckPat expectedType) patType pat patExpr = do
   f <- subtype expectedType patType
   viewPat expectedType pat patExpr f
 instPatExpected (InferPat ref) patType pat patExpr = do
-  liftST $ writeSTRef ref patType
+  liftIO $ writeIORef ref patType
   return (pat, patExpr)
 
 viewPat

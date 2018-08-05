@@ -6,7 +6,6 @@ import Control.Monad.Except
 import Control.Monad.Fail
 import Control.Monad.Identity
 import Control.Monad.Reader
-import Control.Monad.ST
 import Control.Monad.State
 import Control.Monad.Trans.Control
 import Control.Monad.Writer
@@ -92,9 +91,6 @@ newtype VIX a = VIX { unVIX :: StateT VIXState (ExceptT Error IO) a }
 
 instance MonadVIX VIX where
   liftVIX (StateT s) = VIX $ StateT $ pure . runIdentity . s
-
-liftST :: MonadIO m => ST RealWorld a -> m a
-liftST = liftIO . stToIO
 
 runVIX
   :: VIX a

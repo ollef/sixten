@@ -2,11 +2,11 @@
 module Analysis.ReturnDirection where
 
 import Control.Monad
-import Control.Monad.ST
+import Control.Monad.IO.Class
 import Data.Bitraversable
+import Data.IORef
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Maybe
-import Data.STRef
 import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
@@ -22,13 +22,13 @@ import VIX hiding (forall)
 data MetaReturnIndirect
   = MProjection
   | MOutParam
-  | MRef (STRef RealWorld (Maybe MetaReturnIndirect))
+  | MRef !(IORef (Maybe MetaReturnIndirect))
   deriving Eq
 
 type RetDirM = ReturnDirection MetaReturnIndirect
 
 existsMetaReturnIndirect :: VIX MetaReturnIndirect
-existsMetaReturnIndirect = liftST $ MRef <$> newSTRef Nothing
+existsMetaReturnIndirect = liftIO $ MRef <$> newIORef Nothing
 
 instance Show MetaReturnIndirect where
   show MProjection = "MProjection"
@@ -51,12 +51,12 @@ normaliseMetaReturnIndirect :: MetaReturnIndirect -> VIX MetaReturnIndirect
 normaliseMetaReturnIndirect MProjection = return MProjection
 normaliseMetaReturnIndirect MOutParam = return MOutParam
 normaliseMetaReturnIndirect m@(MRef ref) = do
-  sol <- liftST $ readSTRef ref
+  sol <- liftIO $ readIORef ref
   case sol of
     Nothing -> return m
     Just m' -> do
       m'' <- normaliseMetaReturnIndirect m'
-      liftST $ writeSTRef ref $ Just m''
+      liftIO $ writeIORef ref $ Just m''
       return m''
 
 maxMetaReturnIndirect :: MetaReturnIndirect -> MetaReturnIndirect -> VIX MetaReturnIndirect
@@ -72,7 +72,7 @@ maxMetaReturnIndirect' MProjection m = return m
 maxMetaReturnIndirect' m MProjection = return m
 maxMetaReturnIndirect' m@(MRef ref1) (MRef ref2) | ref1 == ref2 = return m
 maxMetaReturnIndirect' m@(MRef _) (MRef ref2) = do
-  liftST $ writeSTRef ref2 $ Just m
+  liftIO $ writeIORef ref2 $ Just m
   return m
 
 unifyMetaReturnIndirect :: MetaReturnIndirect -> MetaReturnIndirect -> VIX ()
@@ -83,8 +83,8 @@ unifyMetaReturnIndirect m1 m2 = do
 
 unifyMetaReturnIndirect' :: MetaReturnIndirect -> MetaReturnIndirect -> VIX ()
 unifyMetaReturnIndirect' m1 m2 | m1 == m2 = return ()
-unifyMetaReturnIndirect' m (MRef ref2) = liftST $ writeSTRef ref2 $ Just m
-unifyMetaReturnIndirect' (MRef ref1) m = liftST $ writeSTRef ref1 $ Just m
+unifyMetaReturnIndirect' m (MRef ref2) = liftIO $ writeIORef ref2 $ Just m
+unifyMetaReturnIndirect' (MRef ref1) m = liftIO $ writeIORef ref1 $ Just m
 unifyMetaReturnIndirect' m1 m2 = internalError $ "unifyMetaReturnIndirect" PP.<+> shower (m1, m2)
 
 type Location = MetaReturnIndirect
