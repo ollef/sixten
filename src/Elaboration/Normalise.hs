@@ -124,7 +124,7 @@ whnf' args expr exprs = indentLog $ do
       c' <- mapM whnf0 c
       retType' <- whnf0 retType
       return $ apps (ExternCode c' retType') es
-    go (SourceLoc _ e) es = go e es
+    go (SourceLoc _ e) es = whnf' args e es
 
     whnf0 e = whnf' args e mempty
 
@@ -205,7 +205,7 @@ normalise' args expr exprs = do
       c' <- mapM normalise0 c
       retType' <- normalise0 retType
       irreducible (ExternCode c' retType') es
-    go (SourceLoc _ e) es = go e es
+    go (SourceLoc _ e) es = normalise' args e es
 
     irreducible e es = apps e <$> mapM (mapM normalise0) es
 
