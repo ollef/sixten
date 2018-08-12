@@ -4,6 +4,7 @@ module MonadContext where
 import Protolude
 
 import Control.Monad.Except
+import Control.Monad.ListT
 import Control.Monad.Trans.Identity
 import Control.Monad.Writer
 
@@ -37,3 +38,5 @@ instance MonadContext v m => MonadContext v (IdentityT m) where
   inUpdatedContext f (IdentityT m) = IdentityT $ inUpdatedContext f m
 instance MonadContext v m => MonadContext v (ExceptT e m) where
   inUpdatedContext f (ExceptT m) = ExceptT $ inUpdatedContext f m
+instance MonadContext v m => MonadContext v (ListT m) where
+  inUpdatedContext f (ListT m) = ListT $ inUpdatedContext f m

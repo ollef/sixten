@@ -23,7 +23,7 @@ commands = subparser
   <> command "run" Run.command
   <> command "check" Check.command
   <> command "test" Test.command
-  <> command "lsp" LanguageServer.command
+  <> command "language-server" LanguageServer.command
 
 main :: IO ()
 main = join $ execParser optionsParser

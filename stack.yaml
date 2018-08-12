@@ -40,6 +40,8 @@ packages:
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps:
+- haskell-lsp-0.8.0.0
+- haskell-lsp-types-0.8.0.0
 - multiset-0.3.4
 - parsix-0.1.0.2
 

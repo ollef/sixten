@@ -1,124 +1,110 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE DisambiguateRecordFields #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE PatternGuards #-}
 module Command.LanguageServer where
 
-import Data.Monoid
-import qualified Data.Text.IO as Text
-import Options.Applicative
-import System.IO
-import Util
-import Data.Foldable
-
-import qualified Backend.Target as Target
-import Command.Check.Options
-import Error
-import qualified Processor.Files as Processor
-import qualified Processor.Result as Processor
-
-import Data.List.Split as Split
-
-import Syntax.Concrete.Scoped (ProbePos(..))
-
-import qualified Syntax.Concrete.Scoped as Scoped
-import Language.Haskell.LSP.Constant as LSP
-import Language.Haskell.LSP.Control as LSP
-import Language.Haskell.LSP.Core as LSP
-import Language.Haskell.LSP.Diagnostics as LSP
-import Language.Haskell.LSP.Messages as LSP
-import Language.Haskell.LSP.TH.ClientCapabilities as LSP
-import Language.Haskell.LSP.TH.Constants as LSP
-import Language.Haskell.LSP.TH.DataTypesJSON as LSP hiding (change)
-import Language.Haskell.LSP.Utility as LSP
-import Language.Haskell.LSP.VFS as LSP
+import Protolude hiding (handle)
 
 import Control.Concurrent.STM as STM
-import Control.Concurrent
-
 import Data.Default (def)
-
-import Data.Aeson (ToJSON)
-
-import qualified System.IO as IO
-
-import Data.Char as Char
-
+import Data.Text(Text)
+import qualified Data.Text as Text
+import qualified Data.Text.IO as Text
+import qualified Language.Haskell.LSP.Control as LSP
+import qualified Language.Haskell.LSP.Core as LSP
+import qualified Language.Haskell.LSP.Messages as LSP
+import qualified Language.Haskell.LSP.Types as LSP
+import qualified Language.Haskell.LSP.VFS as LSP
+import Options.Applicative
+import Text.Parsix.Position
 import qualified Yi.Rope as Yi
-import Data.Text (Text)
-import qualified Data.Text as T
-import qualified Data.Text.IO as T
 
-type params ~> response = LSP.LspFuncs () -> params -> IO (Maybe response)
-type Notified params = LSP.LspFuncs () -> params -> IO ()
+import Command.LanguageServer.Hover
+import qualified Processor.Files as Processor
+import qualified Processor.Result as Result
+import Syntax
+import Util
 
-sendNotification lf s =
-  LSP.sendFunc lf
-    (LSP.NotificationMessage "2.0" LSP.WindowLogMessage
-      (LSP.LogMessageParams LSP.MtInfo (T.pack s)))
+sendNotification :: LSP.LspFuncs () -> Text -> IO ()
+sendNotification lf s = LSP.sendFunc lf
+  $ LSP.NotLogMessage
+  $ LSP.NotificationMessage "2.0" LSP.WindowLogMessage
+  $ LSP.LogMessageParams LSP.MtInfo s
 
 fileContents :: LSP.LspFuncs () -> LSP.Uri -> IO Text
 fileContents lf uri = do
   mvf <- LSP.getVirtualFileFunc lf uri
   case mvf of
-    Just (VirtualFile _ rope) -> return (Yi.toText rope)
+    Just (LSP.VirtualFile _ rope) -> return (Yi.toText rope)
     Nothing ->
-      case uriToFilePath uri of
-        Just fp -> T.readFile fp
+      case LSP.uriToFilePath uri of
+        Just fp -> Text.readFile fp
         Nothing -> return "Command.LanguageServer.fileContents: file missing"
 
-hover :: TextDocumentPositionParams ~> Hover
-hover lf (TextDocumentPositionParams (TextDocumentIdentifier uri) p@(Position line char)) = do
+hover :: LSP.LspFuncs () -> LSP.TextDocumentPositionParams -> IO (Maybe LSP.Hover)
+hover lf (LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) p@(LSP.Position line char)) = do
   sendNotification lf "Hovering!"
-  sendNotification lf (show uri)
-  sendNotification lf (show p)
+  sendNotification lf (shower uri)
+  sendNotification lf (shower p)
   contents <- fileContents lf uri
-  let Uri uri_text = uri
-  let uri_str = T.unpack uri_text
-  res <- Processor.vfsCheck (pure (uri_str, contents)) (ProbePos uri_str line char)
-  sendNotification lf (show res)
-  return $ Just Hover {
-    _contents=LSP.List [ LSP.PlainString msg | (_probe_pos,msg) <- fold res ],
-    -- _contents=LSP.List [ LSP.PlainString (T.pack (show (uri,p,res))) ],
-    _range=Nothing
-  }
+  let LSP.Uri uri_text = uri
+  let uri_str = Text.unpack uri_text
+  checkRes <- Processor.checkVirtualFiles (pure (uri_str, contents))
+  case checkRes of
+    Result.Failure es -> do
+      sendNotification lf ("failure " <> shower es)
+      return Nothing
+    Result.Success (defs, _) -> do
+      types <- hoverDefs (inside line char) $ concat defs
+      sendNotification lf ("success " <> shower types)
+      return $ case types of
+        [] -> Nothing
+        _ -> do
+          let Just (_, (range, typ)) = unsnoc types
+          Just $ LSP.Hover
+            { LSP._contents = LSP.List [LSP.PlainString $ showWide $ pretty (pretty <$> typ)]
+            , LSP._range = Just
+              $ LSP.Range
+              { LSP._start = LSP.Position
+                (visualRow $ spanStart range)
+                (visualColumn $ spanStart range)
+              , LSP._end = LSP.Position
+                (visualRow $ spanEnd range)
+                (visualColumn $ spanEnd range)
+              }
+            }
+
+handle
+  :: TVar (Maybe (LSP.LspFuncs ()))
+  -> (LSP.LspFuncs () -> t -> IO resp)
+  -> (LSP.ResponseMessage resp -> LSP.FromServerMessage)
+  -> Maybe (LSP.RequestMessage m t resp -> IO ())
+handle lspFuncsRef h rspCon = Just $ \(LSP.RequestMessage jsonRpc reqId _method params) -> do
+  Just lf <- STM.readTVarIO lspFuncsRef
+  response <- h lf params
+  LSP.sendFunc lf
+    $ rspCon
+    $ LSP.ResponseMessage
+      jsonRpc
+      (LSP.responseId reqId)
+      (Just response)
+      Nothing
 
 server :: IO ()
 server = do
-  lsp_funcs_ref <- STM.newTVarIO (Nothing :: Maybe (LSP.LspFuncs ()))
+  lspFuncsRef <- STM.newTVarIO (Nothing :: Maybe (LSP.LspFuncs ()))
 
-  let handle
-        :: ToJSON response => params ~> response
-        -> Maybe (LSP.Handler (LSP.RequestMessage method params response))
-      handle h = Just $ \ (LSP.RequestMessage jsonrpc req_id _method params) -> do
-        Just lf <- STM.readTVarIO lsp_funcs_ref
-        mresponse <- h lf params
-        case mresponse of
-          Just response -> do
-            LSP.sendFunc lf (LSP.ResponseMessage jsonrpc (LSP.responseId req_id) (Just response) Nothing)
-          Nothing -> return ()
-
-  let notified
-        :: Notified params
-        -> Maybe (LSP.Handler (LSP.NotificationMessage method params))
-      notified h = Just $ \ (LSP.NotificationMessage jsonrpc _method params) -> do
-        Just lf <- STM.readTVarIO lsp_funcs_ref
-        h lf params
-
-  LSP.run
-    (\ _ -> Right (), \ lf -> STM.atomically (STM.writeTVar lsp_funcs_ref (Just lf)) >> return Nothing)
-    (def {
-      hoverHandler=handle hover
-    })
+  _exitCode <- LSP.run
+    ( \_ -> Right ()
+    , \lf -> do
+      STM.atomically $ STM.writeTVar lspFuncsRef $ Just lf
+      return Nothing
+    )
     def
+      { LSP.hoverHandler = handle lspFuncsRef hover LSP.RspHover
+      }
+    def
+    (Just "sixten-lsp.log")
   return ()
-
-
-
 
 optionsParserInfo :: ParserInfo ()
 optionsParserInfo = info (pure ())
@@ -128,4 +114,3 @@ optionsParserInfo = info (pure ())
 
 command :: ParserInfo (IO ())
 command = const server <$> optionsParserInfo
-

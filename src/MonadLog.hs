@@ -5,6 +5,7 @@ module MonadLog where
 import Protolude
 
 import Control.Monad.Except
+import Control.Monad.ListT
 import Control.Monad.Trans.Identity
 import Control.Monad.Writer
 import Data.Text(Text)
@@ -38,3 +39,4 @@ instance MonadLog m => MonadLog (IdentityT m)
 instance MonadLog m => MonadLog (IRBuilder.IRBuilderT m)
 instance MonadLog m => MonadLog (IRBuilder.ModuleBuilderT m)
 instance MonadLog m => MonadLog (ExceptT e m)
+instance MonadLog m => MonadLog (ListT m)

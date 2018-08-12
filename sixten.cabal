@@ -50,6 +50,7 @@ executable sixten
                        Command.Compile
                        Command.Compile.Options
                        Command.LanguageServer
+                       Command.LanguageServer.Hover
                        Command.Run
                        Command.Test
                        Elaboration.Constraint
@@ -121,6 +122,7 @@ executable sixten
                        Util.Tsil
                        VIX
   build-depends:
+                       List,
                        aeson,
                        base >=4.8 && <4.12,
                        bound,
@@ -132,6 +134,7 @@ executable sixten
                        filepath,
                        hashable,
                        haskell-lsp,
+                       haskell-lsp-types,
                        lifted-base,
                        llvm-hs-pretty,
                        llvm-hs-pure,
