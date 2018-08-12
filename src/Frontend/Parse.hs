@@ -12,6 +12,7 @@ import qualified Data.Set as Set
 import Data.String
 import Data.Text(Text)
 import qualified Data.Text as Text
+import qualified Data.Text.IO as Text
 import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 import qualified Text.Parser.LookAhead as LookAhead
@@ -39,14 +40,11 @@ newtype Parser a = Parser {runParser :: ReaderT ParseEnv Parsix.Parser a}
     )
 
 parseTest :: (MonadIO m, Show a) => Parser a -> String -> m ()
-parseTest p = Parsix.parseTest $ runReaderT (runParser p) env <* Parsix.eof
-  where
-    env = ParseEnv (Position 0 0 0) "<interactive>"
+parseTest p s = liftIO $ print $ parseText p (fromString s) "<interactive>"
 
-parseFromFileEx :: MonadIO m => Parser a -> FilePath -> m (Result a)
-parseFromFileEx p fp = do
-  res <- Parsix.parseFromFileEx (runReaderT (runParser p) env <* Parsix.eof) fp
-  return $ case res of
+parseText :: Parser a -> Text -> FilePath -> Result a
+parseText p s fp =
+  case Parsix.parseText (runReaderT (runParser p) env <* Parsix.eof) s fp of
     Parsix.Failure e -> Failure
       $ pure
       $ SyntaxError
@@ -65,6 +63,11 @@ parseFromFileEx p fp = do
     Parsix.Success a -> return a
   where
     env = ParseEnv (Position 0 0 0) fp
+
+parseFromFileEx :: MonadIO m => Parser a -> FilePath -> m (Result a)
+parseFromFileEx p fp = do
+  s <- liftIO $ Text.readFile fp
+  return $ parseText p s fp
 
 instance Parsix.TokenParsing Parser where
   someSpace = Parsix.skipSome (Parsix.satisfy isSpace) *> (comments <|> pure ())
