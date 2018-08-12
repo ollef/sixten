@@ -27,7 +27,6 @@ import qualified Backend.SLam as SLam
 import Backend.Target
 import qualified Elaboration.Monad as TypeCheck
 import qualified Elaboration.TypeCheck.Definition as TypeCheck
-import qualified Frontend.Parse as Parse
 import qualified Frontend.ResolveNames as ResolveNames
 import MonadLog
 import Processor.Result
@@ -305,11 +304,6 @@ writeModule modul llOutputFile externOutputFiles = do
             Text.hPutStrLn handle ""
             Text.hPutStrLn handle code
           return $ Just (lang, outFile)
-
-parse
-  :: FilePath
-  -> IO (Result (Module [(SourceLoc, Unscoped.TopLevelDefinition)]))
-parse = Parse.parseFromFileEx Parse.modul
 
 dupCheck
   :: Module [(SourceLoc, Unscoped.TopLevelDefinition)]

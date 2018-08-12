@@ -13,10 +13,12 @@ import System.FilePath
 import qualified Backend.Generate as Generate
 import Backend.Target
 import qualified Builtin
+import qualified Frontend.Parse as Parse
 import Paths_sixten(getDataFileName)
 import qualified Processor.File as File
 import Processor.Result
 import Syntax
+import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Unscoped as Unscoped
 import Util.TopoSort
 import VIX
@@ -48,9 +50,18 @@ parseFiles
   -> IO (Result [Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))])
 parseFiles srcFiles = do
   moduleResults <- forM srcFiles $ \sourceFile -> do
-    parseResult <- File.parse sourceFile
+    parseResult <- Parse.parseFromFileEx Parse.modul sourceFile
     return $ fmap (:[]) $ File.dupCheck =<< parseResult
   return $ sconcat moduleResults
+
+parseVirtualFiles
+  :: NonEmpty (FilePath, Text)
+  -> Result [Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))]
+parseVirtualFiles srcFiles = do
+  let moduleResults = foreach srcFiles $ \(sourceFile, s) -> do
+        let parseResult = Parse.parseText Parse.modul s sourceFile
+        fmap (:[]) $ File.dupCheck =<< parseResult
+  sconcat moduleResults
 
 checkFiles :: Arguments -> IO (Result [Error])
 checkFiles args = do
@@ -61,6 +72,26 @@ checkFiles args = do
           orderedModules <- cycleCheck modules
           mapM_ (File.frontend $ const $ return []) orderedModules
     fmap snd <$> runVIX go (target args) (logHandle args) (verbosity args) (silentErrors args)
+
+checkVirtualFiles
+  :: NonEmpty (FilePath, Text)
+  -> IO (Result ([[(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]], [Error]))
+checkVirtualFiles files = do
+  let parseResult = parseVirtualFiles files
+  let args = Arguments
+        { sourceFiles = fst <$> files
+        , assemblyDir = ""
+        , target = defaultTarget
+        , logHandle = stdout
+        , verbosity = 0
+        , silentErrors = True
+        }
+  fmap join $ forM parseResult $ \modules -> do
+    let go = do
+          _ <- compileBuiltins -- Done only for the side effects
+          orderedModules <- cycleCheck modules
+          mapM (File.frontend pure) orderedModules
+    runVIX go (target args) (logHandle args) (verbosity args) (silentErrors args)
 
 processFiles :: Arguments -> IO (Result (ProcessFilesResult, [Error]))
 processFiles args = do
@@ -98,7 +129,7 @@ compileBuiltins = do
   builtin2File <- liftIO $ getDataFileName "rts/Builtin2.vix"
   let files = [builtin1File, builtin2File]
   moduleResults <- liftIO $ forM files $ \sourceFile -> do
-    parseResult <- File.parse sourceFile
+    parseResult <- Parse.parseFromFileEx Parse.modul sourceFile
     return $ File.dupCheck =<< parseResult
   case sequence moduleResults of
     Failure es -> internalError
