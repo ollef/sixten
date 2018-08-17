@@ -251,7 +251,7 @@ tcBranches expr pbrs expected expectedAppResult = do
   (inferredBranches, resType) <- case expected of
     Check resType -> do
       brs <- forM inferredPats $ \(pat, br, patVars) -> withPatVars patVars $ do
-        br' <- checkRho br resType
+        br' <- checkPoly br resType
         return (pat, br')
       return (brs, resType)
     Infer _ instUntil -> do
