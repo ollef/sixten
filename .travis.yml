@@ -48,3 +48,6 @@ cache:
   - "$HOME/Library/Caches/Homebrew"
   # Allow more time for new caches to be uploaded
   timeout: 1000
+
+notifications:
+  email: false
