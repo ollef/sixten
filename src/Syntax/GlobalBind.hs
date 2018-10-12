@@ -7,7 +7,7 @@ import Bound.Var
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 
-import Syntax.Module
+import Syntax.QName
 
 class Bound t => GBound t where
   -- | Perform substitution on globals inside a structure.

@@ -8,7 +8,7 @@ import Data.Vector(Vector)
 import Pretty
 import Syntax.Annotation
 import Syntax.Extern
-import Syntax.Module
+import Syntax.QName
 import TypeRep
 
 data Direction = Direct TypeRep | Indirect

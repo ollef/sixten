@@ -7,7 +7,7 @@ import Data.String
 
 import Syntax.Core
 import Syntax.Annotation
-import Syntax.Module
+import Syntax.QName
 import Syntax.Name
 import Util
 

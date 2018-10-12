@@ -108,6 +108,7 @@ executable sixten
                        Syntax.Pre.Scoped
                        Syntax.Pre.Unscoped
                        Syntax.PreName
+                       Syntax.QName
                        Syntax.Sized.Anno
                        Syntax.Sized.Definition
                        Syntax.Sized.Extracted

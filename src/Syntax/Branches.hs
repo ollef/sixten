@@ -16,15 +16,15 @@ import Data.Monoid as Monoid
 import Data.Semigroup as Semigroup
 import Data.Vector(Vector)
 
+import FreeVar
 import Pretty
 import Syntax.Annotation
 import Syntax.GlobalBind
 import Syntax.Literal
-import Syntax.Module
 import Syntax.Name
+import Syntax.QName
 import Syntax.Telescope
 import qualified TypedFreeVar as Typed
-import FreeVar
 import Util
 
 data Branches a expr v

@@ -42,6 +42,7 @@ import Syntax.GlobalBind hiding (global)
 import Syntax.Literal
 import Syntax.Module
 import Syntax.Name
+import Syntax.QName
 import Syntax.Sized.Anno
 import Syntax.Sized.Definition
 import Syntax.Sized.Extracted as Extracted

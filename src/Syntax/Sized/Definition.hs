@@ -12,8 +12,8 @@ import Pretty
 import Syntax.Annotation
 import Syntax.Closed
 import Syntax.GlobalBind
-import Syntax.Module
 import Syntax.Name
+import Syntax.QName
 import Syntax.Sized.Anno
 import Syntax.Telescope
 import qualified TypedFreeVar as Typed
