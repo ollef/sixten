@@ -362,3 +362,5 @@ Please read the [code of conduct](CODE_OF_CONDUCT.md).
 [Brandon Hamilton](https://github.com/brandonhamilton)
 
 [He Tao](https://github.com/sighingnow)
+
+[Dan Rosén](https://github.com/danr)
