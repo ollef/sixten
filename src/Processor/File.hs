@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, ScopedTypeVariables, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, ScopedTypeVariables, TupleSections, OverloadedStrings #-}
 module Processor.File where
 
 import Protolude hiding (moduleName, TypeError, handle)
@@ -43,13 +43,13 @@ import Util
 import VIX
 
 process
-  :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
+  :: (ModuleHeader, HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [Generate.GeneratedSubmodule]
 process = frontend backend
 
 frontend
   :: ([(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)] -> VIX [k])
-  -> Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
+  -> (ModuleHeader, HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [k]
 frontend k
   = resolveProgramNames
@@ -156,22 +156,22 @@ prettyGroup str defs = do
   return defs
 
 resolveProgramNames
-  :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
+  :: (ModuleHeader, HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   -> VIX [[(QName, SourceLoc, Closed (Pre.Definition Pre.Expr))]]
-resolveProgramNames modul = do
-  res <- ResolveNames.resolveModule modul
-  let defnames = HashSet.fromMap $ void $ moduleContents modul
+resolveProgramNames (moduleHeader, defs) = do
+  res <- ResolveNames.resolveModule moduleHeader defs
+  let defnames = HashSet.fromMap $ void defs
       connames = HashSet.fromList
         [ QConstr n c
-        | (n, (_, Unscoped.TopLevelDataDefinition _ _ cs)) <- HashMap.toList $ moduleContents modul
+        | (n, (_, Unscoped.TopLevelDataDefinition _ _ cs)) <- HashMap.toList defs
         , c <- constrName <$> cs
         ]
       methods = HashSet.fromList
         [ QName n m
-        | (QName n _, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList $ moduleContents modul
+        | (QName n _, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList defs
         , m <- methodName <$> ms
         ]
-  addModule (moduleName modul) connames $ defnames <> methods
+  addModule (moduleName moduleHeader) connames $ defnames <> methods
   return res
 
 typeCheckGroup
@@ -272,20 +272,20 @@ data ProcessFileArgs = ProcessFileArgs
   } deriving (Eq, Show)
 
 writeModule
-  :: Module [Generate.GeneratedSubmodule]
+  :: ModuleHeader
+  -> [Generate.GeneratedSubmodule]
   -> FilePath
   -> [(Language, FilePath)]
   -> VIX [(Language, FilePath)]
-writeModule modul llOutputFile externOutputFiles = do
-  let subModules = moduleContents modul
+writeModule moduleHeader subModules llOutputFile externOutputFiles = do
   Util.withFile llOutputFile WriteMode $
     Generate.writeLlvmModule
-      (moduleName modul)
-      (moduleImports modul)
+      (moduleName moduleHeader)
+      (moduleImports moduleHeader)
       subModules
   liftIO $ fmap catMaybes $
     forM externOutputFiles $ \(lang, outFile) ->
-      case fmap snd $ filter ((== lang) . fst) $ concatMap Generate.externs $ moduleContents modul of
+      case fmap snd $ filter ((== lang) . fst) $ concatMap Generate.externs subModules of
         [] -> return Nothing
         externCode -> Util.withFile outFile WriteMode $ \handle -> do
           -- TODO this is C specific
@@ -305,9 +305,10 @@ writeModule modul llOutputFile externOutputFiles = do
           return $ Just (lang, outFile)
 
 dupCheck
-  :: Module [(SourceLoc, Unscoped.TopLevelDefinition)]
-  -> Result (Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)))
-dupCheck m = forM m $ flip evalStateT (0 :: Int) . foldM go mempty
+  :: ModuleHeader
+  -> [(SourceLoc, Unscoped.TopLevelDefinition)]
+  -> Result (ModuleHeader, HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
+dupCheck m = fmap (m,) . flip evalStateT (0 :: Int) . foldM go mempty
   where
     go defs (loc, def) = do
       name <- case def of

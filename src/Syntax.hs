@@ -19,7 +19,7 @@ import Syntax.Extern as X
 import Syntax.GlobalBind as X
 import Syntax.Let as X
 import Syntax.Literal as X
-import Syntax.Module as X
+import Syntax.ModuleHeader as X
 import Syntax.Name as X
 import Syntax.NameHint as X
 import Syntax.Pattern as X

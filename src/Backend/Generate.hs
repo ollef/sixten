@@ -40,7 +40,7 @@ import Syntax.Extern(Language)
 import Syntax.Extern as Extern
 import Syntax.GlobalBind
 import Syntax.Literal
-import Syntax.Module
+import Syntax.ModuleHeader
 import Syntax.Name
 import Syntax.QName
 import Syntax.Sized.Anno

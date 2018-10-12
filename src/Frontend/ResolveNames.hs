@@ -37,9 +37,10 @@ runResolveNames m env = do
   return (a, s)
 
 resolveModule
-  :: Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
+  :: ModuleHeader
+  -> HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
   -> VIX [[(QName, SourceLoc, Closed (Scoped.Definition Scoped.Expr))]]
-resolveModule modul = do
+resolveModule modul defs = do
   let imports
         = Import Builtin.BuiltinModuleName Builtin.BuiltinModuleName AllExposed
         : moduleImports modul
@@ -47,13 +48,13 @@ resolveModule modul = do
   (importedConstrAliases, importedNameAliases) <- mconcat <$> mapM importedAliases imports
   let env = Env
         $ flip MultiHashMap.lookup
-        $ localConstrAliases (moduleContents modul) <> importedConstrAliases
+        $ localConstrAliases defs <> importedConstrAliases
 
-  checkedDefDeps <- forM (HashMap.toList $ moduleContents modul) $ \(n, (loc, def)) -> do
+  checkedDefDeps <- forM (HashMap.toList defs) $ \(n, (loc, def)) -> do
     (def', deps) <- runResolveNames (resolveTopLevelDefinition def) env
     return (n, loc, def', deps)
 
-  let aliases = localAliases (moduleContents modul) <> importedNameAliases
+  let aliases = localAliases defs <> importedNameAliases
       lookupAlias preName
         | HashSet.size candidates == 1 = return $ pure $ fromMaybe (panic "resolveModule impossible") $ head $ HashSet.toList candidates
         | otherwise = do
@@ -81,7 +82,7 @@ resolveModule modul = do
   --
   -- We also add a dependency from method to class for all methods
   instanceDeps <- instances resolvedDefs
-  let methodDeps = methodClasses $ moduleContents modul
+  let methodDeps = methodClasses defs
       addMethodDeps dep
         = maybe (HashSet.singleton dep) (HashSet.insert dep . HashSet.singleton)
         $ HashMap.lookup dep methodDeps
@@ -93,7 +94,7 @@ resolveModule modul = do
 
   let sortedDefGroups = flattenSCC <$> topoSortWith fst3 (addExtraDeps . thd3) resolvedDefs
 
-  return [[(n, loc, close identity def) | (n, (loc, def), _) <- defs] | defs <- sortedDefGroups]
+  return [[(n, loc, close identity def) | (n, (loc, def), _) <- defs'] | defs' <- sortedDefGroups]
 
 localConstrAliases
   :: HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)

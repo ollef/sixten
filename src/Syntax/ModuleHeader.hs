@@ -1,5 +1,4 @@
-{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
-module Syntax.Module where
+module Syntax.ModuleHeader where
 
 import Protolude hiding (moduleName)
 
@@ -9,12 +8,11 @@ import Syntax.Name
 import Syntax.QName
 import Util.TopoSort
 
-data Module contents = Module
+data ModuleHeader = ModuleHeader
   { moduleName :: !ModuleName
   , moduleExposedNames :: ExposedNames
   , moduleImports :: [Import]
-  , moduleContents :: contents
-  } deriving (Eq, Show, Functor, Foldable, Traversable)
+  } deriving (Eq, Show)
 
 data ExposedNames
   = Exposed (HashSet Name) -- TODO allow qualified names
@@ -29,9 +27,9 @@ data Import = Import
 
 moduleDependencyOrder
   :: Foldable t
-  => t (Module contents)
-  -> [SCC (Module contents)]
-moduleDependencyOrder = topoSortWith moduleName $ fmap importModule . moduleImports
+  => t (ModuleHeader, contents)
+  -> [SCC (ModuleHeader, contents)]
+moduleDependencyOrder = topoSortWith (moduleName . fst) $ fmap importModule . moduleImports . fst
 
 ------------------------------------------------------------------------------
 -- Instances

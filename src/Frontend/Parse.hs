@@ -468,12 +468,16 @@ instanceDef = TopLevelInstanceDefinition <$ reserved "instance" <*>% exprWithout
 
 -------------------------------------------------------------------------------
 -- * Module
-modul :: Parser (Module [(SourceLoc, Unscoped.TopLevelDefinition)])
+modul :: Parser (ModuleHeader, [(SourceLoc, Unscoped.TopLevelDefinition)])
 modul = Parsix.whiteSpace >> dropAnchor
-  ((Module <$ reserved "module" <*>% modulName <*% reserved "exposing" <*>% exposedNames
-     <|> pure (Module "Main" AllExposed))
-  <*> manySameCol (dropAnchor impor)
-  <*> manySameCol (dropAnchor topLevel))
+  ((,) <$> moduleHeader <*> manySameCol (dropAnchor topLevel))
+
+moduleHeader :: Parser ModuleHeader
+moduleHeader = moduleExposing <*> manySameCol (dropAnchor impor)
+  where
+    moduleExposing
+      = ModuleHeader <$ reserved "module" <*>% modulName <*% reserved "exposing" <*>% exposedNames
+      <|> pure (ModuleHeader "Main" AllExposed)
 
 impor :: Parser Import
 impor

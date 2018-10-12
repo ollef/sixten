@@ -7,7 +7,7 @@ import Data.Deriving
 import Data.Text(Text)
 import Data.Vector(Vector)
 
-import Syntax hiding (Definition, Module)
+import Syntax hiding (Definition)
 import Syntax.Sized.Anno
 import TypedFreeVar
 import TypeRep(TypeRep)

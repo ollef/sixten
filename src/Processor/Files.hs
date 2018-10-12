@@ -47,20 +47,20 @@ instance Monoid ProcessFilesResult where
 
 parseFiles
   :: NonEmpty FilePath
-  -> IO (Result [Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))])
+  -> IO (Result [(ModuleHeader, HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))])
 parseFiles srcFiles = do
   moduleResults <- forM srcFiles $ \sourceFile -> do
     parseResult <- Parse.parseFromFileEx Parse.modul sourceFile
-    return $ fmap (:[]) $ File.dupCheck =<< parseResult
+    return $ fmap (:[]) $ uncurry File.dupCheck =<< parseResult
   return $ sconcat moduleResults
 
 parseVirtualFiles
   :: NonEmpty (FilePath, Text)
-  -> Result [Module (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))]
+  -> Result [(ModuleHeader, HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))]
 parseVirtualFiles srcFiles = do
   let moduleResults = foreach srcFiles $ \(sourceFile, s) -> do
         let parseResult = Parse.parseText Parse.modul s sourceFile
-        fmap (:[]) $ File.dupCheck =<< parseResult
+        fmap (:[]) $ uncurry File.dupCheck =<< parseResult
   sconcat moduleResults
 
 checkFiles :: Arguments -> IO (Result [Error])
@@ -100,16 +100,16 @@ processFiles args = do
     let go = do
           builtins <- compileBuiltins
           orderedModules <- cycleCheck modules
-          compiledModules <- forM orderedModules $ \modul -> do
-            compiledModule <- File.process modul
-            return $ const compiledModule <$> modul
+          compiledModules <- forM orderedModules $ \(moduleHeader, subModules) -> do
+            compiledModule <- File.process (moduleHeader, subModules)
+            return (moduleHeader, compiledModule)
           writeModules (assemblyDir args) $ builtins : compiledModules
     runVIX go (target args) (logHandle args) (verbosity args) (silentErrors args)
 
 cycleCheck
   :: (Foldable t, MonadError Error m)
-  => t (Module contents)
-  -> m [Module contents]
+  => t (ModuleHeader, contents)
+  -> m [(ModuleHeader, contents)]
 cycleCheck modules = do
   let orderedModules = moduleDependencyOrder modules
   forM orderedModules $ \case
@@ -119,18 +119,18 @@ cycleCheck modules = do
       -- TODO: Maybe this should be a different kind of error?
       $ TypeError
         ("Circular modules:"
-        PP.<+> PP.hsep (PP.punctuate PP.comma $ fromModuleName . moduleName <$> ms))
+        PP.<+> PP.hsep (PP.punctuate PP.comma $ fromModuleName . moduleName . fst <$> ms))
         Nothing
         mempty
 
-compileBuiltins :: VIX (Module [Generate.GeneratedSubmodule])
+compileBuiltins :: VIX (ModuleHeader, [Generate.GeneratedSubmodule])
 compileBuiltins = do
   builtin1File <- liftIO $ getDataFileName "rts/Builtin1.vix"
   builtin2File <- liftIO $ getDataFileName "rts/Builtin2.vix"
   let files = [builtin1File, builtin2File]
   moduleResults <- liftIO $ forM files $ \sourceFile -> do
     parseResult <- Parse.parseFromFileEx Parse.modul sourceFile
-    return $ File.dupCheck =<< parseResult
+    return $ uncurry File.dupCheck =<< parseResult
   case sequence moduleResults of
     Failure es -> internalError
       $ "Error while processing builtin module:"
@@ -153,19 +153,19 @@ compileBuiltins = do
       convertedResults <- File.processConvertedGroup $ HashMap.toList $ Builtin.convertedEnvironment tgt
       builtinResults2 <- File.process builtins2
       let results = builtinResults1 <> envResults <> convertedResults <> builtinResults2
-      return $ Module "Sixten.Builtin" AllExposed mempty results
+      return (ModuleHeader "Sixten.Builtin" AllExposed mempty, results)
     Success _ -> internalError "processBuiltins wrong number of builtins"
 
 writeModules
   :: FilePath
-  -> [Module [Generate.GeneratedSubmodule]]
+  -> [(ModuleHeader, [Generate.GeneratedSubmodule])]
   -> VIX ProcessFilesResult
 writeModules asmDir modules = do
-  results <- forM modules $ \modul -> do
-    let fileBase = asmDir </> fromModuleName (moduleName modul)
+  results <- forM modules $ \(moduleHeader, subModules) -> do
+    let fileBase = asmDir </> fromModuleName (moduleName moduleHeader)
         llName = fileBase <> ".ll"
         cName = fileBase <> ".c"
-    externs <- File.writeModule modul llName [(C, cName)]
+    externs <- File.writeModule moduleHeader subModules llName [(C, cName)]
     return ProcessFilesResult
       { externFiles = externs
       , llFiles = [llName]

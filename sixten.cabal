@@ -98,7 +98,7 @@ executable sixten
                        Syntax.GlobalBind
                        Syntax.Let
                        Syntax.Literal
-                       Syntax.Module
+                       Syntax.ModuleHeader
                        Syntax.Name
                        Syntax.NameHint
                        Syntax.Pattern
