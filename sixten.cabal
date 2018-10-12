@@ -18,7 +18,7 @@ data-files:
 
 
 executable sixten
-  extensions:          NoImplicitPrelude
+  default-extensions:  NoImplicitPrelude
   ghc-options:
                        -Wall
                        -Wcompat
