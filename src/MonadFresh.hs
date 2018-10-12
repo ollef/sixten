@@ -8,7 +8,6 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Identity
 import Control.Monad.Writer
-
 import qualified LLVM.IRBuilder as IRBuilder
 
 class Monad m => MonadFresh m where

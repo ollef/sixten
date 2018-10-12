@@ -17,6 +17,7 @@ import Elaboration.Monad
 import qualified Elaboration.Normalise as Normalise
 import Elaboration.Subtype
 import MonadContext
+import MonadLog
 import Syntax
 import Syntax.Core
 import TypedFreeVar

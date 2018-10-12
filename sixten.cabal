@@ -74,6 +74,7 @@ executable sixten
                        Frontend.ResolveNames
                        MonadContext
                        MonadFresh
+                       MonadLog
                        Paths_sixten
                        Pretty
                        Processor.File

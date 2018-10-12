@@ -17,6 +17,7 @@ import Syntax
 import qualified Syntax.Core as Core
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.SLambda as SLambda
+import MonadLog
 import TypedFreeVar
 import Util
 import VIX
@@ -24,7 +25,7 @@ import VIX
 type FreeV = FreeVar Plicitness (Core.Expr Void)
 
 newtype SLam a = SLam { runSlam :: VIX a }
-  deriving (Functor, Applicative, Monad, MonadFail, MonadFix, MonadIO, MonadVIX, MonadFresh, MonadError Error)
+  deriving (Functor, Applicative, Monad, MonadFail, MonadFix, MonadIO, MonadVIX, MonadFresh, MonadError Error, MonadLog)
 
 whnf :: Core.Expr Void FreeV -> SLam (Core.Expr Void FreeV)
 whnf e = Normalise.whnf' Normalise.Args

@@ -15,7 +15,6 @@ import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
 import Data.List as List
 import Data.String
-import Data.Text(Text)
 import qualified Data.Text.IO as Text
 import Data.Word
 import qualified LLVM.IRBuilder as IRBuilder
@@ -24,6 +23,7 @@ import System.IO
 import Backend.Target as Target
 import Error
 import MonadFresh
+import MonadLog
 import Processor.Result
 import Syntax
 import Syntax.Core
@@ -68,7 +68,7 @@ instance MonadReport VIX where
     liftVIX $ modify $ \s -> s { vixErrors = e : vixErrors s }
 
 emptyVIXState :: Target -> Handle -> Int -> Bool -> VIXState
-emptyVIXState target handle verbosity silent = VIXState
+emptyVIXState target handle verbosity' silent = VIXState
   { vixLocation = Nothing
   , vixEnvironment = mempty
   , vixModuleConstrs = mempty
@@ -80,7 +80,7 @@ emptyVIXState target handle verbosity silent = VIXState
   , vixIndent = 0
   , vixFresh = 0
   , vixLogHandle = handle
-  , vixVerbosity = verbosity
+  , vixVerbosity = verbosity'
   , vixTarget = target
   , vixSilentErrors = silent
   , vixErrors = mempty
@@ -99,10 +99,10 @@ runVIX
   -> Int
   -> Bool
   -> IO (Result (a, [Error]))
-runVIX vix target handle verbosity silent = do
+runVIX vix target handle verbosity' silent = do
   result <- runExceptT
     $ runStateT (unVIX vix)
-    $ emptyVIXState target handle verbosity silent
+    $ emptyVIXState target handle verbosity' silent
   return $ case result of
     Left err -> Failure [err]
     Right (a, s) -> pure (a, reverse $ vixErrors s)
@@ -126,13 +126,11 @@ currentLocation = liftVIX $ gets vixLocation
 
 -------------------------------------------------------------------------------
 -- Debugging
-log :: (MonadIO m, MonadVIX m) => Text -> m ()
-log l = do
-  h <- liftVIX $ gets vixLogHandle
-  liftIO $ Text.hPutStrLn h l
-
-logVerbose :: (MonadIO m, MonadVIX m) => Int -> Text -> m ()
-logVerbose v l = whenVerbose v $ VIX.log l
+instance MonadLog VIX where
+  log l = do
+    h <- liftVIX $ gets vixLogHandle
+    liftIO $ Text.hPutStrLn h l
+  verbosity = liftVIX $ gets vixVerbosity
 
 indentLog :: MonadVIX m => m a -> m a
 indentLog m = do
@@ -141,24 +139,19 @@ indentLog m = do
   liftVIX $ modify $ \s -> s { vixIndent = vixIndent s - 1 }
   return res
 
-logPretty :: (MonadIO m, MonadVIX m, Pretty a) => Int -> String -> a -> m ()
+logPretty :: (MonadLog m, MonadVIX m, Pretty a) => Int -> String -> a -> m ()
 logPretty v s x = whenVerbose v $ do
   i <- liftVIX $ gets vixIndent
-  VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide (pretty x)
+  MonadLog.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide (pretty x)
 
-logShow :: (MonadIO m, MonadVIX m, Show a) => Int -> String -> a -> m ()
+logShow :: (MonadLog m, MonadVIX m, Show a) => Int -> String -> a -> m ()
 logShow v s x = whenVerbose v $ do
   i <- liftVIX $ gets vixIndent
-  VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> fromString (show x)
-
-whenVerbose :: MonadVIX m => Int -> m () -> m ()
-whenVerbose i m = do
-  v <- liftVIX $ gets vixVerbosity
-  when (v >= i) m
+  MonadLog.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> fromString (show x)
 
 -- | Like freeVar, but with logging
 forall
-  :: (MonadFresh m, MonadVIX m, MonadIO m)
+  :: (MonadFresh m, MonadVIX m, MonadLog m)
   => NameHint
   -> d
   -> e (FreeVar d e)
@@ -169,7 +162,7 @@ forall h p t = do
   return v
 
 logFreeVar
-  :: (Functor e, Functor f, Foldable f, Pretty (f Doc), Pretty (e Doc), MonadVIX m, MonadIO m)
+  :: (Functor e, Functor f, Foldable f, Pretty (f Doc), Pretty (e Doc), MonadVIX m, MonadLog m)
   => Int
   -> String
   -> f (FreeVar d e)
@@ -177,7 +170,7 @@ logFreeVar
 logFreeVar v s x = whenVerbose v $ do
   i <- liftVIX $ gets vixIndent
   let r = showFreeVar x
-  VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide r
+  MonadLog.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide r
 
 -------------------------------------------------------------------------------
 -- Working with abstract syntax

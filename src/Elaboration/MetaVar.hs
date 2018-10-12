@@ -1,4 +1,6 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Elaboration.MetaVar where
 
 import Control.Monad.Except
@@ -17,6 +19,7 @@ import Data.Void
 import Error
 import MonadContext
 import MonadFresh
+import MonadLog
 import Syntax
 import Syntax.Core
 import TypedFreeVar
@@ -58,7 +61,7 @@ instance Show MetaVar where
     showString "<Ref>"
 
 explicitExists
-  :: (MonadVIX m, MonadIO m)
+  :: (MonadVIX m, MonadLog m, MonadIO m)
   => NameHint
   -> Plicitness
   -> Closed (Expr MetaVar)
@@ -133,7 +136,7 @@ prettyDefMeta e = do
   return $ pretty e'
 
 logMeta
-  :: (MonadIO m, Pretty v, MonadVIX m)
+  :: (MonadLog m, Pretty v, MonadIO m, MonadVIX m)
   => Int
   -> String
   -> Expr MetaVar v
@@ -141,10 +144,10 @@ logMeta
 logMeta v s e = whenVerbose v $ do
   i <- liftVIX $ gets vixIndent
   d <- prettyMeta e
-  VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide d
+  MonadLog.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide d
 
 logDefMeta
-  :: (MonadIO m, Pretty v, MonadVIX m)
+  :: (MonadIO m, Pretty v, MonadLog m, MonadVIX m)
   => Int
   -> String
   -> Definition (Expr MetaVar) v
@@ -152,18 +155,18 @@ logDefMeta
 logDefMeta v s e = whenVerbose v $ do
   i <- liftVIX $ gets vixIndent
   d <- prettyDefMeta e
-  VIX.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide d
+  MonadLog.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide d
 
 type FreeBindVar meta = FreeVar Plicitness (Expr meta)
 
 instantiatedMetaType
-  :: (MonadError Error m, MonadVIX m, MonadIO m)
+  :: (MonadError Error m, MonadVIX m, MonadLog m)
   => MetaVar
   -> m (Vector FreeV, Expr MetaVar (FreeBindVar MetaVar))
 instantiatedMetaType m = instantiatedMetaType' (metaArity m) m
 
 instantiatedMetaType'
-  :: (MonadError Error m, MonadVIX m, MonadIO m)
+  :: (MonadError Error m, MonadVIX m, MonadLog m)
   => Int
   -> MetaVar
   -> m (Vector FreeV, Expr MetaVar (FreeBindVar MetaVar))
@@ -175,9 +178,11 @@ instantiatedMetaType' arity m = go mempty arity (open $ metaType m)
       go (v:vs) (n - 1) (instantiate1 (pure v) s)
     go _ _ _ = internalError "instantiatedMetaType'"
 
+type MonadBindMetas meta' m = (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadVIX m, MonadLog m, MonadIO m)
+
 -- TODO move?
 bindDefMetas
-  :: (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadVIX m, MonadIO m)
+  :: MonadBindMetas meta' m
   => (meta -> Vector (Plicitness, Expr meta (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
   -> Definition (Expr meta) (FreeBindVar meta')
   -> m (Definition (Expr meta') (FreeBindVar meta'))
@@ -186,7 +191,7 @@ bindDefMetas f def = case def of
   DataDefinition d rep -> DataDefinition <$> bindDataDefMetas f d <*> bindMetas f rep
 
 bindDefMetas'
-  :: (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadVIX m, MonadIO m)
+  :: MonadBindMetas meta' m
   => (meta -> Vector (Plicitness, Expr meta' (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
   -> Definition (Expr meta) (FreeBindVar meta')
   -> m (Definition (Expr meta') (FreeBindVar meta'))
@@ -195,7 +200,7 @@ bindDefMetas' f = bindDefMetas $ \m es -> do
   f m es'
 
 bindDataDefMetas
-  :: (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadVIX m, MonadIO m)
+  :: MonadBindMetas meta' m
   => (meta -> Vector (Plicitness, Expr meta (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
   -> DataDef (Expr meta) (FreeBindVar meta')
   -> m (DataDef (Expr meta') (FreeBindVar meta'))
@@ -214,7 +219,7 @@ bindDataDefMetas f (DataDef ps cs) = do
     return $ dataDef vs cs'
 
 bindMetas
-  :: (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadVIX m, MonadIO m)
+  :: MonadBindMetas meta' m
   => (meta -> Vector (Plicitness, Expr meta (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
   -> Expr meta (FreeBindVar meta')
   -> m (Expr meta' (FreeBindVar meta'))
@@ -253,7 +258,7 @@ bindMetas f expr = case expr of
   SourceLoc loc e -> SourceLoc loc <$> bindMetas f e
 
 bindMetas'
-  :: (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadVIX m, MonadIO m)
+  :: MonadBindMetas meta' m
   => (meta -> Vector (Plicitness, Expr meta' (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
   -> Expr meta (FreeBindVar meta')
   -> m (Expr meta' (FreeBindVar meta'))
@@ -262,7 +267,7 @@ bindMetas' f = bindMetas $ \m es -> do
   f m es'
 
 bindBranchMetas
-  :: (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadVIX m, MonadIO m)
+  :: MonadBindMetas meta' m
   => (meta -> Vector (Plicitness, Expr meta (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
   -> Branches Plicitness (Expr meta) (FreeBindVar meta')
   -> m (Branches Plicitness (Expr meta') (FreeBindVar meta'))

@@ -18,6 +18,7 @@ import Elaboration.Monad
 import Elaboration.Subtype
 import Elaboration.TypeCheck.Literal
 import MonadContext
+import MonadLog
 import Syntax
 import qualified Syntax.Core as Core
 import Syntax.Core.Pattern as Core

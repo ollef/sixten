@@ -12,6 +12,7 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import MonadFresh
+import MonadLog
 import Syntax
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
@@ -28,7 +29,7 @@ data LiftState thing = LiftState
   }
 
 newtype Lift thing m a = Lift (StateT (LiftState thing) m a)
-  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadTrans, MonadFail, MonadFresh, MonadVIX, MonadIO, MonadError e)
+  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadTrans, MonadFail, MonadFresh, MonadVIX, MonadIO, MonadError e, MonadLog)
 
 freshName :: MonadFail m => Lift thing m QName
 freshName = do

@@ -12,6 +12,7 @@ import qualified Builtin.Names as Builtin
 import Elaboration.MetaVar
 import MonadContext
 import MonadFresh
+import MonadLog
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
@@ -42,7 +43,7 @@ data ElabEnv = ElabEnv
   }
 
 newtype Elaborate a = Elaborate (ReaderT ElabEnv VIX a)
-  deriving (Functor, Applicative, Monad, MonadIO, MonadFail, MonadFix, MonadError Error, MonadFresh, MonadReport, MonadVIX)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadFail, MonadFix, MonadError Error, MonadFresh, MonadReport, MonadLog, MonadVIX)
 
 runElaborate :: Elaborate a -> VIX a
 runElaborate (Elaborate i) = runReaderT i ElabEnv

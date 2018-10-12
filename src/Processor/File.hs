@@ -33,6 +33,7 @@ import qualified Elaboration.Monad as TypeCheck
 import qualified Elaboration.TypeCheck.Definition as TypeCheck
 import qualified Frontend.Parse as Parse
 import qualified Frontend.ResolveNames as ResolveNames
+import MonadLog
 import Processor.Result
 import Syntax
 import qualified Syntax.Core as Core
@@ -114,13 +115,13 @@ prettyPreGroup
   -> VIX [(QName, SourceLoc, Closed (Pre.Definition e))]
 prettyPreGroup str defs = do
   whenVerbose 10 $ do
-    VIX.log $ "----- " <> str <> " -----"
+    MonadLog.log $ "----- " <> str <> " -----"
     forM_ defs $ \(n, _, Closed d) -> do
-      VIX.log
+      MonadLog.log
         $ showWide
         $ pretty
         $ prettyNamed (prettyM n) d
-      VIX.log ""
+      MonadLog.log ""
   return defs
 
 prettyTypedGroup
@@ -130,17 +131,17 @@ prettyTypedGroup
   -> VIX [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
 prettyTypedGroup v str defs = do
   whenVerbose v $ do
-    VIX.log $ "----- " <> str <> " -----"
+    MonadLog.log $ "----- " <> str <> " -----"
     forM_ defs $ \(n, _, ClosedDefinition d, Biclosed t) -> do
-      VIX.log
+      MonadLog.log
         $ showWide
         $ pretty
         $ prettyM n <+> ":" <+> prettyM (t :: Core.Expr Void Doc)
-      VIX.log
+      MonadLog.log
         $ showWide
         $ pretty
         $ prettyNamed (prettyM n) (d :: Definition (Core.Expr Void) Doc)
-      VIX.log ""
+      MonadLog.log ""
   return defs
 
 prettyGroup
@@ -150,13 +151,13 @@ prettyGroup
   -> VIX [(QName, Closed e)]
 prettyGroup str defs = do
   whenVerbose 10 $ do
-    VIX.log $ "----- " <> str <> " -----"
+    MonadLog.log $ "----- " <> str <> " -----"
     forM_ defs $ \(n, Closed d) -> do
-      VIX.log
+      MonadLog.log
         $ showWide
         $ pretty
         $ prettyM n <+> "=" <+> prettyM (d :: e Doc)
-      VIX.log ""
+      MonadLog.log ""
   return defs
 
 resolveProgramNames

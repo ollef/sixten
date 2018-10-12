@@ -12,6 +12,7 @@ import qualified Builtin.Names as Builtin
 import Elaboration.MetaVar
 import Elaboration.Monad
 import MonadContext
+import MonadLog
 import Syntax
 import Syntax.Core
 import TypedFreeVar
@@ -22,7 +23,7 @@ import VIX
 
 type ExprFreeVar meta = FreeVar Plicitness (Expr meta)
 
-type MonadNormalise meta m = (MonadIO m, MonadVIX m, MonadContext (ExprFreeVar meta) m, MonadError Error m, MonadFix m)
+type MonadNormalise meta m = (MonadIO m, MonadVIX m, MonadContext (ExprFreeVar meta) m, MonadError Error m, MonadFix m, MonadLog m)
 
 data Args meta m = Args
   { expandTypeReps :: !Bool
