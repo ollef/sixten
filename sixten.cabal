@@ -161,11 +161,8 @@ Test-suite test-sixten
   type:                exitcode-stdio-1.0
   main-is:             Main.hs
   build-depends:       base >= 4.8 && < 4.12,
-                       bytestring,
                        directory,
                        filepath,
-                       process,
-                       sixten,
                        tasty,
                        tasty-golden,
                        tasty-program
