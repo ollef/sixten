@@ -1,9 +1,7 @@
 {-# LANGUAGE DeriveFunctor, DeriveTraversable #-}
 module Util.Tsil where
 
-import Control.Applicative
-import Control.Monad
-import Data.Foldable
+import Protolude
 
 data Tsil a
   = Nil | Snoc (Tsil a) a

@@ -1,12 +1,10 @@
 {-# LANGUAGE FlexibleContexts, MonadComprehensions, OverloadedStrings, ViewPatterns #-}
 module Elaboration.TypeCheck.Class where
 
-import Control.Monad.Except
-import Control.Monad.State
-import Data.Bifunctor
+import Protolude hiding (diff, typeRep)
+
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
-import Data.List
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
 
@@ -192,11 +190,11 @@ checkInstance ivar iname iloc (Pre.InstanceDef _instanceType methods) =
       _ -> throwInvalidInstance
   where
     diff xs ys = HashSet.toList $ HashSet.difference (toHashSet xs) (toHashSet ys)
-    duplicates xs = map head $ filter p $ group xs
+    duplicates xs = mapMaybe p $ group xs
       where
-        p [] = False
-        p [_] = False
-        p _ = True
+        p [] = Nothing
+        p [_] = Nothing
+        p (x:_:_) = Just x
 
 getClassDef :: QName -> Elaborate (ClassDef (Core.Expr meta) v)
 getClassDef name = do

@@ -1,11 +1,10 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings, ViewPatterns #-}
 module Elaboration.Unify where
 
-import Control.Monad.Except
-import Data.Bifunctor
+import Protolude
+
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
-import Data.List
 import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 
@@ -100,12 +99,12 @@ unify' cxt touchable type1 type2 = case (type1, type2) of
             Just closedLamt -> do
               lamtType <- typeOf normLamt
               recurse cxt (open $ metaType m) lamtType
-              solve m $ close id closedLamt
+              solve m $ close identity closedLamt
         Just c -> recurse cxt (apps (open c) $ second pure <$> pvs) t
 
     sameVar m pes1 pes2 = do
       when (Vector.length pes1 /= Vector.length pes2) $
-        error "sameVar mismatched length"
+        panic "sameVar mismatched length"
 
       let keepArg (p1, varView -> Just v1) (p2, varView -> Just v2) | p1 /= p2 || v1 /= v2 = False
           keepArg _ _ = True
@@ -127,12 +126,12 @@ unify' cxt touchable type1 type2 = case (type1, type2) of
             m' <- explicitExists
               (metaHint m)
               (metaPlicitness m)
-              (close id newMetaType'')
+              (close identity newMetaType'')
               (Vector.length vs')
               (metaSourceLoc m)
             let e = Meta m' $ (\v -> (varData v, pure v)) <$> vs'
                 e' = lams vs e
-            solve m $ close (error "unify sameVar not closed") e'
+            solve m $ close (panic "unify sameVar not closed") e'
             unify cxt type1 type2
 
     can'tUnify = do
@@ -223,7 +222,7 @@ prune allowed expr = indentLog $ do
                     m' <- explicitExists
                       (metaHint m)
                       (metaPlicitness m)
-                      (close id newMetaType''')
+                      (close identity newMetaType''')
                       (Vector.length vs')
                       (metaSourceLoc m)
                     let e = Meta m' $ (\v -> (varData v, pure v)) <$> vs'
@@ -238,7 +237,7 @@ prune allowed expr = indentLog $ do
                         return $ Meta m es'
                       Just closedSol -> do
                         logMeta 30 "prune closed" closedSol
-                        solve m $ close id closedSol
+                        solve m $ close identity closedSol
                         return e
               | otherwise -> return $ Meta m es'
               where

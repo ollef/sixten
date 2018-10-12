@@ -1,9 +1,9 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, MonadComprehensions, OverloadedStrings #-}
 module Backend.ExtractExtern where
 
+import Protolude
+
 import Control.Monad.Fail
-import Control.Monad.State
-import Data.Foldable
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import qualified Data.Text as Text
@@ -148,9 +148,9 @@ extractExtern retType (Extern C parts) = do
     ExprMacroPart (Anno (Extracted.Var v) _) -> return $ argNamesMap HashMap.! v
     ExprMacroPart expr@(Anno _ callbackRetType) -> do
       let callbackFreeVars = toHashSet expr
-          callbackParams = toVector $ acyclic <$> topoSortWith id varType callbackFreeVars
+          callbackParams = toVector $ acyclic <$> topoSortWith identity varType callbackFreeVars
       callbackName <- freshName
-      let function = close (error "ExtractExtern: not closed") $ Sized.functionTyped callbackParams expr
+      let function = close (panic "ExtractExtern: not closed") $ Sized.functionTyped callbackParams expr
       emitCallback callbackName function
       let callbackArgs = (typedArgsMap HashMap.!) <$> toList callbackFreeVars
           callbackArgNames = fst3 <$> callbackArgs
@@ -189,7 +189,7 @@ extractExtern retType (Extern C parts) = do
     args
   where
     acyclic (AcyclicSCC a) = a
-    acyclic (CyclicSCC _) = error "ExtractExtern acyclic"
+    acyclic (CyclicSCC _) = panic "ExtractExtern acyclic"
 
 forwardDeclare
   :: QName
@@ -267,7 +267,7 @@ extractDef tgt qname@(QName mname name) def = fmap flatten $ runExtract names tg
     -> close noFV
     . Sized.ConstantDef vis
     . Sized.Constant <$> extractAnnoExpr e
-  Sized.AliasDef -> return $ close id Sized.AliasDef
+  Sized.AliasDef -> return $ close identity Sized.AliasDef
   where
     flatten (cbs, def')
       = (qname, def')
@@ -275,7 +275,7 @@ extractDef tgt qname@(QName mname name) def = fmap flatten $ runExtract names tg
         | (n, f) <- cbs
         ]
     noFV :: FV -> void
-    noFV = error "ExtractExtern noFV"
+    noFV = panic "ExtractExtern noFV"
     names =
       [ QName mname $ if n == 0
           then "_extern__" <> name

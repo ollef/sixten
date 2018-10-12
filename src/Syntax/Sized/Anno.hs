@@ -7,11 +7,12 @@
 {-# LANGUAGE ViewPatterns #-}
 module Syntax.Sized.Anno where
 
+import Protolude
+
 import Bound
 import Bound.Scope
 import Data.Deriving
 import Data.Functor.Classes
-import Data.Maybe
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
@@ -54,7 +55,7 @@ instantiateAnnoLet
   -> AnnoScope LetVar f a
   -> Anno f a
 instantiateAnnoLet f vs
-  = instantiateAnno (f . fromMaybe (error "instantiateAnnoLet") . (vs Vector.!?) . unLetVar)
+  = instantiateAnno (f . fromMaybe (panic "instantiateAnnoLet") . (vs Vector.!?) . unLetVar)
 
 mapAnnoBound :: Functor e => (b -> b') -> AnnoScope b e a -> AnnoScope b' e a
 mapAnnoBound f (AnnoScope s s') = AnnoScope (mapBound f s) (mapBound f s')
@@ -64,7 +65,7 @@ annoBindingsViewM
   => (forall v'. expr' v' -> Maybe (NameHint, a, expr v', AnnoScope1 expr' v'))
   -> expr' v
   -> Maybe (Telescope a expr v, AnnoScope TeleVar expr' v)
-annoBindingsViewM f expr@(f -> Just _) = Just $ annoBindingsView f $ Anno expr $ error "annoBindingsViewM"
+annoBindingsViewM f expr@(f -> Just _) = Just $ annoBindingsView f $ Anno expr $ panic "annoBindingsViewM"
 annoBindingsViewM _ _ = Nothing
 
 -- | View consecutive bindings at the same time
@@ -87,7 +88,7 @@ instantiateAnnoTele
   -> AnnoScope TeleVar f a
   -> Anno f a
 instantiateAnnoTele f vs
-  = instantiateAnno (f . fromMaybe (error "instantiateAnnoTele") . (vs Vector.!?) . unTeleVar)
+  = instantiateAnno (f . fromMaybe (panic "instantiateAnnoTele") . (vs Vector.!?) . unTeleVar)
 
 -------------------------------------------------------------------------------
 -- Instances

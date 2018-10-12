@@ -1,9 +1,10 @@
 {-# LANGUAGE ConstraintKinds, FlexibleContexts, OverloadedStrings, TypeFamilies #-}
 module Elaboration.TypeOf where
 
+import Protolude
+
 import Control.Monad.Except
 import qualified Data.Text.Prettyprint.Doc as PP
-import Data.Void
 
 import qualified Builtin.Names as Builtin
 import Elaboration.MetaVar
@@ -46,7 +47,7 @@ typeOf' args expr = case expr of
     return typ
   Var v -> return $ varType v
   Meta m es -> case typeApps (open $ typeOfMeta args m) es of
-    Nothing -> error "typeOf meta typeApps"
+    Nothing -> panic "typeOf meta typeApps"
     Just t -> return t
   Con qc -> qconstructor qc
   Lit l -> return $ typeOfLiteral l

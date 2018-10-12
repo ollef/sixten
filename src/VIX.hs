@@ -1,24 +1,21 @@
 {-# LANGUAGE DefaultSignatures, FlexibleContexts, GADTs, GeneralizedNewtypeDeriving, OverloadedStrings, UndecidableInstances #-}
 module VIX where
 
+import Protolude hiding (Type, TypeRep, TypeError, handle)
+
 import Control.Monad.Base
 import Control.Monad.Except
 import Control.Monad.Fail
 import Control.Monad.Identity
-import Control.Monad.Reader
-import Control.Monad.State
 import Control.Monad.Trans.Control
 import Control.Monad.Writer
-import Data.Foldable
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
 import Data.List as List
 import Data.String
 import qualified Data.Text.IO as Text
-import Data.Word
 import qualified LLVM.IRBuilder as IRBuilder
-import System.IO
 
 import Backend.Target as Target
 import Error

@@ -1,12 +1,12 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, Rank2Types, OverloadedStrings #-}
 module Syntax.Definition where
 
+import Protolude
+
 import Bound
 import Control.Monad.Morph
-import Data.Bifunctor
 import Data.Bitraversable
 import Data.Functor.Classes
-import Data.Void
 
 import Pretty
 import Syntax.Annotation

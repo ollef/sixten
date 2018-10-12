@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings, RecursiveDo #-}
 module Elaboration.TypeCheck.Expr where
 
-import Control.Monad.Except
+import Protolude
+
 import Data.HashSet(HashSet)
 import Data.IORef
 import Data.Vector(Vector)
@@ -77,7 +78,7 @@ instantiateForalls' (Core.Pi h p t s) instUntil
     let typ = Util.instantiate1 v s
     (result, f) <- instantiateForalls typ instUntil
     return (result, \x -> f $ betaApp x p v)
-instantiateForalls' typ _ = return (typ, id)
+instantiateForalls' typ _ = return (typ, identity)
 
 --------------------------------------------------------------------------------
 -- Rhotypes
@@ -102,7 +103,7 @@ inferRho expr instUntil expectedAppResult = do
 
 inferRho' :: PreM -> InstUntil -> Maybe Rhotype -> Elaborate (CoreM, Rhotype)
 inferRho' expr instUntil expectedAppResult = do
-  ref <- liftIO $ newIORef $ error "inferRho: empty result"
+  ref <- liftIO $ newIORef $ panic "inferRho: empty result"
   expr' <- tcRho expr (Infer ref instUntil) expectedAppResult
   typ <- liftIO $ readIORef ref
   return (expr', typ)

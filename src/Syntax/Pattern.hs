@@ -1,12 +1,11 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Syntax.Pattern where
 
+import Protolude
+
 import Bound
-import Control.Monad.State
 import Data.Bitraversable
-import Data.Functor.Identity
-import Data.Hashable
-import Data.Maybe
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
@@ -100,4 +99,4 @@ instantiatePattern
   -> Scope PatternVar f a
   -> f a
 instantiatePattern f vs
-  = instantiate (f . fromMaybe (error "instantiatePattern") . (vs Vector.!?) . unPatternVar)
+  = instantiate (f . fromMaybe (panic "instantiatePattern") . (vs Vector.!?) . unPatternVar)

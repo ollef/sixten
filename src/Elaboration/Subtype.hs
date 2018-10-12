@@ -1,6 +1,8 @@
 {-# LANGUAGE MonadComprehensions #-}
 module Elaboration.Subtype where
 
+import Protolude
+
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Vector(Vector)
@@ -62,7 +64,7 @@ deepSkolemiseInner' typ@(Pi h p t resScope) argsToPass k = case p of
       -- If the type mentions any dependent arguments that we are going to
       -- "pass", (e.g. when trying to pull `b` above `A` in `(A : Type) -> forall
       -- (b : A). Int`), we have to bail out.
-      | HashSet.size (HashSet.intersection (toHashSet t) argsToPass) > 0 = k mempty typ id
+      | HashSet.size (HashSet.intersection (toHashSet t) argsToPass) > 0 = k mempty typ identity
       | otherwise = do
         y <- forall h p t
         withVar y $ do
@@ -71,7 +73,7 @@ deepSkolemiseInner' typ@(Pi h p t resScope) argsToPass k = case p of
             (Vector.cons y vs)
             resType'
             (\x -> lam y $ f $ betaApp x p $ pure y)
-deepSkolemiseInner' typ _ k = k mempty typ id
+deepSkolemiseInner' typ _ k = k mempty typ identity
 
 --------------------------------------------------------------------------------
 -- | skolemise t1 = (t2, f) => f : t2 -> t1
@@ -101,7 +103,7 @@ skolemise' (Pi h p t resScope) instUntil k
     withVar v $ skolemise resType instUntil $ \resType' f -> do
       let f' x = lam v $ f x
       k resType' f'
-skolemise' typ _ k = k typ id
+skolemise' typ _ k = k typ identity
 
 instUntilExpr :: Pre.Expr v -> InstUntil
 instUntilExpr (Pre.Lam p _ _) = InstUntil p
@@ -144,7 +146,7 @@ subtypeRho' (Pi h p t s) typ2 instUntil | shouldInst p instUntil = do
   return $ \x -> f $ App x p v
 subtypeRho' typ1 typ2 _ = do
   unify [] typ1 typ2
-  return id
+  return identity
 
 -- | funSubtypes typ ps = (ts, retType, f) => f : (ts -> retType) -> typ
 funSubtypes
@@ -186,7 +188,7 @@ funSubtype'
   :: Rhotype
   -> Plicitness
   -> Elaborate (NameHint, Rhotype, Scope1 (Expr MetaVar) FreeV, CoreM -> CoreM)
-funSubtype' (Pi h p t s) p' | p == p' = return (h, t, s, id)
+funSubtype' (Pi h p t s) p' | p == p' = return (h, t, s, identity)
 funSubtype' typ p = do
   argType <- existsType mempty
   resType <- existsType mempty
@@ -207,7 +209,7 @@ subtypeFun'
   :: Rhotype
   -> Plicitness
   -> Elaborate (Rhotype, Scope1 (Expr MetaVar) FreeV, CoreM -> CoreM)
-subtypeFun' (Pi _ p t s) p' | p == p' = return (t, s, id)
+subtypeFun' (Pi _ p t s) p' | p == p' = return (t, s, identity)
 subtypeFun' typ p = do
   argType <- existsType mempty
   resType <- existsType mempty

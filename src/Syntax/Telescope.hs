@@ -12,22 +12,20 @@
  #-}
 module Syntax.Telescope where
 
+import Protolude
+
 import Bound
 import Bound.Scope
 import Bound.Var
 import Control.Monad.Morph
 import Data.Bifoldable
-import Data.Bifunctor
 import Data.Bitraversable
 import Data.Deriving
 import qualified Data.Foldable as Foldable
 import Data.Function
 import Data.Functor.Classes
-import Data.Hashable
-import Data.List as List
-import Data.Maybe
+import Data.List(groupBy)
 import qualified Data.Text.Prettyprint.Doc as PP
-import Data.Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
@@ -155,7 +153,7 @@ quantify pifun (Telescope ps) s =
   where
     abstr i (B (TeleVar i')) | i == i' = Just ()
     abstr _ _ = Nothing
-    err = error "quantify Telescope"
+    err = panic "quantify Telescope"
 
 withTeleHints
   :: Telescope a expr v
@@ -184,7 +182,7 @@ prettyTeleVarTypes ns (Telescope v) = hcat $ map go grouped
     vlist = Vector.toList v
     grouped =
       [ (n : [n' | (n', _) <- vlist'], a, t)
-      | (n, TeleArg _ a t):vlist' <- List.groupBy ((==) `on` (fmap PP.layoutCompact . snd)) $ zip [(0 :: Int)..] vlist]
+      | (n, TeleArg _ a t):vlist' <- groupBy ((==) `on` (fmap PP.layoutCompact . snd)) $ zip [(0 :: Int)..] vlist]
     go (xs, a, t)
       = prettyAnnotationParens a
       $ hsep (map (prettyM . (ns Vector.!)) xs) <+> ":" <+> prettyM (inst t)
@@ -236,7 +234,7 @@ instantiateTele
   -> Scope TeleVar f a
   -> f a
 instantiateTele f vs
-  = instantiate (f . fromMaybe (error "instantiateTele") . (vs Vector.!?) . unTeleVar)
+  = instantiate (f . fromMaybe (panic "instantiateTele") . (vs Vector.!?) . unTeleVar)
 
 teleAbstraction :: (Eq a, Hashable a) => Vector a -> a -> Maybe TeleVar
 teleAbstraction vs = fmap TeleVar . hashedElemIndex vs

@@ -1,6 +1,8 @@
 {-# LANGUAGE BangPatterns #-}
 module Elaboration.TypeCheck.Literal where
 
+import Protolude
+
 import Data.ByteString as ByteString
 import Data.Text(Text)
 import Data.Text.Encoding as Encoding

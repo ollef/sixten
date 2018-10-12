@@ -1,14 +1,11 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings, ViewPatterns #-}
 module Elaboration.Constraint where
 
-import Control.Monad.Except
-import Data.Bifunctor
-import Data.Foldable
+import Protolude
+
 import Data.HashSet(HashSet)
 import qualified Data.Map as Map
-import Data.Maybe
 import Data.Vector(Vector)
-import Data.Void
 
 import Analysis.Simplify
 import Elaboration.MetaVar
@@ -60,7 +57,7 @@ trySolveConstraint m = inUpdatedContext (const mempty) $ do
           matchingInstance:_ -> do
             logMeta 25 "Matching instance" matchingInstance
             logMeta 25 "Matching instance typ" typ'
-            let sol = close (error "trySolveConstraint not closed") $ lams vs matchingInstance
+            let sol = close (panic "trySolveConstraint not closed") $ lams vs matchingInstance
             solve m sol
             return $ Just sol
       _ -> do
@@ -119,7 +116,7 @@ mergeConstraintVars vars = do
         Just _ -> return varTypes
         Nothing -> do
           typ <- zonk $ open $ metaType m
-          let ctyp = close id typ
+          let ctyp = close identity typ
           case Map.lookup (arity, ctyp) varTypes of
             Just m' -> do
               msol' <- solution m'
@@ -133,7 +130,7 @@ mergeConstraintVars vars = do
     solveVar m m' = do
       (vs, _) <- instantiatedMetaType m'
       solve m'
-        $ close (error "mergeConstraintVars not closed")
+        $ close (panic "mergeConstraintVars not closed")
         $ lams vs
         $ Meta m
         $ (\v -> (varData v, pure v)) <$> vs

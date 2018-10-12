@@ -1,11 +1,12 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module TypedFreeVar where
 
+import Prelude(showsPrec, showParen, showString, showChar)
+import Protolude
+
 import Bound
 import Data.Char
-import Data.Function
 import Data.Functor.Classes
-import Data.Hashable
 import qualified Data.HashSet as HashSet
 import qualified Data.Text as Text
 import Data.Vector(Vector)

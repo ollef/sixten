@@ -1,23 +1,19 @@
 {-# LANGUAGE FlexibleContexts, ScopedTypeVariables, OverloadedStrings #-}
 module Processor.File where
 
-import Control.Monad.Except
-import Control.Monad.State
-import Data.Bifunctor
+import Protolude hiding (moduleName, TypeError, handle)
+
 import Data.Char
 import Data.Functor.Classes
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
-import Data.Maybe
 import Data.Text(Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
-import Data.Void
 import Error
-import System.IO
 
 import Analysis.Cycle
 import Analysis.Denat
@@ -195,8 +191,8 @@ cycleCheckGroup defs = do
     return
       ( x
       , loc
-      , closeDefinition id (error "cycleCheckGroup close def") def
-      , biclose id (error "cycleCheckGroup close typ") typ
+      , closeDefinition identity (panic "cycleCheckGroup close def") def
+      , biclose identity (panic "cycleCheckGroup close typ") typ
       )
 
 simplifyGroup
@@ -204,7 +200,7 @@ simplifyGroup
   -> VIX [(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]
 simplifyGroup defs = return $ do
   (x, loc, ClosedDefinition def, Biclosed typ) <- defs
-  return (x, loc, closeDefinition id id $ simplifyDef globTerm def, biclose id id $ simplifyExpr globTerm 0 typ)
+  return (x, loc, closeDefinition identity identity $ simplifyDef globTerm def, biclose identity identity $ simplifyExpr globTerm 0 typ)
   where
     globTerm x = not $ HashSet.member x names
     names = HashSet.fromList $ (\(x, _, _, _) -> x) <$> defs
@@ -221,12 +217,12 @@ slamGroup
   -> VIX [(QName, Closed (Anno SLambda.Expr))]
 slamGroup defs = forM defs $ \(x, _, ClosedDefinition d, _t) -> do
   d' <- SLam.runSlam $ SLam.slamDef d
-  return (x, close (error "slamGroup") d')
+  return (x, close (panic "slamGroup") d')
 
 denatGroup
   :: [(QName, Closed (Anno SLambda.Expr))]
   -> VIX [(QName, Closed (Anno SLambda.Expr))]
-denatGroup defs = return [(n, close id $ denatAnno def) | (n, Closed def) <- defs]
+denatGroup defs = return [(n, close identity $ denatAnno def) | (n, Closed def) <- defs]
 
 liftGroup
   :: [(QName, Closed (Anno SLambda.Expr))]

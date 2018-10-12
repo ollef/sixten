@@ -1,14 +1,14 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Backend.Compile where
 
-import Control.Exception
-import Control.Monad
+import Protolude
+
 import Data.Char
-import Data.Foldable
 import Data.List (dropWhile, dropWhileEnd)
-import Data.Maybe
+import Data.String
 import Data.Version
 import System.FilePath
 import System.Process
@@ -38,8 +38,9 @@ maxLlvmVersion = 6
 -- to be supported.
 supportedLlvmVersions :: [Version]
 supportedLlvmVersions = makeVersion . (: [minorVersion]) <$> supportedMajorVersions
-  where minorVersion = 0
-        supportedMajorVersions = [maxLlvmVersion, maxLlvmVersion - 1 .. minLlvmVersion]
+  where
+    minorVersion = 0
+    supportedMajorVersions = [maxLlvmVersion, maxLlvmVersion - 1 .. minLlvmVersion]
 
 -- | llvm-config is not available in current LLVM distribution for windows, so we
 -- need use @clang -print-prog-name=clang@ to get the full path of @clang@.
@@ -48,10 +49,11 @@ supportedLlvmVersions = makeVersion . (: [minorVersion]) <$> supportedMajorVersi
 --
 clangBinPath :: IO FilePath
 clangBinPath = trim <$> checkClangExists
-  where checkClangExists =
-          handle (\(_ :: IOException) -> error "Couldn't find clang.")
-          $ readProcess "clang" ["-print-prog-name=clang"] ""
-        trim = dropWhile isSpace . dropWhileEnd isSpace
+  where
+    checkClangExists =
+      handle (\(_ :: IOException) -> panic "Couldn't find clang.")
+      $ readProcess "clang" ["-print-prog-name=clang"] ""
+    trim = dropWhile isSpace . dropWhileEnd isSpace
 
 llvmBinPath :: IO FilePath
 llvmBinPath = checkLlvmExists candidates
@@ -59,21 +61,21 @@ llvmBinPath = checkLlvmExists candidates
     suffixes
       = ""
       -- The naming scheme on e.g. Ubuntu:
-      : fmap (('-' :) . showVersion) supportedLlvmVersions
+      : fmap (("-" <>) . showVersion) supportedLlvmVersions
     prefixes
       = ""
       -- The installation path of Brew on Mac:
       : "/usr/local/opt/llvm/bin/"
       : []
     candidates
-      = ["llvm-config" ++ suffix | suffix <- suffixes]
-      ++ [prefix ++ "llvm-config" | prefix <- prefixes]
+      = ["llvm-config" <> suffix | suffix <- suffixes]
+      ++ [prefix <> "llvm-config" | prefix <- prefixes]
 
-    checkLlvmExists :: [String] -> IO String
+    checkLlvmExists :: [String] -> IO FilePath
     checkLlvmExists (path : xs) =
       handle (\(_ :: IOException) -> checkLlvmExists xs)
       $ readProcess path ["--bindir"] ""
-    checkLlvmExists [] = error
+    checkLlvmExists [] = panic
       "Couldn't find llvm-config. You can specify its path using the --llvm-config flag."
 
 compile :: Options -> Arguments -> IO ()
@@ -82,13 +84,19 @@ compile opts args = do
   binPath <- takeWhile (not . isSpace) <$> case Options.llvmConfig opts of
     Nothing -> llvmBinPath
     Just configBin -> do
-      majorVersion <- read . takeWhile (/= '.')
+      maybeMajorVersion <- readMaybe . takeWhile (/= '.')
         <$> readProcess configBin ["--version"] ""
-      when (majorVersion < minLlvmVersion || majorVersion > maxLlvmVersion) $
-        putStrLn $ printf
-          "Warning: LLVM version out of range. Currently supported versions are %d <= v <= %d.\n"
+      case maybeMajorVersion of
+        Nothing -> printf
+          "Warning: Couldn't determine LLVM version. Currently supported versions are %d <= v <= %d.\n"
           minLlvmVersion
           maxLlvmVersion
+        Just majorVersion ->
+          when (majorVersion < minLlvmVersion || majorVersion > maxLlvmVersion) $
+            printf
+              "Warning: LLVM version out of range. Currently supported versions are %d <= v <= %d.\n"
+              minLlvmVersion
+              maxLlvmVersion
       readProcess configBin ["--bindir"] ""
   let opt = binPath </> "opt"
   let clang = binPath </> "clang"

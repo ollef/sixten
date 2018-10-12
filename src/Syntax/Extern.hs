@@ -1,6 +1,8 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings, TemplateHaskell #-}
 module Syntax.Extern where
 
+import Protolude
+
 import Data.Text(Text)
 import Data.Deriving
 

@@ -1,12 +1,10 @@
 {-# LANGUAGE MonadComprehensions, OverloadedStrings #-}
 module Builtin where
 
-import Control.Applicative
-import Data.Foldable
+import Protolude hiding (Type, typeRep)
+
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
-import Data.List.NonEmpty
-import Data.Maybe
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
@@ -42,10 +40,10 @@ environment target = HashMap.fromList
   , (PiTypeName, opaqueData ptrRep Type)
   ]
   where
-    cl = fromMaybe (error "Builtin not closed") . closed
+    cl = fromMaybe (panic "Builtin not closed") . closed
     -- TODO: Should be made nonmatchable
     opaqueData rep t = dataType rep t mempty
-    dataType rep typ xs = (builtinSourceLoc, closeDefinition id id $ DataDefinition (DataDef (piTelescope cltyp) xs) rep, biclose id id $ cltyp)
+    dataType rep typ xs = (builtinSourceLoc, closeDefinition identity identity $ DataDefinition (DataDef (piTelescope cltyp) xs) rep, biclose identity identity $ cltyp)
       where
         cltyp = cl typ
 
@@ -67,7 +65,7 @@ convertedSignatures :: Target -> HashMap QName Lifted.FunSignature
 convertedSignatures target
   = flip HashMap.mapMaybe (convertedEnvironment target) $ \def ->
     case open def of
-      Sized.FunctionDef _ _ (Sized.Function tele (AnnoScope _ s)) -> Just (close id tele, close id s)
+      Sized.FunctionDef _ _ (Sized.Function tele (AnnoScope _ s)) -> Just (close identity tele, close identity s)
       Sized.ConstantDef _ _ -> Nothing
       Sized.AliasDef -> Nothing
 
@@ -126,7 +124,7 @@ apply target numArgs = evalFresh $ do
             (preArgs, postArgs) = Vector.splitAt arity args
 
   return
-    $ close (error "Builtin.apply")
+    $ close (panic "Builtin.apply")
     $ Sized.FunctionDef Public Sized.NonClosure
     $ Sized.functionTyped funArgs
     $ flip Anno unknownSize
@@ -170,7 +168,7 @@ pap target k m = evalFresh $ do
       clArgs' = pure unused1 <> pure unused2 <> pure that <> clArgTypes <> clArgs
 
   return
-    $ close (error "Builtin.pap")
+    $ close (panic "Builtin.pap")
     $ Sized.FunctionDef Public Sized.NonClosure
     $ Sized.functionTyped funArgs
     $ flip Anno unknownSize

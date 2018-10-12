@@ -1,8 +1,9 @@
 {-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveGeneric, DeriveTraversable, GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module Syntax.Module where
 
+import Protolude hiding (moduleName)
+
 import Data.Foldable(toList)
-import Data.Hashable
 import Data.HashSet(HashSet)
 import Data.List(intersperse, intercalate)
 import Data.List.Split
@@ -89,27 +90,17 @@ instance Hashable ModuleName where
   hashWithSalt s (ModuleName xs) = hashWithSalt s $ toList xs
 
 instance IsString QName where
-  fromString s = case parts of
-    [] -> QName "" ""
-    _ -> QName
-      (ModuleName $ toVector $ fromString <$> init parts)
-      (fromString $ last parts)
-    where
-      parts = splitOn "." s
+  fromString s = case unsnoc $ splitOn "." s of
+    Nothing -> QName "" ""
+    Just (ms, n) -> QName (ModuleName $ toVector $ fromString <$> ms) (fromString n)
 
 instance IsString QConstr where
-  fromString s = case parts of
-    [] -> QConstr "" ""
-    _ -> QConstr
-      (fromString $ intercalate "." $ init parts)
-      (fromString $ last parts)
-    where
-      parts = splitOn "." s
+  fromString s = case unsnoc $ splitOn "." s of
+    Nothing -> QConstr "" ""
+    Just (ms, c) -> QConstr (fromString $ intercalate "." ms) (fromString c)
 
 instance IsString ModuleName where
-  fromString s = ModuleName $ toVector $ fromString <$> parts
-    where
-      parts = splitOn "." s
+  fromString s = ModuleName $ toVector $ fromString <$> splitOn "." s
 
 instance Pretty QName where
   prettyM (QName q n) | q == mempty = prettyM n

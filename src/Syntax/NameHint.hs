@@ -1,5 +1,7 @@
 module Syntax.NameHint where
 
+import Protolude
+
 import Data.String
 
 import Syntax.Name

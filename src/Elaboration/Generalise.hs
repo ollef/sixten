@@ -1,10 +1,8 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Elaboration.Generalise where
 
-import Control.Applicative
-import Control.Monad.Except
-import Control.Monad.State
-import Data.Foldable as Foldable
+import Protolude hiding (TypeError)
+
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
@@ -122,7 +120,7 @@ generaliseMetas metas = do
       return ()
   where
     acyclic (AcyclicSCC a) = a
-    acyclic (CyclicSCC _) = error "generaliseMetas"
+    acyclic (CyclicSCC _) = panic "generaliseMetas"
 
 replaceMetas
   :: HashMap MetaVar FreeV
@@ -200,13 +198,13 @@ collectDefDeps vars defs = do
         (v, (name, loc, def, typ, d <> t))
       sat
         = fmap acyclic
-        . topoSortWith id (toHashSet . varType)
+        . topoSortWith identity (toHashSet . varType)
         . HashSet.intersection vars
         . saturate (\v -> fold (fmap (\(_, _, _, _, deps) -> deps) $ hashedLookup allDeps v) <> toHashSet (varType v))
   fmap (\(name, loc, def, typ, deps) -> (name, loc, def, typ, sat deps)) <$> allDeps
   where
     acyclic (AcyclicSCC a) = a
-    acyclic (CyclicSCC _) = error "collectDefDeps"
+    acyclic (CyclicSCC _) = panic "collectDefDeps"
 
 replaceDefs
   :: Vector

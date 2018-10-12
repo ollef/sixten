@@ -1,10 +1,9 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, MonadComprehensions, OverloadedStrings #-}
 module Syntax.Core.Pattern where
 
-import Control.Applicative
-import Control.Monad
+import Protolude
+
 import Data.Bifoldable
-import Data.Bifunctor
 import Data.Bitraversable
 import Data.Functor.Classes
 import qualified Data.Vector as Vector

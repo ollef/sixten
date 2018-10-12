@@ -1,5 +1,7 @@
 module Command.Check.Options where
 
+import Protolude
+
 import Data.List.NonEmpty(NonEmpty)
 
 data Options = Options

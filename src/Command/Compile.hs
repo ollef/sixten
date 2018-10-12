@@ -1,12 +1,13 @@
 {-# LANGUAGE CPP, FlexibleContexts, OverloadedStrings #-}
 module Command.Compile where
 
+import Protolude hiding ((<.>))
+
 import qualified Data.List.NonEmpty as NonEmpty
 import GHC.IO.Handle
 import Options.Applicative
 import System.Directory
 import System.FilePath
-import System.IO
 import System.IO.Temp
 
 import qualified Backend.Compile as Compile

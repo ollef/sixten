@@ -1,17 +1,14 @@
 {-# LANGUAGE OverloadedStrings, ViewPatterns #-}
 module Analysis.Cycle where
 
-import Control.Monad.Except
-import Data.Foldable as Foldable
-import Data.Hashable
+import Protolude hiding (TypeError)
+
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
-import Data.Monoid
 import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
-import Data.Void
 
 import qualified Builtin.Names as Builtin
 import Error
@@ -136,7 +133,7 @@ cycleCheckExpr expr = case expr of
       ds' <- iforMLet ds $ \i h loc s _ -> located loc $ do
         let e = instantiateLet pure vs s
         e' <- cycleCheckExpr e
-        return (vs Vector.! i, fromNameHint "(no name)" id h, loc, ConstantDefinition Concrete e')
+        return (vs Vector.! i, fromNameHint "(no name)" identity h, loc, ConstantDefinition Concrete e')
       body <- cycleCheckExpr $ instantiateLet pure vs bodyScope
       ds'' <- cycleCheckLets $ toList ds'
       let ds''' = toVector
@@ -173,7 +170,7 @@ cycleCheckTypeReps defs = do
   let locMap = HashMap.fromList [(v, (name, loc)) | (v, name, loc, _) <- defs]
   case cycles reps of
     firstCycle:_ -> do
-      let headVar = head firstCycle
+      let headVar = unsafeHead firstCycle
           (headName, loc) = locMap HashMap.! headVar
           printedCycle = map (pretty . fst . (locMap HashMap.!)) $ drop 1 firstCycle ++ [headVar]
       report
@@ -182,11 +179,13 @@ cycleCheckTypeReps defs = do
           (Just loc)
           $ PP.vcat
             ([ "The size in memory of the type " <> red (pretty headName) <> " might be infinite."
-            , "Its size depends on the size of " <> dullBlue (head printedCycle)
+            , "Its size depends on the size of " <> dullBlue (unsafeHead printedCycle)
             ] ++
             ["which depends on the size of " <> dullBlue v' | v' <- drop 1 printedCycle]
             )
     [] -> return ()
+  where
+    unsafeHead = fromMaybe (panic "cycleCheckTypeReps") . head
 
 cycleCheckLets
   :: Pretty name

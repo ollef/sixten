@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Syntax.Pre.Unscoped where
 
+import Protolude hiding (Type)
+
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.List.NonEmpty(NonEmpty)
 import Data.Vector(Vector)

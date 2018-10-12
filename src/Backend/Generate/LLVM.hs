@@ -1,5 +1,7 @@
 module Backend.Generate.LLVM where
 
+import Protolude
+
 import LLVM.AST.Instruction
 import LLVM.IRBuilder
 import LLVM.IRBuilder.Internal.SnocList

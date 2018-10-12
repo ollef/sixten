@@ -1,11 +1,10 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings, MonadComprehensions, ViewPatterns #-}
 module Backend.Lift where
 
+import Protolude
+
 import Control.Monad.Except
 import Control.Monad.Fail
-import Control.Monad.State
-import Data.Bifunctor
-import Data.Foldable
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Vector(Vector)
@@ -103,13 +102,14 @@ liftLambda tele lamScope = do
   (params, lamBody) <- closeLambda tele lamScope sortedFvs
 
   let args = (\v -> Anno (pure v) (varType v)) <$> sortedFvs
-      addArgs | null args = id
-              | otherwise = (`Lifted.Call` args)
+      addArgs
+        | null args = identity
+        | otherwise = (`Lifted.Call` args)
 
   let fun = Sized.functionTyped params lamBody
   logFreeVar 20 "liftLambda result" fun
 
-  g <- liftThing $ close (error "liftLambda not closed") fun
+  g <- liftThing $ close (panic "liftLambda not closed") fun
 
   return $ addArgs $ global g
 
@@ -135,11 +135,11 @@ topoSortVars
 topoSortVars vs
   = Vector.fromList
   $ fmap acyclic
-  $ topoSortWith id (toHashSet . varType)
+  $ topoSortWith identity (toHashSet . varType)
   $ HashSet.toList vs
   where
     acyclic (AcyclicSCC a) = a
-    acyclic (CyclicSCC _) = error "topoSortVars"
+    acyclic (CyclicSCC _) = panic "topoSortVars"
 
 liftLet
   :: LetRec SLambda.Expr FV
@@ -156,8 +156,9 @@ liftLet ds scope = do
       fvs = fold (toHashSet . snd <$> dsToLift) `HashSet.difference` liftedVars
       sortedFvs = topoSortVars fvs
       args = (\v -> Anno (pure v) (varType v)) <$> sortedFvs
-      addArgs | null args = id
-              | otherwise = (`Lifted.Call` args)
+      addArgs
+        | null args = identity
+        | otherwise = (`Lifted.Call` args)
 
   subVec <- forM (toVector dsToLift) $ \(v, _) -> do
     g <- fromNameHint freshName freshNameWithHint $ varHint v
@@ -182,9 +183,9 @@ liftLet ds scope = do
       SLambda.Lams lamTele lamScope -> do
         let g = case varIndex v of
               Just i -> snd $ subVec Vector.! i
-              Nothing -> error "liftLet g"
+              Nothing -> panic "liftLet g"
         (params, lamBody) <- closeLambda (subBound lamTele) (subBound lamScope) sortedFvs
-        liftNamedThing g $ close (error "liftLet not closed") $ Sized.functionTyped params lamBody
+        liftNamedThing g $ close (panic "liftLet not closed") $ Sized.functionTyped params lamBody
         return $ addArgs $ global g
       _ -> liftExpr $ subBind body
 
@@ -216,7 +217,7 @@ lets
 lets = flip $ foldr go
   where
     go (AcyclicSCC (v, e)) = Lifted.letTyped v e
-    go _ = error "Circular Lift lets"
+    go _ = panic "Circular Lift lets"
 
 liftToDefinitionM
   :: Closed (Anno SLambda.Expr)
@@ -229,14 +230,14 @@ liftToDefinitionM (Closed (Anno (SLambda.Lams tele bodyScope) _)) = do
   let body = instantiateAnnoTele pure vs bodyScope
   body' <- liftAnnoExpr body
   return
-    $ close (error "liftToDefinitionM")
+    $ close (panic "liftToDefinitionM")
     $ Sized.FunctionDef Public Sized.NonClosure
     $ Sized.functionTyped vs body'
 liftToDefinitionM (Closed sexpr) = do
   sexpr' <- liftAnnoExpr sexpr
   logFreeVar 20 "liftToDefinitionM sexpr'" sexpr'
   return
-    $ close (error "liftToDefinitionM 2")
+    $ close (panic "liftToDefinitionM 2")
     $ Sized.ConstantDef Public
     $ Sized.Constant sexpr'
 

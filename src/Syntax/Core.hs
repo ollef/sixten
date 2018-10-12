@@ -1,13 +1,12 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, MonadComprehensions, OverloadedStrings, PatternSynonyms, RankNTypes, TemplateHaskell, TypeFamilies, ViewPatterns #-}
 module Syntax.Core where
 
-import Control.Monad
+import Protolude hiding (Type, TypeRep)
+
 import Data.Bifoldable
-import Data.Bifunctor
 import Data.Bitraversable
 import Data.Deriving
 import Data.Foldable as Foldable
-import Data.Hashable
 import Data.Vector(Vector)
 
 import Syntax
@@ -239,12 +238,12 @@ instance (v ~ Doc, Pretty m, Eq m) => Pretty (Expr m v) where
       parens `above` arrPrec $
       prettyTeleVarTypes ns tele <+> "->" <+>
       associate arrPrec (prettyM $ instantiateTele (pure . fromName) ns s)
-    Pi {} -> error "impossible prettyPrec pi"
+    Pi {} -> panic "impossible prettyPrec pi"
     (lamsViewM -> Just (tele, s)) -> withTeleHints tele $ \ns ->
       parens `above` absPrec $
       "\\" <> prettyTeleVarTypes ns tele <> "." <+>
       prettyM (instantiateTele (pure . fromName) ns s)
-    Lam {} -> error "impossible prettyPrec lam"
+    Lam {} -> panic "impossible prettyPrec lam"
     App e1 a e2 -> prettyApp (prettyM e1) (prettyAnnotation a $ prettyM e2)
     Let ds s -> parens `above` letPrec $ withLetHints ds $ \ns ->
       "let" <+> align (prettyLet ns ds)

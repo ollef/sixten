@@ -1,16 +1,13 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module Frontend.Parse where
 
+import Protolude hiding (Type)
+
 import Control.Applicative((<**>), (<|>), Alternative)
-import Control.Monad.Except
-import Control.Monad.Reader
-import Data.Bifunctor
 import Data.Char
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.List.NonEmpty as NonEmpty
-import Data.Maybe
-import Data.Ord
 import qualified Data.Set as Set
 import Data.String
 import Data.Text(Text)
@@ -252,7 +249,7 @@ pattern = locatedPat $
     <|> atomicPattern
   ) <**>
   ( flip AnnoPat <$% symbol ":" <*> expr
-    <|> pure id
+    <|> pure identity
   ) <?> "pattern"
 
 plicitPattern :: Parser (Plicitness, Pat PreName Type PreName)
@@ -356,7 +353,7 @@ branches = manyIndentedOrSameCol branch
 expr :: Parser Expr
 expr = exprWithoutWhere <**>
   (mkLet <$% reserved "where" <*>% dropAnchor (someSameCol $ located def)
-  <|> pure id
+  <|> pure identity
   )
   where
     mkLet xs = Let $ Vector.fromList xs
@@ -377,7 +374,7 @@ exprWithoutWhere
     arr
       = flip (plicitPi Explicit) <$% symbol "->" <*>% exprWithoutWhere
       <|> flip (plicitPi Constraint) <$% symbol "=>" <*>% exprWithoutWhere
-      <|> pure id
+      <|> pure identity
 
     argument :: Parser (Plicitness, Expr)
     argument
@@ -388,7 +385,7 @@ exprWithoutWhere
 -- * Extern C
 externCExpr :: Parser (Extern Expr)
 externCExpr
-  = Extern C . fmap (either id $ ExternPart . Text.pack) <$ Parsix.string "(C|" <*> go
+  = Extern C . fmap (either identity $ ExternPart . Text.pack) <$ Parsix.string "(C|" <*> go
   <?> "Extern C expression"
   where
     go = Parsix.char '\\' *> escaped <*> go
@@ -401,7 +398,7 @@ externCExpr
       <|> ExprMacroPart <$> atomicExpr
     consChar c (Right t : rest) = Right (c:t) : rest
     consChar c rest = Right [c] : rest
-    consChars = foldr (\c -> (consChar c .)) id
+    consChars = foldr (\c -> (consChar c .)) identity
     escaped
       = consChar <$> Parsix.char '$'
       <|> consChars <$> Parsix.string "|)"
@@ -447,7 +444,7 @@ def = do
 dataDef :: Parser TopLevelDefinition
 dataDef = TopLevelDataDefinition <$ reserved "type" <*>% name <*> manyTypedBindings <*>%
   (concat <$% reserved "where" <*> manyIndentedOrSameCol conDef
-  <|> id <$% symbol "=" <*>% sepBySI adtConDef (symbol "|"))
+  <|> identity <$% symbol "=" <*>% sepBySI adtConDef (symbol "|"))
   where
     conDef = constrDefs <$> ((:) <$> constructor <*> manySI constructor)
       <*% symbol ":" <*>% expr

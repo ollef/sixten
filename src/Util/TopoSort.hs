@@ -6,7 +6,8 @@ module Util.TopoSort
   , flattenSCC
   ) where
 
-import Data.Foldable
+import Protolude
+
 import Data.Graph
 
 topoSortWith

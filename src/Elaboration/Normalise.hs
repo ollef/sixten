@@ -1,12 +1,11 @@
-{-# LANGUAGE ConstraintKinds, FlexibleContexts, MonadComprehensions, ViewPatterns, RecursiveDo #-}
+{-# LANGUAGE ConstraintKinds, FlexibleContexts, MonadComprehensions, OverloadedStrings, ViewPatterns, RecursiveDo #-}
 module Elaboration.Normalise where
 
+import Protolude hiding (TypeRep)
+
 import Control.Monad.Except
-import Data.Bifunctor
-import Data.Foldable
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Vector as Vector
-import Data.Void
 
 import qualified Builtin.Names as Builtin
 import Elaboration.MetaVar
@@ -72,9 +71,11 @@ whnf'
   -> [(Plicitness, Expr meta (ExprFreeVar meta))] -- ^ Arguments to the expression
   -> m (Expr meta (ExprFreeVar meta))
 whnf' args expr exprs = indentLog $ do
-  logPretty 40 "whnf e" $ bimap (const "(meta)") pretty $ apps expr exprs
+  let metaText :: Text
+      metaText = "(meta)"
+  logPretty 40 "whnf e" $ bimap (const metaText) pretty $ apps expr exprs
   res <- normaliseBuiltins go expr exprs
-  logPretty 40 "whnf res" $ bimap (const "(meta)") pretty res
+  logPretty 40 "whnf res" $ bimap (const metaText) pretty res
   return res
   where
     go e@(Var FreeVar { varValue = Just e' }) es = do
@@ -299,14 +300,14 @@ chooseBranch
   -> Maybe (Expr meta v)
 chooseBranch (Lit l) (LitBranches lbrs def) = Just chosenBranch
   where
-    chosenBranch = head $ [br | LitBranch l' br <- NonEmpty.toList lbrs, l == l'] ++ [def]
+    chosenBranch = fromMaybe def $ head [br | LitBranch l' br <- NonEmpty.toList lbrs, l == l']
 chooseBranch (appsView -> (Con qc, args)) (ConBranches cbrs) =
   Just $ instantiateTele snd (Vector.drop (Vector.length argsv - numConArgs) argsv) chosenBranch
   where
     argsv = Vector.fromList args
     (numConArgs, chosenBranch) = case [(teleLength tele, br) | ConBranch qc' tele br <- cbrs, qc == qc'] of
       [br] -> br
-      _ -> error "Normalise.chooseBranch"
+      _ -> panic "Normalise.chooseBranch"
 chooseBranch _ _ = Nothing
 
 -- | Definition normalisation heuristic:

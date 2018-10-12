@@ -1,9 +1,9 @@
 {-# LANGUAGE DefaultSignatures, FlexibleInstances, FunctionalDependencies, GADTs, MultiParamTypeClasses, UndecidableInstances #-}
 module MonadContext where
 
+import Protolude
+
 import Control.Monad.Except
-import Control.Monad.Reader
-import Control.Monad.State
 import Control.Monad.Trans.Identity
 import Control.Monad.Writer
 

@@ -1,12 +1,10 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Elaboration.MetaVar.Zonk where
 
-import Control.Monad.Except
-import Control.Monad.State
-import Data.Functor.Const
+import Protolude
+
 import qualified Data.HashSet as HashSet
 import Data.HashSet(HashSet)
-import Data.Void
 
 import Analysis.Simplify
 import Elaboration.MetaVar
@@ -20,7 +18,7 @@ zonk = hoistMetas $ \m es -> do
     Nothing -> return $ Meta m es
     Just e -> do
       e' <- zonk $ open e
-      solve m $ close id e'
+      solve m $ close identity e'
       return $ betaApps (vacuous e') es
 
 metaVars :: MonadIO m => Expr MetaVar v -> m (HashSet MetaVar)

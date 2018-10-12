@@ -1,16 +1,14 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Backend.Generate where
 
+import Protolude hiding (TypeRep, typeRep, handle)
+
 import qualified Bound
-import Control.Applicative
-import Control.Monad.Reader
 import qualified Data.Foldable as Foldable
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import qualified Data.List.NonEmpty as NonEmpty
-import Data.Maybe
-import Data.String
 import Data.Text(Text)
 import qualified Data.Text.IO as Text
 import qualified Data.Text.Lazy.IO as Lazy
@@ -28,7 +26,6 @@ import qualified LLVM.AST.Type as LLVM.Type
 import qualified LLVM.AST.Typed as LLVM
 import LLVM.IRBuilder as IRBuilder
 import qualified LLVM.Pretty as LLVM
-import System.IO
 
 import qualified Backend.ExtractExtern as ExtractExtern
 import Backend.Generate.LLVM
@@ -235,7 +232,7 @@ funSignature expr arity = case expr of
     return $ case msig of
       Just (FunctionSig _ retDir argDirs) -> (retDir, argDirs)
       _ -> def
-  _ -> error "Generate.funSignature non-global"
+  _ -> panic "Generate.funSignature non-global"
   where
     def = (ReturnIndirect OutParam, Vector.replicate arity Indirect)
 
@@ -333,7 +330,7 @@ storeCon qc es out = do
   intRep <- getIntRep
   typeRep <- getTypeRep
   mqcIndex <- constrIndex qc
-  let es' = maybe id (Vector.cons . flip Anno (Lit $ TypeRep intRep) . Lit . Integer . fromIntegral) mqcIndex es
+  let es' = maybe identity (Vector.cons . flip Anno (Lit $ TypeRep intRep) . Lit . Integer . fromIntegral) mqcIndex es
   reps <- mapM (generateTypeExpr . typeAnno) es'
   is <- productOffsets' reps
   Foldable.forM_ (zip (Vector.toList reps) $ zip is $ Vector.toList es') $ \(rep, (i, Anno e _)) -> do
@@ -378,7 +375,7 @@ generateGlobal g = do
       $ LLVM.Constant.PtrToInt
         (LLVM.Constant.BitCast glob indirectType)
         (directType ptrRep)
-    Just (AliasSig _) -> error "generateGlobal alias"
+    Just (AliasSig _) -> panic "generateGlobal alias"
     Nothing -> return $ IndirectVar globOperand
 
 generateBranches
@@ -461,7 +458,7 @@ generateBranches (Anno caseExpr caseExprType) branches brCont = do
 
         switch e0 failBlock $ zip constrIndices branchBlocks
       else
-        br $ head branchBlocks
+        br $ fromMaybe failBlock $ head branchBlocks
 
       postBlock <- freshName "after-branches"
 
@@ -618,7 +615,7 @@ generateConstant visibility name (Constant aexpr@(Anno expr _)) = do
         $ void
         $ call initOperand [] `with` \c -> c
           { LLVM.callingConvention = CC.Fast }
-    _ -> error "generateConstant"
+    _ -> panic "generateConstant"
 
 generateFunction :: Visibility -> QName -> Function Expr Var -> ModuleGen ()
 generateFunction visibility name (Function args funScope) = do
@@ -721,7 +718,7 @@ declareGlobal g = do
   case msig of
     Just (FunctionSig _ retDir argDirs) -> declareFun retDir (fromQName g) argDirs
     Just (ConstantSig dir) -> declareConstant dir $ fromQName g
-    Just (AliasSig _) -> error "declareGlobal alias"
+    Just (AliasSig _) -> panic "declareGlobal alias"
     Nothing -> return ()
 
 declareFun

@@ -1,7 +1,8 @@
 {-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
 module Processor.Result where
 
-import Control.Monad
+import Protolude
+
 import Data.Semigroup as Semigroup
 import Error
 

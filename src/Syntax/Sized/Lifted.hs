@@ -1,7 +1,8 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, OverloadedStrings, PatternSynonyms, ViewPatterns, TemplateHaskell #-}
 module Syntax.Sized.Lifted where
 
-import Control.Monad
+import Protolude hiding (Type, TypeRep)
+
 import Data.Deriving
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector

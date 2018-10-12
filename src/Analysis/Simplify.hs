@@ -1,8 +1,9 @@
-{-# LANGUAGE BangPatterns, ViewPatterns, MonadComprehensions #-}
+{-# LANGUAGE BangPatterns, ViewPatterns, MonadComprehensions, OverloadedStrings #-}
 module Analysis.Simplify where
 
+import Protolude hiding (Type)
+
 import Bound
-import Data.Bifunctor
 import Data.Foldable as Foldable
 import Data.Maybe
 import qualified Data.MultiSet as MultiSet
@@ -37,7 +38,7 @@ simplifyExpr glob !applied expr = case expr of
       applied
       tele
       $ hoist (simplifyExpr glob $ max 0 $ applied - teleLength tele) s
-  Lam {} -> error "simplifyExpr Lam"
+  Lam {} -> panic "simplifyExpr Lam"
   App e1 p e2 ->
     betaApp
       (simplifyExpr glob (applied + 1) e1)
@@ -62,7 +63,7 @@ letRec
   -> Scope LetVar (Expr meta) v
   -> Expr meta v
 letRec glob ds scope
-  | Vector.null ds' = instantiate (error "letRec empty") scope'
+  | Vector.null ds' = instantiate (panic "letRec empty") scope'
   | Vector.length (unLetRec ds) /= Vector.length ds' = simplifyExpr glob 0 $ Let (LetRec ds') scope'
   | otherwise = Let (LetRec ds') scope'
   where

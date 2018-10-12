@@ -1,6 +1,8 @@
 {-# LANGUAGE PatternSynonyms, OverloadedStrings #-}
 module TypeRep where
 
+import Protolude hiding (TypeRep)
+
 import Backend.Target
 import Pretty
 

@@ -1,10 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Command.Test where
 
-import Data.Foldable
-import Data.List
+import Protolude hiding (TypeError)
+
+import qualified Data.Text as Text
 import Options.Applicative
-import System.Exit
 import System.Process
 
 import qualified Command.Check.Options as Check
@@ -64,24 +64,24 @@ test opts = Compile.compile (compileOptions opts) True $ \res -> case res of
         -> failed "No internal error" $ mapM_ printError errs
       [] -> failed "No unknown error" (return ())
     onCompileSuccess f
-      | expectSyntaxError opts = failed "Syntax error" $ putStrLn "Successful compilation"
-      | expectTypeError opts = failed "Type error" $ putStrLn "Successful compilation"
+      | expectSyntaxError opts = failed "Syntax error" $ putText "Successful compilation"
+      | expectTypeError opts = failed "Type error" $ putText "Successful compilation"
       | otherwise = do
       output <- readProcess f [] ""
       mexpectedOutput <- traverse readFile $ expectedOutputFile opts
       case mexpectedOutput of
         Nothing -> success
         Just expectedOutput
-          | output == expectedOutput -> success
+          | Text.pack output == expectedOutput -> success
           | otherwise -> failed expectedOutput $ putStrLn output
     success = do
       putStrLn $ "OK: " ++ intercalate ", " (toList . Check.inputFiles . Compile.checkOptions . compileOptions $ opts)
       exitSuccess
     failed expected actual = do
       putStrLn $ "FAILED: " ++ intercalate ", " (toList . Check.inputFiles . Compile.checkOptions . compileOptions $ opts)
-      putStrLn "Expected:"
-      putStrLn expected
-      putStrLn "But got:"
+      putText "Expected:"
+      putText expected
+      putText "But got:"
       () <- actual
       exitFailure
 

@@ -1,7 +1,8 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, GADTs, MonadComprehensions, OverloadedStrings, PatternSynonyms, TemplateHaskell, ViewPatterns #-}
 module Syntax.Sized.SLambda where
 
-import Control.Monad
+import Protolude hiding (Type, TypeRep)
+
 import Data.Deriving
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
@@ -113,5 +114,5 @@ instance v ~ Doc => Pretty (Expr v) where
       withTeleHints tele $ \ns ->
         "\\" <> prettyTeleVarTypes ns tele <> "." <+>
         associate absPrec (prettyM $ instantiateAnnoTele (pure . fromName) ns s)
-    Lam {} -> error "impossible prettyPrec lam"
+    Lam {} -> panic "impossible prettyPrec lam"
     ExternCode c retType -> parens `above` annoPrec $ prettyM c <+> ":" <+> prettyM retType

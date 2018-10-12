@@ -2,9 +2,9 @@
 {-# LANGUAGE GADTs #-}
 module MonadLog where
 
+import Protolude
+
 import Control.Monad.Except
-import Control.Monad.Reader
-import Control.Monad.State
 import Control.Monad.Trans.Identity
 import Control.Monad.Writer
 import Data.Text(Text)

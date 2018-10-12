@@ -1,8 +1,8 @@
 {-# LANGUAGE MonadComprehensions, OverloadedStrings #-}
 module Elaboration.TypeCheck.Definition where
 
-import Control.Monad.Except
-import Data.Bifunctor
+import Protolude
+
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
@@ -67,9 +67,9 @@ checkAndGeneraliseTopLevelDefs defs = do
     return (name, loc, closeDefinition noMeta noVar unexposedDef, biclose noMeta noVar unexposedTyp)
   where
     noVar :: FreeV -> b
-    noVar v = error $ "checkAndGeneraliseTopLevelDefs " <> shower v
+    noVar v = panic $ "checkAndGeneraliseTopLevelDefs " <> shower v
     noMeta :: MetaVar -> b
-    noMeta v = error
+    noMeta v = panic
       $ "checkAndGeneraliseTopLevelDefs " <> shower v
 
 checkAndGeneraliseDefs

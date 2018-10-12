@@ -1,8 +1,7 @@
 module Util.MultiHashMap where
 
-import Data.Bifunctor
-import Data.Foldable
-import Data.Hashable
+import Protolude
+
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
@@ -133,7 +132,7 @@ mapKeys
   => (k -> k')
   -> MultiHashMap k v
   -> MultiHashMap k' v
-mapKeys f = fromMultiList . Prelude.map (first f) . toMultiList
+mapKeys f = fromMultiList . Protolude.map (first f) . toMultiList
 
 mapWithKey
   :: (Eq v', Hashable v')

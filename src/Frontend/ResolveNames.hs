@@ -1,10 +1,10 @@
 {-# LANGUAGE FlexibleContexts, MonadComprehensions, OverloadedStrings, ViewPatterns #-}
 module Frontend.ResolveNames where
 
-import Control.Monad.Except
+import Protolude hiding (TypeError)
+
 import Control.Monad.RWS
 import Data.Bitraversable
-import Data.Foldable
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
@@ -55,7 +55,7 @@ resolveModule modul = do
 
   let aliases = localAliases (moduleContents modul) <> importedNameAliases
       lookupAlias preName
-        | HashSet.size candidates == 1 = return $ pure $ head $ HashSet.toList candidates
+        | HashSet.size candidates == 1 = return $ pure $ fromMaybe (panic "resolveModule impossible") $ head $ HashSet.toList candidates
         | otherwise = do
           report
             $ TypeError ("Ambiguous name" PP.<+> red (pretty preName)) (preNameSourceLoc preName) $ PP.vcat
@@ -93,7 +93,7 @@ resolveModule modul = do
 
   let sortedDefGroups = flattenSCC <$> topoSortWith fst3 (addExtraDeps . thd3) resolvedDefs
 
-  return [[(n, loc, close id def) | (n, (loc, def), _) <- defs] | defs <- sortedDefGroups]
+  return [[(n, loc, close identity def) | (n, (loc, def), _) <- defs] | defs <- sortedDefGroups]
 
 localConstrAliases
   :: HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)

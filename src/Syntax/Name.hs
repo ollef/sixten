@@ -1,9 +1,9 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Syntax.Name where
 
-import Data.String
+import Protolude
+
 import Data.Text(Text)
-import Data.Hashable
 
 import Util
 

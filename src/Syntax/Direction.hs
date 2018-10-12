@@ -1,6 +1,8 @@
 {-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, OverloadedStrings #-}
 module Syntax.Direction where
 
+import Protolude hiding (TypeRep)
+
 import Data.Vector(Vector)
 
 import Pretty

@@ -1,12 +1,10 @@
 {-# LANGUAGE OverloadedStrings, ViewPatterns #-}
 module Backend.ClosureConvert where
 
-import Control.Applicative
-import Control.Monad.Except
-import Data.Bifunctor
+import Protolude hiding (typeRep)
+
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
-import Data.Maybe
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
@@ -50,8 +48,8 @@ convertDefinitionsM defs = do
       let Anno _ t = instantiateAnnoTele pure vs scope
       convertedType <- convertExpr t
 
-      let tele' = close (error "convertDefinitions") $ varTelescope (Vector.zip vs es)
-          typeScope = close (error "convertDefinitions") $ abstract (teleAbstraction vs) convertedType
+      let tele' = close (panic "convertDefinitions") $ varTelescope (Vector.zip vs es)
+          typeScope = close (panic "convertDefinitions") $ abstract (teleAbstraction vs) convertedType
       return $ Just (name, (tele', typeScope))
     Sized.ConstantDef _ (Sized.Constant (Anno (Global glob) _)) -> do
       msig <- convertedSignature glob
@@ -77,7 +75,7 @@ convertDefinition (Closed (Sized.FunctionDef vis cl (Sized.Function tele scope))
   let expr = instantiateAnnoTele pure vs scope
   expr' <- convertAnnoExpr expr
   return
-    $ close (error "convertDefinition Function")
+    $ close (panic "convertDefinition Function")
     $ Sized.FunctionDef vis cl
     $ Sized.function (Vector.zip vs es) expr'
 convertDefinition (Closed (Sized.ConstantDef vis (Sized.Constant expr@(Anno (Global glob) sz)))) = do
@@ -88,16 +86,16 @@ convertDefinition (Closed (Sized.ConstantDef vis (Sized.Constant expr@(Anno (Glo
       sz' <- convertExpr sz
       return $ Anno (Global glob) sz'
   return
-    $ close (error "convertDefinition Constant")
+    $ close (panic "convertDefinition Constant")
     $ Sized.ConstantDef vis
     $ Sized.Constant expr'
 convertDefinition (Closed (Sized.ConstantDef vis (Sized.Constant expr))) = do
   expr' <- convertAnnoExpr expr
   return
-    $ close (error "convertDefinition Constant")
+    $ close (panic "convertDefinition Constant")
     $ Sized.ConstantDef vis
     $ Sized.Constant expr'
-convertDefinition (Closed Sized.AliasDef) = return $ close id Sized.AliasDef
+convertDefinition (Closed Sized.AliasDef) = return $ close identity Sized.AliasDef
 
 convertAnnoExpr :: Anno Expr FV -> ClosureConvert (Anno Expr FV)
 convertAnnoExpr (Anno expr typ) = Anno <$> convertExpr expr <*> convertExpr typ
@@ -122,7 +120,7 @@ convertExpr expr = case expr of
     e' <- convertExpr e
     es' <- mapM convertAnnoExpr es
     unknownCall e' es'
-  Call {} -> error "convertExpr Call"
+  Call {} -> panic "convertExpr Call"
   PrimCall retDir e es -> do
     e' <- convertExpr e
     es' <- mapM (traverse convertAnnoExpr) es
@@ -158,7 +156,7 @@ knownCall f (Closed tele, Closed returnTypeScope) args
     target <- getTarget
     piRep <- Lit . TypeRep <$> getPiRep
     intRep <- Lit . TypeRep <$> getIntRep
-    fNumArgs <- liftClosureFun f (close id tele, close id returnTypeScope) numArgs
+    fNumArgs <- liftClosureFun f (close identity tele, close identity returnTypeScope) numArgs
     return
       $ Con Builtin.Ref
       $ pure
@@ -217,7 +215,7 @@ liftClosureFun f (Closed tele, Closed returnTypeScope) numCaptured = do
         | otherwise = returnType
 
   liftThing
-    $ close (error "liftClosureFun")
+    $ close (panic "liftClosureFun")
     $ Sized.function funParams
     $ Anno
       (Case (Anno (Builtin.deref $ pure this) (Global "ClosureConvert.knownCall.unknownSize"))

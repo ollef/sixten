@@ -16,7 +16,9 @@ data-files:
                      rts/Builtin1.vix
                      rts/Builtin2.vix
 
+
 executable sixten
+  extensions:          NoImplicitPrelude
   ghc-options:
                        -Wall
                        -Wcompat
@@ -127,8 +129,8 @@ executable sixten
                        filepath,
                        hashable,
                        lifted-base,
-                       llvm-hs-pure,
                        llvm-hs-pretty,
+                       llvm-hs-pure,
                        mmorph,
                        monad-control,
                        mtl,
@@ -139,6 +141,7 @@ executable sixten
                        prettyprinter,
                        prettyprinter-ansi-terminal,
                        process,
+                       protolude,
                        split,
                        temporary,
                        text,

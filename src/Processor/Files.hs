@@ -1,14 +1,13 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Processor.Files where
 
-import Control.Monad.Except
+import Protolude hiding (TypeError, moduleName, sourceFile)
+
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.List.NonEmpty(NonEmpty)
-import Data.Semigroup
 import qualified Data.Text.Prettyprint.Doc as PP
-import GHC.IO.Handle
 import System.FilePath
 
 import qualified Backend.Generate as Generate

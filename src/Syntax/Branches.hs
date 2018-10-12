@@ -1,11 +1,12 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, MonadComprehensions, Rank2Types, OverloadedStrings, TemplateHaskell #-}
 module Syntax.Branches where
 
+import Protolude
+
 import Bound
 import Bound.Scope
 import Control.Monad.Morph
 import Data.Bifoldable
-import Data.Bifunctor
 import Data.Bitraversable
 import Data.Deriving
 import Data.Functor.Classes

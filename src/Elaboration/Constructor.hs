@@ -1,7 +1,8 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Elaboration.Constructor where
 
-import Control.Monad.Except
+import Protolude
+
 import qualified Data.HashSet as HashSet
 import Data.HashSet(HashSet)
 import qualified Data.Text.Prettyprint.Doc as PP
@@ -65,5 +66,5 @@ resolveConstr cs expected = do
     err heading docs = throwLocated $ heading <> PP.line <> PP.vcat docs
     constrDoc = case HashSet.toList cs of
       (QConstr _ cname:_) -> red (pretty cname)
-      _ -> error "resolveConstr no constrs"
+      _ -> panic "resolveConstr no constrs"
 

@@ -1,10 +1,10 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Backend.Generate.Types where
 
-import Control.Applicative
+import Protolude hiding (TypeRep)
+
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
-import Data.Word
 import qualified LLVM.AST as LLVM
 import LLVM.AST.CallingConvention as CC
 import qualified LLVM.AST.Constant as LLVM
@@ -77,7 +77,7 @@ loadVar :: MonadIRBuilder m => TypeRep -> Var -> m LLVM.Operand
 loadVar _ VoidVar = return $ LLVM.ConstantOperand $ LLVM.Undef LLVM.void
 loadVar rep (DirectVar rep' o)
   | rep == rep' = return o
-  | otherwise = error "loadVar rep mismatch"
+  | otherwise = panic "loadVar rep mismatch"
 loadVar rep (IndirectVar o) = loadDirect rep o
 
 indirect :: (MonadIRBuilder m, MonadVIX m) => Var -> m LLVM.Operand
@@ -127,7 +127,7 @@ signatureType (ConstantSig (Direct TypeRep.UnitRep)) = LLVM.void
 signatureType (ConstantSig (Direct rep)) = directType rep
 signatureType (ConstantSig Indirect) = indirectType
 signatureType (FunctionSig _ retDir args) = functionType retDir args
-signatureType (AliasSig _) = error "signatureType alias"
+signatureType (AliasSig _) = panic "signatureType alias"
 
 functionType
   :: RetDir

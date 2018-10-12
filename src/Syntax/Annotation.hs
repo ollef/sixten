@@ -1,8 +1,10 @@
 {-# LANGUAGE DeriveGeneric, PatternSynonyms, PolyKinds, TypeFamilies, OverloadedStrings #-}
 module Syntax.Annotation where
 
-import GHC.Generics
-import Data.Hashable
+import qualified Prelude(show)
+
+import Protolude
+
 import Pretty
 
 class Eq a => PrettyAnnotation a where
@@ -11,7 +13,7 @@ class Eq a => PrettyAnnotation a where
   prettyAnnotationParens p = prettyAnnotation p . parens
 
 instance PrettyAnnotation () where
-  prettyAnnotation _ = id
+  prettyAnnotation _ = identity
 
 data Plicitness = Constraint | Implicit | Explicit
   deriving (Eq, Ord, Generic)
@@ -31,7 +33,7 @@ instance Show Plicitness where
 instance PrettyAnnotation Plicitness where
   prettyAnnotation Constraint = brackets
   prettyAnnotation Implicit = prettyTightApp "@"
-  prettyAnnotation Explicit = id
+  prettyAnnotation Explicit = identity
   prettyAnnotationParens Constraint = brackets
   prettyAnnotationParens Implicit = prettyTightApp "@" . parens
   prettyAnnotationParens Explicit = parens

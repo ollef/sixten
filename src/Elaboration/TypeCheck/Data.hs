@@ -1,7 +1,7 @@
 module Elaboration.TypeCheck.Data where
 
-import Control.Monad.Except
-import Data.Foldable as Foldable
+import Prelude(unzip3)
+import Protolude hiding (typeRep)
 
 import qualified Builtin.Names as Builtin
 import Elaboration.Constraint as Constraint

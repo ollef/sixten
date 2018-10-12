@@ -1,9 +1,8 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Elaboration.TypeCheck.Pattern where
 
-import Control.Applicative
-import Control.Monad.Except
-import Data.Bifunctor
+import Protolude
+
 import Data.HashSet(HashSet)
 import Data.IORef
 import qualified Data.Text.Prettyprint.Doc as PP
@@ -59,7 +58,7 @@ inferPat
   -> BoundPatVars
   -> Elaborate (Core.Pat CoreM FreeV, CoreM, PatVars, Polytype)
 inferPat p pat vs = do
-  ref <- liftIO $ newIORef $ error "inferPat: empty result"
+  ref <- liftIO $ newIORef $ panic "inferPat: empty result"
   (pat', patExpr, vs') <- tcPat p pat vs $ InferPat ref
   t <- liftIO $ readIORef ref
   return (pat', patExpr, vs', t)
@@ -75,7 +74,7 @@ tcPats pats vs tele = do
 
   results <- iforTeleWithPrefixM tele $ \i _ _ s results -> do
     let argExprs = snd3 . fst <$> results
-        expectedType = instantiateTele id argExprs s
+        expectedType = instantiateTele identity argExprs s
         (p, pat) = pats Vector.! i
         -- TODO could be more efficient
         varPrefix = join (snd <$> results)
@@ -145,7 +144,7 @@ tcPat' p pat vs expected = case pat of
     pats' <- Vector.fromList <$> exactlyEqualisePats (Vector.toList argPlics) (Vector.toList pats)
 
     paramVars <- forTeleWithPrefixM paramsTele $ \h p' s paramVars ->
-      exists h p' $ instantiateTele id paramVars s
+      exists h p' $ instantiateTele identity paramVars s
 
     let argTele = instantiatePrefix paramVars tele
 
@@ -158,7 +157,7 @@ tcPat' p pat vs expected = case pat of
         iparams = first implicitise <$> params
         patExpr = Core.apps (Core.Con qc) $ iparams <> Vector.zip argPlics argExprs
 
-        retType = instantiateTele id (paramVars <|> argExprs) retScope
+        retType = instantiateTele identity (paramVars <|> argExprs) retScope
 
     (pat', patExpr') <- instPatExpected expected retType (Core.ConPat qc params pats''') patExpr
 

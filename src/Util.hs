@@ -1,26 +1,18 @@
-{-# LANGUAGE BangPatterns, FlexibleContexts #-}
+{-# LANGUAGE BangPatterns, FlexibleContexts, OverloadedStrings #-}
 module Util where
+
+import Protolude
 
 import Bound
 import Bound.Var
-import Control.Applicative
-import Control.Exception.Lifted
-import Control.Monad.Except
-import Control.Monad.ST
-import Control.Monad.State
 import Control.Monad.Trans.Control
 import Data.Bifoldable
-import Data.Bifunctor
-import Data.Bits
-import Data.Foldable
-import Data.Hashable
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
-import Data.Maybe
 import Data.Set(Set)
 import qualified Data.Set as Set
 import Data.String
@@ -217,7 +209,7 @@ unpermute
 unpermute p xs = Vector.backpermute xs indices
   where
     indices
-      = fromMaybe (error "unpermute")
+      = fromMaybe (panic "unpermute")
         . hashedElemIndex (snd <$> p)
         . fst
       <$> p
@@ -246,7 +238,7 @@ filterMSet
   -> HashSet a
   -> f (HashSet a)
 filterMSet f s  
-  = HashSet.fromMap . void . HashMap.filter id
+  = HashSet.fromMap . void . HashMap.filter identity
   <$> HashMap.traverseWithKey (\a _ -> f a) (HashSet.toMap s)
 
 withFile :: MonadBaseControl IO m => FilePath -> IOMode -> (Handle -> m r) -> m r

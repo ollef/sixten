@@ -1,8 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Backend.Target where
 
+import Prelude(String)
+import Protolude
+
 import qualified Data.List as List
-import Data.Word
 
 import Error
 import Pretty

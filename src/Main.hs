@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
-import Control.Monad
+import Protolude
+
 import Options.Applicative
 
 import qualified Command.Check as Check

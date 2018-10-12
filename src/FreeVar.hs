@@ -1,9 +1,9 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module FreeVar where
 
+import Protolude
+
 import Bound
-import Data.Function
-import Data.Hashable
 import Data.Vector(Vector)
 
 import MonadFresh

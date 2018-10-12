@@ -1,14 +1,13 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, GADTs, OverloadedStrings, TemplateHaskell #-}
 module Syntax.Pre.Definition where
 
-import Data.Bifunctor
+import Protolude
+
 import Data.Bitraversable
 import Data.Deriving
-import Data.Foldable
 import Data.Functor.Classes
 import Data.HashSet(HashSet)
 import Data.List.NonEmpty(NonEmpty)
-import Data.Traversable
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 

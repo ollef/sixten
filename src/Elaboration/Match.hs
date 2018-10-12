@@ -1,10 +1,8 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Elaboration.Match where
 
-import Control.Monad.Except
-import Data.Bifunctor
-import Data.Foldable
-import Data.Function
+import Protolude
+
 import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Vector as Vector
@@ -102,7 +100,7 @@ match failVar _ [] clauses expr0 = return $ foldr go expr0 clauses
   where
     go :: Clause -> ExprF -> ExprF
     go ([], s) x = fatBar failVar s x
-    go _ _ = error "match go"
+    go _ _ = panic "match go"
 match failVar retType xs clauses expr0
   = foldrM
     (matchMix failVar retType xs)
@@ -110,7 +108,7 @@ match failVar retType xs clauses expr0
   $ NonEmpty.groupBy ((==) `on` patternType . firstPattern) clauses
 
 firstPattern :: ([c], b) -> c
-firstPattern ([], _) = error "Match.firstPattern"
+firstPattern ([], _) = panic "Match.firstPattern"
 firstPattern (c:_, _) = c
 
 matchMix :: NonEmptyMatch
@@ -122,7 +120,7 @@ matchMix failVar retType (expr:exprs) clauses@(clause NonEmpty.:| _) expr0
       LitPatType -> matchLit
       ConPatType -> matchCon
       ViewPatType _ -> matchView
-matchMix _ _ _ _ _ = error "matchMix"
+matchMix _ _ _ _ _ = panic "matchMix"
 
 matchCon :: CoreM -> NonEmptyMatch
 matchCon expr failVar retType exprs clauses expr0 = do
@@ -147,11 +145,11 @@ matchCon expr failVar retType exprs clauses expr0 = do
   return $ fatBar failVar (Case expr (ConBranches cbrs) retType) expr0
   where
     firstCon (c:_, _) = constr c
-    firstCon _ = error "firstCon "
+    firstCon _ = panic "firstCon "
     typeParams (ConPat _ ps _) = ps
-    typeParams _ = error "match typeParams"
+    typeParams _ = panic "match typeParams"
     constr (ConPat c _ _) = c
-    constr _ = error "match constr"
+    constr _ = panic "match constr"
     constructors typeName = do
       (DataDefinition (DataDef _ cs) _, _) <- definition typeName
       return $ QConstr typeName . constrName <$> cs
@@ -177,7 +175,7 @@ matchLit expr failVar retType exprs clauses expr0 = do
   return $ Case expr (LitBranches lbrs expr0) retType
   where
     lit (LitPat l) = l
-    lit _ = error "match lit"
+    lit _ = panic "match lit"
 
 matchVar :: CoreM -> NonEmptyMatch
 matchVar expr failVar retType exprs clauses expr0 = do
@@ -188,7 +186,7 @@ matchVar expr failVar retType exprs clauses expr0 = do
     go (VarPat _ y:ps, e) = do
       let ps' = fmap (first $ substitute y expr) ps
       (ps', substitute y expr e)
-    go _ = error "match var"
+    go _ = panic "match var"
 
 matchView :: CoreM -> NonEmptyMatch
 matchView expr failVar retType exprs clauses
@@ -196,14 +194,14 @@ matchView expr failVar retType exprs clauses
   where
     f = case clauses of
       (ViewPat t _:_, _) NonEmpty.:| _ -> t
-      _ -> error "error matchView f"
+      _ -> panic "matchView f"
     deview :: Clause -> Clause
     deview (ViewPat _ p:ps, s) = (p : ps, s)
-    deview _ = error "error matchView deview"
+    deview _ = panic "matchView deview"
 
 decon :: [Clause] -> [Clause]
 decon clauses = [(unpat pat <> pats, b) | (pat:pats, b) <- clauses]
   where
     unpat (ConPat _ _ pats) = Vector.toList $ snd3 <$> pats
     unpat (LitPat _) = mempty
-    unpat _ = error "match unpat"
+    unpat _ = panic "match unpat"

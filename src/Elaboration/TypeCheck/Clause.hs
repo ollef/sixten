@@ -1,7 +1,8 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Elaboration.TypeCheck.Clause where
 
-import Control.Monad.Except
-import Data.Bifunctor
+import Protolude hiding (tails)
+
 import Data.Bitraversable
 import Data.Foldable as Foldable
 import Data.HashSet(HashSet)
@@ -89,7 +90,7 @@ checkClausesRho clauses rhoType = do
     (pats', patVars) <- tcPats pats mempty argTele
     let body = instantiatePattern pure (boundPatVars patVars) bodyScope
         argExprs = snd3 <$> pats'
-        returnType = instantiateTele id argExprs returnTypeScope
+        returnType = instantiateTele identity argExprs returnTypeScope
     body' <- withPatVars patVars $ checkRho body returnType
     return (fst3 <$> pats', body')
 
@@ -139,12 +140,12 @@ equaliseClauses clauses
       | numIm == len = NonEmpty.zipWith (first . (:)) heads $ go tails
       | numIm > 0 = go' $ addImplicit <$> clausePats
       | numEx > 0 = go' $ addExplicit <$> clausePats
-      | otherwise = error "equaliseClauses go"
+      | otherwise = panic "equaliseClauses go"
       where
         numEx = numExplicit clausePats
         numIm = numImplicit clausePats
-        heads = head <$> clausePats
-        tails = tail <$> clausePats
+        heads = fromMaybe (panic "equaliseClauses heads") . head <$> clausePats
+        tails = drop 1 <$> clausePats
         len = length clausePats
     go'
       :: NonEmpty ([(Plicitness, Pre.Pat c (Scope b expr v) ())], [Plicitness])

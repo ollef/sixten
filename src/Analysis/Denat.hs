@@ -1,6 +1,8 @@
 {-# LANGUAGE MonadComprehensions, OverloadedStrings #-}
 module Analysis.Denat where
 
+import Protolude
+
 import qualified Data.Vector as Vector
 
 import Builtin.Names
@@ -46,7 +48,7 @@ denatCase (Anno expr _) (ConBranches [ConBranch ZeroConstr _ztele zs, ConBranch 
   $ toScope
   $ Case (Anno (pure $ B ()) (global NatName))
     (LitBranches
-      (pure (LitBranch (Integer 0) $ F <$> instantiate (error "denatCase zs") (hoist denat zs)))
+      (pure (LitBranch (Integer 0) $ F <$> instantiate (panic "denatCase zs") (hoist denat zs)))
       (let_
         "pred"
         (App (App (global SubIntName) (intTyped $ pure $ B ())) (intTyped $ Lit $ Integer 1))

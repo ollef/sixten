@@ -1,6 +1,8 @@
 {-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, OverloadedStrings #-}
 module Syntax.Sized.Definition where
 
+import Protolude
+
 import Bound
 import Control.Monad.Morph
 import Data.Vector(Vector)
@@ -101,7 +103,7 @@ instance (v ~ Doc, Pretty (expr v), Monad expr) => Pretty (Function expr v) wher
 
 instance PrettyAnnotation IsClosure where
   prettyAnnotation IsClosure = prettyTightApp "[]"
-  prettyAnnotation NonClosure = id
+  prettyAnnotation NonClosure = identity
 
 instance (v ~ Doc, Pretty (expr v)) => Pretty (Constant expr v) where
   prettyM (Constant e) = prettyM e

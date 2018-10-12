@@ -1,8 +1,9 @@
 module Syntax.GlobalBind where
 
+import Protolude
+
 import Bound
 import Bound.Var
-import Data.Foldable
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 
@@ -22,7 +23,7 @@ instance GBound (Scope b) where
     = Scope $ gbind (pure . F . f) $ fmap (gbind f) <$> s
 
 boundJoin :: (Monad f, Bound t) => t f (f a) -> t f a
-boundJoin = (>>>= id)
+boundJoin = (>>>= identity)
 
 globals :: (Foldable e, GBind e) => e v -> HashSet QName
 globals = fold . gbind (pure . HashSet.singleton) . fmap (const mempty)

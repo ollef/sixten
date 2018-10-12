@@ -3,18 +3,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Elaboration.MetaVar where
 
-import Control.Monad.Except
-import Control.Monad.State
+import Protolude
+import Prelude(showsPrec, showString, showChar, showParen)
+
 import Data.Bitraversable
-import Data.Function
-import Data.Hashable
 import Data.IORef
-import Data.Maybe
 import Data.String
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
-import Data.Void
 
 import Error
 import MonadContext

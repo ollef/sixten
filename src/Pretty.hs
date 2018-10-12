@@ -21,12 +21,12 @@ module Pretty
   , withNameHint, withNameHints
   ) where
 
+import Protolude
+
 import Bound
-import Control.Monad.Reader
 import qualified Data.Foldable as Foldable
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
-import Data.Proxy
 import Data.String
 import Data.Text(Text)
 import qualified Data.Text as Text
@@ -36,7 +36,6 @@ import qualified Data.Text.Prettyprint.Doc.Render.Terminal as PP
 import qualified Data.Text.Prettyprint.Doc.Render.Text as RenderText
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
-import Data.Void
 import Numeric.Natural
 
 import Syntax.Name
@@ -134,13 +133,13 @@ withName k = do
   fnames <- asks freeNames
   case fnames of
     name:fnames' -> local (\env -> env {freeNames = fnames'}) $ withHint name k
-    [] -> error "withName impossible"
+    [] -> panic "withName impossible"
 
 withHint :: Name -> (Name -> PrettyDoc) -> PrettyDoc
 withHint name k = do
   bnames <- asks boundNames
   let candidates = name : [name <> fromString (show n) | n <- [(1 :: Int)..]]
-      actualName = head $ filter (not . (`HashSet.member` bnames)) candidates
+      actualName = fromMaybe (panic "withHint impossible") $ head $ filter (not . (`HashSet.member` bnames)) candidates
       bnames' = HashSet.insert actualName bnames
   local (\env -> env {boundNames = bnames'}) $ k actualName
 
@@ -171,7 +170,7 @@ letPrec  = 1
 above :: (PrettyDoc -> PrettyDoc) -> Int -> PrettyDoc -> PrettyDoc
 above f p' m = do
   p <- asks precedence
-  (if p > p' then f else id) $ associate (p' + 1) m
+  (if p > p' then f else identity) $ associate (p' + 1) m
 
 prettyApp :: PrettyDoc -> PrettyDoc -> PrettyDoc
 prettyApp p q = parens `above` appPrec $ associate appPrec p <+> q
@@ -201,7 +200,7 @@ instance a ~ Doc => IsString (PrettyEnv -> a) where
   fromString = const . fromString
 
 instance a ~ Doc => Pretty (PrettyEnv -> a) where
-  prettyM = id
+  prettyM = identity
 
 instance Pretty Bool where pretty = fromString . show
 instance Pretty Char where
@@ -213,7 +212,7 @@ instance Pretty Integer where pretty = fromString . show
 instance Pretty Natural where pretty = fromString . show
 instance Pretty Float  where pretty = fromString . show
 instance Pretty Double where pretty = fromString . show
-instance a ~ AnsiStyle => Pretty (PP.Doc a) where pretty = id
+instance a ~ AnsiStyle => Pretty (PP.Doc a) where pretty = identity
 instance Pretty Text where pretty = fromString . Text.unpack
 instance Pretty Name where pretty (Name n) = pretty n
 instance Pretty Constr where pretty (Constr c) = pretty c

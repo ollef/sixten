@@ -1,11 +1,10 @@
 {-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving, MultiParamTypeClasses, OverloadedStrings, TypeSynonymInstances #-}
 module Elaboration.Monad where
 
+import Protolude
+
 import Control.Monad.Except
 import Control.Monad.Fail
-import Control.Monad.Reader
-import Data.Foldable
-import Data.Maybe
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
@@ -72,7 +71,7 @@ exists hint d typ = do
   locals <- toVector . Tsil.filter (isNothing . varValue) <$> localVars
   let typ' = Core.pis locals typ
   logMeta 30 "exists typ" typ
-  let typ'' = close (error "exists not closed") typ'
+  let typ'' = close (panic "exists not closed") typ'
   loc <- currentLocation
   v <- explicitExists hint d typ'' (Vector.length locals) loc
   return $ Core.Meta v $ (\fv -> (varData fv, pure fv)) <$> locals

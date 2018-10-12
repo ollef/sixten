@@ -10,15 +10,14 @@
  #-}
 module Syntax.Let where
 
+import Protolude
+
 import Bound
 import Bound.Scope
 import Control.Monad.Morph
 import Data.Bitraversable
 import Data.Deriving
 import Data.Functor.Classes
-import Data.Hashable
-import Data.Maybe
-import Data.Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
@@ -98,7 +97,7 @@ instantiateLet
   -> Scope LetVar f a
   -> f a
 instantiateLet f vs
-  = instantiate (f . fromMaybe (error "instantiateLet") . (vs Vector.!?) . unLetVar)
+  = instantiate (f . fromMaybe (panic "instantiateLet") . (vs Vector.!?) . unLetVar)
 
 letAbstraction :: (Eq a, Hashable a) => Vector a -> a -> Maybe LetVar
 letAbstraction vs = fmap LetVar . hashedElemIndex vs

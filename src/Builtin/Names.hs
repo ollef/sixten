@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings, PatternSynonyms, ViewPatterns #-}
 module Builtin.Names where
 
+import Protolude hiding (Type)
+
 import Data.String
 
 import Syntax.Core

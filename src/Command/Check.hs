@@ -1,9 +1,10 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Command.Check where
 
+import Protolude
+
 import qualified Data.Text.IO as Text
-import Options.Applicative
-import System.IO
+import Options.Applicative as Options
 import Util
 
 import qualified Backend.Target as Target
@@ -24,7 +25,7 @@ optionsParser = Options
     <> help "Input source FILES"
     <> action "file"
     )
-  <*> option auto
+  <*> Options.option auto
     (long "verbose"
     <> short 'v'
     <> metavar "LEVEL"
@@ -60,4 +61,4 @@ check opts = withLogHandle (logFile opts) $ \logHandle -> do
     withLogHandle (Just file) k = Util.withFile file WriteMode k
 
 command :: ParserInfo (IO ())
-command = check <$> optionsParserInfo
+command = Command.Check.check <$> optionsParserInfo

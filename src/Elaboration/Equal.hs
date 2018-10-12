@@ -1,8 +1,8 @@
 {-# LANGUAGE ViewPatterns #-}
 module Elaboration.Equal where
 
-import Control.Applicative
-import Control.Monad.Except
+import Protolude
+
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector

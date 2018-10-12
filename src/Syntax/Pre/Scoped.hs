@@ -10,14 +10,12 @@ module Syntax.Pre.Scoped
   , pattern Pi1
   ) where
 
-import Control.Monad
-import Data.Bifunctor
+import Protolude hiding (Type)
+
 import Data.Bitraversable
 import Data.Foldable as Foldable
 import Data.Functor.Classes
-import Data.Hashable
 import Data.HashSet(HashSet)
-import Data.Traversable
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
@@ -80,7 +78,7 @@ telePis
   => Telescope Plicitness Type v
   -> Expr v
   -> Expr v
-telePis tele e = fmap (unvar (error "telePis") id) $ pis pats $ F <$> e
+telePis tele e = fmap (unvar (panic "telePis") identity) $ pis pats $ F <$> e
   where
     pats = iforTele tele $ \i h p s -> (p, AnnoPat (VarPat h $ B $ TeleVar i) $ fromScope s)
 

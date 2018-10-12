@@ -1,5 +1,8 @@
 module Command.Compile.Options where
 
+import Prelude(String)
+import Protolude
+
 import qualified Command.Check.Options as Check
 
 data Options = Options

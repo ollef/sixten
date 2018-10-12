@@ -1,9 +1,10 @@
 {-# LANGUAGE DefaultSignatures, GADTs, OverloadedStrings, PatternSynonyms #-}
 module Error where
 
+import Protolude hiding (TypeError)
+
 import Control.Monad.Reader
 import Control.Monad.RWS
-import Control.Monad.State
 import Control.Monad.Trans.Identity
 import Control.Monad.Writer
 import Data.Text(Text)

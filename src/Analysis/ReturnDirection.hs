@@ -1,12 +1,12 @@
 {-# LANGUAGE FlexibleContexts, MonadComprehensions, OverloadedStrings #-}
 module Analysis.ReturnDirection where
 
-import Control.Monad
-import Control.Monad.IO.Class
+import qualified Prelude(show)
+import Protolude hiding (Location, MetaData)
+
 import Data.Bitraversable
 import Data.IORef
 import qualified Data.List.NonEmpty as NonEmpty
-import Data.Maybe
 import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
@@ -199,10 +199,10 @@ inferFunction expr = case expr of
       Just (FunctionSig _ retDir argDirs) -> return (Global g, (fromReturnIndirect <$> retDir, argDirs))
       Just (ConstantSig _) -> def
       Just (AliasSig aliasee) -> inferFunction $ Global aliasee
-      Nothing -> error "ReturnDirection.inferFunction no sig"
+      Nothing -> panic "ReturnDirection.inferFunction no sig"
   _ -> return def
   where
-    def = error "ReturnDirection.inferFunction non-function"
+    def = panic "ReturnDirection.inferFunction non-function"
 
 inferDefinition
   :: FreeV
@@ -227,7 +227,7 @@ inferDefinition _ (ConstantDef _ (Constant (Anno (Global glob) _))) =
 inferDefinition _ (ConstantDef vis (Constant e)) = do
   (e', _loc) <- inferAnno e
   return (ConstantDef vis $ Constant e', ConstantSig $ typeDir $ typeAnno e)
-inferDefinition _ _ = error "ReturnDirection.inferDefinition"
+inferDefinition _ _ = panic "ReturnDirection.inferDefinition"
 
 generaliseDefs
   :: Vector (Definition Expr FreeV, Signature MetaReturnIndirect)
@@ -264,14 +264,14 @@ inferRecursiveDefs defs = do
       expose name = case nameIndex name of
         Nothing -> global name
         Just index -> pure
-          $ fromMaybe (error "InferDirection.inferRecursiveDefs expose")
+          $ fromMaybe (panic "InferDirection.inferRecursiveDefs expose")
           $ evars Vector.!? index
 
   let exposedDefs = flip Vector.map defs $ \(_, Closed e) ->
         gbound expose e
 
   inferredDefs <- Vector.forM (Vector.zip evars exposedDefs) $ \(v, d) -> do
-    logPretty 30 "InferDirection.inferRecursiveDefs 2" (show v, shower <$> d)
+    logPretty 30 "InferDirection.inferRecursiveDefs 2" (show v :: Text, shower <$> d)
     inferDefinition v d
 
   genDefs <- generaliseDefs inferredDefs
@@ -280,7 +280,7 @@ inferRecursiveDefs defs = do
       unexpose evar = case varIndex evar of
         Nothing -> pure evar
         Just index -> global
-          $ fromMaybe (error "inferRecursiveDefs 2")
+          $ fromMaybe (panic "inferRecursiveDefs 2")
           $ names Vector.!? index
       vf :: FreeV -> VIX b
       vf v = internalError $ "inferRecursiveDefs" PP.<+> shower v
@@ -288,4 +288,4 @@ inferRecursiveDefs defs = do
   forM (Vector.zip names genDefs) $ \(name, (def ,sig)) -> do
     let unexposedDef = def >>>= unexpose
     unexposedDef' <- traverse vf unexposedDef
-    return (name, close id unexposedDef', sig)
+    return (name, close identity unexposedDef', sig)

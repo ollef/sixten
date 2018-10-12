@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Syntax.Literal where
 
-import Data.Word
+import Protolude
+
 import Numeric.Natural
 
 import Pretty

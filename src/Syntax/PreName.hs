@@ -1,7 +1,7 @@
 module Syntax.PreName where
 
-import Control.Applicative
-import Data.Hashable
+import Protolude
+
 import Data.String
 import Data.Text(Text)
 

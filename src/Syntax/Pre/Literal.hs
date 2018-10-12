@@ -1,5 +1,7 @@
 module Syntax.Pre.Literal where
 
+import Protolude
+
 import Data.Text(Text)
 
 import Pretty
