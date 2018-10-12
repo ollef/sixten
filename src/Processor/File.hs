@@ -261,8 +261,7 @@ generateGroup
   :: [(QName, Extracted.Submodule (Closed (Sized.Definition Extracted.Expr)))]
   -> VIX [Generate.GeneratedSubmodule]
 generateGroup defs =
-  forM defs $ \(x, m) ->
-    Generate.generateSubmodule x m
+  forM defs $ uncurry Generate.generateSubmodule
 
 data ProcessFileArgs = ProcessFileArgs
   { procFile :: FilePath

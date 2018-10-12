@@ -62,11 +62,11 @@ llvmBinPath = checkLlvmExists candidates
       = ""
       -- The naming scheme on e.g. Ubuntu:
       : fmap (("-" <>) . showVersion) supportedLlvmVersions
-    prefixes
-      = ""
+    prefixes =
+      [ ""
       -- The installation path of Brew on Mac:
-      : "/usr/local/opt/llvm/bin/"
-      : []
+      , "/usr/local/opt/llvm/bin/"
+      ]
     candidates
       = ["llvm-config" <> suffix | suffix <- suffixes]
       ++ [prefix <> "llvm-config" | prefix <- prefixes]

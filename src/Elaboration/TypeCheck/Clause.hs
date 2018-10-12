@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, LambdaCase, TupleSections #-}
 module Elaboration.TypeCheck.Clause where
 
 import Protolude hiding (tails)
@@ -135,7 +135,7 @@ equaliseClauses clauses
       :: NonEmpty [(Plicitness, Pre.Pat c (Scope b expr v) ())]
       -> NonEmpty ([(Plicitness, Pre.Pat c (Scope b expr v) ())], [Plicitness])
     go clausePats
-      | numEx == 0 && numIm == 0 = (\pats -> (pats, mempty)) <$> clausePats
+      | numEx == 0 && numIm == 0 = (, mempty) <$> clausePats
       | numEx == len = NonEmpty.zipWith (first . (:)) heads $ go tails
       | numIm == len = NonEmpty.zipWith (first . (:)) heads $ go tails
       | numIm > 0 = go' $ addImplicit <$> clausePats
@@ -157,11 +157,11 @@ equaliseClauses clauses
         (go $ fst <$> clausePats)
 
     numExplicit, numImplicit :: NonEmpty [(Plicitness, Pre.Pat c (Scope b expr v) ())] -> Int
-    numExplicit = length . NonEmpty.filter (\xs -> case xs of
+    numExplicit = length . NonEmpty.filter (\case
       (Explicit, _):_ -> True
       _ -> False)
 
-    numImplicit = length . NonEmpty.filter (\xs -> case xs of
+    numImplicit = length . NonEmpty.filter (\case
       (Implicit, _):_ -> True
       _ -> False)
 

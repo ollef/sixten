@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, LambdaCase, OverloadedStrings #-}
 module Processor.Files where
 
 import Protolude hiding (TypeError, moduleName, sourceFile)
@@ -112,7 +112,7 @@ cycleCheck
   -> m [Module contents]
 cycleCheck modules = do
   let orderedModules = moduleDependencyOrder modules
-  forM orderedModules $ \moduleGroup -> case moduleGroup of
+  forM orderedModules $ \case
     AcyclicSCC modul -> return modul
     CyclicSCC ms -> throwError
       -- TODO: Could be allowed?

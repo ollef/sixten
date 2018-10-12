@@ -1,4 +1,4 @@
-{-# LANGUAGE ConstraintKinds, FlexibleContexts, MonadComprehensions, OverloadedStrings, ViewPatterns, RecursiveDo #-}
+{-# LANGUAGE ConstraintKinds, FlexibleContexts, MonadComprehensions, OverloadedStrings, TupleSections, ViewPatterns, RecursiveDo #-}
 module Elaboration.Normalise where
 
 import Protolude hiding (TypeRep)
@@ -142,11 +142,7 @@ normalise'
   -> Expr meta (ExprFreeVar meta) -- ^ Expression to normalise
   -> [(Plicitness, Expr meta (ExprFreeVar meta))] -- ^ Arguments to the expression
   -> m (Expr meta (ExprFreeVar meta))
-normalise' args expr exprs = do
-  -- logMeta 40 "normalise e" $ apps expr exprs
-  res <- normaliseBuiltins go expr exprs
-  -- logMeta 40 "normalise res" res
-  return res
+normalise' args = normaliseBuiltins go
   where
     go e@(Var FreeVar { varValue = Just e' }) es = do
       minlined <- normaliseDef normalise0 e' es
@@ -335,7 +331,7 @@ normaliseDef norm = lambdas
     lambdas Lam {} [] = return Nothing
     lambdas e es = do
       mresult <- cases e
-      return $ flip (,) es <$> mresult
+      return $ (, es) <$> mresult
     cases (Case e brs _retType) = do
       e' <- norm e
       case chooseBranch e' brs of

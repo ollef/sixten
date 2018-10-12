@@ -200,7 +200,7 @@ collectDefDeps vars defs = do
         = fmap acyclic
         . topoSortWith identity (toHashSet . varType)
         . HashSet.intersection vars
-        . saturate (\v -> fold (fmap (\(_, _, _, _, deps) -> deps) $ hashedLookup allDeps v) <> toHashSet (varType v))
+        . saturate (\v -> fold ((\(_, _, _, _, deps) -> deps) <$> hashedLookup allDeps v) <> toHashSet (varType v))
   fmap (\(name, loc, def, typ, deps) -> (name, loc, def, typ, sat deps)) <$> allDeps
   where
     acyclic (AcyclicSCC a) = a

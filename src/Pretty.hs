@@ -175,7 +175,7 @@ above f p' m = do
 prettyApp :: PrettyDoc -> PrettyDoc -> PrettyDoc
 prettyApp p q = parens `above` appPrec $ associate appPrec p <+> q
 
-prettyApps :: Foldable t => PrettyDoc -> t (PrettyDoc) -> PrettyDoc
+prettyApps :: Foldable t => PrettyDoc -> t PrettyDoc -> PrettyDoc
 prettyApps = foldl prettyApp
 
 prettyTightApp :: PrettyDoc -> PrettyDoc -> PrettyDoc

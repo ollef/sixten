@@ -237,7 +237,7 @@ filterMSet
   => (a -> f Bool)
   -> HashSet a
   -> f (HashSet a)
-filterMSet f s  
+filterMSet f s
   = HashSet.fromMap . void . HashMap.filter identity
   <$> HashMap.traverseWithKey (\a _ -> f a) (HashSet.toMap s)
 

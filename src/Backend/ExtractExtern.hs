@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, MonadComprehensions, OverloadedStrings #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, LambdaCase, MonadComprehensions, OverloadedStrings #-}
 module Backend.ExtractExtern where
 
 import Protolude
@@ -142,7 +142,7 @@ extractExtern retType (Extern C parts) = do
       typedArgsMap = HashMap.fromList typedArgs
       argNamesMap = HashMap.fromList argNames
 
-  renderedParts <- forM parts $ \part -> case part of
+  renderedParts <- forM parts $ \case
     ExternPart str -> return str
     TypeMacroPart (Anno typ _) -> return $ externType $ typeDirection typ
     ExprMacroPart (Anno (Extracted.Var v) _) -> return $ argNamesMap HashMap.! v

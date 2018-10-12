@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, FlexibleInstances, GeneralizedNewtypeDeriving, MonadComprehensions, MultiParamTypeClasses, OverloadedStrings, TypeSynonymInstances, ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances, GeneralizedNewtypeDeriving, LambdaCase, MonadComprehensions, MultiParamTypeClasses, OverloadedStrings, TypeSynonymInstances, ViewPatterns #-}
 module Backend.SLam where
 
 import Protolude
@@ -123,7 +123,7 @@ slamExtern
   :: Extern (Core.Expr Void FreeV)
   -> SLam (Extern (Anno SLambda.Expr FreeV))
 slamExtern (Extern lang parts)
-  = fmap (Extern lang) $ forM parts $ \part -> case part of
+  = fmap (Extern lang) $ forM parts $ \case
     ExternPart str -> return $ ExternPart str
     ExprMacroPart e -> ExprMacroPart <$> slamAnno e
     TypeMacroPart t -> TypeMacroPart <$> (slamAnno =<< whnf t)

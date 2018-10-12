@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, ViewPatterns #-}
+{-# LANGUAGE LambdaCase, OverloadedStrings, ViewPatterns #-}
 module Analysis.Cycle where
 
 import Protolude hiding (TypeError)
@@ -107,16 +107,8 @@ cycleCheckExpr expr = case expr of
     Meta m _ -> absurd m
     Global g -> return $ Global g
     Lit l -> return $ Lit l
-    Pi h p t s -> do
-      t' <- cycleCheckExpr t
-      v <- freeVar h p t'
-      e <- cycleCheckExpr $ instantiate1 (pure v) s
-      return $ pi_ v e
-    Lam h p t s -> do
-      t' <- cycleCheckExpr t
-      v <- freeVar h p t'
-      e <- cycleCheckExpr $ instantiate1 (pure v) s
-      return $ lam v e
+    Pi h p t s -> absCase h p t s pi_
+    Lam h p t s -> absCase h p t s lam
     Con qc -> return $ Con qc
     App e1 p e2 -> App
       <$> cycleCheckExpr e1
@@ -145,6 +137,12 @@ cycleCheckExpr expr = case expr of
       <$> mapM cycleCheckExpr c
       <*> cycleCheckExpr retType
     SourceLoc loc e -> located loc $ SourceLoc loc <$> cycleCheckExpr e
+    where
+      absCase h p t s c = do
+        t' <- cycleCheckExpr t
+        v <- freeVar h p t'
+        e <- cycleCheckExpr $ instantiate1 (pure v) s
+        return $ c v e
 
 cycleCheckBranches
   :: Branches Plicitness (Expr Void) (FreeV m)
@@ -193,7 +191,7 @@ cycleCheckLets
   -> VIX [(FreeV m, name, SourceLoc, Definition (Expr m) (FreeV m))]
 cycleCheckLets defs = do
   (peeledDefExprs, locMap) <- peelLets [(name, loc, v, e) | (v, name, loc, ConstantDefinition _ e) <- defs]
-  Any cyclic <- foldForM (topoSortWith fst snd peeledDefExprs) $ \scc -> case scc of
+  Any cyclic <- foldForM (topoSortWith fst snd peeledDefExprs) $ \case
     AcyclicSCC _ -> return mempty
     CyclicSCC defExprs -> do
       let (functions, constants) = foldMap go defExprs

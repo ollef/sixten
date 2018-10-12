@@ -112,7 +112,7 @@ prettyMetaVar x = do
       v <- liftVIX $ gets vixVerbosity
       sol' <- prettyMeta (open sol :: Expr MetaVar Doc)
       if v <= 30 then
-        return $ PP.parens $ sol'
+        return $ PP.parens sol'
       else
         return $ PP.parens $ name PP.<+> "=" PP.<+> sol'
 
@@ -226,18 +226,8 @@ bindMetas f expr = case expr of
   Global g -> return $ Global g
   Con c -> return $ Con c
   Lit l -> return $ Lit l
-  Pi h p t s -> do
-    t' <- bindMetas f t
-    v <- forall h p t'
-    let e = instantiate1 (pure v) s
-    e' <- withVar v $ bindMetas f e
-    return $ pi_ v e'
-  Lam h p t s -> do
-    t' <- bindMetas f t
-    v <- forall h p t'
-    let e = instantiate1 (pure v) s
-    e' <- withVar v $ bindMetas f e
-    return $ lam v e'
+  Pi h p t s -> absCase h p t s pi_
+  Lam h p t s -> absCase h p t s lam
   App e1 p e2 -> App <$> bindMetas f e1 <*> pure p <*> bindMetas f e2
   Let ds scope -> do
     vs <- forMLet ds $ \h _ _ t -> do
@@ -253,6 +243,14 @@ bindMetas f expr = case expr of
   Case e brs t -> Case <$> bindMetas f e <*> bindBranchMetas f brs <*> bindMetas f t
   ExternCode e t -> ExternCode <$> mapM (bindMetas f) e <*> bindMetas f t
   SourceLoc loc e -> SourceLoc loc <$> bindMetas f e
+  where
+    absCase h p t s c = do
+      t' <- bindMetas f t
+      v <- forall h p t'
+      let e = instantiate1 (pure v) s
+      e' <- withVar v $ bindMetas f e
+      return $ c v e'
+
 
 bindMetas'
   :: MonadBindMetas meta' m

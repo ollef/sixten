@@ -139,19 +139,10 @@ unify' cxt touchable type1 type2 = case (type1, type2) of
       unless equal typeMismatch
 
     typeMismatch = do
-      explanation <- forM cxt $ \(t1, t2) -> do
-        t1' <- zonk t1
-        t2' <- zonk t2
-        actual <- prettyMeta t1'
-        expect <- prettyMeta t2'
-        return
-          [ ""
-          , bold "Inferred:" PP.<+> red actual
-          , bold "Expected:" PP.<+> dullGreen expect
-          ]
+      printedCxt <- prettyContext cxt
       throwLocated
         $ "Type mismatch" <> PP.line <>
-          PP.vcat (intercalate ["", "while trying to unify"] explanation)
+          PP.vcat printedCxt
 
 occurs
   :: [(CoreM, CoreM)]
@@ -161,19 +152,10 @@ occurs
 occurs cxt mv expr = do
   mvs <- metaVars expr
   when (mv `HashSet.member` mvs) $ do
-    explanation <- forM cxt $ \(t1, t2) -> do
-      t1' <- zonk t1
-      t2' <- zonk t2
-      actual <- prettyMeta t1'
-      expect <- prettyMeta t2'
-      return
-        [ ""
-        , bold "Inferred:" PP.<+> red actual
-        , bold "Expected:" PP.<+> dullGreen expect
-        ]
     printedMv <- prettyMetaVar mv
     expr' <- zonk expr
     printedExpr <- prettyMeta expr'
+    printedCxt <- prettyContext cxt
     throwLocated
       $ "Cannot construct the infinite type"
       <> PP.line
@@ -183,7 +165,21 @@ occurs cxt mv expr = do
         , dullBlue printedExpr
         , ""
         , "while trying to unify"
-        ] ++ intercalate ["", "while trying to unify"] explanation)
+        ] ++ printedCxt)
+
+prettyContext :: [(CoreM, CoreM)] -> Elaborate [PP.Doc AnsiStyle]
+prettyContext cxt = do
+  explanation <- forM cxt $ \(t1, t2) -> do
+    t1' <- zonk t1
+    t2' <- zonk t2
+    actual <- prettyMeta t1'
+    expect <- prettyMeta t2'
+    return
+      [ ""
+      , bold "Inferred:" PP.<+> red actual
+      , bold "Expected:" PP.<+> dullGreen expect
+      ]
+  return $ intercalate ["", "while trying to unify"] explanation
 
 prune :: HashSet FreeV -> CoreM -> Elaborate CoreM
 prune allowed expr = indentLog $ do
@@ -196,19 +192,16 @@ prune allowed expr = indentLog $ do
       -- logShow 30 "prune" $ metaId m
       sol <- solution m
       case sol of
-        Just e -> do
-          -- VIX.logShow 30 "prune solved" ()
+        Just e ->
           bindMetas go $ betaApps (open e) es
         Nothing -> do
           es' <- mapM (mapM whnf) es
           localAllowed <- toHashSet <$> localVars
           case distinctVarView es' of
-            Nothing -> do
-              -- VIX.logShow 30 "prune not distinct" ()
+            Nothing ->
               return $ Meta m es'
             Just pvs
-              | Vector.length vs' == Vector.length vs -> do
-                -- VIX.logShow 30 "prune nothing to do" ()
+              | Vector.length vs' == Vector.length vs ->
                 return $ Meta m es'
               | otherwise -> do
                 newMetaType' <- prune (toHashSet vs') mType

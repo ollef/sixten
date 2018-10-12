@@ -190,9 +190,7 @@ funSubtype'
   -> Elaborate (NameHint, Rhotype, Scope1 (Expr MetaVar) FreeV, CoreM -> CoreM)
 funSubtype' (Pi h p t s) p' | p == p' = return (h, t, s, identity)
 funSubtype' typ p = do
-  argType <- existsType mempty
-  resType <- existsType mempty
-  let resScope = abstractNone resType
+  (argType, resScope) <- existsPi
   f <- subtypeRho' (Pi mempty p argType resScope) typ $ InstUntil p
   return (mempty, argType, resScope, f)
 
@@ -211,8 +209,13 @@ subtypeFun'
   -> Elaborate (Rhotype, Scope1 (Expr MetaVar) FreeV, CoreM -> CoreM)
 subtypeFun' (Pi _ p t s) p' | p == p' = return (t, s, identity)
 subtypeFun' typ p = do
-  argType <- existsType mempty
-  resType <- existsType mempty
-  let resScope = abstractNone resType
+  (argType, resScope) <- existsPi
   f <- subtype typ $ Pi mempty p argType resScope
   return (argType, resScope, f)
+
+existsPi :: Elaborate (CoreM, Scope1 (Expr MetaVar) FreeV)
+existsPi = do
+  argType <- existsType mempty
+  resType <- existsType mempty
+  return (argType, abstractNone resType)
+  

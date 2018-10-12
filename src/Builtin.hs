@@ -43,7 +43,7 @@ environment target = HashMap.fromList
     cl = fromMaybe (panic "Builtin not closed") . closed
     -- TODO: Should be made nonmatchable
     opaqueData rep t = dataType rep t mempty
-    dataType rep typ xs = (builtinSourceLoc, closeDefinition identity identity $ DataDefinition (DataDef (piTelescope cltyp) xs) rep, biclose identity identity $ cltyp)
+    dataType rep typ xs = (builtinSourceLoc, closeDefinition identity identity $ DataDefinition (DataDef (piTelescope cltyp) xs) rep, biclose identity identity cltyp)
       where
         cltyp = cl typ
 
@@ -52,14 +52,13 @@ environment target = HashMap.fromList
     typeRep = MkType $ TypeRep.typeRep target
 
 convertedEnvironment :: Target -> HashMap QName (Closed (Sized.Definition Lifted.Expr))
-convertedEnvironment target = HashMap.fromList $ concat
-  [ [(papName left given, pap target left given)
+convertedEnvironment target = HashMap.fromList
+  $ [(papName left given, pap target left given)
     | given <- [1..maxArity - 1], left <- [1..maxArity - given]
     ]
-  , [(applyName arity, apply target arity)
-    | arity <- [1..maxArity]
-    ]
-  ]
+  ++ [(applyName arity, apply target arity)
+     | arity <- [1..maxArity]
+     ]
 
 convertedSignatures :: Target -> HashMap QName Lifted.FunSignature
 convertedSignatures target

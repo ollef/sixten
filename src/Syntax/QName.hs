@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveGeneric, GeneralizedNewtypeDeriving, OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric, GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module Syntax.QName where
 
 import Protolude

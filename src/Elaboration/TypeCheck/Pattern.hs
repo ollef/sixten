@@ -77,13 +77,13 @@ tcPats pats vs tele = do
         expectedType = instantiateTele identity argExprs s
         (p, pat) = pats Vector.! i
         -- TODO could be more efficient
-        varPrefix = join (snd <$> results)
+        varPrefix = snd =<< results
         vs' = vs <> boundPatVars varPrefix
     logShow 30 "tcPats vars" (varId <$> vs')
     (pat', patExpr, vs'') <- withPatVars varPrefix $ checkPat p pat vs' expectedType
     return ((pat', patExpr, expectedType), vs'')
 
-  return (fst <$> results, join (snd <$> results))
+  return (fst <$> results, snd =<< results)
 
 tcPat
   :: Plicitness

@@ -167,7 +167,7 @@ conPatArgs c params = do
 
 matchLit :: CoreM -> NonEmptyMatch
 matchLit expr failVar retType exprs clauses expr0 = do
-  let ls = NonEmpty.nub $ (lit . firstPattern) <$> clauses
+  let ls = NonEmpty.nub $ lit . firstPattern <$> clauses
   lbrs <- forM ls $ \l -> do
     let clausesStartingWithL = NonEmpty.filter ((== LitPat l) . firstPattern) clauses
     rest <- match failVar retType exprs (decon clausesStartingWithL) (pure failVar)

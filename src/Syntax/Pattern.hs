@@ -62,17 +62,6 @@ abstractPatternTypes vars
   . Identity
   . (,) ()
 
-indexedPattern
-  :: Traversable pat
-  => pat b
-  -> pat (PatternVar, b)
-indexedPattern = flip evalState 0 . traverse inc
-  where
-    inc b = do
-      n <- get
-      put $! n + 1
-      pure (n, b)
-
 indexedPatterns
   :: (Traversable f, Traversable pat)
   => f (p, pat b)

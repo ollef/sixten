@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 module Command.Run where
 
 import Prelude(String, words)
@@ -32,7 +33,7 @@ optionsParser = Options
     )
 
 run :: Options -> IO ()
-run opts = Compile.compile (compileOptions opts) False $ \res -> case res of
+run opts = Compile.compile (compileOptions opts) False $ \case
   Processor.Failure errs -> mapM_ printError errs
   Processor.Success (f, _) -> callProcess f $ maybe [] words $ commandLineArguments opts
 

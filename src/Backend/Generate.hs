@@ -38,7 +38,7 @@ import Syntax.Closed
 import Syntax.Direction
 import Syntax.Extern(Language)
 import Syntax.Extern as Extern
-import Syntax.GlobalBind hiding (global)
+import Syntax.GlobalBind
 import Syntax.Literal
 import Syntax.Module
 import Syntax.Name
@@ -132,9 +132,7 @@ generateCall
   -> Expr Var
   -> InstrGen Var
 generateCall lang retDir funExpr es typ = do
-  let argDirs = fst <$> es
-  fun <- generateFunOp funExpr retDir argDirs
-  args <- join <$> mapM (uncurry generateDirectedExpr) es
+  (fun, args) <- generateFunArgs retDir funExpr es
   case retDir of
     ReturnDirect TypeRep.UnitRep -> do
       _ <- varCall lang fun args
@@ -150,6 +148,17 @@ generateCall lang retDir funExpr es typ = do
     ReturnIndirect Projection -> do
       res <- varCall lang fun args `named` "call-return"
       return $ IndirectVar res
+
+generateFunArgs
+  :: RetDir
+  -> Expr Var
+  -> Vector (Direction, Anno Expr Var)
+  -> InstrGen (LLVM.Operand, Vector Var)
+generateFunArgs retDir funExpr es = do
+  let argDirs = fst <$> es
+  fun <- generateFunOp funExpr retDir argDirs
+  args <- join <$> mapM (uncurry generateDirectedExpr) es
+  return (fun, args)
 
 storeExpr :: Expr Var -> Expr Var -> LLVM.Operand -> InstrGen ()
 storeExpr expr typ out = case expr of
@@ -208,9 +217,7 @@ storeCall
   -> LLVM.Operand
   -> InstrGen ()
 storeCall lang retDir funExpr es typ out = do
-  let argDirs = fst <$> es
-  fun <- generateFunOp funExpr retDir argDirs
-  args <- join <$> mapM (uncurry generateDirectedExpr) es
+  (fun, args) <- generateFunArgs retDir funExpr es
   case retDir of
     ReturnDirect TypeRep.UnitRep -> do
       _ <- varCall lang fun args
@@ -793,7 +800,7 @@ generateSubmodule name modul = do
     { declarations = HashMap.fromList decls
     , definitions = defs
     , initCode = i
-    , externs = submoduleExterns $ modul
+    , externs = submoduleExterns modul
     }
 
 generateModule
