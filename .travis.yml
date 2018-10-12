@@ -37,8 +37,8 @@ before_install:
 - stack ${STACK_FLAGS} setup
 
 script:
-- stack ${STACK_FLAGS} test --test-arguments "--catch-stderr --sixten-args \"$SIXTEN_ARGS\""
-- stack ${STACK_FLAGS} test --test-arguments "--catch-stderr --sixten-args \"-O2 $SIXTEN_ARGS\""
+- stack ${STACK_FLAGS} test --fast --test-arguments "--catch-stderr --sixten-args \"$SIXTEN_ARGS\""
+- stack ${STACK_FLAGS} test --fast --test-arguments "--catch-stderr --sixten-args \"-O2 $SIXTEN_ARGS\""
 
 cache:
   directories:
