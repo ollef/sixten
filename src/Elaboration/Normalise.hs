@@ -1,53 +1,57 @@
-{-# LANGUAGE ConstraintKinds, FlexibleContexts, MonadComprehensions, OverloadedStrings, TupleSections, ViewPatterns, RecursiveDo #-}
+{-# LANGUAGE ConstraintKinds, FlexibleContexts, MonadComprehensions, OverloadedStrings, TupleSections, ViewPatterns #-}
 module Elaboration.Normalise where
 
 import Protolude hiding (TypeRep)
 
-import Control.Monad.Except
+import Data.IORef
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
+import Driver.Query
+import Effect
+import Effect.Log as Log
 import Elaboration.MetaVar
+import {-# SOURCE #-} Elaboration.MetaVar.Zonk
 import Elaboration.Monad
-import MonadContext
-import MonadLog
 import Syntax
 import Syntax.Core
 import TypedFreeVar
 import TypeRep(TypeRep)
 import qualified TypeRep
 import Util
-import VIX
 
 type ExprFreeVar meta = FreeVar Plicitness (Expr meta)
 
-type MonadNormalise meta m = (MonadIO m, MonadVIX m, MonadContext (ExprFreeVar meta) m, MonadError Error m, MonadFix m, MonadLog m)
+type MonadNormalise meta m = (MonadIO m, MonadFetch Query m, MonadFresh m, MonadContext (ExprFreeVar meta) m, MonadLog m)
 
 data Args meta m = Args
-  { expandTypeReps :: !Bool
+  { _expandTypeReps :: !Bool
     -- ^ Should types be reduced to type representations (i.e. forget what the
     -- type is and only remember its representation)?
-  , handleMetaVar :: !(meta -> m (Maybe (Closed (Expr meta))))
+  , _prettyExpr :: !(Expr meta (ExprFreeVar meta) -> m Doc)
+  , _handleMetaVar :: !(meta -> m (Maybe (Closed (Expr meta))))
     -- ^ Allows whnf to try to solve unsolved class constraints when they're
     -- encountered.
   }
 
-metaVarSolutionArgs :: MonadIO m => Args MetaVar m
+metaVarSolutionArgs :: (MonadIO m, MonadLog m) => Args MetaVar m
 metaVarSolutionArgs = Args
-  { expandTypeReps = False
-  , handleMetaVar = solution
+  { _expandTypeReps = False
+  , _prettyExpr = prettyMeta <=< zonk
+  , _handleMetaVar = solution
   }
 
-expandTypeRepsArgs :: MonadIO m => Args MetaVar m
+expandTypeRepsArgs :: (MonadIO m, MonadLog m) => Args MetaVar m
 expandTypeRepsArgs = metaVarSolutionArgs
-  { expandTypeReps = True
+  { _expandTypeReps = True
   }
 
-voidArgs :: Args Void m
+voidArgs :: Applicative m => Args Void m
 voidArgs = Args
-  { expandTypeReps = False
-  , handleMetaVar = absurd
+  { _expandTypeReps = False
+  , _prettyExpr = pure . pretty . fmap pretty
+  , _handleMetaVar = absurd
   }
 
 -------------------------------------------------------------------------------
@@ -58,34 +62,34 @@ whnf
   -> m CoreM
 whnf expr = whnf' metaVarSolutionArgs expr mempty
 
-whnfExpandingTypeReps
-  :: MonadNormalise MetaVar m
-  => CoreM
-  -> m CoreM
-whnfExpandingTypeReps expr = whnf' expandTypeRepsArgs expr mempty
-
 whnf'
   :: MonadNormalise meta m
   => Args meta m
   -> Expr meta (ExprFreeVar meta) -- ^ Expression to normalise
   -> [(Plicitness, Expr meta (ExprFreeVar meta))] -- ^ Arguments to the expression
   -> m (Expr meta (ExprFreeVar meta))
-whnf' args expr exprs = indentLog $ do
-  let metaText :: Text
-      metaText = "(meta)"
-  logPretty 40 "whnf e" $ bimap (const metaText) pretty $ apps expr exprs
+whnf' args expr exprs = Log.indent $ do
+  whenLoggingCategory "tc.whnf" $ do
+    pe <- _prettyExpr args $ apps expr exprs
+    logPretty "tc.whnf" "whnf e" pe
   res <- normaliseBuiltins go expr exprs
-  logPretty 40 "whnf res" $ bimap (const metaText) pretty res
+  whenLoggingCategory "tc.whnf" $ do
+    pres <- _prettyExpr args res
+    logPretty "tc.whnf" "whnf res" pres
   return res
   where
-    go e@(Var FreeVar { varValue = Just e' }) es = do
-      minlined <- normaliseDef whnf0 e' es
-      case minlined of
+    go e@(Var FreeVar { varValue = Just ref }) es = do
+      me' <- liftIO $ readIORef ref
+      case me' of
         Nothing -> return $ apps e es
-        Just (inlined, es') -> whnf' args inlined es'
+        Just e' -> do
+          minlined <- normaliseDef whnf0 e' es
+          case minlined of
+            Nothing -> return $ apps e es
+            Just (inlined, es') -> whnf' args inlined es'
     go e@(Var FreeVar { varValue = Nothing }) es = return $ apps e es
     go (Meta m mes) es = do
-      sol <- handleMetaVar args m
+      sol <- _handleMetaVar args m
       case sol of
         Nothing -> do
           mes' <- mapM (mapM whnf0) mes
@@ -93,7 +97,7 @@ whnf' args expr exprs = indentLog $ do
           return $ apps (Meta m mes') es'
         Just e' -> whnf' args (open e') $ toList mes ++ es
     go e@(Global g) es = do
-      (d, _) <- definition g
+      d <- fetchDefinition g
       case d of
         ConstantDefinition Concrete e' -> do
           minlined <- normaliseDef whnf0 e' es
@@ -102,7 +106,7 @@ whnf' args expr exprs = indentLog $ do
             Just (inlined, es') -> whnf' args inlined es'
         ConstantDefinition Abstract _ -> return $ apps e es
         DataDefinition _ rep
-          | expandTypeReps args -> do
+          | _expandTypeReps args -> do
             minlined <- normaliseDef whnf0 rep es
             case minlined of
               Nothing -> return $ apps e es
@@ -144,21 +148,25 @@ normalise'
   -> m (Expr meta (ExprFreeVar meta))
 normalise' args = normaliseBuiltins go
   where
-    go e@(Var FreeVar { varValue = Just e' }) es = do
-      minlined <- normaliseDef normalise0 e' es
-      case minlined of
+    go e@(Var FreeVar { varValue = Just ref }) es = do
+      me' <- liftIO $ readIORef ref
+      case me' of
         Nothing -> irreducible e es
-        Just (inlined, es') -> normalise' args inlined es'
+        Just e' -> do
+          minlined <- normaliseDef normalise0 e' es
+          case minlined of
+            Nothing -> irreducible e es
+            Just (inlined, es') -> normalise' args inlined es'
     go e@(Var FreeVar { varValue = Nothing }) es = irreducible e es
     go (Meta m mes) es = do
-      msol <- handleMetaVar args m
+      msol <- _handleMetaVar args m
       case msol of
         Nothing -> do
           mes' <- mapM (mapM normalise0) mes
           irreducible (Meta m mes') es
         Just e -> normalise' args (open e) $ toList mes ++ es
     go e@(Global g) es = do
-      (d, _) <- definition g
+      d <- fetchDefinition g
       case d of
         ConstantDefinition Concrete e' -> do
           minlined <- normaliseDef normalise0 e' es
@@ -167,7 +175,7 @@ normalise' args = normaliseBuiltins go
             Just (inlined, es') -> normalise' args inlined es'
         ConstantDefinition Abstract _ -> irreducible e es
         DataDefinition _ rep
-          | expandTypeReps args -> do
+          | _expandTypeReps args -> do
             minlined <- normaliseDef normalise0 rep es
             case minlined of
               Nothing -> irreducible e es
@@ -228,21 +236,21 @@ normaliseBuiltins
   -> Expr meta v
   -> [(Plicitness, Expr meta v)]
   -> m (Expr meta v)
-normaliseBuiltins k (Global Builtin.ProductTypeRepName) [(Explicit, x), (Explicit, y)] = typeRepBinOp
+normaliseBuiltins k (Builtin.QGlobal Builtin.ProductTypeRepName) [(Explicit, x), (Explicit, y)] = typeRepBinOp
   (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
   TypeRep.product Builtin.ProductTypeRep
   k x y
-normaliseBuiltins k (Global Builtin.SumTypeRepName) [(Explicit, x), (Explicit, y)] = typeRepBinOp
+normaliseBuiltins k (Builtin.QGlobal Builtin.SumTypeRepName) [(Explicit, x), (Explicit, y)] = typeRepBinOp
   (Just TypeRep.UnitRep) (Just TypeRep.UnitRep)
   TypeRep.sum Builtin.SumTypeRep
   k x y
-normaliseBuiltins k (Global Builtin.SubIntName) [(Explicit, x), (Explicit, y)] =
+normaliseBuiltins k (Builtin.QGlobal Builtin.SubIntName) [(Explicit, x), (Explicit, y)] =
   binOp Nothing (Just 0) (-) Builtin.SubInt k x y
-normaliseBuiltins k (Global Builtin.AddIntName) [(Explicit, x), (Explicit, y)] =
+normaliseBuiltins k (Builtin.QGlobal Builtin.AddIntName) [(Explicit, x), (Explicit, y)] =
   binOp (Just 0) (Just 0) (+) Builtin.AddInt k x y
-normaliseBuiltins k (Global Builtin.MaxIntName) [(Explicit, x), (Explicit, y)] =
+normaliseBuiltins k (Builtin.QGlobal Builtin.MaxIntName) [(Explicit, x), (Explicit, y)] =
   binOp (Just 0) (Just 0) max Builtin.MaxInt k x y
-normaliseBuiltins k e@(Global Builtin.MkTypeName) [(Explicit, x)] = do
+normaliseBuiltins k e@(Builtin.QGlobal Builtin.MkTypeName) [(Explicit, x)] = do
   x' <- k x mempty
   case x' of
     Lit (Integer i) -> return $ MkType $ TypeRep.TypeRep i
@@ -340,12 +348,15 @@ normaliseDef norm = lambdas
     cases e = return $ Just e
 
 instantiateLetM
-  :: (MonadFix m, MonadVIX m)
+  :: (MonadFresh m, MonadIO m)
   => LetRec (Expr meta) (ExprFreeVar meta)
   -> Scope LetVar (Expr meta) (ExprFreeVar meta)
   -> m (Expr meta (ExprFreeVar meta))
-instantiateLetM ds scope = mdo
-  vs <- forMLet ds $ \h _ s t -> letVar h Explicit (instantiateLet pure vs s) t
+instantiateLetM ds scope = do
+  (vs, setters) <- fmap Vector.unzip $ forMLet ds $ \h _ _ t ->
+    letVar h Explicit t
+  forM_ (Vector.zip (letBodies ds) setters) $ \(s, set) ->
+    set $ instantiateLet pure vs s
   return $ instantiateLet pure vs scope
 
 etaReduce :: Expr meta v -> Maybe (Expr meta v)

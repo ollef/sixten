@@ -1,10 +1,11 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Elaboration.MetaVar where
 
-import Protolude
 import Prelude(showsPrec, showString, showChar, showParen)
+import Protolude
 
 import Data.Bitraversable
 import Data.IORef
@@ -13,15 +14,12 @@ import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
+import Effect
 import Error
-import MonadContext
-import MonadFresh
-import MonadLog
 import Syntax
 import Syntax.Core
 import TypedFreeVar
 import Util
-import VIX
 
 type MetaRef = IORef (Maybe (Closed (Expr MetaVar)))
 
@@ -58,7 +56,7 @@ instance Show MetaVar where
     showString "<Ref>"
 
 explicitExists
-  :: (MonadVIX m, MonadLog m, MonadIO m)
+  :: (MonadLog m, MonadIO m, MonadFresh m)
   => NameHint
   -> Plicitness
   -> Closed (Expr MetaVar)
@@ -68,15 +66,26 @@ explicitExists
 explicitExists hint p typ a loc = do
   i <- fresh
   ref <- liftIO $ newIORef Nothing
-  logVerbose 20 $ "exists: " <> shower i
-  logMeta 20 "exists typ: " (open typ :: Expr MetaVar Doc)
+  logCategory "tc.metavar" $ "exists: " <> shower i
+  logMeta "tc.metavar" "exists typ: " $ pure (open typ :: Expr MetaVar Doc)
   return $ MetaVar i typ a hint p loc ref
 
 solution
   :: MonadIO m
   => MetaVar
   -> m (Maybe (Closed (Expr MetaVar)))
-solution = liftIO . readIORef . metaRef
+solution m = do
+  res <- liftIO $ readIORef $ metaRef m
+  case res of
+    Just (Closed (Meta m' (Mempty :: Vector (Plicitness, Expr MetaVar Void)))) -> do
+      mres' <- solution m'
+      case mres' of
+        Nothing -> return res
+        Just res' -> do
+          -- Path compression
+          solve m res'
+          return mres'
+    _ -> return res
 
 solve
   :: MonadIO m
@@ -100,7 +109,7 @@ instance Pretty a => Pretty (WithVar a) where
   prettyM (WithVar _ x) = prettyM x
 
 prettyMetaVar
-  :: (MonadIO m, MonadVIX m)
+  :: (MonadLog m, MonadIO m)
   => MetaVar
   -> m Doc
 prettyMetaVar x = do
@@ -109,15 +118,15 @@ prettyMetaVar x = do
   case msol of
     Nothing -> return name
     Just sol -> do
-      v <- liftVIX $ gets vixVerbosity
+      p <- getLogCategories
       sol' <- prettyMeta (open sol :: Expr MetaVar Doc)
-      if v <= 30 then
-        return $ PP.parens sol'
-      else
+      if p "tc.metavar" then
         return $ PP.parens $ name PP.<+> "=" PP.<+> sol'
+      else
+        return $ PP.parens sol'
 
 prettyMeta
-  :: (Pretty v, MonadIO m, MonadVIX m)
+  :: (Pretty v, MonadLog m, MonadIO m)
   => Expr MetaVar v
   -> m Doc
 prettyMeta e = do
@@ -125,7 +134,7 @@ prettyMeta e = do
   return $ pretty e'
 
 prettyDefMeta
-  :: (Pretty v, MonadIO m, MonadVIX m)
+  :: (Pretty v, MonadLog m, MonadIO m)
   => Definition (Expr MetaVar) v
   -> m Doc
 prettyDefMeta e = do
@@ -133,37 +142,37 @@ prettyDefMeta e = do
   return $ pretty e'
 
 logMeta
-  :: (MonadLog m, Pretty v, MonadIO m, MonadVIX m)
-  => Int
+  :: (MonadLog m, Pretty v, MonadIO m)
+  => Category
   -> String
-  -> Expr MetaVar v
+  -> m (Expr MetaVar v)
   -> m ()
-logMeta v s e = whenVerbose v $ do
-  i <- liftVIX $ gets vixIndent
+logMeta c@(Category ct) s me = whenLoggingCategory c $ do
+  e <- me
   d <- prettyMeta e
-  MonadLog.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide d
+  Effect.log $ "[" <> ct <> "] " <> fromString s <> ": " <> showWide d
 
 logDefMeta
-  :: (MonadIO m, Pretty v, MonadLog m, MonadVIX m)
-  => Int
+  :: (MonadLog m, Pretty v, MonadIO m)
+  => Category
   -> String
-  -> Definition (Expr MetaVar) v
+  -> m (Definition (Expr MetaVar) v)
   -> m ()
-logDefMeta v s e = whenVerbose v $ do
-  i <- liftVIX $ gets vixIndent
-  d <- prettyDefMeta e
-  MonadLog.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide d
+logDefMeta c@(Category ct) s mdef = whenLoggingCategory c $ do
+  def <- mdef
+  d <- prettyDefMeta def
+  Effect.log $ "[" <> ct <> "] " <> fromString s <> ": " <> showWide d
 
 type FreeBindVar meta = FreeVar Plicitness (Expr meta)
 
 instantiatedMetaType
-  :: (MonadError Error m, MonadVIX m, MonadLog m)
+  :: (MonadLog m, MonadFresh m)
   => MetaVar
   -> m (Vector FreeV, Expr MetaVar (FreeBindVar MetaVar))
 instantiatedMetaType m = instantiatedMetaType' (metaArity m) m
 
 instantiatedMetaType'
-  :: (MonadError Error m, MonadVIX m, MonadLog m)
+  :: (MonadLog m, MonadFresh m)
   => Int
   -> MetaVar
   -> m (Vector FreeV, Expr MetaVar (FreeBindVar MetaVar))
@@ -173,9 +182,9 @@ instantiatedMetaType' arity m = go mempty arity (open $ metaType m)
     go vs n (Pi h a t s) = do
       v <- forall h a t
       go (v:vs) (n - 1) (instantiate1 (pure v) s)
-    go _ _ _ = internalError "instantiatedMetaType'"
+    go _ _ _ = panic "instantiatedMetaType'"
 
-type MonadBindMetas meta' m = (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadVIX m, MonadLog m, MonadIO m)
+type MonadBindMetas meta' m = (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadLog m, MonadIO m)
 
 -- TODO move?
 bindDefMetas
@@ -250,7 +259,6 @@ bindMetas f expr = case expr of
       let e = instantiate1 (pure v) s
       e' <- withVar v $ bindMetas f e
       return $ c v e'
-
 
 bindMetas'
   :: MonadBindMetas meta' m

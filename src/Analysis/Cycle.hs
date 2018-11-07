@@ -1,4 +1,8 @@
-{-# LANGUAGE LambdaCase, OverloadedStrings, ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MonadComprehensions #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 module Analysis.Cycle where
 
 import Protolude hiding (TypeError)
@@ -8,9 +12,11 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.Text.Prettyprint.Doc as PP
+import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
+import Effect
 import Error
 import Syntax
 import Syntax.Core
@@ -54,25 +60,38 @@ import VIX
 -- We also peel off any lets at the top-level of all definitions and include
 -- them in the analysis.
 
+-- cycleCheckGroup
+--   :: Vector (QName, SourceLoc, ClosedDefinition Expr, Biclosed Expr)
+--   -> VIX (Vector (QName, SourceLoc, ClosedDefinition Expr, Biclosed Expr))
+-- cycleCheckGroup defs = do
+--   defs' <- cycleCheck [(x, loc, def, typ) | (x, loc, ClosedDefinition def, Biclosed typ) <- defs]
+--   return $ do
+--     (x, loc, def, typ) <- defs'
+--     return
+--       ( x
+--       , loc
+--       , closeDefinition identity (panic "cycleCheckGroup close def") def
+--       , biclose identity (panic "cycleCheckGroup close typ") typ
+--       )
+
 type FreeV m = FreeVar Plicitness (Expr m)
 
 cycleCheck
-  :: [(QName, SourceLoc, Definition (Expr Void) (FreeV m), Expr Void (FreeV m))]
-  -> VIX [(QName, SourceLoc, Definition (Expr m) (FreeV m), Expr m (FreeV m))]
+  :: Vector (GName, SourceLoc, ClosedDefinition Expr, Biclosed Expr)
+  -> VIX (Vector (GName, SourceLoc, ClosedDefinition Expr, Biclosed Expr))
 cycleCheck defs = do
-  vs <- forM defs $ \(name, _loc, _, typ) -> do
+  vs <- forM defs $ \(name, _loc, _, Biclosed typ) -> do
     typ' <- cycleCheckExpr typ
-    freeVar (fromQName name) Explicit typ'
-  defs' <- forM defs $ \(name, loc, def, _) -> located loc $ do
+    freeVar (fromGName name) Explicit typ'
+  defs' <- forM defs $ \(name, loc, ClosedDefinition def, _) -> located loc $ do
     def' <- cycleCheckDef def
     return (name, loc, def')
   let nameVarVec
-        = toVector
-        $ zipWith (\(name, _, _) v -> (name, v)) defs' vs
+        = Vector.zipWith (\(name, _, _) v -> (name, v)) defs' vs
       lookupName = hashedLookup nameVarVec
       expose g = maybe (global g) pure $ lookupName g
       exposedDefs = do
-        (v, (name, loc, def)) <- zip vs defs'
+        (v, (name, loc, def)) <- Vector.zip vs defs'
         let def' = gbound expose def
         return (v, name, loc, def')
   cycleCheckTypeReps exposedDefs
@@ -82,7 +101,12 @@ cycleCheck defs = do
   return $ do
     (v, name, loc, def) <- exposedDefs'
     let def' = def >>>= unexpose
-    return (name, loc, def', varType v)
+    return
+      ( name
+      , loc
+      , closeDefinition identity (panic "cycleCheck close def'") def'
+      , biclose identity (panic "cycleCheck close typ") $ varType v
+      )
 
 cycleCheckDef
   :: Definition (Expr Void) (FreeV m)
@@ -127,10 +151,11 @@ cycleCheckExpr expr = case expr of
         e' <- cycleCheckExpr e
         return (vs Vector.! i, fromNameHint "(no name)" identity h, loc, ConstantDefinition Concrete e')
       body <- cycleCheckExpr $ instantiateLet pure vs bodyScope
-      ds'' <- cycleCheckLets $ toList ds'
-      let ds''' = toVector
+      ds'' <- cycleCheckLets ds'
+      let ds''' =
             [ (v, loc, e)
-            | (v, _, loc, ConstantDefinition _ e) <- ds''
+            | (v, _, loc, def) <- ds''
+            , let ConstantDefinition _ e = def
             ]
       return $ let_ ds''' body
     ExternCode c retType -> ExternCode
@@ -161,11 +186,13 @@ cycleCheckBranches (LitBranches lbrs d) = do
 
 cycleCheckTypeReps
   :: Pretty name
-  => [(FreeV m, name, SourceLoc, Definition (Expr m) (FreeV m))]
+  => Vector (FreeV m, name, SourceLoc, Definition (Expr m) (FreeV m))
   -> VIX ()
 cycleCheckTypeReps defs = do
-  let reps = [(v, rep) | (v, _, _, DataDefinition _ rep) <- defs]
-  let locMap = HashMap.fromList [(v, (name, loc)) | (v, name, loc, _) <- defs]
+  let reps = flip Vector.mapMaybe defs $ \(v, _, _, def) -> case def of
+        DataDefinition _ rep -> Just (v, rep)
+        _ -> Nothing
+  let locMap = toHashMap [(v, (name, loc)) | (v, name, loc, _) <- defs]
   case cycles reps of
     firstCycle:_ -> do
       let headVar = unsafeHead firstCycle
@@ -187,10 +214,13 @@ cycleCheckTypeReps defs = do
 
 cycleCheckLets
   :: Pretty name
-  => [(FreeV m, name, SourceLoc, Definition (Expr m) (FreeV m))]
-  -> VIX [(FreeV m, name, SourceLoc, Definition (Expr m) (FreeV m))]
+  => Vector (FreeV m, name, SourceLoc, Definition (Expr m) (FreeV m))
+  -> VIX (Vector (FreeV m, name, SourceLoc, Definition (Expr m) (FreeV m)))
 cycleCheckLets defs = do
-  (peeledDefExprs, locMap) <- peelLets [(name, loc, v, e) | (v, name, loc, ConstantDefinition _ e) <- defs]
+  (peeledDefExprs, locMap) <- peelLets
+    $ flip Vector.mapMaybe defs $ \(v, name, loc, def) -> case def of
+      ConstantDefinition _ e -> Just (name, loc, v, e)
+      _ -> Nothing
   Any cyclic <- foldForM (topoSortWith fst snd peeledDefExprs) $ \case
     AcyclicSCC _ -> return mempty
     CyclicSCC defExprs -> do
@@ -230,13 +260,13 @@ cycleCheckLets defs = do
 
 
 peelLets
-  :: [(name, SourceLoc, FreeV m, Expr m (FreeV m))]
-  -> VIX ([(FreeV m, Expr m (FreeV m))], HashMap (FreeV m) (name, SourceLoc))
+  :: Vector (name, SourceLoc, FreeV m, Expr m (FreeV m))
+  -> VIX (Vector (FreeV m, Expr m (FreeV m)), HashMap (FreeV m) (name, SourceLoc))
 peelLets = fmap fold . mapM go
   where
     go
      :: (name, SourceLoc, FreeV m, Expr m (FreeV m))
-     -> VIX ([(FreeV m, Expr m (FreeV m))], HashMap (FreeV m) (name, SourceLoc))
+     -> VIX (Vector (FreeV m, Expr m (FreeV m)), HashMap (FreeV m) (name, SourceLoc))
     go (name, loc, var, expr) = case unSourceLoc expr of
       Let ds scope -> do
         vs <- forMLet ds $ \h _ _ t ->
@@ -244,9 +274,11 @@ peelLets = fmap fold . mapM go
         let inst = instantiateLet pure vs
         es <- forMLet ds $ \_ _ s _ ->
           return $ inst s
-        let ds' = (name, loc, var, inst scope) : Vector.toList (Vector.zipWith (\v e -> (name, loc, v, e)) vs es)
+        let ds'
+              = pure (name, loc, var, inst scope)
+              <> Vector.zipWith (\v e -> (name, loc, v, e)) vs es
         peelLets ds'
-      _ -> return ([(var, expr)], HashMap.singleton var (name, loc))
+      _ -> return (pure (var, expr), HashMap.singleton var (name, loc))
 
 possiblyImmediatelyAppliedVars
   :: (Eq v, Hashable v)

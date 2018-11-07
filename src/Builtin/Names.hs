@@ -17,35 +17,38 @@ pattern BuiltinModuleName <- ((==) "Sixten.Builtin" -> True) where BuiltinModule
 pattern StaticErrorName :: QName
 pattern StaticErrorName <- ((==) "Sixten.Builtin.StaticError" -> True) where StaticErrorName = "Sixten.Builtin.StaticError"
 
+pattern QGlobal :: QName -> Expr m t
+pattern QGlobal n = Global (GName n Mempty)
+
 pattern IntName :: QName
 pattern IntName <- ((==) "Sixten.Builtin.Int" -> True) where IntName = "Sixten.Builtin.Int"
 pattern IntType :: Expr m t
-pattern IntType = Global IntName
+pattern IntType = Global (GName IntName Mempty)
 
 pattern ByteName :: QName
 pattern ByteName <- ((==) "Sixten.Builtin.Byte" -> True) where ByteName = "Sixten.Builtin.Byte"
 pattern ByteType :: Expr m t
-pattern ByteType = Global ByteName
+pattern ByteType = Global (GName ByteName Mempty)
 
 pattern AddIntName :: QName
 pattern AddIntName <- ((==) "Sixten.Builtin.addInt" -> True) where AddIntName = "Sixten.Builtin.addInt"
 pattern AddInt :: Expr m t -> Expr m t -> Expr m t
-pattern AddInt e1 e2 = App (App (Global AddIntName) Explicit e1) Explicit e2
+pattern AddInt e1 e2 = App (App (Global (GName AddIntName Mempty)) Explicit e1) Explicit e2
 
 pattern SubIntName :: QName
 pattern SubIntName <- ((==) "Sixten.Builtin.subInt" -> True) where SubIntName = "Sixten.Builtin.subInt"
 pattern SubInt :: Expr m t -> Expr m t -> Expr m t
-pattern SubInt e1 e2 = App (App (Global SubIntName) Explicit e1) Explicit e2
+pattern SubInt e1 e2 = App (App (Global (GName SubIntName Mempty)) Explicit e1) Explicit e2
 
 pattern MaxIntName :: QName
 pattern MaxIntName <- ((==) "Sixten.Builtin.maxInt" -> True) where MaxIntName = "Sixten.Builtin.maxInt"
 pattern MaxInt :: Expr m t -> Expr m t -> Expr m t
-pattern MaxInt e1 e2 = App (App (Global MaxIntName) Explicit e1) Explicit e2
+pattern MaxInt e1 e2 = App (App (Global (GName MaxIntName Mempty)) Explicit e1) Explicit e2
 
 pattern TypeName :: QName
 pattern TypeName <- ((==) "Sixten.Builtin.Type" -> True) where TypeName = "Sixten.Builtin.Type"
 pattern Type :: Expr m t
-pattern Type = Global TypeName
+pattern Type = Global (GName TypeName Mempty)
 
 pattern MkTypeName :: QName
 pattern MkTypeName <- ((==) "Sixten.Builtin.MkType" -> True) where MkTypeName = "Sixten.Builtin.MkType"
@@ -53,12 +56,12 @@ pattern MkTypeName <- ((==) "Sixten.Builtin.MkType" -> True) where MkTypeName = 
 pattern ProductTypeRepName :: QName
 pattern ProductTypeRepName <- ((==) "Sixten.Builtin.productTypeRep" -> True) where ProductTypeRepName = "Sixten.Builtin.productTypeRep"
 pattern ProductTypeRep :: Expr m t -> Expr m t -> Expr m t
-pattern ProductTypeRep e1 e2 = App (App (Global ProductTypeRepName) Explicit e1) Explicit e2
+pattern ProductTypeRep e1 e2 = App (App (Global (GName ProductTypeRepName Mempty)) Explicit e1) Explicit e2
 
 pattern SumTypeRepName :: QName
 pattern SumTypeRepName <- ((==) "Sixten.Builtin.sumTypeRep" -> True) where SumTypeRepName = "Sixten.Builtin.sumTypeRep"
 pattern SumTypeRep :: Expr m t -> Expr m t -> Expr m t
-pattern SumTypeRep e1 e2 = App (App (Global SumTypeRepName) Explicit e1) Explicit e2
+pattern SumTypeRep e1 e2 = App (App (Global (GName SumTypeRepName Mempty)) Explicit e1) Explicit e2
 
 pattern SizeOfName :: QName
 pattern SizeOfName <- ((==) "Sixten.Builtin.sizeOf" -> True) where SizeOfName = "Sixten.Builtin.sizeOf"
@@ -73,7 +76,7 @@ pattern Ref = QConstr PtrName RefName
 pattern UnitName :: QName
 pattern UnitName <- ((==) "Sixten.Builtin.Unit" -> True) where UnitName = "Sixten.Builtin.Unit"
 pattern UnitType :: Expr m t
-pattern UnitType = Global UnitName
+pattern UnitType = Global (GName UnitName Mempty)
 pattern MkUnitConstrName :: Constr
 pattern MkUnitConstrName <- ((==) "MkUnit" -> True) where MkUnitConstrName = "MkUnit"
 pattern MkUnitConstr :: QConstr
@@ -87,7 +90,7 @@ pattern Closure <- ((== "Sixten.Builtin.Closure.MkClosure") -> True) where Closu
 pattern FailName :: QName
 pattern FailName <- ((==) "Sixten.Builtin.fail" -> True) where FailName = "Sixten.Builtin.fail"
 pattern Fail :: Expr m t -> Expr m t
-pattern Fail t = App (Global FailName) Explicit t
+pattern Fail t = App (Global (GName FailName Mempty)) Explicit t
 
 pattern PiTypeName :: QName
 pattern PiTypeName <- ((==) "Sixten.Builtin.Pi_" -> True) where PiTypeName = "Sixten.Builtin.Pi_"
@@ -95,7 +98,7 @@ pattern PiTypeName <- ((==) "Sixten.Builtin.Pi_" -> True) where PiTypeName = "Si
 pattern NatName :: QName
 pattern NatName <- ((==) "Sixten.Builtin.Nat" -> True) where NatName = "Sixten.Builtin.Nat"
 pattern Nat :: Expr m t
-pattern Nat = Global NatName
+pattern Nat = Global (GName NatName Mempty)
 
 pattern ZeroName :: Constr
 pattern ZeroName <- ((==) "Zero" -> True) where ZeroName = "Zero"
@@ -114,7 +117,7 @@ pattern Succ x = App (Con SuccConstr) Explicit x
 pattern StringName :: QName
 pattern StringName <- ((==) "Sixten.Builtin.String" -> True) where StringName = "Sixten.Builtin.String"
 pattern StringType :: Expr m t
-pattern StringType = Global StringName
+pattern StringType = Global (GName StringName Mempty)
 pattern MkStringName :: Constr
 pattern MkStringName <- ((==) "MkString" -> True) where MkStringName = "MkString"
 pattern MkStringConstr :: QConstr
@@ -133,7 +136,7 @@ pattern VectorName <- ((==) "Sixten.Builtin.Vector" -> True) where VectorName = 
 pattern PairName :: QName
 pattern PairName <- ((==) "Sixten.Builtin.Pair" -> True) where PairName = "Sixten.Builtin.Pair"
 pattern Pair :: Expr m t
-pattern Pair = Global PairName
+pattern Pair = Global (GName PairName Mempty)
 pattern MkPairName :: Constr
 pattern MkPairName <- ((==) "MkPair" -> True) where MkPairName = "MkPair"
 pattern MkPairConstr :: QConstr
@@ -141,8 +144,11 @@ pattern MkPairConstr = QConstr PairName MkPairName
 pattern MkPair :: Expr m t -> Expr m t -> Expr m t
 pattern MkPair a b = App (App (Con MkPairConstr) Explicit a) Explicit b
 
+pattern RuntimeModuleName :: ModuleName
+pattern RuntimeModuleName <- ((==) "Sixten.Runtime" -> True) where RuntimeModuleName = "Sixten.Runtime"
+
 applyName :: Int -> QName
-applyName n = fromString $ "Sixten.Builtin.apply_" <> shower n
+applyName n = fromString $ "Sixten.Runtime.apply_" <> shower n
 
 papName :: Int -> Int -> QName
-papName k m = fromString $ "Sixten.Builtin.pap_" <> shower k <> "_" <> shower m
+papName k m = fromString $ "Sixten.Runtime.pap_" <> shower k <> "_" <> shower m

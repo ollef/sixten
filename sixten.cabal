@@ -13,8 +13,7 @@ build-type:          Simple
 cabal-version:       >=1.10
 data-files:
                      rts/forwarddecls.ll
-                     rts/Builtin1.vix
-                     rts/Builtin2.vix
+                     rts/Builtin.vix
 
 
 executable sixten
@@ -28,6 +27,9 @@ executable sixten
                        -Wredundant-constraints
                        -Wtabs
                        -funbox-strict-fields
+                       -threaded
+                       -rtsopts
+                       -with-rtsopts=-N
   main-is:             Main.hs
   other-modules:
                        Analysis.Cycle
@@ -39,6 +41,7 @@ executable sixten
                        Backend.ExtractExtern
                        Backend.Generate
                        Backend.Generate.LLVM
+                       Backend.Generate.Submodule
                        Backend.Generate.Types
                        Backend.Lift
                        Backend.SLam
@@ -53,6 +56,14 @@ executable sixten
                        Command.LanguageServer.Hover
                        Command.Run
                        Command.Test
+                       Driver
+                       Driver.Query
+                       Driver.Rules
+                       Effect
+                       Effect.Context
+                       Effect.Fresh
+                       Effect.Log
+                       Effect.Report
                        Elaboration.Constraint
                        Elaboration.Constructor
                        Elaboration.Equal
@@ -77,14 +88,8 @@ executable sixten
                        Frontend.DupCheck
                        Frontend.Parse
                        Frontend.ResolveNames
-                       MonadContext
-                       MonadFresh
-                       MonadLog
                        Paths_sixten
                        Pretty
-                       Processor.File
-                       Processor.Files
-                       Processor.Result
                        Syntax
                        Syntax.Annotation
                        Syntax.Branches
@@ -131,12 +136,16 @@ executable sixten
                        bytestring,
                        containers,
                        data-default,
+                       dependent-map,
+                       dependent-sum,
                        deriving-compat,
+                       deriving-gcompare,
                        directory,
                        filepath,
                        hashable,
                        haskell-lsp,
                        haskell-lsp-types,
+                       lens,
                        lifted-base,
                        llvm-hs-pretty,
                        llvm-hs-pure,
@@ -151,6 +160,7 @@ executable sixten
                        prettyprinter-ansi-terminal,
                        process,
                        protolude,
+                       rock,
                        split,
                        stm,
                        temporary,

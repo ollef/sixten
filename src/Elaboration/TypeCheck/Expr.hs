@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, RecursiveDo #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Elaboration.TypeCheck.Expr where
 
 import Protolude
@@ -6,27 +6,28 @@ import Protolude
 import Data.HashSet(HashSet)
 import Data.IORef
 import Data.Vector(Vector)
-import qualified Data.Vector as Vector
 
 import Analysis.Simplify
 import qualified Builtin.Names as Builtin
+import Driver.Query
+import Effect
+import Effect.Log as Log
 import Elaboration.Constraint
 import Elaboration.Constructor
 import Elaboration.Match
 import Elaboration.MetaVar as MetaVar
+import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
 import Elaboration.Subtype
 import Elaboration.TypeCheck.Clause
 import Elaboration.TypeCheck.Literal
 import Elaboration.TypeCheck.Pattern
 import Elaboration.Unify
-import MonadContext
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import Util
-import VIX
 
 data Expected typ
   = Infer (IORef typ) InstUntil
@@ -44,10 +45,10 @@ instExpected (Check t2) t1 = subtype t1 t2
 -- Polytypes
 checkPoly :: PreM -> Polytype -> Elaborate CoreM
 checkPoly expr typ = do
-  logPretty 20 "checkPoly expr" $ pretty <$> expr
-  logMeta 20 "checkPoly type" typ
-  res <- indentLog $ checkPoly' expr typ
-  logMeta 20 "checkPoly res expr" res
+  logPretty "tc.expr" "checkPoly expr" $ pretty <$> expr
+  logMeta "tc.expr" "checkPoly type" $ zonk typ
+  res <- Log.indent $ checkPoly' expr typ
+  logMeta "tc.expr" "checkPoly res expr" $ zonk res
   return res
 
 checkPoly' :: PreM -> Polytype -> Elaborate CoreM
@@ -84,10 +85,10 @@ instantiateForalls' typ _ = return (typ, identity)
 -- Rhotypes
 checkRho :: PreM -> Rhotype -> Elaborate CoreM
 checkRho expr typ = do
-  logPretty 20 "checkRho expr" $ pretty <$> expr
-  logMeta 20 "checkRho type" typ
-  res <- indentLog $ checkRho' expr typ
-  logMeta 20 "checkRho res expr" res
+  logPretty "tc.expr" "checkRho expr" $ pretty <$> expr
+  logMeta "tc.expr" "checkRho type" $ zonk typ
+  res <- Log.indent $ checkRho' expr typ
+  logMeta "tc.expr" "checkRho res expr" $ zonk res
   return res
 
 checkRho' :: PreM -> Rhotype -> Elaborate CoreM
@@ -95,10 +96,10 @@ checkRho' expr ty = tcRho expr (Check ty) (Just ty)
 
 inferRho :: PreM -> InstUntil -> Maybe Rhotype -> Elaborate (CoreM, Rhotype)
 inferRho expr instUntil expectedAppResult = do
-  logPretty 20 "inferRho" $ pretty <$> expr
-  (resExpr, resType) <- indentLog $ inferRho' expr instUntil expectedAppResult
-  logMeta 20 "inferRho res expr" resExpr
-  logMeta 20 "inferRho res typ" resType
+  logPretty "tc.expr" "inferRho" $ pretty <$> expr
+  (resExpr, resType) <- Log.indent $ inferRho' expr instUntil expectedAppResult
+  logMeta "tc.expr" "inferRho res expr" $ zonk resExpr
+  logMeta "tc.expr" "inferRho res typ" $ zonk resType
   return (resExpr, resType)
 
 inferRho' :: PreM -> InstUntil -> Maybe Rhotype -> Elaborate (CoreM, Rhotype)
@@ -114,16 +115,17 @@ tcRho expr expected expectedAppResult = case expr of
     f <- instExpected expected $ varType v
     return $ f $ Core.Var v
   Pre.Global g -> do
-    (_, typ) <- definition g
+    let gn = gname g
+    typ <- fetchType gn
     f <- instExpected expected typ
-    return $ f $ Core.Global g
+    return $ f $ Core.Global gn
   Pre.Lit l -> do
     let (e, typ) = inferLit l
     f <- instExpected expected typ
     return $ f e
   Pre.Con cons -> do
     qc <- resolveConstr cons expectedAppResult
-    typ <- qconstructor qc
+    typ <- fetchQConstructor qc
     f <- instExpected expected typ
     return $ f $ Core.Con qc
   Pre.Pi p pat bodyScope -> do
@@ -146,7 +148,10 @@ tcRho expr expected expectedAppResult = case expr of
           (body', bodyType) <- inferRho body (InstUntil Explicit) Nothing
           argVar <- forall h p argType
           body'' <- withVar argVar $ matchSingle (pure argVar) pat' body' bodyType
+          -- bodyType' <- withVar argVar $ matchSingle (pure argVar) pat' bodyType Builtin.Type
+          logMeta "tc.expr" "Lam Infer bodyType" $ zonk bodyType
           f <- instExpected expected $ Core.pi_ argVar bodyType
+          logMeta "tc.expr" "Lam Infer abstracted bodyType" $ zonk $ Core.pi_ argVar bodyType
           return $ f $ Core.lam argVar body''
       Check expectedType -> do
         (typeh, argType, bodyTypeScope, fResult) <- funSubtype expectedType p
@@ -162,17 +167,16 @@ tcRho expr expected expectedAppResult = case expr of
   Pre.App fun p arg -> do
     (fun', funType) <- inferRho fun (InstUntil p) expectedAppResult
     (argType, resTypeScope, f1) <- subtypeFun funType p
+    let fun'' = f1 fun'
     case unusedScope resTypeScope of
       Nothing -> do
         arg' <- checkPoly arg argType
         let resType = Util.instantiate1 arg' resTypeScope
         f2 <- instExpected expected resType
-        let fun'' = f1 fun'
         return $ f2 $ Core.App fun'' p arg'
       Just resType -> do
         f2 <- instExpected expected resType
         arg' <- checkPoly arg argType
-        let fun'' = f1 fun'
         return $ f2 $ Core.App fun'' p arg'
   Pre.Let ds scope -> tcLet ds scope expected expectedAppResult
   Pre.Case e brs -> tcBranches e brs expected expectedAppResult
@@ -199,40 +203,30 @@ tcLet
 tcLet ds scope expected expectedAppResult = do
   varDefs <- forM ds $ \(loc, h, def) -> do
     typ <- existsType h
-    var <- forall h Explicit typ
-    return (var, loc, def)
+    (var, set) <- letVar h Explicit typ
+    return (var, (set, loc, def))
 
-  let vars = fst3 <$> varDefs
+  let vars = fst <$> varDefs
 
-  ds' <- withVars vars $ do
-    instDefs <- forM varDefs $ \(var, loc, def) -> located loc $ do
+  withVars vars $ do
+    instDefs <- forM varDefs $ \(var, (set, loc, def)) -> located loc $ do
       let instDef@(Pre.ConstantDef _ _ mtyp) = Pre.instantiateLetConstantDef pure vars def
       case mtyp of
         Just typ -> do
           typ' <- checkPoly typ Builtin.Type
-          unify [] (varType var) typ'
+          runUnify (unify [] (varType var) typ') report
         Nothing -> return ()
-      return (var, loc, instDef)
+      return (var, (set, loc, instDef))
 
-    forM instDefs $ \(var, loc, def) -> located loc $ do
-      def' <- checkConstantDef def $ varType var
-      return (var, loc, def')
-
-  let abstr = letAbstraction vars
-      ds'' = LetRec
-        $ flip fmap ds'
-        $ \(v, loc, (_, e)) -> LetBinding (varHint v) loc (abstract abstr e) $ varType v
-
-  mdo
-    let inst = instantiateLet pure vars'
-    vars' <- iforMLet ds'' $ \i h _ s t -> do
-      let (_, _, (a, _)) = ds' Vector.! i
+    ds' <- forM instDefs $ \(var, (set, loc, def)) -> located loc $ do
+      (a, e) <- checkConstantDef def $ varType var
       case a of
-        Abstract -> forall h Explicit t
-        Concrete -> letVar h Explicit (inst s) t
-    let abstr' = letAbstraction vars'
-    body <- withVars vars' $ tcRho (instantiateLet pure vars' scope) expected expectedAppResult
-    return $ Core.Let ds'' $ abstract abstr' body
+        Abstract -> return ()
+        Concrete -> set e
+      return (var, loc, e)
+
+    body <- tcRho (instantiateLet pure vars scope) expected expectedAppResult
+    return $ Core.let_ ds' body
 
 tcBranches
   :: PreM
@@ -248,21 +242,22 @@ tcBranches expr pbrs expected expectedAppResult = do
     let br = instantiatePattern pure (boundPatVars patVars) brScope
     return (pat', br, patVars)
 
-  (inferredBranches, resType) <- case expected of
+  case expected of
     Check resType -> do
       brs <- forM inferredPats $ \(pat, br, patVars) -> withPatVars patVars $ do
         br' <- checkPoly br resType
         return (pat, br')
-      return (brs, resType)
+      logMeta "tc.branches" "tcBranches check" $ zonk resType
+      matchCase expr' brs resType
+
     Infer _ instUntil -> do
       resType <- existsType mempty
       brs <- forM inferredPats $ \(pat, br, patVars) -> withPatVars patVars $ do
         (br', brType) <- inferRho br instUntil expectedAppResult
-        unify mempty brType resType
+        runUnify (unify mempty brType resType) report
         return (pat, br')
-      return (brs, resType)
+      logMeta "tc.branches" "tcBranches infer" $ zonk resType
+      f <- instExpected expected resType
 
-  f <- instExpected expected resType
-
-  matched <- matchCase expr' inferredBranches resType
-  return $ f matched
+      matched <- matchCase expr' brs resType
+      return $ f matched

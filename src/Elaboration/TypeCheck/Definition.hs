@@ -1,4 +1,6 @@
-{-# LANGUAGE MonadComprehensions, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MonadComprehensions #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Elaboration.TypeCheck.Definition where
 
 import Protolude
@@ -7,22 +9,22 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
+import Effect
+import Effect.Log as Log
 import Elaboration.Generalise
 import Elaboration.MetaVar
+import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
 import Elaboration.TypeCheck.Class
 import Elaboration.TypeCheck.Clause
 import Elaboration.TypeCheck.Data
 import Elaboration.TypeCheck.Expr
 import Elaboration.Unify
-import MonadContext
-import MonadFresh
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import Util
-import VIX
 
 checkAndGeneraliseTopLevelDefs
   :: Vector
@@ -32,7 +34,7 @@ checkAndGeneraliseTopLevelDefs
     )
   -> Elaborate
     (Vector
-      ( QName
+      ( GName
       , SourceLoc
       , ClosedDefinition Core.Expr
       , Biclosed Core.Type
@@ -59,11 +61,11 @@ checkAndGeneraliseTopLevelDefs defs = do
   forM checkedDefs $ \(v, name, loc, def) -> do
     let typ = varType v
     -- logDefMeta 20 ("checkAndGeneraliseTopLevelDefs def " ++ show (pretty name)) def
-    logMeta 20 ("checkAndGeneraliseTopLevelDefs typ " ++ show (pretty name)) typ
+    logMeta "tc.def" ("checkAndGeneraliseTopLevelDefs typ " ++ show (pretty name)) $ zonk typ
     let unexposedDef = def >>>= unexpose
         unexposedTyp = typ >>= unexpose
-    -- logDefMeta 20 ("checkAndGeneraliseTopLevelDefs unexposedDef " ++ show (pretty name)) unexposedDef
-    logMeta 20 ("checkAndGeneraliseTopLevelDefs unexposedTyp " ++ show (pretty name)) unexposedTyp
+    -- logDefMeta "tc.def" ("checkAndGeneraliseTopLevelDefs unexposedDef " ++ show (pretty name)) unexposedDef
+    logMeta "tc.def" ("checkAndGeneraliseTopLevelDefs unexposedTyp " ++ show (pretty name)) $ zonk unexposedTyp
     return (name, loc, closeDefinition noMeta noVar unexposedDef, biclose noMeta noVar unexposedTyp)
   where
     noVar :: FreeV -> b
@@ -82,7 +84,7 @@ checkAndGeneraliseDefs
   -> Elaborate
     (Vector
       ( FreeV
-      , QName
+      , GName
       , SourceLoc
       , Definition (Core.Expr MetaVar) FreeV
       )
@@ -94,7 +96,7 @@ checkAndGeneraliseDefs defs = withVars ((\(v, _, _, _) -> v) <$> defs) $ do
   -- Assume that the specified type signatures are correct.
   sigDefs' <- forM sigDefs $ \(var, name, loc, def, typ) -> do
     typ' <- checkPoly typ Builtin.Type
-    unify [] (varType var) typ'
+    runUnify (unify [] (varType var) typ') report
     return (var, name, loc, def)
 
   preId <- fresh
@@ -144,12 +146,12 @@ checkDefs
   -> Elaborate
     (Vector
       ( FreeV
-      , QName
+      , GName
       , SourceLoc
       , Definition (Core.Expr MetaVar) FreeV
       )
     )
-checkDefs defs = indentLog $
+checkDefs defs = Log.indent $
   fmap join $ forM defs $ \(var, name, loc, def) ->
     located loc $ checkDef var name loc def
 
@@ -158,14 +160,14 @@ checkDef
   -> QName
   -> SourceLoc
   -> Pre.Definition Pre.Expr FreeV
-  -> Elaborate (Vector (FreeV, QName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
+  -> Elaborate (Vector (FreeV, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
 checkDef v name loc def = case def of
   Pre.ConstantDefinition d -> do
     (a, e) <- checkConstantDef d $ varType v
-    return $ pure (v, name, loc, ConstantDefinition a e)
+    return $ pure (v, gname name, loc, ConstantDefinition a e)
   Pre.DataDefinition d -> do
     (d', rep) <- checkDataDef v d
-    return $ pure (v, name, loc, DataDefinition d' rep)
+    return $ pure (v, gname name, loc, DataDefinition d' rep)
   Pre.ClassDefinition d -> do
     d' <- checkClassDef v d
     desugarClassDef v name loc d'

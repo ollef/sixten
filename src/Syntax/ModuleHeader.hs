@@ -19,6 +19,9 @@ data ExposedNames
   | AllExposed
   deriving (Eq, Show)
 
+noneExposed :: ExposedNames
+noneExposed = Exposed mempty
+
 data Import = Import
   { importModule :: !ModuleName
   , importAlias :: !ModuleName
@@ -27,17 +30,6 @@ data Import = Import
 
 moduleDependencyOrder
   :: Foldable t
-  => t (ModuleHeader, contents)
-  -> [SCC (ModuleHeader, contents)]
-moduleDependencyOrder = topoSortWith (moduleName . fst) $ fmap importModule . moduleImports . fst
-
-------------------------------------------------------------------------------
--- Instances
-instance Semigroup ExposedNames where
-  AllExposed <> _ = AllExposed
-  _ <> AllExposed = AllExposed
-  Exposed xs <> Exposed ys = Exposed $ xs <> ys
-
-instance Monoid ExposedNames where
-  mempty = Exposed mempty
-  mappend = (<>)
+  => t (x, ModuleHeader)
+  -> [SCC (x, ModuleHeader)]
+moduleDependencyOrder = topoSortWith (moduleName . snd) $ fmap importModule . moduleImports . snd

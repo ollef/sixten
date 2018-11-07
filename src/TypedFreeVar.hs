@@ -8,10 +8,11 @@ import Bound
 import Data.Char
 import Data.Functor.Classes
 import qualified Data.HashSet as HashSet
+import Data.IORef
 import qualified Data.Text as Text
 import Data.Vector(Vector)
 
-import MonadFresh
+import Effect
 import Pretty
 import Syntax.Name
 import Syntax.NameHint
@@ -22,7 +23,7 @@ data FreeVar d e = FreeVar
   { varId :: !Int
   , varHint :: !NameHint
   , varData :: d
-  , varValue :: Maybe (e (FreeVar d e))
+  , varValue :: Maybe (IORef (Maybe (e (FreeVar d e))))
   , varType :: e (FreeVar d e)
   }
 
@@ -62,16 +63,28 @@ freeVar h d t = do
   i <- fresh
   return $ FreeVar i h d Nothing t
 
-letVar
-  :: MonadFresh m
+-- | Like freeVar, but with logging. TODO merge with freeVar?
+forall
+  :: (MonadFresh m, MonadLog m)
   => NameHint
   -> d
   -> e (FreeVar d e)
-  -> e (FreeVar d e)
   -> m (FreeVar d e)
-letVar h d e t = do
+forall h p t = do
+  v <- freeVar h p t
+  logCategory "forall" $ "forall: " <> shower (varId v)
+  return v
+
+letVar
+  :: (MonadFresh m, MonadIO m)
+  => NameHint
+  -> d
+  -> e (FreeVar d e)
+  -> m (FreeVar d e, e (FreeVar d e) -> m ())
+letVar h d t = do
   i <- fresh
-  return $ FreeVar i h d (Just e) t
+  ref <- liftIO $ newIORef Nothing
+  return (FreeVar i h d (Just ref) t, liftIO . writeIORef ref . Just)
 
 showFreeVar
   :: (Functor e, Functor f, Foldable f, Pretty (f Doc), Pretty (e Doc))
@@ -84,6 +97,16 @@ showFreeVar x = do
     <> if null shownVars
       then mempty
       else ", free vars: " <> pretty shownVars
+
+logFreeVar
+  :: (Functor e, Functor f, Foldable f, Pretty (f Doc), Pretty (e Doc), MonadLog m)
+  => Category
+  -> Text
+  -> f (FreeVar d e)
+  -> m ()
+logFreeVar c@(Category ct) s x = whenLoggingCategory c $ do
+  let r = showFreeVar x
+  Effect.log $ "[" <> ct <> "] " <> s <> ": " <> showWide r
 
 varTelescope
   :: Monad e

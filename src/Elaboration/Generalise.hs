@@ -11,6 +11,7 @@ import Data.Vector(Vector)
 
 import Analysis.Simplify
 import qualified Builtin.Names as Builtin
+import Effect
 import Elaboration.Constraint
 import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
@@ -20,7 +21,6 @@ import Syntax.Core
 import TypedFreeVar
 import Util
 import Util.TopoSort
-import VIX
 
 data GeneraliseDefsMode
   = GeneraliseType
@@ -32,14 +32,14 @@ generaliseDefs
   -> GeneraliseDefsMode
   -> Vector
     ( FreeV
-    , QName
+    , GName
     , SourceLoc
     , Definition (Expr MetaVar) FreeV
     )
   -> Elaborate
     ( Vector
       ( FreeV
-      , QName
+      , GName
       , SourceLoc
       , Definition (Expr MetaVar) FreeV
       )
@@ -50,9 +50,9 @@ generaliseDefs mpred mode defs = do
   metas <- collectMetas mpred mode defs'
   metas' <- mergeConstraintVars metas
   varMap <- generaliseMetas metas'
-  logShow 30 "generaliseDefs varMap" varMap
+  logShow "tc.gen" "generaliseDefs varMap" varMap
   defs'' <- replaceMetas varMap defs'
-  logShow 30 "generaliseDefs vars" (toHashSet $ HashMap.elems varMap)
+  logShow "tc.gen" "generaliseDefs vars" (toHashSet $ HashMap.elems varMap)
   let defDeps = collectDefDeps (toHashSet $ HashMap.elems varMap) defs''
   replaceDefs defDeps
 
@@ -61,7 +61,7 @@ collectMetas
   -> GeneraliseDefsMode
   -> Vector
     ( FreeV
-    , QName
+    , GName
     , SourceLoc
     , Definition (Expr MetaVar) FreeV
     )
@@ -83,9 +83,10 @@ collectMetas mpred mode defs = do
 
   typeVars <- forM defs $ \(v, _, _, _) -> do
     metas <- metaVars $ varType v
-    logShow 30 "collectMetas" metas
+    logMeta "tc.gen" "varType" $ zonk $ varType v
+    logShow "tc.gen" "collectMetas" metas
     filtered <- filterMSet (\m -> if not (mpred m) then return False else isUnsolved m) metas
-    logShow 30 "collectMetas filtered" filtered
+    logShow "tc.gen" "collectMetas filtered" filtered
     return filtered
 
   return $ fold $ defVars <> typeVars
@@ -94,14 +95,14 @@ generaliseMetas
   :: HashSet MetaVar
   -> Elaborate (HashMap MetaVar FreeV)
 generaliseMetas metas = do
-  logShow 30 "generaliseMetas metas" metas
+  logShow "tc.gen" "generaliseMetas metas" metas
   instMetas <- forM (toList metas) $ \m -> do
     (instVs, instTyp) <- instantiatedMetaType m
     deps <- metaVars instTyp
     return (m, (instVs, instTyp, deps))
 
   let sortedMetas = acyclic <$> topoSortWith fst (thd3 . snd) instMetas
-  logShow 30 "generaliseMetas sorted" sortedMetas
+  logShow "tc.gen" "generaliseMetas sorted" sortedMetas
 
   flip execStateT mempty $ forM_ sortedMetas $ \(m, (instVs, instTyp, _deps)) -> do
     sub <- get
@@ -126,25 +127,25 @@ replaceMetas
   :: HashMap MetaVar FreeV
   -> Vector
     ( FreeV
-    , QName
+    , GName
     , SourceLoc
     , Definition (Expr MetaVar) FreeV
     )
   -> Elaborate
     ( Vector
       ( FreeV
-      , QName
+      , GName
       , SourceLoc
       , Definition (Expr MetaVar) FreeV
       , CoreM
       )
     )
 replaceMetas varMap defs = forM defs $ \(v, name, loc, d) -> do
-  logShow 30 "replaceMetas varMap" varMap
-  logDefMeta 30 "replaceMetas def" d
+  logShow "tc.gen" "replaceMetas varMap" varMap
+  logDefMeta "tc.gen" "replaceMetas def" $ zonkDef d
   d' <- bindDefMetas' go d
   t' <- bindMetas' go $ varType v
-  logDefMeta 30 "replaceMetas def result" d'
+  logDefMeta "tc.gen" "replaceMetas def result" $ zonkDef d'
   return (v, name, loc, d', t')
   where
     go m es = do
@@ -152,15 +153,13 @@ replaceMetas varMap defs = forM defs $ \(v, name, loc, d) -> do
       case msol of
         Nothing -> case HashMap.lookup m varMap of
           Nothing -> do
-            unsolved <- isUnsolved m
-            if unsolved then do
-              let Just typ = typeApps (open $ metaType m) es
-              typ' <- bindMetas' go typ
-              reportUnresolvedMetaError typ'
-              -- TODO use actual error in expression when strings are faster
-              return $ Builtin.Fail typ'
-            else
-              return $ Meta m es
+            let Just typ = typeApps (open $ metaType m) es
+            logCategory "tc.gen" $ "replaceMetas unsolved " <> show m
+            typ' <- bindMetas' go typ
+            reportUnresolvedMetaError typ'
+            -- TODO Solve the variable?
+            -- TODO use actual error in expression when strings are faster
+            return $ Builtin.Fail typ'
           Just v -> return $ pure v
         Just e -> bindMetas' go $ betaApps (open e) es
       where
@@ -177,14 +176,14 @@ collectDefDeps
   :: HashSet FreeV
   -> Vector
     ( FreeV
-    , QName
+    , GName
     , SourceLoc
     , Definition (Expr MetaVar) FreeV
     , CoreM
     )
   -> Vector
     ( FreeV
-    , ( QName
+    , ( GName
       , SourceLoc
       , Definition (Expr MetaVar) FreeV
       , CoreM
@@ -209,7 +208,7 @@ collectDefDeps vars defs = do
 replaceDefs
   :: Vector
     ( FreeV
-    , ( QName
+    , ( GName
       , SourceLoc
       , Definition (Expr MetaVar) FreeV
       , CoreM
@@ -219,7 +218,7 @@ replaceDefs
   -> Elaborate
     ( Vector
       ( FreeV
-      , QName
+      , GName
       , SourceLoc
       , Definition (Expr MetaVar) FreeV
       )
@@ -233,14 +232,14 @@ replaceDefs defs = do
       appSub v = HashMap.lookupDefault (pure v) v appSubMap
 
   subbedDefs <- forM defs $ \(oldVar, (name, loc, def, typ, vs)) -> do
-    logShow 30 "replaceDefs vs" (varId <$> vs)
-    logDefMeta 30 "replaceDefs def" def
-    logMeta 30 "replaceDefs type" typ
+    logShow "tc.gen" "replaceDefs vs" (varId <$> vs)
+    logDefMeta "tc.gen" "replaceDefs def" $ zonkDef def
+    logMeta "tc.gen" "replaceDefs type" $ zonk typ
     let subbedDef = def >>>= appSub
         subbedType = typ >>= appSub
     (def', typ') <- abstractDefImplicits vs subbedDef subbedType
-    logDefMeta 30 "replaceDefs subbedDef" subbedDef
-    logMeta 30 "replaceDefs subbedType" subbedType
+    logDefMeta "tc.gen" "replaceDefs subbedDef" $ zonkDef subbedDef
+    logMeta "tc.gen" "replaceDefs subbedType" $ zonk subbedType
     newVar <- forall (varHint oldVar) (varData oldVar) typ'
     return (oldVar, newVar, name, loc, def')
 

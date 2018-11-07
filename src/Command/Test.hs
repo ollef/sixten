@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase, OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Command.Test where
 
 import Protolude hiding (TypeError)
@@ -11,13 +11,13 @@ import qualified Command.Check.Options as Check
 import qualified Command.Compile as Compile
 import qualified Command.Compile.Options as Compile
 import Error
-import qualified Processor.Result as Processor
 
 data Options = Options
-  { expectedOutputFile :: Maybe FilePath
+  { checkOptions :: Check.Options
+  , compileOptions :: Compile.Options
+  , expectedOutputFile :: Maybe FilePath
   , expectTypeError :: Bool
   , expectSyntaxError :: Bool
-  , compileOptions :: Compile.Options
   } deriving (Show)
 
 optionsParserInfo :: ParserInfo Options
@@ -27,8 +27,9 @@ optionsParserInfo = info (helper <*> optionsParser)
   <> header "sixten test"
 
 optionsParser :: Parser Options
-optionsParser = Options
-  <$> optional (strOption
+optionsParser = uncurry Options
+  <$> Compile.optionsParser
+  <*> optional (strOption
     $ long "expected"
     <> short 'e'
     <> metavar "FILE"
@@ -43,13 +44,12 @@ optionsParser = Options
     (long "expect-syntax-error"
     <> help "The program should yield a syntax error"
     )
-  <*> Compile.optionsParser
 
 test :: Options -> IO ()
-test opts = Compile.compile (compileOptions opts) True $ \case
-  Processor.Failure errs -> onCompileError errs
-  Processor.Success (_, errs@(_:_)) -> onCompileError errs
-  Processor.Success (fp, []) -> onCompileSuccess fp
+test opts = Compile.compile (checkOptions opts) (compileOptions opts) True $ \mfp errs ->
+  case (mfp, errs) of
+    (Just fp, []) -> onCompileSuccess fp
+    _ -> onCompileError errs
   where
     onCompileError errs = case errs of
       SyntaxError {}:_
@@ -75,10 +75,10 @@ test opts = Compile.compile (compileOptions opts) True $ \case
           | Text.pack output == expectedOutput -> success
           | otherwise -> failed expectedOutput $ putStrLn output
     success = do
-      putStrLn $ "OK: " ++ intercalate ", " (toList . Check.inputFiles . Compile.checkOptions . compileOptions $ opts)
+      putStrLn $ "OK: " ++ intercalate ", " (toList . Check.inputFiles . checkOptions $ opts)
       exitSuccess
     failed expected actual = do
-      putStrLn $ "FAILED: " ++ intercalate ", " (toList . Check.inputFiles . Compile.checkOptions . compileOptions $ opts)
+      putStrLn $ "FAILED: " ++ intercalate ", " (toList . Check.inputFiles . checkOptions $ opts)
       putText "Expected:"
       putText expected
       putText "But got:"

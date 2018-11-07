@@ -1,17 +1,20 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings, MonadComprehensions, ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MonadComprehensions #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 module Backend.Lift where
 
 import Protolude
 
 import Control.Monad.Except
-import Control.Monad.Fail
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
+import Rock
 
-import MonadFresh
-import MonadLog
+import Effect
 import Syntax
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
@@ -23,32 +26,42 @@ import Util.TopoSort
 import VIX
 
 data LiftState thing = LiftState
-  { freshNames :: [QName]
-  , liftedThings :: [(QName, thing)]
+  { baseName :: !GName
+  , freshNames :: [Name]
+  , liftedThings :: [(GName, thing)]
   }
 
 newtype Lift thing m a = Lift (StateT (LiftState thing) m a)
-  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadTrans, MonadFail, MonadFresh, MonadVIX, MonadIO, MonadError e, MonadLog)
+  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadTrans, MonadFresh, MonadIO, MonadLog, MonadFetch q)
 
-freshName :: MonadFail m => Lift thing m QName
+freshName :: Monad m => Lift thing m GName
 freshName = do
-  name:names <- gets freshNames
-  modify $ \s -> s { freshNames = names }
-  return name
+  s <- get
+  case freshNames s of
+    [] -> panic "Lift: no more fresh names"
+    name:names -> do
+      put s { freshNames = names }
+      return $ case baseName s of
+        GName qn parts -> GName qn $ parts <> pure name
 
-freshNameWithHint :: MonadFail m => Name -> Lift thing m QName
+freshNameWithHint :: Monad m => Name -> Lift thing m GName
 freshNameWithHint hint = do
-  QName mname name:names <- gets freshNames
-  modify $ \s -> s { freshNames = names }
-  return $ QName mname $ name <> "-" <> hint
+  s <- get
+  case freshNames s of
+    [] -> panic "Lift: no more fresh names"
+    name:names -> do
+      put s { freshNames = names }
+      return $ case baseName s of
+        GName qn parts ->
+          GName qn $ parts <> pure (name <> "-" <> hint)
 
-liftNamedThing :: Monad m => QName -> thing -> Lift thing m ()
+liftNamedThing :: Monad m => GName -> thing -> Lift thing m ()
 liftNamedThing name thing =
   modify $ \s -> s
     { liftedThings = (name, thing) : liftedThings s
     }
 
-liftThing :: MonadFail m => thing -> Lift thing m QName
+liftThing :: Monad m => thing -> Lift thing m GName
 liftThing thing = do
   name <- freshName
   liftNamedThing name thing
@@ -56,13 +69,15 @@ liftThing thing = do
 
 runLift
   :: Functor m
-  => QName
+  => GName
+  -> Name
   -> Lift thing m a
-  -> m (a, [(QName, thing)])
-runLift (QName mname name) (Lift l)
+  -> m (a, [(GName, thing)])
+runLift gn postfix (Lift l)
   = second liftedThings
   <$> runStateT l LiftState
-  { freshNames = [QName mname $ name <> if n == 0 then "" else shower n | n <- [(0 :: Int)..]]
+  { baseName = gn
+  , freshNames = (postfix <>) . shower <$> [(0 :: Int)..]
   , liftedThings = mempty
   }
 
@@ -82,7 +97,7 @@ liftExpr expr = case expr of
   SLambda.Let ds scope -> liftLet ds scope
   SLambda.Case e brs -> Lifted.Case <$> liftAnnoExpr e <*> liftBranches brs
   SLambda.Lams tele s -> liftLambda tele s
-  SLambda.Lam {} -> internalError "liftExpr Lam"
+  SLambda.Lam {} -> panic "liftExpr Lam"
   SLambda.ExternCode c retType -> Lifted.ExternCode <$> mapM liftAnnoExpr c <*> liftExpr retType
 
 liftAnnoExpr
@@ -95,7 +110,7 @@ liftLambda
   -> AnnoScope TeleVar SLambda.Expr FV
   -> LambdaLift (Lifted.Expr FV)
 liftLambda tele lamScope = do
-  logFreeVar 20 "liftLambda" $ Sized.Function tele lamScope
+  logFreeVar "lift" "liftLambda" $ Sized.Function tele lamScope
 
   let sortedFvs = topoSortVars $ toHashSet tele <> toHashSet lamScope
 
@@ -107,7 +122,7 @@ liftLambda tele lamScope = do
         | otherwise = (`Lifted.Call` args)
 
   let fun = Sized.functionTyped params lamBody
-  logFreeVar 20 "liftLambda result" fun
+  logFreeVar "lift" "liftLambda result" fun
 
   g <- liftThing $ close (panic "liftLambda not closed") fun
 
@@ -164,8 +179,8 @@ liftLet ds scope = do
     g <- fromNameHint freshName freshNameWithHint $ varHint v
     return (v, g)
 
-  logShow 20 "subVec" subVec
-  logShow 20 "sortedFvs" fvs
+  logShow "lift" "subVec" subVec
+  logShow "lift" "sortedFvs" fvs
 
   let varIndex = hashedElemIndex $ fst <$> subVec
       go v = case varIndex v of
@@ -235,15 +250,18 @@ liftToDefinitionM (Closed (Anno (SLambda.Lams tele bodyScope) _)) = do
     $ Sized.functionTyped vs body'
 liftToDefinitionM (Closed sexpr) = do
   sexpr' <- liftAnnoExpr sexpr
-  logFreeVar 20 "liftToDefinitionM sexpr'" sexpr'
+  logFreeVar "lift" "liftToDefinitionM sexpr'" sexpr'
   return
     $ close (panic "liftToDefinitionM 2")
     $ Sized.ConstantDef Public
     $ Sized.Constant sexpr'
 
 liftToDefinition
-  :: QName
+  :: GName
   -> Closed (Anno SLambda.Expr)
-  -> VIX (Closed (Sized.Definition Lifted.Expr), [(QName, Closed (Sized.Function Lifted.Expr))])
-liftToDefinition (QName mname name) expr
-  = runLift (QName mname $ name <> "-lifted") (liftToDefinitionM expr)
+  -> VIX [(GName, Closed (Sized.Definition Lifted.Expr))]
+liftToDefinition name expr = do
+  (def, fs) <- runLift name "lifted" (liftToDefinitionM expr)
+  return
+    $ (name, def)
+    : fmap (second $ mapClosed $ Sized.FunctionDef Private Sized.NonClosure) fs

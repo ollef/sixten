@@ -11,8 +11,11 @@ import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
+import Rock
 
 import qualified Builtin.Names as Builtin
+import Driver.Query
+import Effect
 import Pretty
 import Syntax
 import qualified Syntax.Pre.Literal as Literal
@@ -23,7 +26,7 @@ import Util
 import Util.MultiHashMap(MultiHashMap)
 import qualified Util.MultiHashMap as MultiHashMap
 import Util.TopoSort
-import VIX hiding (instances)
+import VIX hiding (Env)
 
 newtype Env = Env
   { scopeConstrs :: PreName -> HashSet QConstr
@@ -57,9 +60,17 @@ resolveModule modul defs = do
   let aliases = localAliases defs <> importedNameAliases
       lookupAlias preName
         | HashSet.size candidates == 1 = return $ pure $ fromMaybe (panic "resolveModule impossible") $ head $ HashSet.toList candidates
+        | HashSet.size candidates == 0 = do
+          report
+            $ TypeError ("Not in scope:" PP.<+> red (pretty preName)) (preNameSourceLoc preName) mempty
+          let err = Scoped.App
+                (global Builtin.StaticErrorName)
+                Explicit
+                (Scoped.Lit $ Literal.String "error\n")
+          return err
         | otherwise = do
           report
-            $ TypeError ("Ambiguous name" PP.<+> red (pretty preName)) (preNameSourceLoc preName) $ PP.vcat
+            $ TypeError ("Ambiguous occurrence:" PP.<+> red (pretty preName)) (preNameSourceLoc preName) $ PP.vcat
               [ "It could refer to" PP.<+> prettyHumanList "or" (dullBlue . pretty <$> toList candidates) <> "."
               ]
           let err = Scoped.App
@@ -68,7 +79,7 @@ resolveModule modul defs = do
                 (Scoped.Lit $ Literal.String "error\n")
           return err
         where
-          candidates = MultiHashMap.lookupDefault (HashSet.singleton $ fromPreName preName) preName aliases
+          candidates = MultiHashMap.lookup preName aliases
 
   resolvedDefs <- forM checkedDefDeps $ \(n, loc, def, deps) -> do
     def' <- boundJoin <$> traverse lookupAlias def
@@ -81,7 +92,7 @@ resolveModule modul defs = do
   -- class c, add a vertex c -> i, and map the instanceDeps table over all _dependencies_.
   --
   -- We also add a dependency from method to class for all methods
-  instanceDeps <- instances resolvedDefs
+  instanceDeps <- instances $ (\(n, (loc, def), _) -> (n, loc, def)) <$> resolvedDefs
   let methodDeps = methodClasses defs
       addMethodDeps dep
         = maybe (HashSet.singleton dep) (HashSet.insert dep . HashSet.singleton)
@@ -113,16 +124,21 @@ localConstrAliases contents = MultiHashMap.fromList $ concat
 localAliases
   :: HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
   -> MultiHashMap PreName QName
-localAliases contents = MultiHashMap.fromList
-  [ (fromName $ qnameName qn, qn)
+localAliases contents = MultiHashMap.fromList $ concat
+  [ [ (fromName $ qnameName qn, qn)
+    , (fromQName qn, qn)
+    ]
   | qn <- HashMap.keys contents
   ] <> localMethods
   where
     localMethods
-      = MultiHashMap.fromList
-      [ (fromName m, QName (qnameModule n) m)
+      = concat
+      [ [ (fromName m, qn)
+        , (fromQName qn, qn)
+        ]
       | (n, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList contents
       , m <- methodName <$> ms
+      , let qn = QName (qnameModule n) m
       ]
 
 methodClasses
@@ -135,20 +151,19 @@ methodClasses contents = HashMap.fromList
   ]
 
 instances
-  :: [(QName, (SourceLoc, Scoped.Definition Scoped.Expr void), a)]
+  :: [(QName, SourceLoc, Scoped.Definition Scoped.Expr void)]
   -> VIX (MultiHashMap QName QName)
-instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, (_, def), _) -> case def of
+instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, _, def) -> case def of
   Scoped.InstanceDefinition (Scoped.InstanceDef typ _) -> do
-    c <- getClass typ
-    return [(c, name)]
+    mc <- getClass typ
+    return [(c, name) | c <- toList mc]
   _ -> return mempty
 
 importedAliases
   :: Import
   -> VIX (MultiHashMap PreName QConstr, MultiHashMap PreName QName)
 importedAliases (Import modName asName exposed) = do
-  otherConstrs <- liftVIX $ gets vixModuleConstrs
-  otherNames <- liftVIX $ gets vixModuleNames
+  (otherNames, otherConstrs) <- fetch $ ModuleExports modName
   let
     constrs
       = MultiHashMap.fromList
@@ -156,15 +171,14 @@ importedAliases (Import modName asName exposed) = do
       [ [ (k, c)
         , (fromName (qnameName $ qconstrTypeName c) <> "." <> k, c)
         ]
-      | c <- HashSet.toList $ MultiHashMap.lookup modName otherConstrs
+      | c <- HashSet.toList otherConstrs
       , let k = fromConstr $ qconstrConstr c
       ]
 
     names
       = MultiHashMap.fromList
-      $ fmap (\n -> (fromName $ qnameName n :: PreName, n))
-      $ HashSet.toList
-      $ MultiHashMap.lookup modName otherNames
+      $ (\n -> (fromName $ qnameName n :: PreName, n))
+      <$> HashSet.toList otherNames
 
     exposedConstrs = case exposed of
       AllExposed -> constrs
@@ -274,7 +288,7 @@ resolveExpr expr = case expr of
   Unscoped.Wildcard -> return Scoped.Wildcard
   Unscoped.SourceLoc loc e -> Scoped.SourceLoc loc <$> resolveExpr e
   Unscoped.Error e -> do
-    report e
+    lift $ report e
     return
       $ Scoped.App
         (global Builtin.StaticErrorName)
@@ -304,15 +318,17 @@ resolvePat pat = case pat of
 
 getClass
   :: Scoped.Expr v
-  -> VIX QName
+  -> VIX (Maybe QName)
 getClass (Scoped.Pi _ _ s) = getClass $ fromScope s
 getClass (Scoped.SourceLoc loc e) = located loc $ getClass e
-getClass (Scoped.appsView -> (Scoped.Global g, _)) = return g
-getClass _ = throwInvalidInstance
+getClass (Scoped.appsView -> (Scoped.Global g, _)) = return $ Just g
+getClass _ = do
+  reportInvalidInstance
+  return Nothing
 
-throwInvalidInstance :: VIX a
-throwInvalidInstance
-  = throwLocated
+reportInvalidInstance :: VIX ()
+reportInvalidInstance
+  = reportLocated
   $ PP.vcat
   [ "Invalid instance"
   , "Instance types must return a class"

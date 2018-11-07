@@ -1,0 +1,20 @@
+-- Tests an elaboration problem that occurred during generalisation.
+
+test1 False = \x y. x
+test1 a b c = c
+
+test2 False b c = (\x y. x) b c
+test2 d e f = f
+
+test3 b c = (\x y. x) b c
+test3 e f = f
+
+test4 False b c = (\x y. x) b c
+test4 True e f = f
+
+test5 = \x. (\y. 12) 34
+test5 = \z. 56
+
+test6 a b c = case a of
+  False -> (\x y. x) a b
+  a -> c

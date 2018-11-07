@@ -3,14 +3,15 @@ module Command.Check where
 
 import Protolude
 
-import qualified Data.Text.IO as Text
+import qualified Data.Text as Text
 import Options.Applicative as Options
 import Util
 
 import qualified Backend.Target as Target
 import Command.Check.Options
-import qualified Processor.Files as Processor
-import qualified Processor.Result as Processor
+import qualified Driver
+import Effect.Log
+import Error
 
 optionsParserInfo :: ParserInfo Options
 optionsParserInfo = info (helper <*> optionsParser)
@@ -25,14 +26,22 @@ optionsParser = Options
     <> help "Input source FILES"
     <> action "file"
     )
-  <*> Options.option auto
+  <*> many (strOption
     (long "verbose"
     <> short 'v'
-    <> metavar "LEVEL"
-    <> help "Set the verbosity level to LEVEL"
-    <> value 0
-    <> completeWith ["0", "10", "20", "30", "40"]
-    )
+    <> metavar "PREFIX"
+    <> help "Log categories that start with PREFIX"
+    <> completeWith
+      [ "tc"
+      , "tc.whnf"
+      , "tc.unify"
+      , "tc.subtype"
+      , "tc.metavar"
+      , "forall"
+      , "tc.def"
+      , "tc.gen"
+      ]
+    ))
   <*> optional (strOption
     $ long "log-file"
     <> metavar "FILE"
@@ -44,18 +53,23 @@ check
   :: Options
   -> IO ()
 check opts = withLogHandle (logFile opts) $ \logHandle -> do
-  procResult <- Processor.checkFiles Processor.Arguments
-        { Processor.sourceFiles = inputFiles opts
-        , Processor.assemblyDir = ""
-        , Processor.target = Target.defaultTarget
-        , Processor.logHandle = logHandle
-        , Processor.verbosity = verbosity opts
-        , Processor.silentErrors = False
-        }
-  case procResult of
-    Processor.Failure _ -> Text.putStrLn "Type checking failed"
-    Processor.Success [] -> Text.putStrLn "Type checking completed successfully"
-    Processor.Success (_:_) -> Text.putStrLn "Type checking failed"
+  errors <- Driver.checkFiles Driver.Arguments
+    { Driver.sourceFiles = inputFiles opts
+    , Driver.readSourceFile = readFile
+    , Driver.target = Target.defaultTarget
+    , Driver.logHandle = logHandle
+    , Driver.logCategories = \(Category c) ->
+      any (`Text.isPrefixOf` c) (logPrefixes opts)
+    , Driver.silentErrors = False
+    }
+  case errors of
+    [] -> do
+      putText "Type checking completed successfully"
+      exitSuccess
+    _ -> do
+      mapM_ printError errors
+      putText "Type checking failed"
+      exitFailure
   where
     withLogHandle Nothing k = k stdout
     withLogHandle (Just file) k = Util.withFile file WriteMode k

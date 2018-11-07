@@ -3,23 +3,26 @@ module Elaboration.Constraint where
 
 import Protolude
 
+import Control.Lens
 import Data.HashSet(HashSet)
+import qualified Data.HashSet as HashSet
 import qualified Data.Map as Map
 import Data.Vector(Vector)
 
 import Analysis.Simplify
+import qualified Builtin.Names as Builtin
+import Driver.Query
+import Effect
 import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
 import qualified Elaboration.Normalise as Normalise
 import Elaboration.Subtype
-import MonadContext
-import MonadLog
+import Elaboration.TypeOf
 import Syntax
 import Syntax.Core
 import TypedFreeVar
 import Util
-import VIX
 
 trySolveMetaVar
   :: MetaVar
@@ -35,34 +38,41 @@ trySolveConstraint
   :: MetaVar
   -> Elaborate (Maybe (Closed (Expr MetaVar)))
 trySolveConstraint m = inUpdatedContext (const mempty) $ do
-  logShow 25 "trySolveConstraint" $ metaId m
+  logShow "tc.constraint" "trySolveConstraint" $ metaId m
   (vs, typ) <- instantiatedMetaType m
   withVars vs $ do
     typ' <- whnf typ
     case typ' of
-      (appsView -> (Global className, _)) -> do
+      (appsView -> (unSourceLoc -> Builtin.QGlobal className, _)) -> do
         -- Try subsumption on all instances of the class until a match is found
-        globalClassInstances <- instances className
-        let candidates = [(Global g, bimap absurd absurd t) | (g, t) <- globalClassInstances]
-              <> [(pure v, varType v) | v <- toList vs, varData v == Constraint]
-        matchingInstances <- forM candidates $ \(inst, instanceType) -> tryMaybe $ do
-          logMeta 35 "candidate instance" inst
-          logMeta 35 "candidate instance type" instanceType
-          f <- untouchable $ subtype instanceType typ'
-          return $ f inst
-        case catMaybes matchingInstances of
-          [] -> do
-            logVerbose 25 "No matching instance"
+        mname <- view currentModule
+        globalClassInstances <- fetchInstances className mname
+        let
+          go [] = do
+            logCategory "tc.constraint" "No matching instance"
             return Nothing
-          matchingInstance:_ -> do
-            logMeta 25 "Matching instance" matchingInstance
-            logMeta 25 "Matching instance typ" typ'
-            let sol = close (panic "trySolveConstraint not closed") $ lams vs matchingInstance
-            solve m sol
-            return $ Just sol
+          go (inst:candidates') = do
+            instanceType <- typeOf inst
+            mres <- untouchable
+              $ runSubtype (Just . ($ inst) <$> subtypeE instanceType typ')
+              $ \_err -> return Nothing
+            case mres of
+              Nothing -> go candidates'
+              Just matchingInstance -> do
+                logMeta "tc.constraint" "Matching instance" $ zonk matchingInstance
+                logMeta "tc.constraint" "Matching instance typ" $ zonk typ'
+                let sol = close (panic "trySolveConstraint not closed") $ lams vs matchingInstance
+                solve m sol
+                return $ Just sol
+          candidates
+            = [pure v | v <- toList vs, varData v == Constraint]
+            <> [Global $ gname g | g <- HashSet.toList globalClassInstances]
+        logShow "tc.constraint" "Candidates" $ length candidates
+        go candidates
       _ -> do
-        logMeta 25 "Malformed" typ'
-        throwLocated "Malformed constraint" -- TODO error message
+        logMeta "tc.constraint" "Malformed" $ zonk typ'
+        reportLocated "Malformed constraint" -- TODO error message
+        return Nothing
 
 solveExprConstraints
   :: CoreM
@@ -103,10 +113,10 @@ mergeConstraintVars
   :: HashSet MetaVar
   -> Elaborate (HashSet MetaVar) -- ^ The metavars that are still unsolved
 mergeConstraintVars vars = do
-  logShow 35 "mergeConstraintVars" vars
+  logShow "tc.constraint" "mergeConstraintVars" vars
   _ <- foldlM go mempty vars
   vars' <- filterMSet isUnsolved vars
-  logShow 35 "mergeConstraintVars result" vars'
+  logShow "tc.constraint" "mergeConstraintVars result" vars'
   return vars'
   where
     go varTypes m@MetaVar { metaPlicitness = Constraint } = do
@@ -137,16 +147,18 @@ mergeConstraintVars vars = do
 
 whnf :: CoreM -> Elaborate CoreM
 whnf e = Normalise.whnf' Normalise.Args
-  { Normalise.expandTypeReps = False
-  , Normalise.handleMetaVar = trySolveMetaVar
+  { Normalise._expandTypeReps = False
+  , Normalise._prettyExpr = prettyMeta <=< zonk
+  , Normalise._handleMetaVar = trySolveMetaVar
   }
   e
   mempty
 
 whnfExpandingTypeReps :: CoreM -> Elaborate CoreM
 whnfExpandingTypeReps e = Normalise.whnf' Normalise.Args
-  { Normalise.expandTypeReps = True
-  , Normalise.handleMetaVar = trySolveMetaVar
+  { Normalise._expandTypeReps = True
+  , Normalise._prettyExpr = prettyMeta <=< zonk
+  , Normalise._handleMetaVar = trySolveMetaVar
   }
   e
   mempty

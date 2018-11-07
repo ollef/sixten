@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -8,12 +9,12 @@ module Command.LanguageServer.Hover where
 
 import Protolude
 
+import Control.Lens
 import Control.Monad.ListT(ListT(ListT))
 import qualified Data.List.Class as ListT
 import Text.Parsix.Position
 
-import MonadContext
-import MonadFresh
+import Effect
 import Syntax
 import Syntax.Core
 import TypedFreeVar
@@ -29,38 +30,51 @@ type FreeV = FreeVar Plicitness (Expr Void)
 
 -- TODO check file as well
 
-newtype Hover a = Hover { unHover :: ListT (StateT Int IO) a }
-  deriving (Functor, Applicative, Alternative, Monad, MonadIO, Semigroup, Monoid)
+data HoverEnv = HoverEnv
+  { _freshEnv :: !FreshEnv
+  , _contextEnv :: !(ContextEnv FreeV)
+  }
 
-instance MonadState s m => MonadState s (ListT m) where
-  state s = ListT $ (`ListT.Cons` mempty) <$> state s
+makeLenses ''HoverEnv
+
+instance HasFreshEnv HoverEnv where
+  freshEnv = Command.LanguageServer.Hover.freshEnv
+
+instance HasContextEnv FreeV HoverEnv where
+  contextEnv = Command.LanguageServer.Hover.contextEnv
+
+newtype Hover a = Hover { unHover :: ListT (ReaderT HoverEnv IO) a }
+  deriving (Functor, Applicative, Alternative, Monad, MonadIO, Semigroup, Monoid, MonadContext FreeV, MonadFresh)
+
+instance MonadReader r m => MonadReader r (ListT m) where
+  ask = ListT $ do
+    x <- ask
+    pure $ ListT.Cons x $ ListT $ pure ListT.Nil
+  local f (ListT mxs) = ListT $ do
+    xs <- local f mxs
+    pure $ case xs of
+      ListT.Cons x mxs' -> ListT.Cons x $ local f mxs'
+      ListT.Nil -> ListT.Nil
 
 runHover :: Hover a -> IO [a]
-runHover (Hover m) = evalStateT (ListT.toList m) 0
+runHover (Hover m) = do
+  f <- emptyFreshEnv
+  let c = emptyContextEnv
+  runReaderT  (ListT.toList m) (HoverEnv f c)
 
 emitCons :: a -> Hover a -> Hover a
 emitCons a as
   = Hover $ ListT $ pure $ ListT.Cons a $ unHover as
 
-instance MonadContext FreeV Hover where
-  inUpdatedContext _ m = m
-  localVars = return mempty
-
-instance MonadFresh Hover where
-  fresh = Hover $ do
-    i <- get
-    put $ i + 1
-    return i
-
 hoverDefs
   :: (Span -> Bool)
-  -> [(QName, SourceLoc, ClosedDefinition Expr, Biclosed Expr)]
+  -> [(GName, SourceLoc, ClosedDefinition Expr, Biclosed Expr)]
   -> IO [(Span, Expr Void FreeV)]
 hoverDefs f defs = runHover $ hoverClosedDef f =<< Hover (ListT.fromList defs)
 
 hoverClosedDef
   :: (Span -> Bool)
-  -> (QName, SourceLoc, ClosedDefinition Expr, Biclosed Expr)
+  -> (GName, SourceLoc, ClosedDefinition Expr, Biclosed Expr)
   -> Hover (Span, Expr Void FreeV)
 hoverClosedDef f (_, loc, ClosedDefinition def, Biclosed e) = do
   guard $ f $ sourceLocSpan loc

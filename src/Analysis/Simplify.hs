@@ -17,7 +17,7 @@ import Syntax.Core hiding (let_)
 import Util
 
 simplifyExpr
-  :: (QName -> Bool)
+  :: (GName -> Bool)
   -> Int
   -> Expr meta v
   -> Expr meta v
@@ -58,7 +58,7 @@ simplifyExpr glob !applied expr = case expr of
 
 -- TODO: Inlining can expose more simplification opportunities that aren't exploited.
 letRec
-  :: (QName -> Bool)
+  :: (GName -> Bool)
   -> LetRec (Expr meta) v
   -> Scope LetVar (Expr meta) v
   -> Expr meta v
@@ -84,7 +84,7 @@ letRec glob ds scope
     scope' = rebind rebinding scope
 
 let_
-  :: (QName -> Bool)
+  :: (GName -> Bool)
   -> NameHint
   -> SourceLoc
   -> Expr meta v
@@ -98,13 +98,13 @@ let_ glob h loc e t s
     (mapBound (\() -> 0) s)
 
 simplifyDef
-  :: (QName -> Bool)
+  :: (GName -> Bool)
   -> Definition (Expr meta) v
   -> Definition (Expr meta) v
 simplifyDef glob = hoist $ simplifyExpr glob 0
 
 etaLams
-  :: (QName -> Bool)
+  :: (GName -> Bool)
   -> Int
   -> Telescope Plicitness (Expr meta) v
   -> Scope TeleVar (Expr meta) v
@@ -156,7 +156,7 @@ duplicable expr = case expr of
   ExternCode {} -> False
   SourceLoc _ e -> duplicable e
 
-terminates :: (QName -> Bool) -> Expr meta v -> Bool
+terminates :: (GName -> Bool) -> Expr meta v -> Bool
 terminates glob expr = case expr of
   Var _ -> True
   Meta _ _ -> False
@@ -171,7 +171,7 @@ terminates glob expr = case expr of
   ExternCode {} -> False
   SourceLoc _ e -> terminates glob e
 
-terminatesWhenCalled :: (QName -> Bool) -> Expr meta v -> Bool
+terminatesWhenCalled :: (GName -> Bool) -> Expr meta v -> Bool
 terminatesWhenCalled glob expr = case expr of
   Var _ -> False
   Meta _ _ -> False

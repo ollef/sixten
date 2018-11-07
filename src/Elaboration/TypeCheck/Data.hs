@@ -1,22 +1,24 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Elaboration.TypeCheck.Data where
 
 import Prelude(unzip3)
 import Protolude hiding (typeRep)
 
 import qualified Builtin.Names as Builtin
+import Driver.Query
+import Effect
 import Elaboration.Constraint as Constraint
 import Elaboration.MetaVar
+import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
 import Elaboration.TypeCheck.Expr
 import Elaboration.TypeOf
 import Elaboration.Unify
-import MonadContext
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import qualified TypeRep
-import VIX
 
 checkDataDef
   :: FreeV
@@ -32,16 +34,16 @@ checkDataDef var (DataDef ps cs) = do
     forall h p t'
 
   withVars vs $ do
-    unify [] (Core.pis vs Builtin.Type) $ varType var
+    runUnify (unify [] (Core.pis vs Builtin.Type) $ varType var) report
 
     let constrRetType = Core.apps (pure var) $ (\v -> (varData v, pure v)) <$> vs
 
     (cs', rets, sizes) <- fmap unzip3 $ forM cs $ \(ConstrDef c t) ->
       checkConstrDef $ ConstrDef c $ instantiateTele pure vs t
 
-    mapM_ (unify [] constrRetType) rets
+    mapM_ (flip runUnify report . unify [] constrRetType) rets
 
-    intRep <- getIntRep
+    intRep <- fetchIntRep
 
     let tagRep = case cs of
           [] -> TypeRep.UnitRep
@@ -52,13 +54,13 @@ checkDataDef var (DataDef ps cs) = do
           = productType (Core.MkType tagRep)
           $ foldl' sumType (Core.MkType TypeRep.UnitRep) sizes
 
-    unify [] Builtin.Type =<< typeOf constrRetType
+    flip runUnify report . unify [] Builtin.Type =<< typeOf constrRetType
 
     forM_ cs' $ \(ConstrDef qc e) ->
-      logMeta 20 ("checkDataDef res " ++ show qc) e
+      logMeta "tc.data" ("checkDataDef res " ++ show qc) $ zonk e
 
     typeRep' <- whnfExpandingTypeReps typeRep
-    logMeta 20 "checkDataDef typeRep" typeRep'
+    logMeta "tc.data" "checkDataDef typeRep" $ zonk typeRep'
 
     return (dataDef vs cs', Core.lams vs typeRep')
 

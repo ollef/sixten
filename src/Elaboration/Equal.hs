@@ -3,36 +3,39 @@ module Elaboration.Equal where
 
 import Protolude
 
+import Control.Monad.Fail
+import Control.Monad.Trans.Maybe
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
+import Effect
 import Elaboration.MetaVar
 import Elaboration.Monad
 import Elaboration.Normalise
-import MonadContext
 import Syntax
 import Syntax.Core
 import TypedFreeVar
 import Util
-import VIX
+
+type Equal = MaybeT Elaborate
 
 exec
-  :: ExceptT () Elaborate a
+  :: Equal a
   -> Elaborate Bool
 exec m = do
-  res <- runExceptT m
+  res <- runMaybeT m
   case res of
-    Left () -> return False
-    Right _ -> return True
+    Nothing -> return False
+    Just _ -> return True
 
-expr :: CoreM -> CoreM -> ExceptT () Elaborate CoreM
+expr :: CoreM -> CoreM -> Equal CoreM
 expr type1 type2 = do
   type1' <- lift $ whnf type1
   type2' <- lift $ whnf type2
   expr' type1' type2'
 
-expr' :: CoreM -> CoreM -> ExceptT () Elaborate CoreM
+expr' :: CoreM -> CoreM -> Equal CoreM
 expr' (Var v1) (Var v2) = Var <$> eq v1 v2
 expr' (Meta m1 es1) (Meta m2 es2) = Meta <$> eq m1 m2 <*> arguments es1 es2
 expr' (Global g1) (Global g2) = Global <$> eq g1 g2
@@ -59,12 +62,12 @@ expr' e1 (Lam h p t s) = do
 -- Eta-reduce
 expr' (etaReduce -> Just e1) e2 = expr e1 e2
 expr' e1 (etaReduce -> Just e2) = expr e1 e2
-expr' _ _ = throwError ()
+expr' _ _ = fail "not equal"
 
 arguments
   :: Vector (Plicitness, CoreM)
   -> Vector (Plicitness, CoreM)
-  -> ExceptT () Elaborate (Vector (Plicitness, CoreM))
+  -> Equal (Vector (Plicitness, CoreM))
 arguments es1 es2 = do
   guard $ Vector.length es1 == Vector.length es2
   let go (p1, e1) (p2, e2) = (,) <$> eq p1 p2 <*> expr e1 e2
@@ -74,7 +77,7 @@ abstraction
   :: (FreeV -> CoreM -> b)
   -> NameHint -> Plicitness -> CoreM -> Scope1 (Expr MetaVar) FreeV
   -> NameHint -> Plicitness -> CoreM -> Scope1 (Expr MetaVar) FreeV
-  -> ExceptT () Elaborate b
+  -> Equal b
 abstraction c h1 p1 t1 s1 h2 p2 t2 s2 = do
   let h = h1 <> h2
   p <- eq p1 p2
@@ -87,19 +90,19 @@ abstraction c h1 p1 t1 s1 h2 p2 t2 s2 = do
 branches
   :: Branches Plicitness (Expr MetaVar) FreeV
   -> Branches Plicitness (Expr MetaVar) FreeV
-  -> ExceptT () Elaborate (Branches Plicitness (Expr MetaVar) FreeV)
+  -> Equal (Branches Plicitness (Expr MetaVar) FreeV)
 branches (ConBranches cbrs1) (ConBranches cbrs2) = do
   guard $ length cbrs1 == length cbrs2
   ConBranches <$> zipWithM conBranch cbrs1 cbrs2
 branches (LitBranches lbrs1 def1) (LitBranches lbrs2 def2) = do
   guard $ length lbrs1 == length lbrs2
   LitBranches <$> sequence (NonEmpty.zipWith litBranch lbrs1 lbrs2) <*> expr def1 def2
-branches _ _ = throwError ()
+branches _ _ = fail "not equal"
 
 conBranch
   :: ConBranch Plicitness (Expr MetaVar) FreeV
   -> ConBranch Plicitness (Expr MetaVar) FreeV
-  -> ExceptT () Elaborate (ConBranch Plicitness (Expr MetaVar) FreeV)
+  -> Equal (ConBranch Plicitness (Expr MetaVar) FreeV)
 conBranch (ConBranch c1 tele1 s1) (ConBranch c2 tele2 s2) = do
   c <- eq c1 c2
   guard $ teleLength tele1 == teleLength tele2
@@ -120,11 +123,11 @@ conBranch (ConBranch c1 tele1 s1) (ConBranch c2 tele2 s2) = do
 litBranch
   :: LitBranch (Expr MetaVar) FreeV
   -> LitBranch (Expr MetaVar) FreeV
-  -> ExceptT () Elaborate (LitBranch (Expr MetaVar) FreeV)
+  -> Equal (LitBranch (Expr MetaVar) FreeV)
 litBranch (LitBranch l1 e1) (LitBranch l2 e2)
   = LitBranch <$> eq l1 l2 <*> expr e1 e2
 
-extern :: Extern CoreM -> Extern CoreM -> ExceptT () Elaborate (Extern CoreM)
+extern :: Extern CoreM -> Extern CoreM -> Equal (Extern CoreM)
 extern (Extern lang1 parts1) (Extern lang2 parts2) = do
   lang <- eq lang1 lang2
   guard $ length parts1 == length parts2
@@ -132,7 +135,7 @@ extern (Extern lang1 parts1) (Extern lang2 parts2) = do
       go (ExprMacroPart e1) (ExprMacroPart e2) = ExprMacroPart <$> expr e1 e2
       go (TypeMacroPart t1) (TypeMacroPart t2) = TypeMacroPart <$> expr t1 t2
       go (TargetMacroPart m1) (TargetMacroPart m2) = TargetMacroPart <$> eq m1 m2
-      go _ _ = throwError ()
+      go _ _ = fail "not equal"
   Extern lang <$> zipWithM go parts1 parts2
 
 eq :: (Eq b, Alternative m, Monad m) => b -> b -> m b

@@ -13,7 +13,6 @@ import Syntax.Annotation
 import Syntax.Closed
 import Syntax.GlobalBind
 import Syntax.Name
-import Syntax.QName
 import Syntax.Sized.Anno
 import Syntax.Telescope
 import qualified TypedFreeVar as Typed
@@ -55,9 +54,9 @@ functionTyped
 functionTyped vs = Function (Typed.varTelescope vs) . abstractAnno (teleAbstraction vs)
 
 dependencyOrder
-  :: (GBind expr, Foldable expr)
-  => [(QName, Closed (Definition expr))]
-  -> [[(QName, Closed (Definition expr))]]
+  :: (GBind expr g, Foldable expr, Ord g)
+  => [(g, Closed (Definition expr))]
+  -> [[(g, Closed (Definition expr))]]
 dependencyOrder = fmap flattenSCC . topoSortWith fst (gbound pure . open . snd)
 
 -------------------------------------------------------------------------------

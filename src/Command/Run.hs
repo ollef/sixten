@@ -1,4 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
 module Command.Run where
 
 import Prelude(String, words)
@@ -7,13 +6,14 @@ import Protolude
 import Options.Applicative
 import System.Process
 
+import qualified Command.Check.Options as Check
 import qualified Command.Compile as Compile
 import qualified Command.Compile.Options as Compile
 import Error
-import qualified Processor.Result as Processor
 
 data Options = Options
-  { compileOptions :: Compile.Options
+  { checkOptions :: Check.Options
+  , compileOptions :: Compile.Options
   , commandLineArguments :: Maybe String
   } deriving (Show)
 
@@ -24,7 +24,7 @@ optionsParserInfo = info (helper <*> optionsParser)
   <> header "sixten run"
 
 optionsParser :: Parser Options
-optionsParser = Options
+optionsParser = uncurry Options
   <$> Compile.optionsParser
   <*> optional (strOption
     $ long "args"
@@ -33,9 +33,11 @@ optionsParser = Options
     )
 
 run :: Options -> IO ()
-run opts = Compile.compile (compileOptions opts) False $ \case
-  Processor.Failure errs -> mapM_ printError errs
-  Processor.Success (f, _) -> callProcess f $ maybe [] words $ commandLineArguments opts
+run opts = Compile.compile (checkOptions opts) (compileOptions opts) False $ \mfp errs -> do
+  mapM_ printError errs
+  case mfp of
+    Nothing -> exitFailure
+    Just fp -> callProcess fp $ maybe [] words $ commandLineArguments opts
 
 command :: ParserInfo (IO ())
 command = run <$> optionsParserInfo

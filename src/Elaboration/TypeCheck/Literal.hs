@@ -9,10 +9,9 @@ import Data.Text.Encoding as Encoding
 import Numeric.Natural
 
 import qualified Builtin.Names as Builtin
-import Syntax.Annotation
+import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Core.Pattern as Core
-import Syntax.GlobalBind
 import qualified Syntax.Literal as Core
 import qualified Syntax.Pre.Literal as Pre
 import Util
@@ -106,14 +105,14 @@ byteArrayPat bs
         restType = byteVectorType $ nat restLen
 
 byteArrayType :: Core.Expr m v
-byteArrayType = Core.App (global Builtin.ArrayName) Explicit Builtin.ByteType
+byteArrayType = Core.App (global $ GName Builtin.ArrayName mempty) Explicit Builtin.ByteType
 
 ptrType :: Core.Expr m v -> Core.Expr m v
-ptrType = Core.App (global Builtin.PtrName) Explicit
+ptrType = Core.App (global $ GName Builtin.PtrName mempty) Explicit
 
 byteVectorType :: Core.Expr m v -> Core.Expr m v
 byteVectorType len = Core.apps
-  (global Builtin.VectorName)
+  (global $ GName Builtin.VectorName mempty)
   [ (Explicit, len)
   , (Explicit, Builtin.ByteType)
   ]

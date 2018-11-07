@@ -11,20 +11,21 @@ import qualified Data.Vector as Vector
 
 import {-# SOURCE #-} Elaboration.TypeCheck.Expr
 import qualified Builtin.Names as Builtin
+import Driver.Query
+import Effect
+import Effect.Log as Log
 import Elaboration.Constructor
 import Elaboration.MetaVar
+import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
 import Elaboration.Subtype
 import Elaboration.TypeCheck.Literal
-import MonadContext
-import MonadLog
 import Syntax
 import qualified Syntax.Core as Core
 import Syntax.Core.Pattern as Core
 import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import Util
-import VIX
 
 data ExpectedPat
   = InferPat (IORef CoreM)
@@ -70,7 +71,7 @@ tcPats
   -> Elaborate (Vector (Core.Pat CoreM FreeV, CoreM, CoreM), PatVars)
 tcPats pats vs tele = do
   unless (Vector.length pats == teleLength tele)
-    $ internalError "tcPats length mismatch"
+    $ panic "tcPats length mismatch"
 
   results <- iforTeleWithPrefixM tele $ \i _ _ s results -> do
     let argExprs = snd3 . fst <$> results
@@ -79,7 +80,7 @@ tcPats pats vs tele = do
         -- TODO could be more efficient
         varPrefix = snd =<< results
         vs' = vs <> boundPatVars varPrefix
-    logShow 30 "tcPats vars" (varId <$> vs')
+    logShow "tc.pat" "tcPats vars" (varId <$> vs')
     (pat', patExpr, vs'') <- withPatVars varPrefix $ checkPat p pat vs' expectedType
     return ((pat', patExpr, expectedType), vs'')
 
@@ -92,12 +93,13 @@ tcPat
   -> ExpectedPat
   -> Elaborate (Core.Pat CoreM FreeV, CoreM, PatVars)
 tcPat p pat vs expected = do
-  whenVerbose 20 $ do
+  whenLoggingCategory "tc.pat" $ do
     let shownPat = first (pretty . fmap pretty . instantiatePattern pure vs) pat
-    logPretty 20 "tcPat" shownPat
-  logPretty 30 "tcPat vs" vs
-  (pat', patExpr, vs') <- indentLog $ tcPat' p pat vs expected
-  logPretty 30 "tcPat vs res" vs'
+    logPretty "tc.pat" "tcPat" shownPat
+  logPretty "tc.pat" "tcPat vs" vs
+  (pat', patExpr, vs') <- Log.indent $ tcPat' p pat vs expected
+  logPretty "tc.pat" "tcPat vs res" vs'
+  logMeta "tc.pat" "tcPat patExpr" $ zonk patExpr
   return (pat', patExpr, vs')
 
 tcPat'
@@ -134,41 +136,44 @@ tcPat' p pat vs expected = case pat of
     qc@(QConstr typeName _) <- resolveConstr cons $ case expected of
       CheckPat expectedType -> Just expectedType
       InferPat _ -> Nothing
-    (DataDefinition (DataDef paramsTele _) _, _) <- definition typeName
-    conType <- qconstructor qc
+    def <- fetchDefinition $ gname typeName
+    case def of
+      ConstantDefinition {} -> panic "tcPat' ConstantDefinition"
+      DataDefinition (DataDef paramsTele _) _ -> do
+        conType <- fetchQConstructor qc
 
-    let numParams = teleLength paramsTele
-        (tele, retScope) = Core.pisView conType
-        argPlics = Vector.drop numParams $ teleAnnotations tele
+        let numParams = teleLength paramsTele
+            (tele, retScope) = Core.pisView conType
+            argPlics = Vector.drop numParams $ teleAnnotations tele
 
-    pats' <- Vector.fromList <$> exactlyEqualisePats (Vector.toList argPlics) (Vector.toList pats)
+        pats' <- Vector.fromList <$> exactlyEqualisePats (Vector.toList argPlics) (Vector.toList pats)
 
-    paramVars <- forTeleWithPrefixM paramsTele $ \h p' s paramVars ->
-      exists h p' $ instantiateTele identity paramVars s
+        paramVars <- forTeleWithPrefixM paramsTele $ \h p' s paramVars ->
+          exists h p' $ instantiateTele identity paramVars s
 
-    let argTele = instantiatePrefix paramVars tele
+        let argTele = instantiatePrefix paramVars tele
 
-    (pats'', vs') <- tcPats pats' vs argTele
+        (pats'', vs') <- tcPats pats' vs argTele
 
-    let argExprs = snd3 <$> pats''
-        argTypes = thd3 <$> pats''
-        pats''' = Vector.zip3 argPlics (fst3 <$> pats'') argTypes
-        params = Vector.zip (teleAnnotations paramsTele) paramVars
-        iparams = first implicitise <$> params
-        patExpr = Core.apps (Core.Con qc) $ iparams <> Vector.zip argPlics argExprs
+        let argExprs = snd3 <$> pats''
+            argTypes = thd3 <$> pats''
+            pats''' = Vector.zip3 argPlics (fst3 <$> pats'') argTypes
+            params = Vector.zip (teleAnnotations paramsTele) paramVars
+            iparams = first implicitise <$> params
+            patExpr = Core.apps (Core.Con qc) $ iparams <> Vector.zip argPlics argExprs
 
-        retType = instantiateTele identity (paramVars <|> argExprs) retScope
+            retType = instantiateTele identity (paramVars <|> argExprs) retScope
 
-    (pat', patExpr') <- instPatExpected expected retType (Core.ConPat qc params pats''') patExpr
+        (pat', patExpr') <- instPatExpected expected retType (Core.ConPat qc params pats''') patExpr
 
-    return (pat', patExpr', vs')
+        return (pat', patExpr', vs')
   Pre.AnnoPat pat' s -> do
     let patType = instantiatePattern pure vs s
     patType' <- checkPoly patType Builtin.Type
     (pat'', patExpr, vs') <- checkPat p pat' vs patType'
     (pat''', patExpr') <- instPatExpected expected patType' pat'' patExpr
     return (pat''', patExpr', vs')
-  Pre.ViewPat _ _ -> internalError "tcPat ViewPat undefined TODO"
+  Pre.ViewPat _ _ -> panic "tcPat ViewPat undefined TODO"
   Pre.PatLoc loc pat' -> located loc $ do
     (pat'', patExpr, vs') <- tcPat' p pat' vs expected
     return (pat'', Core.SourceLoc loc patExpr, vs')
@@ -224,13 +229,14 @@ exactlyEqualisePats
   -> [(Plicitness, Pre.Pat c e ())]
   -> Elaborate [(Plicitness, Pre.Pat c e ())]
 exactlyEqualisePats [] [] = return []
-exactlyEqualisePats [] ((p, pat):_)
-  = throwLocated
-  $ PP.vcat
-    [ "Too many patterns for type"
-    , "Found the pattern:" PP.<+> red (pretty $ prettyAnnotation p (prettyM $ first (const ()) pat)) <> "."
-    , bold "Expected:" PP.<+> "no more patterns."
-    ]
+exactlyEqualisePats [] ((p, pat):_) = do
+  reportLocated
+    $ PP.vcat
+      [ "Too many patterns for type"
+      , "Found the pattern:" PP.<+> red (pretty $ prettyAnnotation p (prettyM $ first (const ()) pat)) <> "."
+      , bold "Expected:" PP.<+> "no more patterns."
+      ]
+  return []
 exactlyEqualisePats (Constraint:ps) ((Constraint, pat):pats)
   = (:) (Implicit, pat) <$> exactlyEqualisePats ps pats
 exactlyEqualisePats (Implicit:ps) ((Implicit, pat):pats)
@@ -241,17 +247,20 @@ exactlyEqualisePats (Constraint:ps) pats
   = (:) (Constraint, Pre.WildcardPat) <$> exactlyEqualisePats ps pats
 exactlyEqualisePats (Implicit:ps) pats
   = (:) (Implicit, Pre.WildcardPat) <$> exactlyEqualisePats ps pats
-exactlyEqualisePats (Explicit:_) ((Constraint, pat):_)
-  = throwExpectedExplicit pat
-exactlyEqualisePats (Explicit:_) ((Implicit, pat):_)
-  = throwExpectedExplicit pat
-exactlyEqualisePats (Explicit:_) []
-  = throwLocated
-  $ PP.vcat
-    [ "Not enough patterns for type"
-    , "Found the pattern: no patterns."
-    , bold "Expected:" PP.<+> "an explicit pattern."
-    ]
+exactlyEqualisePats (Explicit:ps) ((Constraint, pat):pats) = do
+  reportExpectedExplicit pat
+  exactlyEqualisePats (Explicit:ps) pats
+exactlyEqualisePats (Explicit:ps) ((Implicit, pat):pats) = do
+  reportExpectedExplicit pat
+  exactlyEqualisePats (Explicit:ps) pats
+exactlyEqualisePats (Explicit:ps) [] = do
+  reportLocated
+    $ PP.vcat
+      [ "Not enough patterns for type"
+      , "Found: no patterns."
+      , bold "Expected:" PP.<+> "an explicit pattern."
+      ]
+  exactlyEqualisePats (Explicit:ps) [(Explicit, Pre.WildcardPat)]
 
 equalisePats
   :: (Pretty c)
@@ -270,14 +279,16 @@ equalisePats (Constraint:ps) pats
   = (:) (Constraint, Pre.WildcardPat) <$> equalisePats ps pats
 equalisePats (Implicit:ps) pats
   = (:) (Implicit, Pre.WildcardPat) <$> equalisePats ps pats
-equalisePats (Explicit:_) ((Implicit, pat):_)
-  = throwExpectedExplicit pat
-equalisePats (Explicit:_) ((Constraint, pat):_)
-  = throwExpectedExplicit pat
+equalisePats (Explicit:ps) ((Implicit, pat):pats) = do
+  reportExpectedExplicit pat
+  equalisePats (Explicit:ps) pats
+equalisePats (Explicit:ps) ((Constraint, pat):pats) = do
+  reportExpectedExplicit pat
+  equalisePats (Explicit:ps) pats
 
-throwExpectedExplicit :: (Pretty v, Pretty c) => Pre.Pat c e v -> Elaborate a
-throwExpectedExplicit pat
-  = throwLocated
+reportExpectedExplicit :: (Pretty v, Pretty c) => Pre.Pat c e v -> Elaborate ()
+reportExpectedExplicit pat
+  = reportLocated
   $ PP.vcat
     [ "Explicit/implicit mismatch"
     , "Found the implicit pattern:" PP.<+> red (pretty $ prettyAnnotation Implicit (prettyM $ first (const ()) pat)) <> "."

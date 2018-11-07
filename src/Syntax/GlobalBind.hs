@@ -1,3 +1,5 @@
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 module Syntax.GlobalBind where
 
 import Protolude
@@ -7,16 +9,14 @@ import Bound.Var
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 
-import Syntax.QName
-
 class Bound t => GBound t where
   -- | Perform substitution on globals inside a structure.
-  gbound :: GBind e => (QName -> e v) -> t e v -> t e v
+  gbound :: GBind e g => (g -> e v) -> t e v -> t e v
 
-class Monad e => GBind e where
-  global :: QName -> e v
+class Monad e => GBind e g | e -> g where
+  global :: g -> e v
   -- | Perform substitution on globals.
-  gbind :: (QName -> e v) -> e v -> e v
+  gbind :: (g -> e v) -> e v -> e v
 
 instance GBound (Scope b) where
   gbound f (Scope s)
@@ -25,18 +25,18 @@ instance GBound (Scope b) where
 boundJoin :: (Monad f, Bound t) => t f (f a) -> t f a
 boundJoin = (>>>= identity)
 
-globals :: (Foldable e, GBind e) => e v -> HashSet QName
+globals :: (Foldable e, GBind e g, Hashable g, Eq g) => e v -> HashSet g
 globals = fold . gbind (pure . HashSet.singleton) . fmap (const mempty)
 
 boundGlobals
-  :: (Functor (t e), Foldable (t e), GBind e, GBound t)
+  :: (Functor (t e), Foldable (t e), GBind e g, GBound t, Hashable g, Eq g)
   => t e v
-  -> HashSet QName
+  -> HashSet g
 boundGlobals = fold . gbound (pure . HashSet.singleton) . fmap (const mempty)
 
 traverseGlobals
-  :: (GBound t, GBind e, Traversable (t e), Applicative f)
-  => (QName -> f QName)
+  :: (GBound t, GBind e g, Traversable (t e), Applicative f)
+  => (g -> f g)
   -> t e a
   -> f (t e a)
 traverseGlobals f

@@ -1,0 +1,109 @@
+module Sixten.Builtin exposing (..)
+
+-------------------------------------------------------------------------------
+-- Builtin things, special cased by the compiler
+
+Type = _
+
+type Ptr a = Ref a
+
+Int = _
+
+type Nat = Zero | Succ Nat
+
+Pi_ = _
+
+type Closure = MkClosure
+
+-------------------------------------------------------------------------------
+
+type Bool = False | True
+
+abstract
+eqInt : Int -> Int -> Bool
+eqInt x y = (C|
+  return $x == $y ? $True : $False;
+|)
+
+abstract
+addInt : Int -> Int -> Int
+addInt x y = (C|
+  return $x + $y;
+|)
+
+abstract
+subInt : Int -> Int -> Int
+subInt x y = (C|
+  return $x - $y;
+|)
+
+abstract
+maxInt : Int -> Int -> Int
+maxInt x y = (C|
+  return $x > $y ? $x : $y;
+|)
+
+abstract
+printInt : Int -> Int
+printInt x = (C|
+  printf("%" PRId64 "\n", $x);
+  return 0;
+|)
+
+abstract
+fail : (T : Type) -> T
+fail _ = (C|
+  exit(1);
+|)
+
+abstract
+sizeOf : Type -> Int
+sizeOf T = (C| return $T; |)
+
+abstract
+MkType : Int -> Type
+MkType i = (C| return $i; |)
+
+abstract
+productTypeRep : Type -> Type -> Type
+productTypeRep S T = MkType (addInt (sizeOf S) (sizeOf T))
+
+abstract
+sumTypeRep : Type -> Type -> Type
+sumTypeRep S T = MkType (maxInt (sizeOf S) (sizeOf T))
+
+type Unit = MkUnit
+type Pair A B = MkPair A B
+
+Vector : Nat -> Type -> Type
+Vector Zero _ = Unit
+Vector (Succ n) A = Pair A (Vector n A)
+
+type Array A where
+  MkArray : (n : Nat) -> Ptr (Vector n A) -> Array A
+
+Byte : Type
+Byte = MkType 1
+
+type String = MkString (Array Byte)
+
+printString : String -> Unit
+printString (MkString (MkArray len data)) = (C|
+#ifdef _WIN32
+  // In MSVC, fd `1` corresponds to `stdout`.
+  // See: https://msdn.microsoft.com/en-us/library/40bbyw78.aspx
+  _write(1, (const void*)$data, $len);
+#else
+  write(STDOUT_FILENO, (const void*)$data, $len);
+#endif
+|)
+
+intToNat : Int -> Nat
+intToNat 0 = Zero
+intToNat n = Succ (intToNat (subInt n 1))
+
+abstract
+StaticError : forall T. String -> T
+StaticError str =
+  let x = printString str
+  fail _

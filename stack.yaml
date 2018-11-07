@@ -44,6 +44,10 @@ extra-deps:
 - haskell-lsp-types-0.8.0.0
 - multiset-0.3.4
 - parsix-0.1.0.2
+- git: https://github.com/ollef/deriving-gcompare.git
+  commit: 6d26b859fce3fcae181bde4c8d1b3a6d98e26068
+- git: https://github.com/ollef/rock.git
+  commit: d0ecb3877e281fd3965fdd8d5752c2a031faf45c
 
 # Override default flag values for local packages and extra-deps
 flags: {}

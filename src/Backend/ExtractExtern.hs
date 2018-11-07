@@ -3,16 +3,17 @@ module Backend.ExtractExtern where
 
 import Protolude
 
-import Control.Monad.Fail
+import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import qualified Data.Text as Text
 import Data.Text(Text)
 import Data.Vector(Vector)
-import qualified Data.Vector as Vector
+import Rock
 
 import Backend.Target
-import MonadFresh
+import Driver.Query as Query
+import Effect
 import Syntax
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
@@ -43,7 +44,7 @@ import VIX
 --    x
 -- }
 --
--- The extern block is replaced with as call to f(a, b, c, x) in the Sixten
+-- The extern block is replaced with a call to f(a, b, c, x) in the Sixten
 -- code.
 --
 -- We create functions that use the C calling convention for the splices that
@@ -54,29 +55,33 @@ import VIX
 -- }
 --
 data ExtractState = ExtractState
-  { freshNames :: [QName]
+  { freshNames :: [GName]
   , extractedCode :: Tsil Text
   , extractedDecls :: Tsil Extracted.Declaration
-  , extractedCallbacks :: Tsil (QName, Closed (Sized.Function Extracted.Expr))
-  , target :: Target
+  , extractedCallbacks :: Tsil (GName, Closed (Sized.Function Extracted.Expr))
+  , extractedSignatures :: !(HashMap GName (Signature ReturnIndirect))
   }
 
 newtype Extract a = Extract { unExtract :: StateT ExtractState VIX a }
-  deriving (Functor, Applicative, Monad, MonadState ExtractState, MonadFail, MonadFresh, MonadVIX, MonadIO)
+  deriving (Functor, Applicative, Monad, MonadState ExtractState, MonadFresh, MonadIO, MonadFetch Query)
 
-runExtract :: [QName] -> Target -> Extract a -> VIX ([(QName, Closed (Sized.Function Extracted.Expr))], Extracted.Submodule a)
-runExtract names tgt (Extract m) = do
-  (a, s) <- runStateT m (ExtractState names mempty mempty mempty tgt)
+runExtract :: [GName] -> Extract a -> VIX ([(GName, Closed (Sized.Function Extracted.Expr))], Extracted.Submodule a)
+runExtract names (Extract m) = do
+  (a, s) <- runStateT m $ ExtractState names mempty mempty mempty mempty
   let decls = toList $ extractedDecls s
-      defs = toList $ extractedCode s
+      defs = (,) C <$> toList (extractedCode s)
       cbs = toList $ extractedCallbacks s
-  return (cbs, Extracted.Submodule decls ((,) C <$> defs) a)
+      sigs = extractedSignatures s
+  return (cbs, Extracted.Submodule decls defs sigs a)
 
-freshName :: Extract QName
+freshName :: Extract GName
 freshName = do
-  name:names <- gets freshNames
-  modify $ \s -> s { freshNames = names }
-  return name
+  fnames <- gets freshNames
+  case fnames of
+    [] -> panic "freshName: no more names"
+    name:names -> do
+      modify $ \s -> s { freshNames = names }
+      return name
 
 emitDecl :: Extracted.Declaration -> Extract ()
 emitDecl d = modify $ \s -> s { extractedDecls = Snoc (extractedDecls s) d }
@@ -85,10 +90,16 @@ emitCode :: Text -> Extract ()
 emitCode d = modify $ \s -> s { extractedCode = Snoc (extractedCode s) d }
 
 emitCallback
-  :: QName
+  :: GName
   -> Closed (Sized.Function Extracted.Expr)
   -> Extract ()
 emitCallback name fun = modify $ \s -> s { extractedCallbacks = Snoc (extractedCallbacks s) (name, fun) }
+
+emitSignature
+  :: GName
+  -> Signature ReturnIndirect
+  -> Extract ()
+emitSignature name sig = modify $ \s -> s { extractedSignatures = HashMap.insert name sig $ extractedSignatures s }
 
 type FV = FreeVar () Extracted.Expr
 
@@ -126,7 +137,7 @@ extractExtern
   -> Extern (Anno Extracted.Expr FV)
   -> Extract (Extracted.Expr FV)
 extractExtern retType (Extern C parts) = do
-  tgt <- gets target
+  tgt <- fetch Query.Target
 
   let freeVars = foldMap (foldMap toHashSet) parts
       argNames =
@@ -164,20 +175,21 @@ extractExtern retType (Extern C parts) = do
         <> ")"
     TargetMacroPart PointerAlignment -> return $ shower $ ptrAlign tgt
 
-  name <- mangle <$> freshName
-
-  let retDir = typeDirection retType
-      retDir' = toReturnDirection OutParam retDir
-      (actualRetTypeStr, retParam) = case retDir' of
-        ReturnDirect rep -> (externType (Direct rep), mempty)
-        ReturnIndirect Projection -> ("uint8_t*", mempty)
-        ReturnIndirect OutParam -> ("void", [externType retDir <> " return_"])
-      args = toVector [(dir, Anno (pure var) (varType var)) | (var, (_, _, dir)) <- typedArgs]
-      argDirs = fst <$> args
-  emitDecl $ Extracted.Declaration name retDir' argDirs
+  name <- freshName
+  let
+    mangledName = mangle name
+    retDir = typeDirection retType
+    retDir' = toReturnDirection OutParam retDir
+    (actualRetTypeStr, retParam) = case retDir' of
+      ReturnDirect rep -> (externType (Direct rep), mempty)
+      ReturnIndirect Projection -> ("uint8_t*", mempty)
+      ReturnIndirect OutParam -> ("void", [externType retDir <> " return_"])
+    args = toVector [(dir, Anno (pure var) (varType var)) | (var, (_, _, dir)) <- typedArgs]
+    argDirs = fst <$> args
+  emitDecl $ Extracted.Declaration mangledName retDir' argDirs
   emitCode
     $ "__attribute__((always_inline))\n"
-    <> actualRetTypeStr <> " " <> fromName name
+    <> actualRetTypeStr <> " " <> fromName mangledName
     <> "("
     <> Text.intercalate ", " ([typeStr <> " " <> exprName | (_, (exprName, typeStr, _)) <- typedArgs] <> retParam) <> ") {"
     <> Text.unwords renderedParts
@@ -185,14 +197,14 @@ extractExtern retType (Extern C parts) = do
   return $ Extracted.PrimCall
     (Just C)
     retDir'
-    (Extracted.Global $ unqualified name)
+    (Extracted.Global name)
     args
   where
     acyclic (AcyclicSCC a) = a
     acyclic (CyclicSCC _) = panic "ExtractExtern acyclic"
 
 forwardDeclare
-  :: QName
+  :: GName
   -> Extracted.Expr FV
   -> Vector Direction
   -> Extract ()
@@ -204,15 +216,13 @@ forwardDeclare name retType argDirs = do
     <> "("
     <> Text.intercalate ", " (toList $ externType <$> argDirs)
     <> ");"
-  addSignatures
-    $ HashMap.singleton name
+  emitSignature name
     $ FunctionSig (CompatibleWith C) (toReturnDirection Projection retDir) argDirs
 
-mangle :: QName -> Name
-mangle (QName (ModuleName parts) name)
+mangle :: GName -> Name
+mangle gn
   = fromText
-  $ Text.intercalate "__" (Vector.toList $ fromName <$> parts)
-  <> "__" <> fromName name
+  $ Text.intercalate "__" (toList $ fromName <$> gnameParts gn)
 
 typeDirection
   :: Extracted.Expr v
@@ -249,11 +259,10 @@ extractBranches (LitBranches lbrs def) = LitBranches <$> sequence
   ] <*> extractExpr def
 
 extractDef
-  :: Target
-  -> QName
+  :: GName
   -> Closed (Sized.Definition Lifted.Expr)
-  -> VIX [(QName, Extracted.Submodule (Closed (Sized.Definition Extracted.Expr)))]
-extractDef tgt qname@(QName mname name) def = fmap flatten $ runExtract names tgt $ case open def of
+  -> VIX [(GName, Extracted.Submodule (Closed (Sized.Definition Extracted.Expr)))]
+extractDef name def = fmap flatten $ runExtract names $ case open def of
   Sized.FunctionDef vis cl (Sized.Function tele scope) ->
     fmap (close noFV . Sized.FunctionDef vis cl) $ do
       vs <- forTeleWithPrefixM tele $ \h () s vs -> do
@@ -270,15 +279,15 @@ extractDef tgt qname@(QName mname name) def = fmap flatten $ runExtract names tg
   Sized.AliasDef -> return $ close identity Sized.AliasDef
   where
     flatten (cbs, def')
-      = (qname, def')
+      = (name, def')
       : [ (n, Extracted.emptySubmodule $ mapClosed (Sized.FunctionDef Public Sized.NonClosure) f)
         | (n, f) <- cbs
         ]
     noFV :: FV -> void
     noFV = panic "ExtractExtern noFV"
     names =
-      [ QName mname $ if n == 0
-          then "_extern__" <> name
-          else "_extern_" <> shower n <> "__" <> name
-      | n <- [(0 :: Int)..]
+      let GName qn parts = name
+      in
+      [ GName qn $ parts <> pure (if n == 0 then "extern" else "extern_" <> shower n)
+      | n <- [0 :: Int ..]
       ]
