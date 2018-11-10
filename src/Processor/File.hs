@@ -3,17 +3,13 @@ module Processor.File where
 
 import Protolude hiding (moduleName, TypeError, handle)
 
-import Data.Char
 import Data.Functor.Classes
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.Text(Text)
-import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
-import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
-import Error
 
 import Analysis.Cycle
 import Analysis.Denat
@@ -27,9 +23,10 @@ import qualified Backend.SLam as SLam
 import Backend.Target
 import qualified Elaboration.Monad as TypeCheck
 import qualified Elaboration.TypeCheck.Definition as TypeCheck
+import Error
+import qualified Frontend.DupCheck as DupCheck
 import qualified Frontend.ResolveNames as ResolveNames
 import MonadLog
-import Processor.Result
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
@@ -43,16 +40,17 @@ import Util
 import VIX
 
 process
-  :: (ModuleHeader, HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
+  :: (ModuleHeader, [(SourceLoc, Unscoped.TopLevelDefinition)])
   -> VIX [Generate.GeneratedSubmodule]
 process = frontend backend
 
 frontend
   :: ([(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)] -> VIX [k])
-  -> (ModuleHeader, HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
+  -> (ModuleHeader, [(SourceLoc, Unscoped.TopLevelDefinition)])
   -> VIX [k]
 frontend k
-  = resolveProgramNames
+  = dupCheck
+  >=> resolveProgramNames
   >>=> prettyPreGroup "Pre-syntax"
 
   >=> typeCheckGroup
@@ -154,6 +152,14 @@ prettyGroup str defs = do
         $ prettyM n <+> "=" <+> prettyM (d :: e Doc)
       MonadLog.log ""
   return defs
+
+dupCheck
+  :: (ModuleHeader, [(SourceLoc, Unscoped.TopLevelDefinition)])
+  -> VIX (ModuleHeader, HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
+dupCheck (mh, defs) = do
+  let (defs', errs) = DupCheck.dupCheck (moduleName mh) defs
+  mapM_ report errs
+  return (mh, defs')
 
 resolveProgramNames
   :: (ModuleHeader, HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
@@ -303,38 +309,3 @@ writeModule moduleHeader subModules llOutputFile externOutputFiles = do
             Text.hPutStrLn handle ""
             Text.hPutStrLn handle code
           return $ Just (lang, outFile)
-
-dupCheck
-  :: ModuleHeader
-  -> [(SourceLoc, Unscoped.TopLevelDefinition)]
-  -> Result (ModuleHeader, HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
-dupCheck m = fmap (m,) . flip evalStateT (0 :: Int) . foldM go mempty
-  where
-    go defs (loc, def) = do
-      name <- case def of
-        Unscoped.TopLevelDefinition d -> return $ Unscoped.definitionName d
-        Unscoped.TopLevelDataDefinition n _ _ -> return n
-        Unscoped.TopLevelClassDefinition n _ _ -> return n
-        Unscoped.TopLevelInstanceDefinition typ _ -> do
-          i <- get
-          put $! i + 1
-          return $ "instance-" <> shower i <> instanceNameEnding (shower $ pretty typ)
-      let qname = QName (moduleName m) name
-      if HashMap.member qname defs then do
-        let (prevLoc, _) = defs HashMap.! qname
-        lift $ Failure
-          $ pure
-          $ TypeError
-            "Duplicate definition"
-            (Just loc)
-            $ PP.vcat
-              [ "Previous definition at " <> pretty prevLoc
-              , pretty prevLoc
-              ]
-      else return $ HashMap.insert qname (loc, def) defs
-      where
-        instanceNameEnding n
-          | Text.all (\b -> isAlphaNum b || isSpace b) n = fromText $ "-" <> Text.map replaceSpace n
-          | otherwise = ""
-        replaceSpace ' ' = '-'
-        replaceSpace c = c

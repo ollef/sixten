@@ -3,7 +3,6 @@ module Processor.Files where
 
 import Protolude hiding (TypeError, moduleName, sourceFile)
 
-import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.List.NonEmpty(NonEmpty)
@@ -47,20 +46,20 @@ instance Monoid ProcessFilesResult where
 
 parseFiles
   :: NonEmpty FilePath
-  -> IO (Result [(ModuleHeader, HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))])
+  -> IO (Result [(ModuleHeader, [(SourceLoc, Unscoped.TopLevelDefinition)])])
 parseFiles srcFiles = do
   moduleResults <- forM srcFiles $ \sourceFile -> do
     parseResult <- Parse.parseFromFileEx Parse.modul sourceFile
-    return $ fmap (:[]) $ uncurry File.dupCheck =<< parseResult
+    return $ pure <$> parseResult
   return $ sconcat moduleResults
 
 parseVirtualFiles
   :: NonEmpty (FilePath, Text)
-  -> Result [(ModuleHeader, HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))]
+  -> Result [(ModuleHeader, [(SourceLoc, Unscoped.TopLevelDefinition)])]
 parseVirtualFiles srcFiles = do
   let moduleResults = foreach srcFiles $ \(sourceFile, s) -> do
         let parseResult = Parse.parseText Parse.modul s sourceFile
-        fmap (:[]) $ uncurry File.dupCheck =<< parseResult
+        pure <$> parseResult
   sconcat moduleResults
 
 checkFiles :: Arguments -> IO (Result [Error])
@@ -128,9 +127,8 @@ compileBuiltins = do
   builtin1File <- liftIO $ getDataFileName "rts/Builtin1.vix"
   builtin2File <- liftIO $ getDataFileName "rts/Builtin2.vix"
   let files = [builtin1File, builtin2File]
-  moduleResults <- liftIO $ forM files $ \sourceFile -> do
-    parseResult <- Parse.parseFromFileEx Parse.modul sourceFile
-    return $ uncurry File.dupCheck =<< parseResult
+  moduleResults <- liftIO $ forM files $ \sourceFile ->
+    Parse.parseFromFileEx Parse.modul sourceFile
   case sequence moduleResults of
     Failure es -> internalError
       $ "Error while processing builtin module:"
