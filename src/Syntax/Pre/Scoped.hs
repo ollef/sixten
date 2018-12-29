@@ -1,17 +1,13 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE ViewPatterns #-}
 module Syntax.Pre.Scoped
   ( module Definition
   , module Pattern
   , Expr(..), Type
-  , clause, pi_, pis, telePis, lam, case_
+  , clause, pi_, telePis, lam, case_
   , apps
   , appsView
-  , piView
-  , pattern Pi1
   ) where
 
 import Protolude hiding (Type)
@@ -110,34 +106,12 @@ case_ expr pats = Case expr $ go <$> pats
 apps :: Foldable t => Expr v -> t (Plicitness, Expr v) -> Expr v
 apps = Foldable.foldl' (uncurry . App)
 
-piView :: Expr v -> Maybe (Plicitness, Pat (HashSet QConstr) (PatternScope Type v) (), PatternScope Expr v)
-piView (Pi p pat s) = Just (p, pat, s)
-piView _ = Nothing
-
 appsView :: Expr v -> (Expr v, [(Plicitness, Expr v)])
 appsView = second toList . go
   where
     go (SourceLoc _ e) = go e
     go (App e1 p e2) = second (`Snoc` (p, e2)) $ go e1
     go e = (e, Nil)
-
-annoPatView
-  :: Pat (HashSet QConstr) (Scope b Expr a) t
-  -> (Pat (HashSet QConstr) (Scope b Expr a) t, Scope b Expr a)
-annoPatView (PatLoc _ p) = annoPatView p
-annoPatView (AnnoPat p t) = (p, t)
-annoPatView p = (p, Scope Wildcard)
-
-pattern Pi1
-  :: NameHint
-  -> Plicitness
-  -> Expr v
-  -> Scope1 Expr v
-  -> Expr v
-pattern Pi1 h p t s <- Pi p (annoPatView -> (varPatView -> Just h, unusedScope -> Just t)) (mapBound (\0 -> ()) -> s)
-  where
-    Pi1 h p Wildcard s = Pi p (VarPat h ()) $ mapBound (\() -> 0) s
-    Pi1 h p t s = Pi p (AnnoPat (VarPat h ()) (abstractNone t)) $ mapBound (\() -> 0) s
 
 -------------------------------------------------------------------------------
 -- Instances

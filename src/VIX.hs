@@ -6,12 +6,11 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
-module VIX(Env(..), VIX, runVIX, hoistIO) where
+module VIX(Env(..), VIX, runVIX) where
 
 import Protolude hiding (TypeError)
 
 import Control.Lens
-import Control.Monad.Morph
 import Rock
 
 import Driver.Query
@@ -41,6 +40,3 @@ runVIX logEnv_ reportEnv_ vix = do
 instance HasLogEnv Env where logEnv = VIX.logEnv
 instance HasReportEnv Env where reportEnv = VIX.reportEnv
 instance HasFreshEnv Env where freshEnv = VIX.freshEnv
-
-hoistIO :: ReaderT Env IO a -> VIX a
-hoistIO = hoist liftIO

@@ -50,15 +50,6 @@ rebind
   -> Scope b' f a
 rebind f (Scope s) = Scope $ s >>= unvar (unscope . f) (pure . F)
 
-abstractSomeMore
-  :: Monad f
-  => (b -> b')
-  -> (a -> Maybe b')
-  -> Scope b f a
-  -> Scope b' f a
-abstractSomeMore f g s
-  = toScope $ fromScope s >>= unvar (pure . B . f) (\a -> pure $ maybe (F a) B (g a))
-
 toSet ::  (Ord a, Foldable f) => f a -> Set a
 toSet = foldMap Set.singleton
 
@@ -70,9 +61,6 @@ toHashSet = foldMap HashSet.singleton
 
 toHashMap :: (Eq a, Hashable a, Foldable f) => f (a, b) -> HashMap a b
 toHashMap = foldMap (uncurry HashMap.singleton)
-
-foldMapM :: (Traversable f, Monoid b, Monad m) => (a -> m b) -> f a -> m b
-foldMapM f = fmap fold . mapM f
 
 bimapScope
   :: Bifunctor f
@@ -166,13 +154,6 @@ constructNM len f = fill 0 $ runST $ do
         GVector.unsafeFreeze v'
     fill _ v = return v
 
-forWithPrefixM
-  :: Monad m
-  => Vector v
-  -> (v -> Vector v' -> m v')
-  -> m (Vector v')
-forWithPrefixM = flip mapWithPrefixM
-
 nonEmptySome :: Alternative f => f a -> f (NonEmpty a)
 nonEmptySome p = (\(x:xs) -> x NonEmpty.:| xs) <$> some p
 
@@ -202,19 +183,6 @@ hashedLookup xs
   | otherwise = flip HashMap.lookup m
   where
     m = toHashMap xs
-
-unpermute
-  :: (Eq a, Hashable a)
-  => Vector (a, a)
-  -> Vector b
-  -> Vector b
-unpermute p xs = Vector.backpermute xs indices
-  where
-    indices
-      = fromMaybe (panic "unpermute")
-        . hashedElemIndex (snd <$> p)
-        . fst
-      <$> p
 
 fixPoint
   :: Eq a

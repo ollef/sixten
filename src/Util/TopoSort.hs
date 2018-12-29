@@ -1,6 +1,5 @@
 module Util.TopoSort
   ( topoSortWith
-  , topoSort
   , cycles
   , SCC(..)
   , flattenSCC
