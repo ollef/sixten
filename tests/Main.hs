@@ -1,25 +1,28 @@
-import Data.List
-import Data.Proxy       (Proxy (..))
-import Data.Traversable
-import System.Directory (doesFileExist)
-import System.FilePath  (takeDirectory, FilePath, (</>))
-import Test.Tasty
-import Test.Tasty.Golden  (findByExtension)
-import Test.Tasty.Options (IsOption (..), OptionDescription (Option))
-import Test.Tasty.Program (testProgram)
+module Main where
 
+import Prelude(String)
+import Protolude
+
+import Data.List
+import Data.Proxy(Proxy (..))
+import System.Directory(doesFileExist)
+import System.FilePath(takeDirectory, FilePath, (</>))
+import Test.Tasty
+import Test.Tasty.Golden(findByExtension)
+import Test.Tasty.Options as Tasty
+import Test.Tasty.Program(testProgram)
 
 main :: IO ()
 main = do
   input <- testInput
   defaultMainWithIngredients ings . askOption $ \args -> mkTestGrp args input
     where
-      ings = includingOptions [Option (Proxy :: Proxy Args)] :
+      ings = includingOptions [Tasty.Option (Proxy :: Proxy Args)] :
         defaultIngredients
 
 newtype Args = A String
 
-instance IsOption Args where
+instance Tasty.IsOption Args where
   defaultValue = A ""
   parseValue = Just . A
   optionName = return "sixten-args"
@@ -54,10 +57,10 @@ testInput = concat <$> sequence
 
     multi dir flags = do
       vixDirs <- groupByKey takeDirectory <$> findVixFiles dir
-      forM vixDirs $ \(dir, files) -> do
-        let expFile = dir </> "Main.hs-expected"
+      forM vixDirs $ \(subDir, files) -> do
+        let expFile = subDir </> "Main.hs-expected"
         expExists <- doesFileExist expFile
-        return (testName dir, flags ++ files ++ expectedFlag expFile expExists)
+        return (testName subDir, flags ++ files ++ expectedFlag expFile expExists)
 
     findVixFiles dir = sort <$> findByExtension [".vix"] (testRootDir </> dir)
 

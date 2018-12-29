@@ -1,8 +1,9 @@
+cabal-version:       2.2
 name:                sixten
 version:             0.1.0.0
 -- synopsis:
 -- description:
-license:             BSD3
+license:             BSD-3-Clause
 license-file:        LICENSE
 author:              Olle Fredriksson
 maintainer:          fredriksson.olle@gmail.com
@@ -10,13 +11,12 @@ copyright:           (c) 2014-2018 Olle Fredriksson
 category:            Language
 build-type:          Simple
 -- extra-source-files:
-cabal-version:       >=1.10
 data-files:
                      rts/forwarddecls.ll
                      rts/Builtin.vix
 
-
-executable sixten
+common common
+  default-language:    Haskell2010
   default-extensions:  NoImplicitPrelude
   ghc-options:
                        -Wall
@@ -27,10 +27,26 @@ executable sixten
                        -Wredundant-constraints
                        -Wtabs
                        -funbox-strict-fields
+  build-depends:
+                       base >=4.8 && <4.13,
+                       protolude
+
+executable sixten
+  import:              common
+  hs-source-dirs:      app
+  ghc-options:
                        -threaded
                        -rtsopts
                        -with-rtsopts=-N
   main-is:             Main.hs
+  build-depends:
+                       sixten,
+                       optparse-applicative
+
+library
+  import:              common
+  hs-source-dirs:      src
+  exposed-modules:     Command
   other-modules:
                        Analysis.Cycle
                        Analysis.Denat
@@ -130,7 +146,6 @@ executable sixten
                        VIX
   build-depends:
                        List,
-                       base >=4.8 && <4.13,
                        bound,
                        bytestring,
                        containers,
@@ -157,7 +172,6 @@ executable sixten
                        prettyprinter,
                        prettyprinter-ansi-terminal,
                        process,
-                       protolude,
                        rock,
                        split,
                        stm,
@@ -167,23 +181,15 @@ executable sixten
                        unordered-containers,
                        vector,
                        yi-rope
-  hs-source-dirs:      src
-  default-language:    Haskell2010
-
-library
-  hs-source-dirs:      src
-  exposed-modules:
-  build-depends:       base >= 4.8 && < 4.13
-  default-language:    Haskell2010
 
 Test-suite test-sixten
+  import:              common
   hs-source-dirs:      tests
   type:                exitcode-stdio-1.0
   main-is:             Main.hs
-  build-depends:       base >= 4.8 && < 4.13,
+  build-depends:
                        directory,
                        filepath,
                        tasty,
                        tasty-golden,
                        tasty-program
-  default-language:    Haskell2010
