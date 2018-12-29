@@ -1,12 +1,8 @@
-{-# LANGUAGE DefaultSignatures, GADTs, OverloadedStrings, PatternSynonyms #-}
+{-# LANGUAGE GADTs, OverloadedStrings, PatternSynonyms #-}
 module Error where
 
 import Protolude hiding (TypeError)
 
-import Control.Monad.Reader
-import Control.Monad.RWS
-import Control.Monad.Trans.Identity
-import Control.Monad.Writer
 import Data.Text(Text)
 import Data.Text.Prettyprint.Doc(line)
 import qualified Data.Text.Prettyprint.Doc as PP
@@ -96,22 +92,7 @@ instance Pretty Error where
 printError :: Error -> IO ()
 printError = putDoc . pretty
 
--------------------------------------------------------------------------------
--- Report class
-class Monad m => MonadReport m where
-  report :: Error -> m ()
+data ErrorException = ErrorException
+  deriving Show
 
-  default report
-    :: (MonadTrans t, MonadReport m1, m ~ t m1)
-    => Error
-    -> m ()
-  report = lift . report
-
--------------------------------------------------------------------------------
--- mtl instances
--------------------------------------------------------------------------------
-instance MonadReport m => MonadReport (ReaderT r m)
-instance (Monoid w, MonadReport m) => MonadReport (WriterT w m)
-instance MonadReport m => MonadReport (StateT s m)
-instance MonadReport m => MonadReport (IdentityT m)
-instance (Monoid w, MonadReport m) => MonadReport (RWST r w s m)
+instance Exception ErrorException where

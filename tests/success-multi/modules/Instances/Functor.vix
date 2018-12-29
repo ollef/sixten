@@ -1,6 +1,9 @@
 module Data.Functor exposing
   ( Functor
   , map
+  , Maybe
+  , Nothing
+  , Just
   )
 
 class Functor f where

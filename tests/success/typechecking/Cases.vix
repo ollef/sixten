@@ -12,7 +12,6 @@ test2 b = case b of
   False -> the (forall a. a -> a) \x. x
 
 -- These require deep skolemisation
-{-
 test3 : Bool -> forall a. a -> a
 test3 b = case b of
   True -> the (forall a. a -> a) \x. x
@@ -22,4 +21,3 @@ test4 : Bool -> forall a. a -> a
 test4 b = case b of
   True -> \x. x
   False -> \x. x
-  -}

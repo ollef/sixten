@@ -1,4 +1,13 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, OverloadedStrings, PatternSynonyms, ViewPatterns, TemplateHaskell #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
 module Syntax.Sized.Lifted where
 
 import Protolude hiding (Type, TypeRep)
@@ -16,7 +25,7 @@ import Util
 
 data Expr v
   = Var v
-  | Global QName
+  | Global GName
   | Lit Literal
   | Con QConstr (Vector (Anno Expr v)) -- ^ Fully applied
   | Call (Expr v) (Vector (Anno Expr v)) -- ^ Fully applied, only global
@@ -87,7 +96,7 @@ instance Monad Expr where
     Case e brs -> Case (e >>>= f) (brs >>>= f)
     ExternCode c retType -> ExternCode ((>>>= f) <$> c) (retType >>= f)
 
-instance GBind Expr where
+instance GBind Expr GName where
   global = Global
   gbind f expr = case expr of
     Var _ -> expr

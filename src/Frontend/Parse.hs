@@ -21,7 +21,6 @@ import qualified Text.Parsix as Parsix
 import Text.Parsix(Position(Position, visualRow, visualColumn), (<?>))
 
 import Error
-import Processor.Result
 import Syntax hiding (classDef, dataDef)
 import Syntax.Pre.Literal as Pre
 import Syntax.Pre.Pattern
@@ -42,11 +41,10 @@ newtype Parser a = Parser {runParser :: ReaderT ParseEnv Parsix.Parser a}
 parseTest :: (MonadIO m, Show a) => Parser a -> String -> m ()
 parseTest p s = liftIO $ print $ parseText p (fromString s) "<interactive>"
 
-parseText :: Parser a -> Text -> FilePath -> Result a
+parseText :: Parser a -> Text -> FilePath -> Either Error a
 parseText p s fp =
   case Parsix.parseText (runReaderT (runParser p) env <* Parsix.eof) s fp of
-    Parsix.Failure e -> Failure
-      $ pure
+    Parsix.Failure e -> Left
       $ SyntaxError
         (pretty $ fromMaybe mempty $ Parsix.errorReason e)
         (Just loc)
@@ -60,11 +58,11 @@ parseText p s fp =
           , sourceLocSource = Parsix.errorSourceText e
           , sourceLocHighlights = Parsix.errorHighlights e
           }
-    Parsix.Success a -> return a
+    Parsix.Success a -> Right a
   where
     env = ParseEnv (Position 0 0 0) fp
 
-parseFromFileEx :: MonadIO m => Parser a -> FilePath -> m (Result a)
+parseFromFileEx :: MonadIO m => Parser a -> FilePath -> m (Either Error a)
 parseFromFileEx p fp = do
   s <- liftIO $ Text.readFile fp
   return $ parseText p s fp
@@ -487,7 +485,7 @@ impor
   <*> optionalSI
     (reserved "exposing" *>% exposedNames)
   where
-    go n malias mexposed = Import n (fromMaybe n malias) (fromMaybe mempty mexposed)
+    go n malias mexposed = Import n (fromMaybe n malias) (fromMaybe noneExposed mexposed)
 
 exposedNames :: Parser ExposedNames
 exposedNames = symbol "(" *>% go <*% symbol ")"

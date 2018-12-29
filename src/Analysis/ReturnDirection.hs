@@ -7,17 +7,18 @@ import Protolude hiding (Location, MetaData)
 import Data.Bitraversable
 import Data.IORef
 import qualified Data.List.NonEmpty as NonEmpty
-import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 
+import Driver.Query
+import Effect
 import FreeVar
 import Syntax hiding (Definition)
 import Syntax.Sized.Anno
 import Syntax.Sized.Definition
 import Syntax.Sized.Lifted
 import Util
-import VIX hiding (forall)
+import VIX
 
 data MetaReturnIndirect
   = MProjection
@@ -85,7 +86,7 @@ unifyMetaReturnIndirect' :: MetaReturnIndirect -> MetaReturnIndirect -> VIX ()
 unifyMetaReturnIndirect' m1 m2 | m1 == m2 = return ()
 unifyMetaReturnIndirect' m (MRef ref2) = liftIO $ writeIORef ref2 $ Just m
 unifyMetaReturnIndirect' (MRef ref1) m = liftIO $ writeIORef ref1 $ Just m
-unifyMetaReturnIndirect' m1 m2 = internalError $ "unifyMetaReturnIndirect" PP.<+> shower (m1, m2)
+unifyMetaReturnIndirect' m1 m2 = panic $ "unifyMetaReturnIndirect " <> shower (m1, m2)
 
 type Location = MetaReturnIndirect
 
@@ -194,7 +195,7 @@ inferFunction
 inferFunction expr = case expr of
   Var v -> return (expr, fromMaybe def $ metaFunSig $ varData v)
   Global g -> do
-    sig <- signature g
+    sig <- fetch $ DirectionSignature g
     case sig of
       Just (FunctionSig _ retDir argDirs) -> return (Global g, (fromReturnIndirect <$> retDir, argDirs))
       Just (ConstantSig _) -> def
@@ -237,14 +238,14 @@ generaliseDefs
   $ bitraverse pure (traverse $ toReturnIndirect Projection)
 
 inferRecursiveDefs
-  :: Vector (QName, Closed (Definition Expr))
-  -> VIX (Vector (QName, Closed (Definition Expr), Signature ReturnIndirect))
+  :: Vector (GName, Closed (Definition Expr))
+  -> VIX (Vector (GName, Closed (Definition Expr), Signature ReturnIndirect))
 inferRecursiveDefs defs = do
   let names = fst <$> defs
 
   evars <- Vector.forM defs $ \(v, Closed d) -> do
-    logPretty 30 "InferDirection.inferRecursiveDefs 1" (v, d)
-    let h = fromQName v
+    logPretty "returndir" "InferDirection.inferRecursiveDefs 1" (v, d)
+    let h = fromGName v
         funSig = case d of
           FunctionDef _ cl (Function args s) ->
             Just
@@ -271,7 +272,7 @@ inferRecursiveDefs defs = do
         gbound expose e
 
   inferredDefs <- Vector.forM (Vector.zip evars exposedDefs) $ \(v, d) -> do
-    logPretty 30 "InferDirection.inferRecursiveDefs 2" (show v :: Text, shower <$> d)
+    logPretty "returndir" "InferDirection.inferRecursiveDefs 2" (pretty v, pretty <$> d)
     inferDefinition v d
 
   genDefs <- generaliseDefs inferredDefs
@@ -283,7 +284,7 @@ inferRecursiveDefs defs = do
           $ fromMaybe (panic "inferRecursiveDefs 2")
           $ names Vector.!? index
       vf :: FreeV -> VIX b
-      vf v = internalError $ "inferRecursiveDefs" PP.<+> shower v
+      vf v = panic $ "inferRecursiveDefs " <> shower v
 
   forM (Vector.zip names genDefs) $ \(name, (def ,sig)) -> do
     let unexposedDef = def >>>= unexpose

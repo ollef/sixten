@@ -11,18 +11,20 @@ import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Vector as Vector
 
 import {-# SOURCE #-} Elaboration.TypeCheck.Expr
+import Effect
+import Effect.Log as Log
 import Elaboration.Constraint
 import Elaboration.Match as Match
 import Elaboration.MetaVar
+import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
 import Elaboration.Subtype
 import Elaboration.TypeCheck.Pattern
-import MonadContext
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
+import TypedFreeVar
 import Util
-import VIX
 
 checkConstantDef
   :: Pre.ConstantDef Pre.Expr FreeV
@@ -36,9 +38,9 @@ checkClauses
   :: NonEmpty (Pre.Clause Pre.Expr FreeV)
   -> Polytype
   -> Elaborate CoreM
-checkClauses clauses polyType = indentLog $ do
-  forM_ clauses $ \clause -> logPretty 20 "checkClauses clause" $ pretty <$> clause
-  logMeta 20 "checkClauses typ" polyType
+checkClauses clauses polyType = Log.indent $ do
+  forM_ clauses $ \clause -> logPretty "tc.clause" "checkClauses clause" $ pretty <$> clause
+  logMeta "tc.clause" "checkClauses typ" $ zonk polyType
 
   skolemise polyType (minimum $ instUntilClause <$> clauses) $ \rhoType f -> do
     ps <- piPlicitnesses rhoType
@@ -49,11 +51,11 @@ checkClauses clauses polyType = indentLog $ do
 
     let equalisedClauses = equaliseClauses clauses'
 
-    forM_ equalisedClauses $ \clause -> logPretty 20 "checkClauses equalisedClause" $ pretty <$> clause
+    forM_ equalisedClauses $ \clause -> logPretty "tc.clause" "checkClauses equalisedClause" $ pretty <$> clause
 
     res <- checkClausesRho equalisedClauses rhoType
 
-    logMeta 20 "checkClauses res" res
+    logMeta "tc.clause" "checkClauses res" $ zonk res
 
     return $ f res
   where
@@ -78,28 +80,34 @@ checkClausesRho
   -> Rhotype
   -> Elaborate CoreM
 checkClausesRho clauses rhoType = do
-  forM_ clauses $ \clause -> logPretty 20 "checkClausesRho clause" $ pretty <$> clause
-  logMeta 20 "checkClausesRho type" rhoType
+  forM_ clauses $ \clause -> logPretty "tc.clause" "checkClausesRho clause" $ pretty <$> clause
+  logMeta "tc.clause" "checkClausesRho type" $ zonk rhoType
 
   let (ps, firstPats) = Vector.unzip ppats
         where
           Pre.Clause ppats _ = NonEmpty.head clauses
   (argTele, returnTypeScope, fs) <- funSubtypes rhoType ps
+  whenLoggingCategory "tc.clause" $ do
+    pargTele <- bitraverseTelescope (\m -> WithVar m <$> prettyMetaVar m) (pure . pretty) argTele
+    logPretty "tc.clause" "argTele" pargTele
 
-  clauses' <- indentLog $ forM clauses $ \(Pre.Clause pats bodyScope) -> do
-    (pats', patVars) <- tcPats pats mempty argTele
+  clauses' <- forM clauses $ \(Pre.Clause pats bodyScope) -> do
+    logShow "tc.clause" "start" ()
+    (pats', patVars) <- Log.indent $ tcPats pats mempty argTele
     let body = instantiatePattern pure (boundPatVars patVars) bodyScope
         argExprs = snd3 <$> pats'
         returnType = instantiateTele identity argExprs returnTypeScope
-    body' <- withPatVars patVars $ checkRho body returnType
+    logPretty "tc.clause" "patVars" patVars
+    body' <- Log.indent $ withPatVars patVars $ checkRho body returnType
     return (fst3 <$> pats', body')
 
   forM_ clauses' $ \(pats, body) -> do
-    forM_ pats $ logPretty 20 "checkClausesRho clause pat" <=< bitraverse prettyMeta (pure . pretty)
-    logMeta 20 "checkClausesRho clause body" body
+    forM_ pats $ logPretty "tc.clause" "checkClausesRho clause pat" <=< bitraverse prettyMeta (pure . pretty)
+    logMeta "tc.clause" "checkClausesRho clause body" $ zonk body
 
   argVars <- forTeleWithPrefixM (addTeleNames argTele $ Pre.patternHint <$> firstPats) $ \h p s argVars ->
     forall h p $ instantiateTele pure argVars s
+  logPretty "tc.clause" "argVars" argVars
 
   withVars argVars $ do
     let returnType = instantiateTele pure argVars returnTypeScope
@@ -109,14 +117,14 @@ checkClausesRho clauses rhoType = do
       (NonEmpty.toList $ first Vector.toList <$> clauses')
       returnType
 
-    logMeta 25 "checkClausesRho body res" body
+    logMeta "tc.clause" "checkClausesRho body res" $ zonk body
 
     let result = foldr
           (\(f, v) e -> f $ Core.lam v e)
           body
           (Vector.zip fs argVars)
 
-    logMeta 20 "checkClausesRho res" result
+    logMeta "tc.clause" "checkClausesRho res" $ zonk result
     return result
 
 --------------------------------------------------------------------------------

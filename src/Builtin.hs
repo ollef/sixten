@@ -10,7 +10,7 @@ import qualified Data.Vector as Vector
 
 import Backend.Target(Target)
 import Builtin.Names
-import MonadFresh
+import Effect
 import Syntax
 import Syntax.Core as Core
 import Syntax.Sized.Anno
@@ -30,7 +30,7 @@ environment target = HashMap.fromList
       (Lam mempty Explicit Type $ Scope ptrRep)
       (arrow Explicit Type Type)
       [ ConstrDef RefName $ toScope $ fmap B $ arrow Explicit (pure 0)
-        $ Core.App (Global PtrName) Explicit (pure 0)
+        $ Core.App (Global $ GName PtrName mempty) Explicit (pure 0)
       ])
   , (IntName, opaqueData intRep Type)
   , (NatName, dataType intRep Type
@@ -78,7 +78,7 @@ deref e
     (Telescope $ pure $ TeleArg "dereferenced" () $ Scope unknownSize)
     (toScope $ pure $ B 0)
   where
-    unknownSize = global "Sixten.Builtin.deref.unknownSize"
+    unknownSize = global $ GName "Sixten.Builtin.deref" $ pure "unknownSize"
 
 maxArity :: Num n => n
 maxArity = 6
@@ -109,12 +109,12 @@ apply target numArgs = evalFresh $ do
           = Lifted.Con Ref
           $ pure
           $ sizedCon target (Lifted.MkType TypeRep.UnitRep) Closure
-          $ Vector.cons (Anno (global $ papName (arity - numArgs) numArgs) piRep)
+          $ Vector.cons (Anno (global $ gname $ papName (arity - numArgs) numArgs) piRep)
           $ Vector.cons (Anno (Lifted.Lit $ Integer $ fromIntegral $ arity - numArgs) intRep)
           $ varAnno <$> pure this <> argTypes <> args
         | numArgs == arity = callfunknown argTypes args
         | otherwise
-          = Lifted.Call (global $ applyName $ numArgs - arity)
+          = Lifted.Call (global $ gname $ applyName $ numArgs - arity)
           $ Vector.cons
             (flip Anno ptrRep $ callfunknown preArgTypes preArgs)
           $ varAnno <$> postArgTypes <> postArgs
@@ -133,7 +133,7 @@ apply target numArgs = evalFresh $ do
       $ Lifted.Case (varAnno farity)
       $ LitBranches
         [LitBranch (Integer arity) $ br $ fromIntegral arity | arity <- 1 :| [2..maxArity]]
-        (Lifted.Call (global FailName) $ pure $ Anno unitRep typeRep)
+        (Lifted.Call (global $ gname FailName) $ pure $ Anno unitRep typeRep)
 
   where
     varAnno v = Anno (pure v) (varType v)
@@ -142,7 +142,7 @@ apply target numArgs = evalFresh $ do
     ptrRep = Lifted.MkType $ TypeRep.ptrRep target
     typeRep = Lifted.MkType $ TypeRep.typeRep target
     piRep = Lifted.MkType $ TypeRep.piRep target
-    unknownSize = global "Sixten.Builtin.apply.unknownSize"
+    unknownSize = global $ gname "Sixten.Builtin.apply.unknownSize"
 
     directPtr = Direct $ TypeRep.ptrRep target
     directType = Direct $ TypeRep.typeRep target
@@ -174,10 +174,10 @@ pap target k m = evalFresh $ do
     $ Lifted.Case (Anno (deref $ pure this) unknownSize)
     $ ConBranches $ pure
     $ conBranchTyped Closure clArgs'
-      $ Lifted.Call (global $ applyName $ m + k)
+      $ Lifted.Call (global $ gname $ applyName $ m + k)
       $ (\v -> Anno (pure v) (varType v)) <$> pure that <> clArgTypes <> argTypes <> clArgs <> args
   where
-    unknownSize = global "Sixten.Builtin.pap.unknownSize"
+    unknownSize = global $ gname "Sixten.Builtin.pap.unknownSize"
     intRep = Lifted.MkType $ TypeRep.intRep target
     ptrRep = Lifted.MkType $ TypeRep.ptrRep target
     typeRep = Lifted.MkType $ TypeRep.typeRep target
@@ -193,7 +193,7 @@ productType _ a (Lifted.MkType TypeRep.UnitRep) = a
 productType _ (Lifted.MkType TypeRep.UnitRep) b = b
 productType _ (Lifted.MkType rep1) (Lifted.MkType rep2) = Lifted.MkType $ TypeRep.product rep1 rep2
 productType target a b
-  = Lifted.Call (global ProductTypeRepName)
+  = Lifted.Call (global $ gname ProductTypeRepName)
   $ Vector.fromList [Anno a (Lifted.MkType typeRep), Anno b (Lifted.MkType typeRep)]
   where
      typeRep = TypeRep.typeRep target

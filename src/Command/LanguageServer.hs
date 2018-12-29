@@ -6,6 +6,7 @@ import Protolude hiding (handle)
 
 import Control.Concurrent.STM as STM
 import Data.Default (def)
+import qualified Data.HashMap.Lazy as HashMap
 import Data.Text(Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
@@ -19,8 +20,7 @@ import Text.Parsix.Position
 import qualified Yi.Rope as Yi
 
 import Command.LanguageServer.Hover
-import qualified Processor.Files as Processor
-import qualified Processor.Result as Result
+import Driver
 import Syntax
 import Util
 
@@ -46,32 +46,32 @@ hover lf (LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) p@(LSP
   sendNotification lf (shower uri)
   sendNotification lf (shower p)
   contents <- fileContents lf uri
+  sendNotification lf "fileContents"
   let LSP.Uri uri_text = uri
   let uri_str = Text.unpack uri_text
-  checkRes <- Processor.checkVirtualFiles (pure (uri_str, contents))
-  case checkRes of
-    Result.Failure es -> do
-      sendNotification lf ("failure " <> shower es)
-      return Nothing
-    Result.Success (defs, _) -> do
-      types <- hoverDefs (inside line char) $ concat defs
-      sendNotification lf ("success " <> shower types)
-      return $ case types of
-        [] -> Nothing
-        _ -> do
-          let Just (_, (range, typ)) = unsnoc types
-          Just $ LSP.Hover
-            { LSP._contents = LSP.List [LSP.PlainString $ showWide $ pretty (pretty <$> typ)]
-            , LSP._range = Just
-              $ LSP.Range
-              { LSP._start = LSP.Position
-                (visualRow $ spanStart range)
-                (visualColumn $ spanStart range)
-              , LSP._end = LSP.Position
-                (visualRow $ spanEnd range)
-                (visualColumn $ spanEnd range)
-              }
-            }
+  (defs, errs) <- Driver.checkVirtualFile uri_str contents
+  sendNotification lf ("result " <> shower errs)
+  types <- hoverDefs (inside line char)
+    [ (n, loc, d, t)
+    | (n, (loc, d, t)) <- concatMap HashMap.toList defs
+    ]
+  sendNotification lf ("success " <> shower types)
+  return $ case types of
+    [] -> Nothing
+    _ -> do
+      let Just (_, (range, typ)) = unsnoc types
+      Just $ LSP.Hover
+        { LSP._contents = LSP.List [LSP.PlainString $ showWide $ pretty (pretty <$> typ)]
+        , LSP._range = Just
+          $ LSP.Range
+          { LSP._start = LSP.Position
+            (visualRow $ spanStart range)
+            (visualColumn $ spanStart range)
+          , LSP._end = LSP.Position
+            (visualRow $ spanEnd range)
+            (visualColumn $ spanEnd range)
+          }
+        }
 
 handle
   :: TVar (Maybe (LSP.LspFuncs ()))

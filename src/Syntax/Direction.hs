@@ -76,5 +76,5 @@ data Compatibility
 data Signature a
   = FunctionSig Compatibility (ReturnDirection a) (Vector Direction)
   | ConstantSig Direction
-  | AliasSig QName
+  | AliasSig GName
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)

@@ -18,8 +18,11 @@ zonk = hoistMetas $ \m es -> do
     Nothing -> return $ Meta m es
     Just e -> do
       e' <- zonk $ open e
-      solve m $ close identity e'
+      -- solve m $ close identity e'
       return $ betaApps (vacuous e') es
+
+zonkDef :: MonadIO m => Definition (Expr MetaVar) v -> m (Definition (Expr MetaVar) v)
+zonkDef = transverseDefinition zonk
 
 metaVars :: MonadIO m => Expr MetaVar v -> m (HashSet MetaVar)
 metaVars expr = execStateT (hoistMetas_ go expr) mempty

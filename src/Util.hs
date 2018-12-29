@@ -1,4 +1,8 @@
-{-# LANGUAGE BangPatterns, FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns #-}
 module Util where
 
 import Protolude
@@ -88,6 +92,7 @@ bifoldMapScope f g (Scope s) = bifoldMap f (unvar mempty $ bifoldMap f g) s
 fromText :: IsString a => Text -> a
 fromText = fromString . Text.unpack
 
+-- TODO remove
 shower :: (Show a, IsString b) => a -> b
 shower = fromString . show
 
@@ -198,9 +203,6 @@ hashedLookup xs
   where
     m = toHashMap xs
 
-tryMaybe :: MonadError b m => m a -> m (Maybe a)
-tryMaybe m = fmap Just m `catchError` const (pure Nothing)
-
 unpermute
   :: (Eq a, Hashable a)
   => Vector (a, a)
@@ -246,3 +248,6 @@ withFile name mode = liftBaseOp $ bracket (openFile name mode) hClose
 
 distinct :: (Foldable t, Hashable a, Eq a) => t a -> Bool
 distinct es = HashSet.size (toHashSet es) == length es
+
+pattern Mempty :: (Eq m, Monoid m) => m
+pattern Mempty <- ((==) mempty -> True) where Mempty = mempty

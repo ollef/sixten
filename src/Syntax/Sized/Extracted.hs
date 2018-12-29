@@ -1,9 +1,19 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, OverloadedStrings, PatternSynonyms, ViewPatterns, TemplateHaskell #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
 module Syntax.Sized.Extracted where
 
 import Protolude hiding (Type, TypeRep)
 
 import Data.Deriving
+import Data.HashMap.Lazy(HashMap)
 import Data.Text(Text)
 import Data.Vector(Vector)
 
@@ -15,7 +25,7 @@ import Util
 
 data Expr v
   = Var v
-  | Global QName
+  | Global GName
   | Lit Literal
   | Con QConstr (Vector (Anno Expr v)) -- ^ Fully applied
   | Call (Expr v) (Vector (Anno Expr v)) -- ^ Fully applied, only global
@@ -35,11 +45,12 @@ data Declaration = Declaration
 data Submodule contents = Submodule
   { submoduleExternDecls :: [Declaration]
   , submoduleExterns :: [(Language, Text)]
+  , submoduleSignatures :: HashMap GName (Signature ReturnIndirect)
   , submoduleContents :: contents
   } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 emptySubmodule :: contents -> Submodule contents
-emptySubmodule = Submodule mempty mempty
+emptySubmodule contents = (\() -> contents) <$> mempty
 
 -------------------------------------------------------------------------------
 -- Helpers
@@ -82,7 +93,7 @@ instance Monad Expr where
     Let h e s -> Let h (e >>>= f) (s >>>= f)
     Case e brs -> Case (e >>>= f) (brs >>>= f)
 
-instance GBind Expr where
+instance GBind Expr GName where
   global = Global
   gbind f expr = case expr of
     Var _ -> expr
@@ -110,10 +121,10 @@ instance v ~ Doc => Pretty (Expr v) where
       "of" <$$> indent 2 (prettyM brs)
 
 instance Semigroup innards => Semigroup (Submodule innards) where
-  Submodule a1 b1 c1 <> Submodule a2 b2 c2
-    = Submodule (a1 <> a2) (b1 <> b2) (c1 <> c2)
+  Submodule a1 b1 c1 d1 <> Submodule a2 b2 c2 d2
+    = Submodule (a1 <> a2) (b1 <> b2) (c1 <> c2) (d1 <> d2)
 
 -- TODO remove Semigroup constraint when ghc has been updated
 instance (Monoid innards, Semigroup innards) => Monoid (Submodule innards) where
-  mempty = Submodule mempty mempty mempty
+  mempty = Submodule mempty mempty mempty mempty
   mappend = (<>)

@@ -13,6 +13,7 @@ import qualified LLVM.AST.Typed as LLVM
 import LLVM.IRBuilder
 
 import Backend.Generate.LLVM
+import Driver.Query
 import qualified Backend.Target as Target
 import Syntax.Direction
 import Syntax.Extern(Language)
@@ -20,15 +21,23 @@ import qualified Syntax.Extern as Extern
 import TypeRep(TypeRep)
 import qualified TypeRep
 import Util
-import VIX
 
 loadStoreAlign :: Word32
 loadStoreAlign = 1
 
+fetchIntBits :: MonadFetch Query m => m Word32
+fetchIntBits = Target.intBits <$> fetch Driver.Query.Target
+
+fetchPtrAlign :: MonadFetch Query m => m Word32
+fetchPtrAlign = Target.ptrAlign <$> fetch Driver.Query.Target
+
+fetchTypeRepBits :: MonadFetch Query m => m Word32
+fetchTypeRepBits = (* Target.byteBits) . fromIntegral . TypeRep.size <$> fetchTypeRep
+
 -------------------------------------------------------------------------------
 -- Types
-integerType :: MonadVIX m => m LLVM.Type
-integerType = LLVM.IntegerType <$> getIntBits
+integerType :: MonadFetch Query m => m LLVM.Type
+integerType = LLVM.IntegerType <$> fetchIntBits
 
 directType :: TypeRep -> LLVM.Type
 directType TypeRep.UnitRep = LLVM.void
@@ -80,16 +89,16 @@ loadVar rep (DirectVar rep' o)
   | otherwise = panic "loadVar rep mismatch"
 loadVar rep (IndirectVar o) = loadDirect rep o
 
-indirect :: (MonadIRBuilder m, MonadVIX m) => Var -> m LLVM.Operand
+indirect :: (MonadIRBuilder m, MonadFetch Query m) => Var -> m LLVM.Operand
 indirect VoidVar = return $ LLVM.ConstantOperand $ LLVM.Null indirectType
 indirect (DirectVar rep o) = do
-  align <- getPtrAlign
+  align <- fetchPtrAlign
   result <- alloca (directType rep) Nothing align `named` "indirect-alloca"
   storeDirect rep o result
   bitcast result indirectType
 indirect (IndirectVar o) = return o
 
-varcpy :: (MonadIRBuilder m, MonadVIX m) => LLVM.Operand -> Var -> LLVM.Operand -> m ()
+varcpy :: (MonadIRBuilder m, MonadFetch Query m) => LLVM.Operand -> Var -> LLVM.Operand -> m ()
 varcpy _ VoidVar _ = return ()
 varcpy dst (DirectVar rep src) _ = storeDirect rep src dst
 varcpy dst (IndirectVar src) rep = memcpy dst src rep
@@ -111,7 +120,7 @@ varCall lang fun xs = call fun (concatMap go xs) `with` \c -> c
     go (IndirectVar x) = [(x, [])]
 
 directed
-  :: (Alternative f, MonadIRBuilder m, MonadVIX m)
+  :: (Alternative f, MonadIRBuilder m, MonadFetch Query m)
   => Direction
   -> Var
   -> m (f Var)
@@ -147,9 +156,9 @@ functionType retDir paramDirs
 
 -------------------------------------------------------------------------------
 -- Memory operations
-memcpy :: (MonadIRBuilder m, MonadVIX m) => LLVM.Operand -> LLVM.Operand -> LLVM.Operand -> m ()
+memcpy :: (MonadIRBuilder m, MonadFetch Query m) => LLVM.Operand -> LLVM.Operand -> LLVM.Operand -> m ()
 memcpy dst src sz = do
-  bits <- getTypeRepBits
+  bits <- fetchTypeRepBits
   let args =
         [ dst
         , src
@@ -168,9 +177,9 @@ memcpy dst src sz = do
   _ <- call (LLVM.ConstantOperand memcpyGlob) [(arg, []) | arg <- args]
   return ()
 
-gcAlloc :: (MonadIRBuilder m, MonadVIX m) => LLVM.Operand -> m LLVM.Operand
+gcAlloc :: (MonadIRBuilder m, MonadFetch Query m) => LLVM.Operand -> m LLVM.Operand
 gcAlloc sz = do
-  bits <- getTypeRepBits
+  bits <- fetchTypeRepBits
   let gcAllocGlob
         = LLVM.GlobalReference
           LLVM.FunctionType
@@ -182,7 +191,7 @@ gcAlloc sz = do
   byteRef <- call (LLVM.ConstantOperand gcAllocGlob) [(sz, [])]
   bitcast byteRef indirectType
 
-allocaBytes :: (MonadIRBuilder m, MonadVIX m) => LLVM.Operand -> m LLVM.Operand
+allocaBytes :: (MonadIRBuilder m, MonadFetch Query m) => LLVM.Operand -> m LLVM.Operand
 allocaBytes o = do
-  align <- getPtrAlign
+  align <- fetchPtrAlign
   alloca LLVM.i8 (Just o) align

@@ -6,7 +6,7 @@ import Protolude
 import Bound
 import Data.Vector(Vector)
 
-import MonadFresh
+import Effect
 import Pretty
 import Syntax.Name
 import Syntax.NameHint

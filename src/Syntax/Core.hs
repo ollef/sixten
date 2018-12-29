@@ -1,4 +1,16 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, MonadComprehensions, OverloadedStrings, PatternSynonyms, RankNTypes, TemplateHaskell, TypeFamilies, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MonadComprehensions #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ViewPatterns #-}
 module Syntax.Core where
 
 import Protolude hiding (Type, TypeRep)
@@ -19,7 +31,7 @@ import Util.Tsil
 data Expr m v
   = Var v
   | Meta m (Vector (Plicitness, Expr m v))
-  | Global QName
+  | Global GName
   | Con QConstr
   | Lit Literal
   | Pi !NameHint !Plicitness (Type m v) (Scope1 (Expr m) v)
@@ -164,7 +176,7 @@ instance Monad (Expr m) where
     ExternCode c t -> ExternCode ((>>= f) <$> c) (t >>= f)
     SourceLoc loc e -> SourceLoc loc (e >>= f)
 
-instance GBind (Expr m) where
+instance GBind (Expr m) GName where
   global = Global
   gbind f expr = case expr of
     Var _ -> expr

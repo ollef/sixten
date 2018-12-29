@@ -3,12 +3,14 @@ module Elaboration.TypeCheck.Class where
 
 import Protolude hiding (diff, typeRep)
 
-import qualified Data.HashMap.Lazy as HashMap
+import Control.Monad.Identity
 import qualified Data.HashSet as HashSet
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
 
 import qualified Builtin.Names as Builtin
+import Driver.Query
+import Effect
 import Elaboration.Constraint
 import Elaboration.MetaVar
 import Elaboration.Monad
@@ -17,15 +19,12 @@ import Elaboration.TypeCheck.Clause
 import Elaboration.TypeCheck.Data
 import Elaboration.TypeCheck.Expr
 import Elaboration.Unify
-import MonadContext
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import qualified TypeRep
 import Util
-import qualified Util.MultiHashMap as MultiHashMap
-import VIX
 
 checkClassDef
   :: FreeV
@@ -40,7 +39,7 @@ checkClassDef classVar (ClassDef params ms) = do
     forall h p t'
 
   withVars paramVars $ do
-    unify [] (Core.pis paramVars Builtin.Type) $ varType classVar
+    runUnify (unify [] (Core.pis paramVars Builtin.Type) $ varType classVar) report
 
     ms' <- forM ms $ \(Method mname mloc s) -> do
       let typ = instantiateTele pure paramVars s
@@ -64,14 +63,8 @@ desugarClassDef
   -> QName
   -> SourceLoc
   -> ClassDef (Core.Expr MetaVar) FreeV
-  -> Elaborate (Vector (FreeV, QName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
-desugarClassDef classVar name loc def@(ClassDef params ms) = do
-  liftVIX $ modify $ \s -> s
-    { vixClassMethods
-      = HashMap.insert name (methodLocNames def)
-      $ vixClassMethods s
-    }
-
+  -> Elaborate (Vector (FreeV, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
+desugarClassDef classVar name loc (ClassDef params ms) = do
   paramVars <- forTeleWithPrefixM params $ \h p s paramVars -> do
     let t = instantiateTele pure paramVars s
     forall h p t
@@ -116,9 +109,9 @@ desugarClassDef classVar name loc def@(ClassDef params ms) = do
             (ConBranches [conBranchTyped qcon (toVector conArgVars) $ pure v])
             fullType
     var <- forall (fromName mname) Explicit fullType
-    return (var, QName (qnameModule name) mname, mloc, mdef)
+    return (var, gname $ QName (qnameModule name) mname, mloc, mdef)
 
-  return $ pure (classVar, name, loc, classDataDef) <> toVector methodDefs
+  return $ pure (classVar, gname name, loc, classDataDef) <> toVector methodDefs
 
 {-
   instanceName = instance C a => C [a] where
@@ -126,68 +119,70 @@ desugarClassDef classVar name loc def@(ClassDef params ms) = do
 
   ==>
 
+  instanceName-f = fbody
+
   instanceName : C a => C [a]
   instanceName =
-    let f = fbody
-    MkC f
+    MkC instanceName-f
 -}
 checkInstance
   :: FreeV
   -> QName
   -> SourceLoc
   -> Pre.InstanceDef Pre.Expr FreeV
-  -> Elaborate (Vector (FreeV, QName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
+  -> Elaborate (Vector (FreeV, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
 checkInstance ivar iname iloc (Pre.InstanceDef _instanceType methods) =
-  deepSkolemiseInner (varType ivar) mempty $ \skolemVars innerInstanceType skolemFun -> do
+  runIdentityT $ deepSkolemiseInner (varType ivar) mempty $ \skolemVars innerInstanceType skolemFun -> IdentityT $ do
     innerInstanceType' <- whnf innerInstanceType
     case Core.appsView innerInstanceType' of
-      (Core.Global className, args) -> do
-        liftVIX $ modify $ \s -> s
-          { vixClassInstances
-            = MultiHashMap.insert className iname
-            $ vixClassInstances s
-          }
-        ClassDef _params methodDefs <- getClassDef className
-        let names = methodName <$> methodDefs
-            methods' = sortOn (hashedElemIndex (toVector names) . methodName) methods
-            names' = methodName <$> methods'
-        if names /= names' then
-          -- TODO recover
-          throwMethodProblem
-            className
-            (diff names names')
-            (diff names' names)
-            (duplicates names')
-        else do
-          methodDefs' <- forM (zip methodDefs methods')
-            $ \(Method name _defLoc defType, Method _name loc (Pre.ConstantDef a clauses mtyp)) -> located loc $ do
-              let instMethodType
-                    = instantiateTele snd (toVector args) defType
-              expr <- case mtyp of
-                Nothing -> checkClauses clauses instMethodType
-                Just typ -> do
-                  typ' <- checkPoly typ Builtin.Type
-                  expr <- checkClauses clauses typ'
-                  f <- subtype typ' instMethodType
-                  return $ f expr
-              v <- forall (fromName name) Explicit $ Core.pis skolemVars instMethodType
-              let qname = QName (qnameModule iname) (qnameName iname <> "-" <> name)
-              return (v, qname, loc, ConstantDefinition a $ Core.lams skolemVars expr)
-          let skolemArgs = (\v -> (varData v, pure v)) <$> skolemVars
-              methodArgs = (\(v, _, _, _) -> (Explicit, Core.apps (pure v) skolemArgs)) <$> methodDefs'
-              implicitArgs = first implicitise <$> args
-          return
-            $ pure
-              ( ivar
-              , iname
-              , iloc
-              , ConstantDefinition Concrete
-                $ skolemFun
-                $ Core.lams skolemVars
-                $ Core.apps (Core.Con $ classConstr className) $ implicitArgs <> methodArgs
-              )
-            <> toVector methodDefs'
-      _ -> throwInvalidInstance
+      (Builtin.QGlobal className, args) -> do
+        maybeClassDef <- getClassDef className
+        case maybeClassDef of
+          Nothing -> return mempty
+          Just (ClassDef _params methodDefs) -> do
+            let names = methodName <$> methodDefs
+                methods' = sortOn (hashedElemIndex (toVector names) . methodName) methods
+                names' = methodName <$> methods'
+            if names /= names' then do
+              -- TODO more fine-grained recovery
+              reportMethodProblem
+                className
+                (diff names names')
+                (diff names' names)
+                (duplicates names')
+              return mempty
+            else do
+              methodDefs' <- forM (zip methodDefs methods')
+                $ \(Method name _defLoc defType, Method _name loc (Pre.ConstantDef a clauses mtyp)) -> located loc $ do
+                  let instMethodType
+                        = instantiateTele snd (toVector args) defType
+                  expr <- case mtyp of
+                    Nothing -> checkClauses clauses instMethodType
+                    Just typ -> do
+                      typ' <- checkPoly typ Builtin.Type
+                      expr <- checkClauses clauses typ'
+                      f <- subtype typ' instMethodType
+                      return $ f expr
+                  v <- forall (fromName name) Explicit $ Core.pis skolemVars instMethodType
+                  let gn = GName iname $ pure name
+                  return (v, gn, loc, ConstantDefinition a $ Core.lams skolemVars expr)
+              let skolemArgs = (\v -> (varData v, pure v)) <$> skolemVars
+                  methodArgs = (\(v, _, _, _) -> (Explicit, Core.apps (pure v) skolemArgs)) <$> methodDefs'
+                  implicitArgs = first implicitise <$> args
+              return
+                $ pure
+                  ( ivar
+                  , gname iname
+                  , iloc
+                  , ConstantDefinition Concrete
+                    $ skolemFun
+                    $ Core.lams skolemVars
+                    $ Core.apps (Core.Con $ classConstr className) $ implicitArgs <> methodArgs
+                  )
+                <> toVector methodDefs'
+      _ -> do
+        reportInvalidInstance
+        return mempty
   where
     diff xs ys = HashSet.toList $ HashSet.difference (toHashSet xs) (toHashSet ys)
     duplicates xs = mapMaybe p $ group xs
@@ -196,19 +191,21 @@ checkInstance ivar iname iloc (Pre.InstanceDef _instanceType methods) =
         p [_] = Nothing
         p (x:_:_) = Just x
 
-getClassDef :: QName -> Elaborate (ClassDef (Core.Expr meta) v)
+getClassDef :: QName -> Elaborate (Maybe (ClassDef (Core.Expr meta) v))
 getClassDef name = do
-  mmnames <- liftVIX $ gets $ HashMap.lookup name . vixClassMethods
+  mmnames <- fetch $ ClassMethods name
   case mmnames of
-    Nothing -> throwInvalidInstance
+    Nothing -> do
+      reportInvalidInstance
+      return Nothing
     Just mnames -> do
-      (def, _) <- definition name
+      def <- fetchDefinition $ gname name
       case def of
-        ConstantDefinition {} -> internalError "getClassDef constant"
+        ConstantDefinition {} -> panic "getClassDef constant"
         DataDefinition (DataDef params [ConstrDef _constr scope]) _rep -> do
           let types = methodTypes $ fromScope scope
-          return $ ClassDef params $ zipWith (\(n, loc) typ -> Method n loc $ toScope typ) mnames types
-        DataDefinition DataDef {} _ -> internalError "getClassDef datadef"
+          return $ Just $ ClassDef params $ zipWith (\(n, loc) typ -> Method n loc $ toScope typ) (toList mnames) types
+        DataDefinition DataDef {} _ -> panic "getClassDef datadef"
   where
     methodTypes (Core.Pi _ _ t1 (unusedScope -> Just t2)) = t1 : methodTypes t2
     methodTypes _ = mempty
@@ -217,24 +214,24 @@ classConstr :: QName -> QConstr
 classConstr qname@(QName _ name) = QConstr qname $ fromName $ "Mk" <> name
 
 -- TODO duplicated here and in ResolveNames
-throwInvalidInstance :: (MonadError Syntax.Error m, MonadVIX m) => m a
-throwInvalidInstance
-  = throwLocated
+reportInvalidInstance :: MonadReport m => m ()
+reportInvalidInstance
+  = reportLocated
   $ PP.vcat
   [ "Invalid instance"
   , "Instance types must return a class"
   , bold "Expected:" PP.<+> "an instance of the form" PP.<+> dullGreen "instance ... => C as where ..." <> ", where" PP.<+> dullGreen "C" PP.<+> "is a class."
   ]
 
-throwMethodProblem
-  :: (MonadError Syntax.Error m, MonadVIX m)
+reportMethodProblem
+  :: MonadReport m
   => QName
   -> [Name]
   -> [Name]
   -> [Name]
-  -> m a
-throwMethodProblem className missingMethods extraMethods duplicates
-  = throwLocated
+  -> m ()
+reportMethodProblem className missingMethods extraMethods duplicates
+  = reportLocated
   $ PP.vcat
   $ "Invalid instance"
   : concat

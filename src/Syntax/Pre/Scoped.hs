@@ -1,4 +1,8 @@
-{-# LANGUAGE GADTs, OverloadedStrings, PatternSynonyms, ViewPatterns #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns #-}
 module Syntax.Pre.Scoped
   ( module Definition
   , module Pattern
@@ -178,7 +182,7 @@ instance Monad Expr where
     Wildcard -> Wildcard
     SourceLoc r e -> SourceLoc r (e >>= f)
 
-instance GBind Expr where
+instance GBind Expr QName where
   global = Global
   gbind f expr = case expr of
     Var _ -> expr

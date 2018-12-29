@@ -1,4 +1,15 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, GADTs, MonadComprehensions, OverloadedStrings, PatternSynonyms, TemplateHaskell, ViewPatterns #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE MonadComprehensions #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
 module Syntax.Sized.SLambda where
 
 import Protolude hiding (Type, TypeRep)
@@ -15,7 +26,7 @@ import Util
 
 data Expr v
   = Var v
-  | Global QName
+  | Global GName
   | Lit Literal
   | Con QConstr (Vector (Anno Expr v)) -- ^ Fully applied
   | Lam !NameHint (Type v) (AnnoScope1 Expr v)
@@ -84,7 +95,7 @@ instance Monad Expr where
 pattern Lams :: Telescope () Expr v -> AnnoScope TeleVar Expr v -> Expr v
 pattern Lams tele s <- (annoBindingsViewM lamView -> Just (tele, s))
 
-instance GBind Expr where
+instance GBind Expr GName where
   global = Global
   gbind f expr = case expr of
     Var _ -> expr

@@ -1,23 +1,29 @@
-{-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving, MultiParamTypeClasses, OverloadedStrings, TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 module Elaboration.Monad where
 
 import Protolude
 
-import Control.Monad.Except
-import Control.Monad.Fail
+import Control.Lens
+import Control.Monad.Reader
 import qualified Data.Vector as Vector
+import Rock
 
 import qualified Builtin.Names as Builtin
+import Driver.Query
+import Effect
 import Elaboration.MetaVar
-import MonadContext
-import MonadFresh
-import MonadLog
+import {-# SOURCE #-} Elaboration.MetaVar.Zonk
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import Util
-import Util.Tsil(Tsil)
 import qualified Util.Tsil as Tsil
 import VIX
 
@@ -37,30 +43,35 @@ shouldInst p (InstUntil p') | p == p' = False
 shouldInst _ _ = True
 
 data ElabEnv = ElabEnv
-  { localVariables :: Tsil FreeV
-  , elabTouchables :: !(MetaVar -> Bool)
+  { _contextEnv :: !(ContextEnv FreeV)
+  , _elabTouchables :: !(MetaVar -> Bool)
+  , _currentModule :: !ModuleName
+  , _vixEnv :: !VIX.Env
   }
 
-newtype Elaborate a = Elaborate (ReaderT ElabEnv VIX a)
-  deriving (Functor, Applicative, Monad, MonadIO, MonadFail, MonadFix, MonadError Error, MonadFresh, MonadReport, MonadLog, MonadVIX)
+makeLenses ''ElabEnv
 
-runElaborate :: Elaborate a -> VIX a
-runElaborate (Elaborate i) = runReaderT i ElabEnv
-  { localVariables = mempty
-  , elabTouchables = const True
+instance HasLogEnv ElabEnv where
+  logEnv = vixEnv.logEnv
+
+instance HasReportEnv ElabEnv where
+  reportEnv = vixEnv.reportEnv
+
+instance HasFreshEnv ElabEnv where
+  freshEnv = vixEnv.freshEnv
+
+instance HasContextEnv FreeV ElabEnv where
+  contextEnv = Elaboration.Monad.contextEnv
+
+type Elaborate = ReaderT ElabEnv (Sequential (Task Query))
+
+runElaborate :: ModuleName -> Elaborate a -> VIX a
+runElaborate mname = withReaderT $ \env -> ElabEnv
+  { _contextEnv = emptyContextEnv
+  , _elabTouchables = const True
+  , _currentModule = mname
+  , _vixEnv = env
   }
-
-instance MonadContext FreeV Elaborate where
-  localVars = Elaborate $ asks localVariables
-
-  inUpdatedContext f (Elaborate m) = Elaborate $ do
-    vs <- asks localVariables
-    let vs' = f vs
-    logShow 30 "local variable scope" (varId <$> toList vs')
-    indentLog $
-      local
-        (\env -> env { localVariables = vs' })
-        m
 
 exists
   :: NameHint
@@ -68,11 +79,11 @@ exists
   -> CoreM
   -> Elaborate CoreM
 exists hint d typ = do
-  locals <- toVector . Tsil.filter (isNothing . varValue) <$> localVars
+  locals <- toVector . Tsil.filter (isNothing . varValue) <$> getLocalVars
   let typ' = Core.pis locals typ
-  logMeta 30 "exists typ" typ
+  logMeta "tc.metavar" "exists typ" $ zonk typ
   let typ'' = close (panic "exists not closed") typ'
-  loc <- currentLocation
+  loc <- getCurrentLocation
   v <- explicitExists hint d typ'' (Vector.length locals) loc
   return $ Core.Meta v $ (\fv -> (varData fv, pure fv)) <$> locals
 
@@ -82,9 +93,9 @@ existsType
 existsType n = exists n Explicit Builtin.Type
 
 getTouchable :: Elaborate (MetaVar -> Bool)
-getTouchable = Elaborate $ asks elabTouchables
+getTouchable = view elabTouchables
 
 untouchable :: Elaborate a -> Elaborate a
-untouchable (Elaborate i) = do
+untouchable i = do
   v <- fresh
-  Elaborate $ local (\s -> s { elabTouchables = \m -> elabTouchables s m && metaId m > v }) i
+  local (over elabTouchables $ \t m -> t m && metaId m > v) i

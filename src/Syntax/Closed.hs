@@ -1,7 +1,11 @@
-{-# LANGUAGE UndecidableInstances, RankNTypes #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE UndecidableInstances #-}
 module Syntax.Closed where
 
 import Protolude
+
+import Pretty
 
 newtype Closed f = Closed { open :: forall a. f a }
 
@@ -27,3 +31,6 @@ newtype Biclosed f = Biclosed { biopen :: forall a b. f a b }
 
 biclose :: Bifunctor f => (a -> Void) -> (b -> Void) -> f a b -> Biclosed f
 biclose f g x = Biclosed $ bimap (absurd . f) (absurd . g) x
+
+instance Pretty (f Doc) => Pretty (Closed f) where
+  prettyM f = prettyM (open f :: f Doc)

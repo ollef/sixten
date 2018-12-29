@@ -32,7 +32,7 @@ denatLit l@TypeRep {} = l
 
 succInt :: Anno Expr v -> Expr v
 succInt (Anno (Lit (Integer n)) _) = Lit $ Integer $! n + 1
-succInt expr = App (App (global AddIntName) (Anno (Lit $ Integer 1) (global IntName))) expr
+succInt expr = App (App (global $ gname AddIntName) (Anno (Lit $ Integer 1) (global $ gname IntName))) expr
 
 denatAnno
   :: Anno Expr v
@@ -44,21 +44,21 @@ denatCase
   -> Branches () Expr v
   -> Expr v
 denatCase (Anno expr _) (ConBranches [ConBranch ZeroConstr _ztele zs, ConBranch SuccConstr _stele ss])
-  = let_ mempty expr (global NatName)
+  = let_ mempty expr (global $ gname NatName)
   $ toScope
-  $ Case (Anno (pure $ B ()) (global NatName))
+  $ Case (Anno (pure $ B ()) (global $ gname NatName))
     (LitBranches
       (pure (LitBranch (Integer 0) $ F <$> instantiate (panic "denatCase zs") (hoist denat zs)))
       (let_
         "pred"
-        (App (App (global SubIntName) (intTyped $ pure $ B ())) (intTyped $ Lit $ Integer 1))
+        (App (App (global $ gname SubIntName) (intTyped $ pure $ B ())) (intTyped $ Lit $ Integer 1))
         intType
         $ mapScope (const ()) F $ hoist denat ss
       )
     )
   where
     intTyped = (`Anno` intType)
-    intType = global IntName
+    intType = global $ gname IntName
 denatCase expr (ConBranches cbrs)
   = Case
     expr
