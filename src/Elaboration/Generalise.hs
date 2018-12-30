@@ -157,7 +157,7 @@ replaceMetas varMap defs = forM defs $ \(v, name, loc, d) -> do
             logCategory "tc.gen" $ "replaceMetas unsolved " <> show m
             typ' <- bindMetas' go typ
             reportUnresolvedMetaError typ'
-            -- TODO Solve the variable?
+            solve m $ Closed $ Builtin.Fail $ open $ metaType m
             -- TODO use actual error in expression when strings are faster
             return $ Builtin.Fail typ'
           Just v -> return $ pure v
