@@ -186,6 +186,10 @@ Test-suite test-sixten
   import:              common
   hs-source-dirs:      tests
   type:                exitcode-stdio-1.0
+  ghc-options:
+                       -threaded
+                       -rtsopts
+                       -with-rtsopts=-N
   main-is:             Main.hs
   build-depends:
                        directory,
