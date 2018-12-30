@@ -18,7 +18,7 @@ import Util
 
 type ExprFreeVar meta = FreeVar Plicitness (Expr meta)
 
-type MonadTypeOf meta m = (Show meta, MonadIO m, MonadFetch Query m, MonadFresh m, MonadLog m, MonadContext (ExprFreeVar meta) m) -- (Show meta, MonadIO m, MonadVIX m, MonadError Error m, MonadContext (ExprFreeVar meta) m, MonadFix m, MonadLog m)
+type MonadTypeOf meta m = (Show meta, MonadIO m, MonadFetch Query m, MonadFresh m, MonadLog m, MonadContext (ExprFreeVar meta) m)
 
 data Args meta m = Args
   { typeOfMeta :: !(meta -> Closed (Expr meta))
