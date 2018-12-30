@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Main where
+module Command where
 
 import Protolude
 
@@ -24,6 +24,3 @@ commands = subparser
   <> command "check" Check.command
   <> command "test" Test.command
   <> command "language-server" LanguageServer.command
-
-main :: IO ()
-main = join $ execParser optionsParser

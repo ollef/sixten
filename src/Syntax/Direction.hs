@@ -54,19 +54,6 @@ toReturnDirection :: d -> Direction -> ReturnDirection d
 toReturnDirection _ (Direct sz) = ReturnDirect sz
 toReturnDirection d Indirect = ReturnIndirect d
 
-data ClosureDir
-  = NonClosureDir Direction
-  | ClosureDir
-  deriving (Eq, Ord, Show)
-
-instance PrettyAnnotation ClosureDir where
-  prettyAnnotation (NonClosureDir dir) = prettyAnnotation dir
-  prettyAnnotation ClosureDir = prettyTightApp "[]"
-
-instance Pretty ClosureDir where
-  prettyM (NonClosureDir d) = prettyM d
-  prettyM ClosureDir = "closure"
-
 -- | Should the name be mangled and calling convention be adjusted to be C-compatible?
 data Compatibility
   = CompatibleWith Language

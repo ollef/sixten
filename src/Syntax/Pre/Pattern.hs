@@ -59,14 +59,6 @@ patternHint (VarPat h _) = h
 patternHint (PatLoc _ p) = patternHint p
 patternHint _ = mempty
 
-varPatView
-  :: Pat con t ()
-  -> Maybe NameHint
-varPatView (PatLoc _ p) = varPatView p
-varPatView (VarPat h ~()) = Just h
-varPatView WildcardPat = Just mempty
-varPatView _ = Nothing
-
 -------------------------------------------------------------------------------
 -- Instances
 instance (Eq con, Eq typ, Eq b) => Eq (Pat con typ b) where

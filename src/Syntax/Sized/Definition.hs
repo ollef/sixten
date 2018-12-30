@@ -10,13 +10,11 @@ import Data.Vector(Vector)
 import FreeVar
 import Pretty
 import Syntax.Annotation
-import Syntax.Closed
 import Syntax.GlobalBind
 import Syntax.Name
 import Syntax.Sized.Anno
 import Syntax.Telescope
 import qualified TypedFreeVar as Typed
-import Util.TopoSort
 
 data Function expr v
   = Function (Telescope () expr v) (AnnoScope TeleVar expr v)
@@ -52,12 +50,6 @@ functionTyped
   -> Anno expr (Typed.FreeVar () expr)
   -> Function expr (Typed.FreeVar () expr)
 functionTyped vs = Function (Typed.varTelescope vs) . abstractAnno (teleAbstraction vs)
-
-dependencyOrder
-  :: (GBind expr g, Foldable expr, Ord g)
-  => [(g, Closed (Definition expr))]
-  -> [[(g, Closed (Definition expr))]]
-dependencyOrder = fmap flattenSCC . topoSortWith fst (gbound pure . open . snd)
 
 -------------------------------------------------------------------------------
 -- Instances

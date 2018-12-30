@@ -8,7 +8,6 @@ import Data.List(intersperse, intercalate)
 import Data.List.Split
 import Data.String
 import Data.Vector(Vector)
-import qualified Data.Vector as Vector
 import GHC.Generics(Generic)
 
 import Pretty
@@ -34,14 +33,6 @@ fromQName (QName (ModuleName parts) name)
   $ intercalate "."
   $ toList
   $ fromName <$> parts <> pure name
-
-unqualified :: Name -> QName
-unqualified = QName (ModuleName mempty)
-
-isUnqualified :: QName -> Maybe Name
-isUnqualified (QName (ModuleName vs) n)
-  | Vector.null vs = Just n
-  | otherwise = Nothing
 
 data QConstr = QConstr !QName !Constr
   deriving (Eq, Generic, Ord, Show)
@@ -79,9 +70,6 @@ gnameBaseName (GName qn _) = qn
 
 gnameModule :: GName -> ModuleName
 gnameModule (GName qn _) = qnameModule qn
-
-gnameGenNames :: GName -> Vector Name
-gnameGenNames (GName _ gns) = gns
 
 gnameParts :: GName -> Vector Name
 gnameParts (GName qn gns) = qnameParts qn <> gns
