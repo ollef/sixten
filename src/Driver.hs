@@ -50,10 +50,13 @@ execute args task = do
             return $ n - 1)
         else
           identity
+    writeErrors _ [] = return ()
+    writeErrors key errs =
+      modifyMVar_ errorsVar $ pure . DMap.insert key (Const errs)
     tasks
       = traceFetch_
       $ memoise startedVar
-      $ writer (\key w -> modifyMVar_ errorsVar $ pure . DMap.insert key (Const w))
+      $ writer writeErrors
       $ rules logEnv_ (sourceFiles args) (readSourceFile args) (target args)
   res <- runTask sequentially tasks task
   errorsMap <- readMVar errorsVar
