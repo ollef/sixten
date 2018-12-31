@@ -39,8 +39,7 @@ trySolveConstraint
   -> Elaborate (Maybe (Closed (Expr MetaVar)))
 trySolveConstraint m = inUpdatedContext (const mempty) $ do
   logShow "tc.constraint" "trySolveConstraint" $ metaId m
-  (vs, typ) <- instantiatedMetaType m
-  withVars vs $ do
+  withInstantiatedMetaType m $ \vs typ -> do
     typ' <- whnf typ
     case typ' of
       (appsView -> (unSourceLoc -> Builtin.QGlobal className, _)) -> do
@@ -88,18 +87,15 @@ solveDefConstraints
   -> Elaborate (Definition (Expr MetaVar) FreeV)
 solveDefConstraints (ConstantDefinition a e)
   = ConstantDefinition a <$> solveExprConstraints e
-solveDefConstraints (DataDefinition (DataDef ps constrs) rep) = do
-  vs <- forTeleWithPrefixM ps $ \h p s vs -> do
-    let t = instantiateTele pure vs s
-    forall h p t
+solveDefConstraints (DataDefinition (DataDef ps constrs) rep) =
+  teleExtendContext ps $ \vs -> do
+    constrs' <- forM constrs $ \(ConstrDef c s) -> do
+      let e = instantiateTele pure vs s
+      e' <- solveExprConstraints e
+      return $ ConstrDef c e'
 
-  constrs' <- withVars vs $ forM constrs $ \(ConstrDef c s) -> do
-    let e = instantiateTele pure vs s
-    e' <- solveExprConstraints e
-    return $ ConstrDef c e'
-
-  rep' <- solveExprConstraints rep
-  return $ DataDefinition (dataDef vs constrs') rep'
+    rep' <- solveExprConstraints rep
+    return $ DataDefinition (dataDef vs constrs') rep'
 
 solveRecursiveDefConstraints
   :: Vector (FreeV, name, loc, Definition (Expr MetaVar) FreeV)
@@ -137,13 +133,13 @@ mergeConstraintVars vars = do
                   return varTypes
             Nothing -> return $ Map.insert (arity, ctyp) m varTypes
     go varTypes _ = return varTypes
-    solveVar m m' = do
-      (vs, _) <- instantiatedMetaType m'
-      solve m'
-        $ close (panic "mergeConstraintVars not closed")
-        $ lams vs
-        $ Meta m
-        $ (\v -> (varData v, pure v)) <$> vs
+    solveVar m m' =
+      withInstantiatedMetaType m' $ \vs _ ->
+        solve m'
+          $ close (panic "mergeConstraintVars not closed")
+          $ lams vs
+          $ Meta m
+          $ (\v -> (varData v, pure v)) <$> vs
 
 whnf :: CoreM -> Elaborate CoreM
 whnf e = Normalise.whnf' Normalise.Args

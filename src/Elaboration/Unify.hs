@@ -47,12 +47,12 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
   (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
   (Lam h1 p1 t1 s1, Lam h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
   -- Eta-expand
-  (Lam h1 p1 t1 s1, _) -> do
-    v <- forall h1 p1 t1
-    withVar v $ unify cxt (instantiate1 (pure v) s1) (App expr2 p1 $ pure v)
-  (_, Lam h p t s) -> do
-    v <- forall h p t
-    withVar v $ unify cxt (App expr1 p $ pure v) (instantiate1 (pure v) s)
+  (Lam h p t s, _) ->
+    extendContext h p t $ \v ->
+      unify cxt (instantiate1 (pure v) s) (App expr2 p $ pure v)
+  (_, Lam h p t s) ->
+    extendContext h p t $ \v ->
+      unify cxt (App expr1 p $ pure v) (instantiate1 (pure v) s)
   -- Eta-reduce
   (etaReduce -> Just expr1', _) -> unify cxt expr1' expr2
   (_, etaReduce -> Just expr2') -> unify cxt expr1 expr2'
@@ -85,8 +85,8 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
   where
     absCase h p t1 t2 s1 s2 = do
       unify cxt t1 t2
-      v <- forall h p t1
-      withVar v $ unify cxt (instantiate1 (pure v) s1) (instantiate1 (pure v) s2)
+      extendContext h p t1 $ \v ->
+        unify cxt (instantiate1 (pure v) s1) (instantiate1 (pure v) s2)
 
     solveVar recurse m pvs t = do
       msol <- solution m
@@ -122,26 +122,26 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
         -- If we keep all arguments we can't make any progress without delayed
         -- constraint solving other than checking for equality.
         can'tUnify
-      else do
-        (vs, typ) <- instantiatedMetaType' (Vector.length pes1) m
-        let vs' = snd <$> Vector.filter fst (Vector.zip keep vs)
-        prunedType <- prune (toHashSet vs') typ
-        let newMetaType = pis vs' prunedType
-        newMetaType' <- normalise newMetaType
+      else
+        withInstantiatedMetaType' (Vector.length pes1) m $ \vs typ -> do
+          let vs' = snd <$> Vector.filter fst (Vector.zip keep vs)
+          prunedType <- prune (toHashSet vs') typ
+          let newMetaType = pis vs' prunedType
+          newMetaType' <- normalise newMetaType
 
-        case closed newMetaType' of
-          Nothing -> can'tUnify
-          Just newMetaType'' -> do
-            m' <- explicitExists
-              (metaHint m)
-              (metaPlicitness m)
-              (close identity newMetaType'')
-              (Vector.length vs')
-              (metaSourceLoc m)
-            let e = Meta m' $ (\v -> (varData v, pure v)) <$> vs'
-                e' = lams vs e
-            solve m $ close (panic "unify sameVar not closed") e'
-            unify cxt expr1 expr2
+          case closed newMetaType' of
+            Nothing -> can'tUnify
+            Just newMetaType'' -> do
+              m' <- explicitExists
+                (metaHint m)
+                (metaPlicitness m)
+                (close identity newMetaType'')
+                (Vector.length vs')
+                (metaSourceLoc m)
+              let e = Meta m' $ (\v -> (varData v, pure v)) <$> vs'
+                  e' = lams vs e
+              solve m $ close (panic "unify sameVar not closed") e'
+              unify cxt expr1 expr2
 
     can'tUnify = do
       equal <- lift $ Equal.exec $ Equal.expr expr1 expr2

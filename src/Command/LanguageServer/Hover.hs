@@ -33,6 +33,7 @@ type FreeV = FreeVar Plicitness (Expr Void)
 data HoverEnv = HoverEnv
   { _freshEnv :: !FreshEnv
   , _contextEnv :: !(ContextEnv FreeV)
+  , _logEnv :: !LogEnv
   }
 
 makeLenses ''HoverEnv
@@ -43,8 +44,11 @@ instance HasFreshEnv HoverEnv where
 instance HasContextEnv FreeV HoverEnv where
   contextEnv = Command.LanguageServer.Hover.contextEnv
 
+instance HasLogEnv HoverEnv where
+  logEnv = Command.LanguageServer.Hover.logEnv
+
 newtype Hover a = Hover { unHover :: ListT (ReaderT HoverEnv IO) a }
-  deriving (Functor, Applicative, Alternative, Monad, MonadIO, Semigroup, Monoid, MonadContext FreeV, MonadFresh)
+  deriving (Functor, Applicative, Alternative, Monad, MonadIO, Semigroup, Monoid, MonadContext FreeV, MonadFresh, MonadLog)
 
 instance MonadReader r m => MonadReader r (ListT m) where
   ask = ListT $ do
@@ -60,7 +64,11 @@ runHover :: Hover a -> IO [a]
 runHover (Hover m) = do
   f <- emptyFreshEnv
   let c = emptyContextEnv
-  runReaderT  (ListT.toList m) (HoverEnv f c)
+      l = LogEnv
+        { _logCategories = const False
+        , _logAction = \_ -> return ()
+        }
+  runReaderT (ListT.toList m) (HoverEnv f c l)
 
 emitCons :: a -> Hover a -> Hover a
 emitCons a as
@@ -85,12 +93,9 @@ hoverDef
   -> Definition (Expr Void) FreeV
   -> Hover (Span, Expr Void FreeV)
 hoverDef f (ConstantDefinition _ e) = hoverExpr f e
-hoverDef f (DataDefinition (DataDef params cs) _rep) = do
-  vs <- forTeleWithPrefixM params $ \h p s vs -> do
-    let t = instantiateTele pure vs s
-    freeVar h p t
-  withVars vs
-    $ foldMap (hoverExpr f . varType) vs
+hoverDef f (DataDefinition (DataDef params cs) _rep) =
+  teleExtendContext params $ \vs ->
+    foldMap (hoverExpr f . varType) vs
     <> foldMap (\(ConstrDef _ s) -> hoverExpr f $ instantiateTele pure vs s) cs
 
 hoverExpr
@@ -103,13 +108,11 @@ hoverExpr f expr = case expr of
   Global _ -> mempty
   Con _ -> mempty
   Lit _ -> mempty
-  Pi h p t s -> do
-    v <- freeVar h p t
-    withVar v $
+  Pi h p t s ->
+    extendContext h p t $ \v ->
       hoverExpr f t <> hoverExpr f (instantiate1 (pure v) s)
-  Lam h p t s -> do
-    v <- freeVar h p t
-    withVar v $
+  Lam h p t s ->
+    extendContext h p t $ \v ->
       hoverExpr f t <> hoverExpr f (instantiate1 (pure v) s)
   App e1 _ e2 -> hoverExpr f e1 <> hoverExpr f e2
   Let ds scope -> do
@@ -132,10 +135,7 @@ hoverBranches f (LitBranches lbrs def) =
   foldMap (\(LitBranch _ e) -> hoverExpr f e) lbrs
   <> hoverExpr f def
 hoverBranches f (ConBranches cbrs) =
-  flip foldMap cbrs $ \(ConBranch _ tele scope) -> do
-    vs <- forTeleWithPrefixM tele $ \h p s vs -> do
-      let t = instantiateTele pure vs s
-      freeVar h p t
-    withVars vs
-      $ foldMap (hoverExpr f . varType) vs
+  flip foldMap cbrs $ \(ConBranch _ tele scope) ->
+    teleExtendContext tele $ \vs ->
+      foldMap (hoverExpr f . varType) vs
       <> hoverExpr f (instantiateTele pure vs scope)

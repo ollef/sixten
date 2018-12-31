@@ -9,7 +9,6 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import Effect
 import Elaboration.MetaVar
 import Elaboration.Monad
 import Elaboration.Normalise
@@ -53,12 +52,12 @@ expr' (ExternCode e1 t1) (ExternCode e2 t2)
 expr' (SourceLoc _ e1) e2 = expr' e1 e2
 expr' e1 (SourceLoc _ e2) = expr' e1 e2
 -- Eta-expand
-expr' (Lam h p t s) e2 = do
-  v <- forall h p t
-  withVar v $ expr (instantiate1 (pure v) s) (App e2 p $ pure v)
-expr' e1 (Lam h p t s) = do
-  v <- forall h p t
-  withVar v $ expr (App e1 p $ pure v) (instantiate1 (pure v) s)
+expr' (Lam h p t s) e2 =
+  extendContext h p t $ \v ->
+    expr (instantiate1 (pure v) s) (App e2 p $ pure v)
+expr' e1 (Lam h p t s) =
+  extendContext h p t $ \v ->
+    expr (App e1 p $ pure v) (instantiate1 (pure v) s)
 -- Eta-reduce
 expr' (etaReduce -> Just e1) e2 = expr e1 e2
 expr' e1 (etaReduce -> Just e2) = expr e1 e2
@@ -82,8 +81,7 @@ abstraction c h1 p1 t1 s1 h2 p2 t2 s2 = do
   let h = h1 <> h2
   p <- eq p1 p2
   t <- expr t1 t2
-  v <- forall h p t
-  withVar v $ do
+  extendContext h p t $ \v -> do
     s <- expr (instantiate1 (pure v) s1) (instantiate1 (pure v) s2)
     return $ c v s
 
@@ -106,14 +104,12 @@ conBranch
 conBranch (ConBranch c1 tele1 s1) (ConBranch c2 tele2 s2) = do
   c <- eq c1 c2
   guard $ teleLength tele1 == teleLength tele2
-  vs <- forTeleWithPrefixM tele1 $ \h p s vs -> do
-    let e = instantiateTele pure vs s
-    forall h p e
-  let types2 = forTele tele2 $ \_ _ s -> instantiateTele pure vs s
-  withVars vs $ do
-    let go v type2 = do
-          t <- expr (varType v) type2
-          return $ v { varType = t }
+  teleExtendContext tele1 $ \vs -> do
+    let
+      types2 = forTele tele2 $ \_ _ s -> instantiateTele pure vs s
+      go v type2 = do
+        t <- expr (varType v) type2
+        return $ v { varType = t }
     vs' <- Vector.zipWithM go vs types2
     let e1 = instantiateTele pure vs' s1
         e2 = instantiateTele pure vs' s2

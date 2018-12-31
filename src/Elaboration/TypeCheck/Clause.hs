@@ -105,11 +105,9 @@ checkClausesRho clauses rhoType = do
     forM_ pats $ logPretty "tc.clause" "checkClausesRho clause pat" <=< bitraverse prettyMeta (pure . pretty)
     logMeta "tc.clause" "checkClausesRho clause body" $ zonk body
 
-  argVars <- forTeleWithPrefixM (addTeleNames argTele $ Pre.patternHint <$> firstPats) $ \h p s argVars ->
-    forall h p $ instantiateTele pure argVars s
-  logPretty "tc.clause" "argVars" argVars
+  teleExtendContext (addTeleNames argTele $ Pre.patternHint <$> firstPats) $ \argVars -> do
+    logPretty "tc.clause" "argVars" argVars
 
-  withVars argVars $ do
     let returnType = instantiateTele pure argVars returnTypeScope
 
     body <- matchClauses

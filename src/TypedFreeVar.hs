@@ -75,6 +75,41 @@ forall h p t = do
   logCategory "forall" $ "forall: " <> shower (varId v)
   return v
 
+extendContext
+  :: (MonadFresh m, MonadLog m, MonadContext (FreeVar d e) m)
+  => NameHint
+  -> d
+  -> e (FreeVar d e)
+  -> (FreeVar d e -> m a)
+  -> m a
+extendContext h p t k = do
+  v <- forall h p t
+  withVar v $ k v
+
+teleExtendContext
+  :: (MonadFresh m, MonadLog m, MonadContext (FreeVar d e) m, Monad e)
+  => Telescope d e (FreeVar d e)
+  -> (Vector (FreeVar d e) -> m a)
+  -> m a
+teleExtendContext tele k = do
+  vs <- forTeleWithPrefixM tele $ \h p s vs -> do
+    let e = instantiateTele pure vs s
+    forall h p e
+  withVars vs $ k vs
+
+teleMapExtendContext
+  :: (MonadFresh m, MonadLog m, MonadContext (FreeVar d e') m, Monad e)
+  => Telescope d e (FreeVar d e')
+  -> (e (FreeVar d e') -> m (e' (FreeVar d e')))
+  -> (Vector (FreeVar d e') -> m a)
+  -> m a
+teleMapExtendContext tele f k = do
+  vs <- forTeleWithPrefixM tele $ \h p s vs -> do
+    let e = instantiateTele pure vs s
+    e' <- withVars vs $ f e
+    forall h p e'
+  withVars vs $ k vs
+
 letVar
   :: (MonadFresh m, MonadIO m)
   => NameHint

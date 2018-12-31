@@ -30,15 +30,10 @@ checkClassDef
   :: FreeV
   -> ClassDef Pre.Expr FreeV
   -> Elaborate (ClassDef (Core.Expr MetaVar) FreeV)
-checkClassDef classVar (ClassDef params ms) = do
+checkClassDef classVar (ClassDef params ms) =
   -- TODO: These vars are typechecked twice (in checkAndGeneraliseDefs as the
   -- expected type and here). Can we clean this up?
-  paramVars <- forTeleWithPrefixM params $ \h p s paramVars -> do
-    let t = instantiateTele pure paramVars s
-    t' <- withVars paramVars $ checkPoly t Builtin.Type
-    forall h p t'
-
-  withVars paramVars $ do
+  teleMapExtendContext params (`checkPoly` Builtin.Type) $ \paramVars -> do
     runUnify (unify [] (Core.pis paramVars Builtin.Type) $ varType classVar) report
 
     ms' <- forM ms $ \(Method mname mloc s) -> do

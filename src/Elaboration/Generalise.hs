@@ -96,10 +96,10 @@ generaliseMetas
   -> Elaborate (HashMap MetaVar FreeV)
 generaliseMetas metas = do
   logShow "tc.gen" "generaliseMetas metas" metas
-  instMetas <- forM (toList metas) $ \m -> do
-    (instVs, instTyp) <- instantiatedMetaType m
-    deps <- metaVars instTyp
-    return (m, (instVs, instTyp, deps))
+  instMetas <- forM (toList metas) $ \m ->
+    withInstantiatedMetaType m $ \instVs instTyp -> do
+      deps <- metaVars instTyp
+      return (m, (instVs, instTyp, deps))
 
   let sortedMetas = acyclic <$> topoSortWith fst (thd3 . snd) instMetas
   logShow "tc.gen" "generaliseMetas sorted" sortedMetas

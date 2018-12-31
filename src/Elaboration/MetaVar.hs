@@ -165,24 +165,26 @@ logDefMeta c@(Category ct) s mdef = whenLoggingCategory c $ do
 
 type FreeBindVar meta = FreeVar Plicitness (Expr meta)
 
-instantiatedMetaType
-  :: (MonadLog m, MonadFresh m)
+withInstantiatedMetaType
+  :: (MonadLog m, MonadFresh m, MonadContext (FreeBindVar MetaVar) m)
   => MetaVar
-  -> m (Vector FreeV, Expr MetaVar (FreeBindVar MetaVar))
-instantiatedMetaType m = instantiatedMetaType' (metaArity m) m
+  -> (Vector FreeV -> Expr MetaVar (FreeBindVar MetaVar) -> m a)
+  -> m a
+withInstantiatedMetaType m = withInstantiatedMetaType' (metaArity m) m
 
-instantiatedMetaType'
-  :: (MonadLog m, MonadFresh m)
+withInstantiatedMetaType'
+  :: (MonadLog m, MonadFresh m, MonadContext (FreeBindVar MetaVar) m)
   => Int
   -> MetaVar
-  -> m (Vector FreeV, Expr MetaVar (FreeBindVar MetaVar))
-instantiatedMetaType' arity m = go mempty arity (open $ metaType m)
+  -> (Vector FreeV -> Expr MetaVar (FreeBindVar MetaVar) -> m a)
+  -> m a
+withInstantiatedMetaType' arity m = go mempty arity (open $ metaType m)
   where
-    go vs 0 t = return (toVector $ reverse vs, t)
-    go vs n (Pi h a t s) = do
-      v <- forall h a t
-      go (v:vs) (n - 1) (instantiate1 (pure v) s)
-    go _ _ _ = panic "instantiatedMetaType'"
+    go vs 0 t k = k (toVector $ reverse vs) t
+    go vs n (Pi h a t s) k =
+      extendContext h a t $ \v ->
+        go (v:vs) (n - 1) (instantiate1 (pure v) s) k
+    go _ _ _ _ = panic "instantiatedMetaType'"
 
 type MonadBindMetas meta' m = (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadLog m, MonadIO m)
 
@@ -210,14 +212,8 @@ bindDataDefMetas
   => (meta -> Vector (Plicitness, Expr meta (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
   -> DataDef (Expr meta) (FreeBindVar meta')
   -> m (DataDef (Expr meta') (FreeBindVar meta'))
-bindDataDefMetas f (DataDef ps cs) = do
-  vs <- forTeleWithPrefixM ps $ \h p s vs -> do
-    let t = instantiateTele pure vs s
-    t' <- bindMetas f t
-    forall h p t'
-
-  withVars vs $ do
-
+bindDataDefMetas f (DataDef ps cs) =
+  teleMapExtendContext ps (bindMetas f) $ \vs -> do
     cs' <- forM cs $ \(ConstrDef c s) -> do
       e <- bindMetas f $ instantiateTele pure vs s
       return $ ConstrDef c e
@@ -255,10 +251,10 @@ bindMetas f expr = case expr of
   where
     absCase h p t s c = do
       t' <- bindMetas f t
-      v <- forall h p t'
-      let e = instantiate1 (pure v) s
-      e' <- withVar v $ bindMetas f e
-      return $ c v e'
+      extendContext h p t' $ \v -> do
+        let e = instantiate1 (pure v) s
+        e' <- bindMetas f e
+        return $ c v e'
 
 bindMetas'
   :: MonadBindMetas meta' m
@@ -276,17 +272,12 @@ bindBranchMetas
   -> m (Branches Plicitness (Expr meta') (FreeBindVar meta'))
 bindBranchMetas f brs = case brs of
   ConBranches cbrs -> ConBranches <$> do
-    forM cbrs $ \(ConBranch c tele scope) -> do
-      vs <- forTeleWithPrefixM tele $ \h p s vs -> do
-        let t = instantiateTele pure vs s
-        -- TODO inefficient: make special-case forTeleWithPrefix + withVars
-        t' <- withVars vs $ bindMetas f t
-        forall h p t'
+    forM cbrs $ \(ConBranch c tele scope) ->
+      teleMapExtendContext tele (bindMetas f) $ \vs -> do
+        let expr = instantiateTele pure vs scope
+        expr' <- bindMetas f expr
 
-      let expr = instantiateTele pure vs scope
-      expr' <- withVars vs $ bindMetas f expr
-
-      return $ conBranchTyped c vs expr'
+        return $ conBranchTyped c vs expr'
   LitBranches lbrs def ->
     LitBranches
       <$> mapM (\(LitBranch l br) -> LitBranch l <$> bindMetas f br) lbrs

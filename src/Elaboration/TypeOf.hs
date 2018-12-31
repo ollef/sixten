@@ -48,10 +48,10 @@ typeOf' args expr = case expr of
   Con qc -> fetchQConstructor qc
   Lit l -> return $ typeOfLiteral l
   Pi {} -> return Builtin.Type
-  Lam h p t s -> do
-    x <- forall h p t
-    resType <- withVar x $ typeOf' args $ instantiate1 (pure x) s
-    return $ pi_ x resType
+  Lam h p t s ->
+    extendContext h p t $ \x -> do
+      resType <- typeOf' args $ instantiate1 (pure x) s
+      return $ pi_ x resType
   App e1 p e2 -> do
     e1type <- typeOf' args e1
     e1type' <- Normalise.whnf' (normaliseArgs args) e1type mempty

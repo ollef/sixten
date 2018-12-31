@@ -215,18 +215,16 @@ normalise' args = normaliseBuiltins go
 
     irreducible e es = apps e <$> mapM (mapM normalise0) es
 
-    normaliseConBranch qc tele scope = do
-      vs <- forTeleWithPrefixM tele $ \h p s vs -> do
-        t' <- withVars vs $ normalise0 $ instantiateTele pure vs s
-        forall h p t'
-      e' <- withVars vs $ normalise0 $ instantiateTele pure vs scope
-      return $ conBranchTyped qc vs e'
+    normaliseConBranch qc tele scope =
+      teleMapExtendContext tele normalise0 $ \vs -> do
+        e' <- normalise0 $ instantiateTele pure vs scope
+        return $ conBranchTyped qc vs e'
 
     normaliseScope c h p t s es = do
       t' <- normalise0 t
-      x <- forall h p t'
-      e <- withVar x $ normalise0 $ Util.instantiate1 (pure x) s
-      irreducible (c x e) es
+      extendContext h p t' $ \x -> do
+        e <- normalise0 $ Util.instantiate1 (pure x) s
+        irreducible (c x e) es
 
     normalise0 e = normalise' args e mempty
 

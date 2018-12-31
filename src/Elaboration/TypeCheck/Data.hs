@@ -24,16 +24,10 @@ checkDataDef
   :: FreeV
   -> DataDef Pre.Expr FreeV
   -> Elaborate (DataDef (Core.Expr MetaVar) FreeV, CoreM)
-checkDataDef var (DataDef ps cs) = do
-
+checkDataDef var (DataDef ps cs) =
   -- TODO: These vars are typechecked twice (in checkAndGeneraliseDefs as the
 -- expected type and here). Can we clean this up?
-  vs <- forTeleWithPrefixM ps $ \h p s vs -> do
-    let t = instantiateTele pure vs s
-    t' <- withVars vs $ checkPoly t Builtin.Type
-    forall h p t'
-
-  withVars vs $ do
+  teleMapExtendContext ps (`checkPoly` Builtin.Type) $ \vs -> do
     runUnify (unify [] (Core.pis vs Builtin.Type) $ varType var) report
 
     let constrRetType = Core.apps (pure var) $ (\v -> (varData v, pure v)) <$> vs
