@@ -20,7 +20,7 @@ import Error
 import Syntax
 
 data Arguments = Arguments
-  { sourceFiles :: NonEmpty FilePath
+  { sourceFiles :: [FilePath]
   , readSourceFile :: !(FilePath -> IO Text)
   , target :: !Target
   , logHandle :: !Handle

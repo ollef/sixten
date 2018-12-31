@@ -14,8 +14,6 @@ import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashSet as HashSet
 import Data.HashSet(HashSet)
 import Data.List(findIndex)
-import Data.List.NonEmpty(NonEmpty)
-import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Text.IO as Text
 import qualified Data.Text.Prettyprint.Doc as PP
 import Rock
@@ -58,7 +56,7 @@ import VIX
 
 rules
   :: LogEnv
-  -> NonEmpty FilePath
+  -> [FilePath]
   -> (FilePath -> IO Text)
   -> Target
   -> GenRules (Writer [Error] Query) Query
@@ -436,7 +434,7 @@ cycleCheckModules modules = do
 
 -- TODO refactor
 compileModules
-  :: NonEmpty FilePath
+  :: [FilePath]
   -> FilePath
   -> Target
   -> Compile.Options
@@ -461,7 +459,7 @@ compileModules inputFiles outputFile target_ opts modules =
       }
   where
    -- TODO should use the main file instead
-    firstFileName = takeBaseName $ NonEmpty.head inputFiles
+    firstFileName = takeBaseName $ fromMaybe "output" $ head inputFiles
 
     withAssemblyDir Nothing k = withSystemTempDirectory "sixten" k
     withAssemblyDir (Just dir) k = do

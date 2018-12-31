@@ -11,7 +11,6 @@ import Protolude hiding (TypeRep)
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
-import Data.List.NonEmpty(NonEmpty)
 import Rock
 import Util.MultiHashMap(MultiHashMap)
 import qualified Util.MultiHashMap as MultiHashMap
@@ -39,7 +38,7 @@ type ElaboratedDef = (SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)
 type ElaboratedGroup = HashMap GName ElaboratedDef
 
 data Query a where
-  Files :: Query (NonEmpty FilePath)
+  Files :: Query [FilePath]
   File :: FilePath -> Query Text
   Target :: Query Target
   Builtins :: Query (HashMap QName ElaboratedDef)
