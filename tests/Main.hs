@@ -58,7 +58,7 @@ testInput = concat <$> sequence
     multi dir flags = do
       vixDirs <- groupByKey takeDirectory <$> findVixFiles dir
       forM vixDirs $ \(subDir, files) -> do
-        let expFile = subDir </> "Main.hs-expected"
+        let expFile = subDir </> "Main.vix-expected"
         expExists <- doesFileExist expFile
         return (testName subDir, flags ++ files ++ expectedFlag expFile expExists)
 
