@@ -1,4 +1,5 @@
 import A
+import B
 
 type MainType = Con
 
@@ -6,6 +7,11 @@ acon = A.Con
 
 acon' : A.AType
 acon' = acon
+
+bcon = B.Con
+
+bcon' : B.BType
+bcon' = bcon
 
 maincon = Con
 

@@ -1,0 +1,3 @@
+module B exposing (BType, Con)
+
+type BType = Con
