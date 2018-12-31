@@ -3,6 +3,7 @@ module Main where
 import Prelude(String)
 import Protolude
 
+import qualified Data.HashSet as HashSet
 import Data.List
 import Data.Proxy(Proxy (..))
 import System.Directory(doesFileExist)
@@ -30,14 +31,9 @@ instance Tasty.IsOption Args where
 
 testRootDir :: FilePath
 testRootDir = "tests"
+
 testName :: FilePath -> FilePath
 testName = drop (length testRootDir + 1)
-
-groupByKey :: Eq b => (a -> b) -> [a] -> [(b, [a])]
-groupByKey _  [] = []
-groupByKey f (x : xs) = (kx, x : xlike) : groupByKey f rest
-  where kx = f x
-        (xlike, rest) = span ((==) kx . f) xs
 
 testInput :: IO [(String, [String])]
 testInput = concat <$> sequence
@@ -56,11 +52,12 @@ testInput = concat <$> sequence
         return (testName file, flags ++ file : expectedFlag expFile expExists)
 
     multi dir flags = do
-      vixDirs <- groupByKey takeDirectory <$> findVixFiles dir
-      forM vixDirs $ \(subDir, files) -> do
-        let expFile = subDir </> "Main.hs-expected"
+      vixFiles <- findVixFiles dir
+      let vixDirs = HashSet.fromList $ takeDirectory <$> vixFiles
+      forM (toList vixDirs) $ \subDir -> do
+        let expFile = subDir </> "Main.vix-expected"
         expExists <- doesFileExist expFile
-        return (testName subDir, flags ++ files ++ expectedFlag expFile expExists)
+        return (testName subDir, flags ++ [subDir] ++ expectedFlag expFile expExists)
 
     findVixFiles dir = sort <$> findByExtension [".vix"] (testRootDir </> dir)
 

@@ -14,8 +14,6 @@ import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashSet as HashSet
 import Data.HashSet(HashSet)
 import Data.List(findIndex)
-import Data.List.NonEmpty(NonEmpty)
-import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Text.IO as Text
 import qualified Data.Text.Prettyprint.Doc as PP
 import Rock
@@ -58,7 +56,7 @@ import VIX
 
 rules
   :: LogEnv
-  -> NonEmpty FilePath
+  -> [FilePath]
   -> (FilePath -> IO Text)
   -> Target
   -> GenRules (Writer [Error] Query) Query
@@ -255,8 +253,8 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
   LambdaLifted bindingGroup -> Task $ do
     coreDefs <- fetch $ SimplifiedGroup bindingGroup
     withReportEnv $ \reportEnv_ ->
-      runVIX logEnv_ reportEnv_ $
-        fmap concat $ for (HashMap.toList coreDefs) $ \(name, (_, ClosedDefinition def, _)) -> do
+      fmap concat $ for (HashMap.toList coreDefs) $ \(name, (_, ClosedDefinition def, _)) ->
+        runVIX logEnv_ reportEnv_ $ do
           def' <- SLam.runSlam $ SLam.slamDef def
           let def'' = denatAnno def'
           liftToDefinition name $ close (panic "LambdaLifted close") def''
@@ -264,8 +262,8 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
   ConvertedSignatures bindingGroup -> Task $ do
     liftedDefs <- fetch $ LambdaLifted bindingGroup
     withReportEnv $ \reportEnv_ ->
-      runVIX logEnv_ reportEnv_ $
-        fmap HashMap.fromList $ for liftedDefs $ \(name, def) -> do
+      fmap HashMap.fromList $ for liftedDefs $ \(name, def) ->
+        runVIX logEnv_ reportEnv_ $ do
           res <- runConvertedSignature name def
           return (name, res)
 
@@ -290,15 +288,15 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
             )
         return (result, mempty)
       _ ->
-        withReportEnv $ \reportEnv_ ->
-        runVIX logEnv_ reportEnv_ $ do
+        withReportEnv $ \reportEnv_ -> do
           liftedDefs <- fetch $ LambdaLifted bindingGroup
           signatures <- fetch $ ConvertedSignatures bindingGroup
-          fmap concat $ for liftedDefs $ \(name, def) -> do
-            let
-              (_, convertedSigDefs) = HashMap.lookupDefault (Nothing, mempty) name signatures
-            convertedDefs <- runConvertDefinition name def
-            return $ convertedSigDefs <> convertedDefs
+          fmap concat $ for liftedDefs $ \(name, def) ->
+            runVIX logEnv_ reportEnv_ $ do
+              let
+                (_, convertedSigDefs) = HashMap.lookupDefault (Nothing, mempty) name signatures
+              convertedDefs <- runConvertDefinition name def
+              return $ convertedSigDefs <> convertedDefs
 
   DirectionSignatures bindingGroup -> Task $ do
     convertedDefs <- fetch $ Converted bindingGroup
@@ -436,7 +434,7 @@ cycleCheckModules modules = do
 
 -- TODO refactor
 compileModules
-  :: NonEmpty FilePath
+  :: [FilePath]
   -> FilePath
   -> Target
   -> Compile.Options
@@ -461,7 +459,7 @@ compileModules inputFiles outputFile target_ opts modules =
       }
   where
    -- TODO should use the main file instead
-    firstFileName = takeBaseName $ NonEmpty.head inputFiles
+    firstFileName = takeBaseName $ fromMaybe "output" $ head inputFiles
 
     withAssemblyDir Nothing k = withSystemTempDirectory "sixten" k
     withAssemblyDir (Just dir) k = do

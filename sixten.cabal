@@ -196,4 +196,5 @@ Test-suite test-sixten
                        filepath,
                        tasty,
                        tasty-golden,
-                       tasty-program
+                       tasty-program,
+                       unordered-containers

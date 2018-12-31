@@ -77,9 +77,10 @@ compile checkOpts opts silent onResult
   = case maybe (Right Target.defaultTarget) Target.findTarget $ target opts of
     Left err -> onResult Nothing $ pure err
     Right tgt ->
-      withLogHandle (Check.logFile checkOpts) $ \logHandle ->
+      withLogHandle (Check.logFile checkOpts) $ \logHandle -> do
+        sourceFiles <- Check.flattenDirectories $ Check.inputFiles checkOpts
         Driver.compileFiles opts Driver.Arguments
-          { Driver.sourceFiles = Check.inputFiles checkOpts
+          { Driver.sourceFiles = sourceFiles
           , Driver.readSourceFile = readFile
           , Driver.target = tgt
           , Driver.logHandle = logHandle
