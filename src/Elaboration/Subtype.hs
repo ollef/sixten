@@ -62,9 +62,8 @@ deepSkolemiseInner'
   -> (Vector FreeV -> Rhotype -> (CoreM -> CoreM) -> m a)
   -> m a
 deepSkolemiseInner' typ@(Pi h p t resScope) argsToPass k = case p of
-  Explicit -> do
-    y <- forall h p t
-    withVar y $ do
+  Explicit ->
+    extendContext h p t $ \y -> do
       let resType = Util.instantiate1 (pure y) resScope
       deepSkolemiseInner resType (HashSet.insert y argsToPass) $ \vs resType' f -> k
         vs
@@ -78,9 +77,8 @@ deepSkolemiseInner' typ@(Pi h p t resScope) argsToPass k = case p of
       -- "pass", (e.g. when trying to pull `b` above `A` in `(A : Type) -> forall
       -- (b : A). Int`), we have to bail out.
       | HashSet.size (HashSet.intersection (toHashSet t) argsToPass) > 0 = k mempty typ identity
-      | otherwise = do
-        y <- forall h p t
-        withVar y $ do
+      | otherwise =
+        extendContext h p t $ \y -> do
           let resType = Util.instantiate1 (pure y) resScope
           deepSkolemiseInner resType argsToPass $ \vs resType' f -> k
             (Vector.cons y vs)
@@ -110,12 +108,12 @@ skolemise'
   -> (Rhotype -> (CoreM -> CoreM) -> Elaborate a)
   -> Elaborate a
 skolemise' (Pi h p t resScope) instUntil k
-  | shouldInst p instUntil = do
-    v <- forall h p t
-    let resType = Util.instantiate1 (pure v) resScope
-    withVar v $ skolemise resType instUntil $ \resType' f -> do
-      let f' x = lam v $ f x
-      k resType' f'
+  | shouldInst p instUntil =
+    extendContext h p t $ \v -> do
+      let resType = Util.instantiate1 (pure v) resScope
+      skolemise resType instUntil $ \resType' f -> do
+        let f' x = lam v $ f x
+        k resType' f'
 skolemise' typ _ k = k typ identity
 
 instUntilExpr :: Pre.Expr v -> InstUntil
@@ -178,12 +176,12 @@ subtypeRhoE' (Pi h1 p1 argType1 retScope1) (Pi h2 p2 argType2 retScope2) _
   | p1 == p2 = do
     let h = h1 <> h2
     f1 <- subtypeE argType2 argType1
-    v2 <- forall h p1 argType2
-    let v1 = f1 $ pure v2
-    let retType1 = Util.instantiate1 v1 retScope1
-        retType2 = Util.instantiate1 (pure v2) retScope2
-    f2 <- withVar v2 $ subtypeRhoE retType1 retType2 $ InstUntil Explicit
-    return $ \x -> lam v2 $ f2 (App x p1 v1)
+    extendContext h p1 argType2 $ \v2 -> do
+      let v1 = f1 $ pure v2
+      let retType1 = Util.instantiate1 v1 retScope1
+          retType2 = Util.instantiate1 (pure v2) retScope2
+      f2 <- subtypeRhoE retType1 retType2 $ InstUntil Explicit
+      return $ \x -> lam v2 $ f2 (App x p1 v1)
 subtypeRhoE' (Pi h p t s) typ2 instUntil | shouldInst p instUntil = do
   v <- exists h p t
   f <- subtypeRhoE (Util.instantiate1 v s) typ2 instUntil
@@ -212,12 +210,12 @@ funSubtypes startType plics = go plics startType mempty mempty
       | otherwise = do
         let p = Vector.head ps
         (h, argType, resScope, f) <- funSubtype typ p
-        v <- forall h p argType
-        withVar v $ go
-          (Vector.tail ps)
-          (Util.instantiate1 (pure v) resScope)
-          (Snoc vs v)
-          (Snoc fs f)
+        extendContext h p argType $ \v ->
+          go
+            (Vector.tail ps)
+            (Util.instantiate1 (pure v) resScope)
+            (Snoc vs v)
+            (Snoc fs f)
 
 -- | funSubtype typ p = (typ1, typ2, f) => f : (typ1 -> typ2) -> typ
 funSubtype
