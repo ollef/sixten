@@ -129,7 +129,7 @@ tcRho expr expected expectedAppResult = case expr of
     f <- instExpected expected typ
     return $ f $ Core.Con qc
   Pre.Pi p pat bodyScope -> do
-    (pat', _, patVars, patType) <- inferPat p pat mempty
+    (pat', _, patVars, patType) <- inferPat p pat
     withPatVars patVars $ do
       let body = instantiatePattern pure (boundPatVars patVars) bodyScope
           h = Pre.patternHint pat
@@ -142,7 +142,7 @@ tcRho expr expected expectedAppResult = case expr of
     let h = Pre.patternHint pat
     case expected of
       Infer {} -> do
-        (pat', _, patVars, argType) <- inferPat p pat mempty
+        (pat', _, patVars, argType) <- inferPat p pat
         withPatVars patVars $ do
           let body = instantiatePattern pure (boundPatVars patVars) bodyScope
           (body', bodyType) <- inferRho body (InstUntil Explicit) Nothing

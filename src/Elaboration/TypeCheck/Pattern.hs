@@ -56,13 +56,12 @@ checkPat p pat vs expectedType = tcPat p pat vs $ CheckPat expectedType
 inferPat
   :: Plicitness
   -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
-  -> BoundPatVars
   -> Elaborate (Core.Pat CoreM FreeV, CoreM, PatVars, Polytype)
-inferPat p pat vs = do
+inferPat p pat = do
   ref <- liftIO $ newIORef $ panic "inferPat: empty result"
-  (pat', patExpr, vs') <- tcPat p pat vs $ InferPat ref
+  (pat', patExpr, vs) <- tcPat p pat mempty $ InferPat ref
   t <- liftIO $ readIORef ref
-  return (pat', patExpr, vs', t)
+  return (pat', patExpr, vs, t)
 
 tcPats
   :: Vector (Plicitness, Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ())
