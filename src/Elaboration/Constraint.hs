@@ -25,8 +25,9 @@ import TypedFreeVar
 import Util
 
 trySolveMetaVar
-  :: MetaVar
-  -> Elaborate (Maybe (Closed (Expr MetaVar)))
+  :: MonadElaborate m
+  => MetaVar
+  -> m (Maybe (Closed (Expr MetaVar)))
 trySolveMetaVar m = do
   msol <- solution m
   case (msol, metaPlicitness m) of
@@ -35,8 +36,9 @@ trySolveMetaVar m = do
     (Just e, _) -> return $ Just e
 
 trySolveConstraint
-  :: MetaVar
-  -> Elaborate (Maybe (Closed (Expr MetaVar)))
+  :: MonadElaborate m
+  => MetaVar
+  -> m (Maybe (Closed (Expr MetaVar)))
 trySolveConstraint m = inUpdatedContext (const mempty) $ do
   logShow "tc.constraint" "trySolveConstraint" $ metaId m
   withInstantiatedMetaType m $ \vs typ -> do
@@ -141,7 +143,7 @@ mergeConstraintVars vars = do
           $ Meta m
           $ (\v -> (varData v, pure v)) <$> vs
 
-whnf :: CoreM -> Elaborate CoreM
+whnf :: MonadElaborate m => CoreM -> m CoreM
 whnf e = Normalise.whnf' Normalise.Args
   { Normalise._expandTypeReps = False
   , Normalise._prettyExpr = prettyMeta <=< zonk
@@ -150,7 +152,7 @@ whnf e = Normalise.whnf' Normalise.Args
   e
   mempty
 
-whnfExpandingTypeReps :: CoreM -> Elaborate CoreM
+whnfExpandingTypeReps :: MonadElaborate m => CoreM -> m CoreM
 whnfExpandingTypeReps e = Normalise.whnf' Normalise.Args
   { Normalise._expandTypeReps = True
   , Normalise._prettyExpr = prettyMeta <=< zonk

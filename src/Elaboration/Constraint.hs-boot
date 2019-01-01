@@ -1,5 +1,6 @@
+{-# LANGUAGE FlexibleContexts #-}
 module Elaboration.Constraint where
 
 import Elaboration.Monad
 
-whnf :: CoreM -> Elaborate CoreM
+whnf :: MonadElaborate m => CoreM -> m CoreM

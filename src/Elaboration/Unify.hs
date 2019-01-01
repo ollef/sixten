@@ -1,4 +1,7 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings, ViewPatterns #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 module Elaboration.Unify where
 
 import Protolude hiding (TypeError)
@@ -24,25 +27,34 @@ import Syntax.Core
 import TypedFreeVar
 import Util
 
-type Unify = ExceptT Error Elaborate
-
-runUnify :: Unify a -> (Error -> Elaborate a) -> Elaborate a
+runUnify :: Monad m => ExceptT Error m a -> (Error -> m a) -> m a
 runUnify m handleError = do
   res <- runExceptT m
   case res of
     Left err -> handleError err
     Right f -> return f
 
-unify :: [(CoreM, CoreM)] -> CoreM -> CoreM -> Unify ()
+unify
+  :: (MonadElaborate m, MonadError Error m)
+  => [(CoreM, CoreM)]
+  -> CoreM
+  -> CoreM
+  -> m ()
 unify cxt expr1 expr2 = do
   logMeta "tc.unify" "unify t1" $ zonk expr1
   logMeta "tc.unify" "      t2" $ zonk expr2
-  expr1' <- lift $ whnf expr1
-  expr2' <- lift $ whnf expr2
-  touchable <- lift getTouchable
+  expr1' <- whnf expr1
+  expr2' <- whnf expr2
+  touchable <- getTouchable
   unify' ((expr1', expr2') : cxt) touchable expr1' expr2'
 
-unify' :: [(CoreM, CoreM)] -> (MetaVar -> Bool) -> CoreM -> CoreM -> Unify ()
+unify'
+  :: (MonadElaborate m, MonadError Error m)
+  => [(CoreM, CoreM)]
+  -> (MetaVar -> Bool)
+  -> CoreM
+  -> CoreM
+  -> m ()
 unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
   (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
   (Lam h1 p1 t1 s1, Lam h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
@@ -144,23 +156,24 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
               unify cxt expr1 expr2
 
     can'tUnify = do
-      equal <- lift $ Equal.exec $ Equal.expr expr1 expr2
+      equal <- Equal.exec $ Equal.expr expr1 expr2
       unless equal typeMismatch
 
     typeMismatch = do
       printedCxt <- prettyContext cxt
       loc <- getCurrentLocation
-      throwE $ TypeError
+      throwError $ TypeError
         ("Type mismatch" <> PP.line <>
           PP.vcat printedCxt)
           loc
           mempty
 
 occurs
-  :: [(CoreM, CoreM)]
+  :: (MonadElaborate m, MonadError Error m)
+  => [(CoreM, CoreM)]
   -> MetaVar
   -> CoreM
-  -> Unify ()
+  -> m ()
 occurs cxt mv expr = do
   mvs <- metaVars expr
   when (mv `HashSet.member` mvs) $ do
@@ -169,7 +182,7 @@ occurs cxt mv expr = do
     printedExpr <- prettyMeta expr'
     printedCxt <- prettyContext cxt
     loc <- getCurrentLocation
-    throwE $ TypeError
+    throwError $ TypeError
       ("Cannot construct the infinite type"
       <> PP.line
       <> PP.vcat
@@ -182,7 +195,10 @@ occurs cxt mv expr = do
         loc
         mempty
 
-prettyContext :: [(CoreM, CoreM)] -> Unify [PP.Doc AnsiStyle]
+prettyContext
+  :: MonadElaborate m
+  => [(CoreM, CoreM)]
+  -> m [PP.Doc AnsiStyle]
 prettyContext cxt = do
   explanation <- forM cxt $ \(t1, t2) -> do
     t1' <- zonk t1
@@ -196,7 +212,11 @@ prettyContext cxt = do
       ]
   return $ intercalate ["", "while trying to unify"] explanation
 
-prune :: HashSet FreeV -> CoreM -> Unify CoreM
+prune
+  :: (MonadElaborate m, MonadError Error m)
+  => HashSet FreeV
+  -> CoreM
+  -> m CoreM
 prune allowed expr = Log.indent $ do
   logMeta "tc.unify.prune" "prune expr" $ zonk expr
   logShow "tc.unify.prune" "prune allowed" $ pretty <$> toList allowed
@@ -211,8 +231,8 @@ prune allowed expr = Log.indent $ do
         Just e ->
           bindMetas go $ betaApps (open e) es
         Nothing -> do
-          es' <- lift $ mapM (mapM whnf) es
-          localAllowed <- toHashSet <$> lift getLocalVars
+          es' <- mapM (mapM whnf) es
+          localAllowed <- toHashSet <$> getLocalVars
           case distinctVarView es' of
             Nothing ->
               return $ Meta m es'

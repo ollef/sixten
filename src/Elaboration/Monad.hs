@@ -1,3 +1,5 @@
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -73,11 +75,14 @@ runElaborate mname = withReaderT $ \env -> ElabEnv
   , _vixEnv = env
   }
 
+type MonadElaborate m = (MonadContext FreeV m, MonadLog m, MonadIO m, MonadReport m, MonadFresh m, MonadFetch Query m, MonadReader ElabEnv m)
+
 exists
-  :: NameHint
+  :: MonadElaborate m
+  => NameHint
   -> Plicitness
   -> CoreM
-  -> Elaborate CoreM
+  -> m CoreM
 exists hint d typ = do
   locals <- toVector . Tsil.filter (isNothing . varValue) <$> getLocalVars
   let typ' = Core.pis locals typ
@@ -92,10 +97,10 @@ existsType
   -> Elaborate CoreM
 existsType n = exists n Explicit Builtin.Type
 
-getTouchable :: Elaborate (MetaVar -> Bool)
+getTouchable :: MonadReader ElabEnv m => m (MetaVar -> Bool)
 getTouchable = view elabTouchables
 
-untouchable :: Elaborate a -> Elaborate a
+untouchable :: (MonadReader ElabEnv m, MonadFresh m) => m a -> m a
 untouchable i = do
   v <- fresh
   local (over elabTouchables $ \t m -> t m && metaId m > v) i

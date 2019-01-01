@@ -1,9 +1,11 @@
-{-# LANGUAGE FlexibleContexts, MonadComprehensions, OverloadedStrings, ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MonadComprehensions #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 module Elaboration.TypeCheck.Class where
 
 import Protolude hiding (diff, typeRep)
 
-import Control.Monad.Identity
 import qualified Data.HashSet as HashSet
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
@@ -127,7 +129,7 @@ checkInstance
   -> Pre.InstanceDef Pre.Expr FreeV
   -> Elaborate (Vector (FreeV, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
 checkInstance ivar iname iloc (Pre.InstanceDef _instanceType methods) =
-  runIdentityT $ deepSkolemiseInner (varType ivar) mempty $ \skolemVars innerInstanceType skolemFun -> IdentityT $ do
+  deepSkolemiseInner (varType ivar) mempty $ \skolemVars innerInstanceType skolemFun -> do
     innerInstanceType' <- whnf innerInstanceType
     case Core.appsView innerInstanceType' of
       (Builtin.QGlobal className, args) -> do
