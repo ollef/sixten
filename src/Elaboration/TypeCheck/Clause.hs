@@ -70,9 +70,9 @@ checkClauses clauses polyType = Log.indent $ do
       piPlicitnesses' t'
 
     piPlicitnesses' :: CoreM -> Elaborate [Plicitness]
-    piPlicitnesses' (Core.Pi h p t s) = do
-      v <- forall h p t
-      (:) p <$> piPlicitnesses (instantiate1 (pure v) s)
+    piPlicitnesses' (Core.Pi h p t s) =
+      extendContext h p t $ \v ->
+        (:) p <$> piPlicitnesses (instantiate1 (pure v) s)
     piPlicitnesses' _ = return mempty
 
 checkClausesRho

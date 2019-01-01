@@ -264,16 +264,13 @@ abstractDefImplicits vs (ConstantDefinition a e) t = do
   let ge = abstractImplicits vs lam e
       gt = abstractImplicits vs pi_ t
   return (ConstantDefinition a ge, gt)
-abstractDefImplicits vs (DataDefinition (DataDef ps cs) rep) typ = do
-  vs' <- forTeleWithPrefixM ps $ \h p s vs' -> do
-    let t = instantiateTele pure vs' s
-    forall h p t
+abstractDefImplicits vs (DataDefinition (DataDef ps cs) rep) typ =
+  teleExtendContext ps $ \vs' -> do
+    let cs' = [ConstrDef c $ instantiateTele pure vs' s | ConstrDef c s <- cs]
 
-  let cs' = [ConstrDef c $ instantiateTele pure vs' s | ConstrDef c s <- cs]
-
-  let grep = abstractImplicits vs lam rep
-      gtyp = abstractImplicits vs pi_ typ
-  return (DataDefinition (dataDef (implicitiseVar <$> toVector vs <|> vs') cs') grep, gtyp)
+    let grep = abstractImplicits vs lam rep
+        gtyp = abstractImplicits vs pi_ typ
+    return (DataDefinition (dataDef (implicitiseVar <$> toVector vs <|> vs') cs') grep, gtyp)
   where
     implicitiseVar v = v { varData = implicitise $ varData v }
 

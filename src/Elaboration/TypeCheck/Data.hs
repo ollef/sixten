@@ -72,10 +72,10 @@ checkConstrDef (ConstrDef c typ) = do
     go t = do
       t' <- whnf t
       go' t'
-    go' (Core.Pi h p t s) = do
-      v <- forall h p t
-      (sizes, ret) <- go $ instantiate1 (pure v) s
-      return (t : sizes, ret)
+    go' (Core.Pi h p t s) =
+      extendContext h p t $ \v -> do
+        (sizes, ret) <- go $ instantiate1 (pure v) s
+        return (t : sizes, ret)
     go' ret = return ([], ret)
 
 -------------------------------------------------------------------------------

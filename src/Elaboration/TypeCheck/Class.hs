@@ -61,54 +61,52 @@ desugarClassDef
   -> SourceLoc
   -> ClassDef (Core.Expr MetaVar) FreeV
   -> Elaborate (Vector (FreeV, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
-desugarClassDef classVar name loc (ClassDef params ms) = do
-  paramVars <- forTeleWithPrefixM params $ \h p s paramVars -> do
-    let t = instantiateTele pure paramVars s
-    forall h p t
+desugarClassDef classVar name loc (ClassDef params ms) =
+  teleExtendContext params $ \paramVars -> do
 
-  let ms' = [Method mname mloc $ instantiateTele pure paramVars s | Method mname mloc s <- ms]
+    let ms' = [Method mname mloc $ instantiateTele pure paramVars s | Method mname mloc s <- ms]
 
-  let implicitParamVars = (\v -> v { varData = implicitise $ varData v }) <$> paramVars
-      qcon = classConstr name
-      abstr = teleAbstraction paramVars
-      classType = Core.apps (pure classVar) $ (\v -> (varData v, pure v)) <$> paramVars
-      classConstrType = foldr
-        (\(Method mname _ mtyp) -> Core.Pi (fromName mname) Explicit mtyp . abstractNone)
-        classType
-        ms'
+    let implicitParamVars = (\v -> v { varData = implicitise $ varData v }) <$> paramVars
+        qcon = classConstr name
+        abstr = teleAbstraction paramVars
+        classType = Core.apps (pure classVar) $ (\v -> (varData v, pure v)) <$> paramVars
+        classConstrType = foldr
+          (\(Method mname _ mtyp) -> Core.Pi (fromName mname) Explicit mtyp . abstractNone)
+          classType
+          ms'
 
-      sizes = methodExpr <$> ms'
-      typeRep = foldl' productType (Core.MkType TypeRep.UnitRep) sizes
+        sizes = methodExpr <$> ms'
+        typeRep = foldl' productType (Core.MkType TypeRep.UnitRep) sizes
 
-  typeRep' <- whnfExpandingTypeReps typeRep
+    typeRep' <- whnfExpandingTypeReps typeRep
 
-  let classDataDef
-        = DataDefinition
-          (DataDef
-            (varTelescope paramVars)
-            [ConstrDef (qconstrConstr qcon) $ abstract abstr classConstrType]
-          )
-        $ Core.lams paramVars typeRep'
+    let classDataDef
+          = DataDefinition
+            (DataDef
+              (varTelescope paramVars)
+              [ConstrDef (qconstrConstr qcon) $ abstract abstr classConstrType]
+            )
+          $ Core.lams paramVars typeRep'
 
-  conArgVars <- forM ms' $ \(Method mname _ t) ->
-    forall (fromName mname) Explicit t
+    conArgVars <- forM ms' $ \(Method mname _ t) ->
+      forall (fromName mname) Explicit t
 
-  lamVar <- forall mempty Constraint classType
+    lamVar <- forall mempty Constraint classType
 
-  methodDefs <- forM (zip conArgVars ms') $ \(v, Method mname mloc mtyp) -> do
-    let fullType = Core.pis implicitParamVars $ Core.pi_ lamVar mtyp
-        mdef
-          = ConstantDefinition Concrete
-          $ Core.lams implicitParamVars
-          $ Core.lam lamVar
-          $ Core.Case
-            (pure lamVar)
-            (ConBranches [conBranchTyped qcon (toVector conArgVars) $ pure v])
-            fullType
-    var <- forall (fromName mname) Explicit fullType
-    return (var, gname $ QName (qnameModule name) mname, mloc, mdef)
+    methodDefs <- forM (zip conArgVars ms') $ \(v, Method mname mloc mtyp) -> do
+      let fullType = Core.pis implicitParamVars $ Core.pi_ lamVar mtyp
+          mdef
+            = ConstantDefinition Concrete
+            $ Core.lams implicitParamVars
+            $ Core.lam lamVar
+            $ Core.Case
+              (pure lamVar)
+              (ConBranches [conBranchTyped qcon (toVector conArgVars) $ pure v])
+              fullType
+      var <- forall (fromName mname) Explicit fullType
+      return (var, gname $ QName (qnameModule name) mname, mloc, mdef)
 
-  return $ pure (classVar, gname name, loc, classDataDef) <> toVector methodDefs
+    return $ pure (classVar, gname name, loc, classDataDef) <> toVector methodDefs
 
 {-
   instanceName = instance C a => C [a] where
