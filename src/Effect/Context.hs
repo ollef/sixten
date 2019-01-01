@@ -18,7 +18,8 @@ import Control.Monad.ListT
 import Control.Monad.Trans.Maybe
 import qualified Data.List.Class as ListT
 
-import Util.Tsil
+import qualified Util.Tsil as Tsil
+import Util.Tsil(Tsil)
 
 class Monad m => MonadContext v m | m -> v where
   getLocalVars :: m (Tsil v)
@@ -45,10 +46,10 @@ instance (HasContextEnv v env, Monad m) => MonadContext v (ReaderT env m) where
   inUpdatedContext = local . over (contextEnv.localVars)
 
 withVar :: MonadContext v m => v -> m a -> m a
-withVar v = inUpdatedContext $ \vs -> Snoc vs v
+withVar v = inUpdatedContext $ \vs -> Tsil.Snoc vs v
 
 withVars :: (MonadContext v m, Foldable t) => t v -> m a -> m a
-withVars vs m = foldr withVar m vs
+withVars vs' = inUpdatedContext (<> Tsil.fromList (toList vs'))
 
 ------------------------------------------------------------------------------
 -- mtl instances
