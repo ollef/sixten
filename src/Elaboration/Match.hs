@@ -11,7 +11,6 @@ import Data.Vector(Vector)
 import qualified Analysis.Simplify as Simplify
 import qualified Builtin.Names as Builtin
 import Driver.Query
-import Effect
 import Elaboration.Constraint
 import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
@@ -139,7 +138,7 @@ matchCon expr failVar retType exprs clauses expr0 = do
         return $ Vector.fromList params
     withConPatArgs c params $ \ys -> do
       let exprs' = (pure <$> Vector.toList ys) ++ exprs
-      rest <- withVars ys $ match failVar retType exprs' (decon clausesStartingWithC) (pure failVar)
+      rest <- match failVar retType exprs' (decon clausesStartingWithC) (pure failVar)
       return $ conBranchTyped c ys rest
 
   return $ fatBar failVar (Case expr (ConBranches cbrs) retType) expr0

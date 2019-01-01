@@ -115,12 +115,16 @@ hoverExpr f expr = case expr of
     extendContext h p t $ \v ->
       hoverExpr f t <> hoverExpr f (instantiate1 (pure v) s)
   App e1 _ e2 -> hoverExpr f e1 <> hoverExpr f e2
-  Let ds scope -> do
-    vs <- forMLet ds $ \h _ _ t -> freeVar h Explicit t
-    fold (forLet ds $ \_ loc s t -> do
+  Let ds scope -> fold
+    [ fold $ forLet ds $ \_ loc _ t -> do
+      guard $ f $ sourceLocSpan loc
+      hoverExpr f t
+    , letExtendContext ds $ \vs ->
+      fold (forLet ds $ \_ loc s _ -> do
         guard $ f $ sourceLocSpan loc
-        hoverExpr f t <> withVars vs (hoverExpr f $ instantiateLet pure vs s))
+        hoverExpr f $ instantiateLet pure vs s)
       <> hoverExpr f (instantiateLet pure vs scope)
+    ]
   Case e brs _ -> hoverExpr f e <> hoverBranches f brs
   ExternCode e _ -> fold $ hoverExpr f <$> e
   SourceLoc loc e -> do

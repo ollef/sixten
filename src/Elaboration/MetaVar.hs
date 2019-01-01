@@ -234,11 +234,8 @@ bindMetas f expr = case expr of
   Pi h p t s -> absCase h p t s pi_
   Lam h p t s -> absCase h p t s lam
   App e1 p e2 -> App <$> bindMetas f e1 <*> pure p <*> bindMetas f e2
-  Let ds scope -> do
-    vs <- forMLet ds $ \h _ _ t -> do
-      t' <- bindMetas f t
-      forall h Explicit t'
-    withVars vs $ do
+  Let ds scope ->
+    letMapExtendContext ds (bindMetas f) $ \vs -> do
       es <- forMLet ds $ \_ _ s _ -> do
         let e = instantiateLet pure vs s
         bindMetas f e

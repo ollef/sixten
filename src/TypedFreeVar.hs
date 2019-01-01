@@ -14,6 +14,8 @@ import Data.Vector(Vector)
 
 import Effect
 import Pretty
+import Syntax.Annotation
+import Syntax.Let
 import Syntax.Name
 import Syntax.NameHint
 import Syntax.Telescope
@@ -108,6 +110,28 @@ teleMapExtendContext tele f k = do
     let e = instantiateTele pure vs s
     e' <- withVars vs $ f e
     forall h p e'
+  withVars vs $ k vs
+
+letExtendContext
+  :: (MonadFresh m, MonadLog m, MonadContext (FreeVar Plicitness e) m)
+  => LetRec e (FreeVar Plicitness e)
+  -> (Vector (FreeVar Plicitness e) -> m a)
+  -> m a
+letExtendContext ds k = do
+  vs <- forMLet ds $ \h _ _ t ->
+    forall h Explicit t
+  withVars vs $ k vs
+
+letMapExtendContext
+  :: (MonadFresh m, MonadLog m, MonadContext (FreeVar Plicitness e') m)
+  => LetRec e (FreeVar Plicitness e')
+  -> (e (FreeVar Plicitness e') -> m (e' (FreeVar Plicitness e')))
+  -> (Vector (FreeVar Plicitness e') -> m a)
+  -> m a
+letMapExtendContext tele f k = do
+  vs <- forMLet tele $ \h _ _ t -> do
+    t' <- f t
+    forall h Explicit t'
   withVars vs $ k vs
 
 letVar
