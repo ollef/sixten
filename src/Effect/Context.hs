@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -31,10 +32,7 @@ class Monad m => MonadContext v m | m -> v where
 
 newtype ContextEnv v = ContextEnv
   { _localVars :: Tsil v
-  }
-
-emptyContextEnv :: ContextEnv v
-emptyContextEnv = ContextEnv mempty
+  } deriving (Semigroup, Monoid)
 
 makeLenses ''ContextEnv
 

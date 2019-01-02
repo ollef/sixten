@@ -21,6 +21,8 @@ import qualified Yi.Rope as Yi
 
 import Command.LanguageServer.Hover
 import Driver
+import Driver.Query
+import Elaboration.TypeOf
 import Syntax
 import Util
 
@@ -49,19 +51,23 @@ hover lf (LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) p@(LSP
   sendNotification lf "fileContents"
   let LSP.Uri uri_text = uri
   let uri_str = Text.unpack uri_text
-  (defs, errs) <- Driver.checkVirtualFile uri_str contents
-  sendNotification lf ("result " <> shower errs)
-  types <- hoverDefs (inside line char)
-    [ (n, loc, d, t)
-    | (n, (loc, d, t)) <- concatMap HashMap.toList defs
-    ]
+  ((types, typeOfErrs), errs) <- Driver.executeVirtualFile uri_str contents $ do
+    defs <- fetch CheckAll
+    runHover $ do
+      (span, expr) <- hoverDefs (inside line char)
+        [ (n, loc, d, t)
+        | (n, (loc, d, t)) <- concatMap HashMap.toList defs
+        ]
+      typ <- typeOf' voidArgs expr
+      return (span, expr, typ)
+  sendNotification lf ("result " <> shower (typeOfErrs <> errs))
   sendNotification lf ("success " <> shower types)
   return $ case types of
     [] -> Nothing
     _ -> do
-      let Just (_, (range, typ)) = unsnoc types
+      let Just (_, (range, expr, typ)) = unsnoc types
       Just $ LSP.Hover
-        { LSP._contents = LSP.List [LSP.PlainString $ showWide $ pretty (pretty <$> typ)]
+        { LSP._contents = LSP.List [LSP.PlainString $ showWide $ pretty (pretty <$> expr) <> " : " <> pretty (pretty <$> typ)]
         , LSP._range = Just
           $ LSP.Range
           { LSP._start = LSP.Position
