@@ -71,11 +71,12 @@ checkFiles args = do
   (_, errors) <- execute args $ fetch CheckAll
   return errors
 
-checkVirtualFile
+executeVirtualFile
   :: FilePath
   -> Text
-  -> IO ([ElaboratedGroup], [Error])
-checkVirtualFile file text = execute Arguments
+  -> Task Query a
+  -> IO (a, [Error])
+executeVirtualFile file text = execute Arguments
   { sourceFiles = pure file
   , readSourceFile = \file' -> if file == file' then return text else readFile file'
   , target = Target.defaultTarget
@@ -83,7 +84,6 @@ checkVirtualFile file text = execute Arguments
   , Driver.logCategories = const False
   , silentErrors = True
   }
-  $ fetch CheckAll
 
 data CompileResult = CompileResult
   { externFiles :: [(Language, FilePath)]

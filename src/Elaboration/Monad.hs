@@ -69,7 +69,7 @@ type Elaborate = ReaderT ElabEnv (Sequential (Task Query))
 
 runElaborate :: ModuleName -> Elaborate a -> VIX a
 runElaborate mname = withReaderT $ \env -> ElabEnv
-  { _contextEnv = emptyContextEnv
+  { _contextEnv = mempty
   , _elabTouchables = const True
   , _currentModule = mname
   , _vixEnv = env

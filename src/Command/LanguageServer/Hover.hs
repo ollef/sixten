@@ -14,6 +14,7 @@ import Control.Monad.ListT(ListT(ListT))
 import qualified Data.List.Class as ListT
 import Text.Parsix.Position
 
+import Driver.Query
 import Effect
 import Syntax
 import Syntax.Core
@@ -34,6 +35,7 @@ data HoverEnv = HoverEnv
   { _freshEnv :: !FreshEnv
   , _contextEnv :: !(ContextEnv FreeV)
   , _logEnv :: !LogEnv
+  , _reportEnv :: !ReportEnv
   }
 
 makeLenses ''HoverEnv
@@ -47,8 +49,11 @@ instance HasContextEnv FreeV HoverEnv where
 instance HasLogEnv HoverEnv where
   logEnv = Command.LanguageServer.Hover.logEnv
 
-newtype Hover a = Hover { unHover :: ListT (ReaderT HoverEnv IO) a }
-  deriving (Functor, Applicative, Alternative, Monad, MonadIO, Semigroup, Monoid, MonadContext FreeV, MonadFresh, MonadLog)
+instance HasReportEnv HoverEnv where
+  reportEnv = Command.LanguageServer.Hover.reportEnv
+
+newtype Hover a = Hover { unHover :: ListT (ReaderT HoverEnv (Task Query)) a }
+  deriving (Functor, Applicative, Alternative, Monad, MonadIO, Semigroup, Monoid, MonadContext FreeV, MonadFresh, MonadLog, MonadReport, MonadFetch Query)
 
 instance MonadReader r m => MonadReader r (ListT m) where
   ask = ListT $ do
@@ -60,15 +65,24 @@ instance MonadReader r m => MonadReader r (ListT m) where
       ListT.Cons x mxs' -> ListT.Cons x $ local f mxs'
       ListT.Nil -> ListT.Nil
 
-runHover :: Hover a -> IO [a]
+instance MonadFetch q m => MonadFetch q (ListT m) where
+  fetch key = ListT $ do
+    x <- fetch key
+    pure $ ListT.Cons x $ ListT $ pure ListT.Nil
+
+runHover :: Hover a -> Task Query ([a], [Error])
 runHover (Hover m) = do
   f <- emptyFreshEnv
-  let c = emptyContextEnv
-      l = LogEnv
-        { _logCategories = const False
-        , _logAction = \_ -> return ()
-        }
-  runReaderT (ListT.toList m) (HoverEnv f c l)
+  errsVar <- liftIO $ newMVar mempty
+  let
+    l = LogEnv
+      { _logCategories = const False
+      , _logAction = \_ -> return ()
+      }
+    r = emptyReportEnv $ \e -> modifyMVar_ errsVar $ pure . (e :)
+  res <- runReaderT (ListT.toList m) (HoverEnv f mempty l r)
+  errs <- liftIO $ readMVar errsVar
+  return (res, errs)
 
 emitCons :: a -> Hover a -> Hover a
 emitCons a as
@@ -77,8 +91,8 @@ emitCons a as
 hoverDefs
   :: (Span -> Bool)
   -> [(GName, SourceLoc, ClosedDefinition Expr, Biclosed Expr)]
-  -> IO [(Span, Expr Void FreeV)]
-hoverDefs f defs = runHover $ hoverClosedDef f =<< Hover (ListT.fromList defs)
+  -> Hover (Span, Expr Void FreeV)
+hoverDefs f defs = hoverClosedDef f =<< Hover (ListT.fromList defs)
 
 hoverClosedDef
   :: (Span -> Bool)
