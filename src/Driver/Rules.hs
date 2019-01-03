@@ -13,12 +13,8 @@ import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.HashSet(HashSet)
 import Data.List(findIndex)
-import qualified Data.Text.IO as Text
 import qualified Data.Text.Prettyprint.Doc as PP
 import Rock
-import System.Directory
-import System.FilePath
-import System.IO.Temp
 
 import Analysis.Cycle
 import Analysis.Denat
@@ -28,13 +24,11 @@ import Backend.ClosureConvert
 import qualified Backend.Compile
 import qualified Backend.ExtractExtern as ExtractExtern
 import qualified Backend.Generate as Generate
-import qualified Backend.Generate.Submodule as Generate
 import Backend.Lift
 import qualified Backend.SLam as SLam
 import Backend.Target
 import qualified Builtin
 import qualified Builtin.Names as Builtin
-import qualified Command.Compile.Options as Compile
 import Driver.Query
 import Effect
 import qualified Elaboration.Monad as TypeCheck
@@ -357,9 +351,8 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
       runtimeSubmodule <- fetch $ GeneratedSubmodules runtimeBindingGroup
       return (ModuleHeader Builtin.RuntimeModuleName AllExposed mempty, runtimeSubmodule)
 
-    inputFiles_ <- fetch Files
     target_ <- fetch Driver.Query.Target
-    liftIO $ compileModules inputFiles_ outputFile target_ opts (runtimeSubmodule : submodules)
+    liftIO $ Backend.Compile.compileModules outputFile target_ opts (runtimeSubmodule : submodules)
 
 noError :: (Monoid w, Functor f) => f a -> f (a, w)
 noError = fmap (, mempty)
@@ -404,74 +397,6 @@ cycleCheckModules modules = do
             }
           )
       return $ removeCyclicImports <$> ms
-
--- TODO refactor
-compileModules
-  :: [FilePath]
-  -> FilePath
-  -> Target
-  -> Compile.Options
-  -> [(ModuleHeader, [Generate.Submodule])]
-  -> IO ()
-compileModules inputFiles outputFile target_ opts modules =
-  withAssemblyDir (Compile.assemblyDir opts) $ \asmDir -> do
-    (externFiles, llFiles)
-      <- fmap mconcat $ forM modules $ \(moduleHeader, subModules) -> do
-        let fileBase = asmDir </> fromModuleName (moduleName moduleHeader)
-            llName = fileBase <> ".ll"
-            cName = fileBase <> ".c"
-        externs <- writeModule moduleHeader subModules llName [(C, cName)]
-        return (externs, [llName])
-    let linkedLlFileName = asmDir </> firstFileName <.> "linked" <.> "ll"
-    Backend.Compile.compile opts Backend.Compile.Arguments
-      { Backend.Compile.cFiles = [cFile | (C, cFile) <- externFiles]
-      , Backend.Compile.llFiles = llFiles
-      , Backend.Compile.linkedLlFileName = linkedLlFileName
-      , Backend.Compile.target = target_
-      , Backend.Compile.outputFile = outputFile
-      }
-  where
-   -- TODO should use the main file instead
-    firstFileName = takeBaseName $ fromMaybe "output" $ head inputFiles
-
-    withAssemblyDir Nothing k = withSystemTempDirectory "sixten" k
-    withAssemblyDir (Just dir) k = do
-      createDirectoryIfMissing True dir
-      k dir
-
--- TODO move
-writeModule
-  :: ModuleHeader
-  -> [Generate.Submodule]
-  -> FilePath
-  -> [(Language, FilePath)]
-  -> IO [(Language, FilePath)]
-writeModule moduleHeader subModules llOutputFile externOutputFiles = do
-  Util.withFile llOutputFile WriteMode $
-    Generate.writeLlvmModule
-      (moduleName moduleHeader)
-      (moduleImports moduleHeader)
-      subModules
-  fmap catMaybes $
-    forM externOutputFiles $ \(lang, outFile) ->
-      case fmap snd $ filter ((== lang) . fst) $ concatMap Generate.externs subModules of
-        [] -> return Nothing
-        externCode -> Util.withFile outFile WriteMode $ \handle -> do
-          -- TODO this is C specific
-          Text.hPutStrLn handle "#include <inttypes.h>"
-          Text.hPutStrLn handle "#include <stdint.h>"
-          Text.hPutStrLn handle "#include <stdio.h>"
-          Text.hPutStrLn handle "#include <stdlib.h>"
-          Text.hPutStrLn handle "#include <string.h>"
-          Text.hPutStrLn handle "#ifdef _WIN32"
-          Text.hPutStrLn handle "#include <io.h>"
-          Text.hPutStrLn handle "#else"
-          Text.hPutStrLn handle "#include <unistd.h>"
-          Text.hPutStrLn handle "#endif"
-          forM_ externCode $ \code -> do
-            Text.hPutStrLn handle ""
-            Text.hPutStrLn handle code
-          return $ Just (lang, outFile)
 
 logCoreTerms
     :: MonadIO m

@@ -4,20 +4,28 @@
 
 module Backend.Compile where
 
-import Protolude
+import Protolude hiding (moduleName, (<.>))
 
 import Data.Char
-import Data.List (dropWhile, dropWhileEnd)
+import Data.List(dropWhile, dropWhileEnd)
 import Data.String
+import qualified Data.Text.IO as Text
 import Data.Version
+import System.Directory
 import System.FilePath
+import System.IO.Temp
 import System.Process
 import Text.Printf
 
+import qualified Backend.Generate as Generate
+import qualified Backend.Generate.Submodule as Generate
 import Backend.Target(Target)
 import qualified Backend.Target as Target
-import Command.Compile.Options(Options)
-import qualified Command.Compile.Options as Options
+import qualified Command.Compile.Options as Compile
+import Syntax.Extern
+import Syntax.ModuleHeader
+import Syntax.QName
+import Util
 
 data Arguments = Arguments
   { cFiles :: [FilePath]
@@ -78,10 +86,10 @@ llvmBinPath = checkLlvmExists candidates
     checkLlvmExists [] = panic
       "Couldn't find llvm-config. You can specify its path using the --llvm-config flag."
 
-compile :: Options -> Arguments -> IO ()
-compile opts args = do
+compileFiles :: Compile.Options -> Arguments -> IO ()
+compileFiles opts args = do
 #ifndef mingw32_HOST_OS
-  binPath <- takeWhile (not . isSpace) <$> case Options.llvmConfig opts of
+  binPath <- takeWhile (not . isSpace) <$> case Compile.llvmConfig opts of
     Nothing -> llvmBinPath
     Just configBin -> do
       maybeMajorVersion <- readMaybe . takeWhile (/= '.')
@@ -117,16 +125,16 @@ compile opts args = do
   assemble clang opts (llFiles args ++ toList cLlFiles) $ outputFile args
 #endif
 
-optimisationFlags :: Options -> [String]
-optimisationFlags opts = case Options.optimisation opts of
+optimisationFlags :: Compile.Options -> [String]
+optimisationFlags opts = case Compile.optimisation opts of
   Nothing -> []
   Just optLevel -> ["-O" <> optLevel]
 
 type Binary = FilePath
 
-optimiseLlvm :: Binary -> Options -> FilePath -> IO FilePath
+optimiseLlvm :: Binary -> Compile.Options -> FilePath -> IO FilePath
 optimiseLlvm opt opts file
-  | isNothing $ Options.optimisation opts = return file
+  | isNothing $ Compile.optimisation opts = return file
   | otherwise = do
     let optLlFile = replaceExtension file "opt.ll"
     callProcess opt $ optimisationFlags opts ++
@@ -135,7 +143,7 @@ optimiseLlvm opt opts file
       ]
     return optLlFile
 
-compileC :: Binary -> Options -> Target -> FilePath -> IO FilePath
+compileC :: Binary -> Compile.Options -> Target -> FilePath -> IO FilePath
 compileC clang opts tgt cFile = do
   let output = cFile <> ".ll"
   callProcess clang $ optimisationFlags opts ++
@@ -157,7 +165,7 @@ linkLlvm linker files outFile = do
   callProcess linker $ ["-o=" <> outFile, "-S"] ++ files
   return outFile
 
-compileLlvm :: Binary -> Options -> Target -> FilePath -> IO FilePath
+compileLlvm :: Binary -> Compile.Options -> Target -> FilePath -> IO FilePath
 compileLlvm compiler opts tgt llFile = do
   let flags ft o
         = optimisationFlags opts ++
@@ -169,14 +177,14 @@ compileLlvm compiler opts tgt llFile = do
         ]
       asmFile = replaceExtension llFile "s"
       objFile = replaceExtension llFile "o"
-  when (isJust $ Options.assemblyDir opts) $
+  when (isJust $ Compile.assemblyDir opts) $
     callProcess compiler $ flags "asm" asmFile
   callProcess compiler $ flags "obj" objFile
   return objFile
 
-assemble :: Binary -> Options -> [FilePath] -> FilePath -> IO ()
+assemble :: Binary -> Compile.Options -> [FilePath] -> FilePath -> IO ()
 assemble clang opts objFiles outFile = do
-  let extraLibDirFlag = ["-L" ++ dir | dir <- Options.extraLibDir opts]
+  let extraLibDirFlag = ["-L" ++ dir | dir <- Compile.extraLibDir opts]
 #ifndef mingw32_HOST_OS
   ldFlags <- readProcess "pkg-config" ["--libs", "--static", "bdw-gc"] ""
 #else
@@ -188,3 +196,65 @@ assemble clang opts objFiles outFile = do
     $ concatMap words (extraLibDirFlag ++ lines ldFlags)
     ++ optimisationFlags opts
     ++ objFiles ++ ["-o", outFile]
+
+compileModules
+  :: FilePath
+  -> Target
+  -> Compile.Options
+  -> [(ModuleHeader, [Generate.Submodule])]
+  -> IO ()
+compileModules outputFile_ target_ opts modules =
+  withAssemblyDir (Compile.assemblyDir opts) $ \asmDir -> do
+    (externFiles, llFiles_)
+      <- fmap mconcat $ forM modules $ \(moduleHeader, subModules) -> do
+        let fileBase = asmDir </> fromModuleName (moduleName moduleHeader)
+            llName = fileBase <> ".ll"
+            cName = fileBase <> ".c"
+        externs <- writeModule moduleHeader subModules llName [(C, cName)]
+        return (externs, [llName])
+    let linkedLlFileName_ = asmDir </> "main" <.> "linked" <.> "ll"
+    compileFiles opts Arguments
+      { cFiles = [cFile | (C, cFile) <- externFiles]
+      , llFiles = llFiles_
+      , linkedLlFileName = linkedLlFileName_
+      , target = target_
+      , outputFile = outputFile_
+      }
+  where
+    withAssemblyDir Nothing k = withSystemTempDirectory "sixten" k
+    withAssemblyDir (Just dir) k = do
+      createDirectoryIfMissing True dir
+      k dir
+
+writeModule
+  :: ModuleHeader
+  -> [Generate.Submodule]
+  -> FilePath
+  -> [(Language, FilePath)]
+  -> IO [(Language, FilePath)]
+writeModule moduleHeader subModules llOutputFile externOutputFiles = do
+  Util.withFile llOutputFile WriteMode $
+    Generate.writeLlvmModule
+      (moduleName moduleHeader)
+      (moduleImports moduleHeader)
+      subModules
+  fmap catMaybes $
+    forM externOutputFiles $ \(lang, outFile) ->
+      case fmap snd $ filter ((== lang) . fst) $ concatMap Generate.externs subModules of
+        [] -> return Nothing
+        externCode -> Util.withFile outFile WriteMode $ \h -> do
+          -- TODO this is C specific
+          Text.hPutStrLn h "#include <inttypes.h>"
+          Text.hPutStrLn h "#include <stdint.h>"
+          Text.hPutStrLn h "#include <stdio.h>"
+          Text.hPutStrLn h "#include <stdlib.h>"
+          Text.hPutStrLn h "#include <string.h>"
+          Text.hPutStrLn h "#ifdef _WIN32"
+          Text.hPutStrLn h "#include <io.h>"
+          Text.hPutStrLn h "#else"
+          Text.hPutStrLn h "#include <unistd.h>"
+          Text.hPutStrLn h "#endif"
+          forM_ externCode $ \code -> do
+            Text.hPutStrLn h ""
+            Text.hPutStrLn h code
+          return $ Just (lang, outFile)
