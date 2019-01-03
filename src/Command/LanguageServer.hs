@@ -119,4 +119,4 @@ optionsParserInfo = info (pure ())
   <> header "sixten lsp"
 
 command :: ParserInfo (IO ())
-command = const server <$> optionsParserInfo
+command = (\() -> server) <$> optionsParserInfo

@@ -233,7 +233,7 @@ hoistMetas_
   => (meta -> f ())
   -> Expr meta v
   -> f ()
-hoistMetas_ f = void . hoistMetas (\m es -> const (Meta m es) <$> f m)
+hoistMetas_ f = void . hoistMetas (\m es -> Meta m es <$ f m)
 
 instance (v ~ Doc, Pretty m, Eq m) => Pretty (Expr m v) where
   prettyM expr = case expr of

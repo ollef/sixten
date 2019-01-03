@@ -59,7 +59,7 @@ telescope hint vs
     (v, TeleArg (hint v) a $ abstract (teleAbstraction (fst <$> vts)) e)
 
 mapAnnotations :: (a -> a') -> Telescope a e v -> Telescope a' e v
-mapAnnotations f (Telescope xs) = Telescope $ (\(TeleArg h a s) -> (TeleArg h (f a) s)) <$> xs
+mapAnnotations f (Telescope xs) = Telescope $ (\(TeleArg h a s) -> TeleArg h (f a) s) <$> xs
 
 bimapTelescope
   :: Bifunctor e
@@ -98,7 +98,7 @@ dropTele
   -> Telescope a expr v
 dropTele n
   = Telescope
-  . fmap (\(TeleArg h p s) -> (TeleArg h p $ mapBound (subtract $ TeleVar n) s))
+  . fmap (\(TeleArg h p s) -> TeleArg h p $ mapBound (subtract $ TeleVar n) s)
   . Vector.drop n
   . unTelescope
 
