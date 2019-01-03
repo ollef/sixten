@@ -5,7 +5,7 @@
 {-# LANGUAGE ViewPatterns #-}
 module Analysis.Cycle where
 
-import Protolude hiding (TypeError)
+import Protolude hiding (TypeError, moduleName)
 
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
@@ -290,3 +290,32 @@ possiblyImmediatelyAppliedVars = go
     go (unSourceLoc -> Lam {}) = mempty
     go (appsView -> (unSourceLoc -> Con _, xs)) = HashSet.unions [go x | (_, x) <- xs]
     go e = toHashSet e
+
+cycleCheckModules
+  :: (Foldable t, MonadReport m)
+  => t (x, ModuleHeader)
+  -> m [(x, ModuleHeader)]
+cycleCheckModules modules = do
+  let orderedModules = moduleDependencyOrder modules
+  fmap concat $ forM orderedModules $ \case
+    AcyclicSCC modul -> return [modul]
+    CyclicSCC ms -> do
+      -- TODO: Could be allowed?
+      -- TODO: Maybe this should be a different kind of error?
+      report
+        $ TypeError
+          ("Circular modules:"
+          PP.<+> PP.hsep (PP.punctuate PP.comma $ fromModuleName . moduleName . snd <$> ms))
+          Nothing
+          mempty
+      let
+        cyclicModuleNames = HashSet.fromList $ moduleName . snd <$> ms
+        removeCyclicImports (x, m) =
+          ( x
+          , m
+            { moduleImports = filter
+              (not . (`HashSet.member` cyclicModuleNames) . importModule)
+              $ moduleImports m
+            }
+          )
+      return $ removeCyclicImports <$> ms

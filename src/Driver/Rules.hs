@@ -1,7 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TupleSections #-}
@@ -13,7 +12,6 @@ import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.HashSet(HashSet)
 import Data.List(findIndex)
-import qualified Data.Text.Prettyprint.Doc as PP
 import Rock
 
 import Analysis.Cycle
@@ -44,7 +42,6 @@ import qualified Syntax.Pre.Definition as Pre
 import qualified Syntax.Pre.Unscoped as Unscoped
 import qualified Syntax.Sized.Extracted as Extracted
 import Util
-import Util.TopoSort
 import VIX
 
 rules
@@ -367,36 +364,6 @@ withReportEnv f = do
     }
   errs <- liftIO $ readMVar errVar
   return (a, errs)
-
--- TODO Move
-cycleCheckModules
-  :: (Foldable t, MonadReport m)
-  => t (x, ModuleHeader)
-  -> m [(x, ModuleHeader)]
-cycleCheckModules modules = do
-  let orderedModules = moduleDependencyOrder modules
-  fmap concat $ forM orderedModules $ \case
-    AcyclicSCC modul -> return [modul]
-    CyclicSCC ms -> do
-      -- TODO: Could be allowed?
-      -- TODO: Maybe this should be a different kind of error?
-      report
-        $ TypeError
-          ("Circular modules:"
-          PP.<+> PP.hsep (PP.punctuate PP.comma $ fromModuleName . moduleName . snd <$> ms))
-          Nothing
-          mempty
-      let
-        cyclicModuleNames = HashSet.fromList $ moduleName . snd <$> ms
-        removeCyclicImports (x, m) =
-          ( x
-          , m
-            { moduleImports = filter
-              (not . (`HashSet.member` cyclicModuleNames) . importModule)
-              $ moduleImports m
-            }
-          )
-      return $ removeCyclicImports <$> ms
 
 logCoreTerms
     :: MonadIO m
