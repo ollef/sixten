@@ -334,3 +334,28 @@ reportInvalidInstance
   , "Instance types must return a class"
   , bold "Expected:" PP.<+> "an instance of the form" PP.<+> dullGreen "instance ... => C as where ..." <> ", where" PP.<+> dullGreen "C" PP.<+> "is a class."
   ]
+
+moduleExports
+  :: ModuleHeader
+  -> HashMap QName (a, Unscoped.TopLevelDefinition)
+  -> (HashSet QName, HashSet QConstr)
+moduleExports moduleHeader_ defs = do
+  let
+    p = case moduleExposedNames moduleHeader_ of
+      AllExposed -> const True
+      Exposed names -> (`HashSet.member` toHashSet names)
+
+    defNames = HashSet.filter (p . qnameName) $ HashSet.fromMap $ void defs
+    conNames = HashSet.fromList
+      [ QConstr n c
+      | (n, (_, Unscoped.TopLevelDataDefinition _ _ cs)) <- HashMap.toList defs
+      , c <- constrName <$> cs
+      , p $ qnameName n
+      ]
+    methods = HashSet.fromList
+      [ QName n m
+      | (QName n _, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList defs
+      , m <- methodName <$> ms
+      , p m
+      ]
+  (defNames <> methods, conNames)

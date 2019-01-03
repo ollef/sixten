@@ -10,7 +10,6 @@ module Driver.Rules where
 import Protolude hiding (TypeError, moduleName, (<.>), handle)
 
 import qualified Data.HashMap.Lazy as HashMap
-import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashSet as HashSet
 import Data.HashSet(HashSet)
 import Data.List(findIndex)
@@ -113,7 +112,7 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
       Just file -> do
         (moduleHeader_, _) <- fetch $ ParsedModule file
         defs <- fetch $ DupCheckedModule moduleName_
-        return $ moduleExports moduleHeader_ defs
+        return $ ResolveNames.moduleExports moduleHeader_ defs
 
   ResolvedModule moduleName_ -> Task $ do
     defs <- fetch $ DupCheckedModule moduleName_
@@ -375,32 +374,6 @@ withReportEnv f = do
     }
   errs <- liftIO $ readMVar errVar
   return (a, errs)
-
--- TODO Move?
-moduleExports
-  :: ModuleHeader
-  -> HashMap QName (a, Unscoped.TopLevelDefinition)
-  -> (HashSet QName, HashSet QConstr)
-moduleExports moduleHeader_ defs = do
-  let
-    p = case moduleExposedNames moduleHeader_ of
-      AllExposed -> const True
-      Exposed names -> (`HashSet.member` toHashSet names)
-
-    defNames = HashSet.filter (p . qnameName) $ HashSet.fromMap $ void defs
-    conNames = HashSet.fromList
-      [ QConstr n c
-      | (n, (_, Unscoped.TopLevelDataDefinition _ _ cs)) <- HashMap.toList defs
-      , c <- constrName <$> cs
-      , p $ qnameName n
-      ]
-    methods = HashSet.fromList
-      [ QName n m
-      | (QName n _, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList defs
-      , m <- methodName <$> ms
-      , p m
-      ]
-  (defNames <> methods, conNames)
 
 -- TODO Move
 cycleCheckModules
