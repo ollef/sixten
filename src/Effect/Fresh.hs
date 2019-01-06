@@ -1,9 +1,10 @@
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE FunctionalDependencies #-}
 module Effect.Fresh where
 
 import Protolude
@@ -16,6 +17,8 @@ import Control.Monad.Trans.Maybe
 import Control.Monad.Writer
 import qualified LLVM.IRBuilder as IRBuilder
 
+import Effect.Log
+
 class Monad m => MonadFresh m where
   fresh :: m Int
 
@@ -23,18 +26,6 @@ class Monad m => MonadFresh m where
     :: (MonadTrans t, MonadFresh m1, m ~ t m1)
     => m Int
   fresh = lift fresh
-
-newtype Fresh a = Fresh (State Int a)
-  deriving (Functor, Applicative, Monad, MonadState Int)
-
-evalFresh :: Fresh a -> a
-evalFresh (Fresh m) = evalState m 0
-
-instance MonadFresh Fresh where
-  fresh = do
-    i <- get
-    put $! i + 1
-    return i
 
 newtype FreshEnv = FreshEnv
   { _freshVar :: MVar Int
@@ -48,10 +39,12 @@ makeLenses ''FreshEnv
 class HasFreshEnv env where
   freshEnv :: Lens' env FreshEnv
 
-instance (HasFreshEnv env, MonadIO m) => MonadFresh (ReaderT env m) where
+instance (HasFreshEnv env, MonadIO m, HasLogEnv env) => MonadFresh (ReaderT env m) where
   fresh = do
     v <- view $ freshEnv.freshVar
-    liftIO $ modifyMVar v $ \i -> pure (i + 1, i)
+    i <- liftIO $ modifyMVar v $ \i -> pure (i + 1, i)
+    logShow "fresh" "" i
+    return i
 
 -------------------------------------------------------------------------------
 -- mtl instances

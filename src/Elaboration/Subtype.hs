@@ -15,6 +15,7 @@ import {-# SOURCE #-} Elaboration.Constraint
 import Analysis.Simplify
 import qualified Builtin.Names as Builtin
 import Effect
+import qualified Effect.Context as Context
 import Effect.Log as Log
 import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
@@ -23,7 +24,6 @@ import Elaboration.Unify
 import Syntax
 import Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
-import TypedFreeVar
 import Util
 import Util.Tsil
 
@@ -43,13 +43,15 @@ deepSkolemise
   -> (Rhotype -> (CoreM -> CoreM) -> m a)
   -> m a
 deepSkolemise t1 k
-  = deepSkolemiseInner t1 mempty $ \vs t2 f -> k t2 $ f . lams vs
+  = deepSkolemiseInner t1 mempty $ \vs t2 f -> do
+    ctx <- getContext
+    k t2 $ \x -> f $ lams vs x ctx
 
 deepSkolemiseInner
   :: MonadElaborate m
   => Polytype
-  -> HashSet FreeV
-  -> (Vector FreeV -> Rhotype -> (CoreM -> CoreM) -> m a)
+  -> HashSet FreeVar
+  -> (Vector FreeVar -> Rhotype -> (CoreM -> CoreM) -> m a)
   -> m a
 deepSkolemiseInner typ argsToPass k = do
   typ' <- whnf typ
@@ -58,17 +60,19 @@ deepSkolemiseInner typ argsToPass k = do
 deepSkolemiseInner'
   :: MonadElaborate m
   => Polytype
-  -> HashSet FreeV
-  -> (Vector FreeV -> Rhotype -> (CoreM -> CoreM) -> m a)
+  -> HashSet FreeVar
+  -> (Vector FreeVar -> Rhotype -> (CoreM -> CoreM) -> m a)
   -> m a
 deepSkolemiseInner' typ@(Pi h p t resScope) argsToPass k = case p of
   Explicit ->
-    extendContext h p t $ \y -> do
+    Context.freshExtend (binding h p t) $ \y -> do
       let resType = Util.instantiate1 (pure y) resScope
-      deepSkolemiseInner resType (HashSet.insert y argsToPass) $ \vs resType' f -> k
-        vs
-        (pi_ y resType')
-        (\x -> lam y $ f $ lams vs $ betaApp (betaApps x $ (\v -> (varPlicitness v, pure v)) <$> vs) p $ pure y)
+      deepSkolemiseInner resType (HashSet.insert y argsToPass) $ \vs resType' f -> do
+        ctx <- getContext
+        k
+          vs
+          (pi_ y resType' ctx)
+          (\x -> lam y (f $ lams vs (betaApp (betaApps x $ (\v -> (Context.lookupPlicitness v ctx, pure v)) <$> vs) p $ pure y) ctx) ctx)
   Implicit -> implicitCase
   Constraint -> implicitCase
   where
@@ -78,12 +82,14 @@ deepSkolemiseInner' typ@(Pi h p t resScope) argsToPass k = case p of
       -- (b : A). Int`), we have to bail out.
       | HashSet.size (HashSet.intersection (toHashSet t) argsToPass) > 0 = k mempty typ identity
       | otherwise =
-        extendContext h p t $ \y -> do
+        Context.freshExtend (binding h p t) $ \y -> do
           let resType = Util.instantiate1 (pure y) resScope
-          deepSkolemiseInner resType argsToPass $ \vs resType' f -> k
-            (Vector.cons y vs)
-            resType'
-            (\x -> lam y $ f $ betaApp x p $ pure y)
+          deepSkolemiseInner resType argsToPass $ \vs resType' f -> do
+            ctx <- getContext
+            k
+              (Vector.cons y vs)
+              resType'
+              (\x -> lam y (f $ betaApp x p $ pure y) ctx)
 deepSkolemiseInner' typ _ k = k mempty typ identity
 
 --------------------------------------------------------------------------------
@@ -109,10 +115,11 @@ skolemise'
   -> Elaborate a
 skolemise' (Pi h p t resScope) instUntil k
   | shouldInst p instUntil =
-    extendContext h p t $ \v -> do
+    Context.freshExtend (binding h p t) $ \v -> do
       let resType = Util.instantiate1 (pure v) resScope
       skolemise resType instUntil $ \resType' f -> do
-        let f' x = lam v $ f x
+        ctx <- getContext
+        let f' x = lam v (f x) ctx
         k resType' f'
 skolemise' typ _ k = k typ identity
 
@@ -176,12 +183,13 @@ subtypeRhoE' (Pi h1 p1 argType1 retScope1) (Pi h2 p2 argType2 retScope2) _
   | p1 == p2 = do
     let h = h1 <> h2
     f1 <- subtypeE argType2 argType1
-    extendContext h p1 argType2 $ \v2 -> do
+    Context.freshExtend (binding h p1 argType2) $ \v2 -> do
       let v1 = f1 $ pure v2
       let retType1 = Util.instantiate1 v1 retScope1
           retType2 = Util.instantiate1 (pure v2) retScope2
       f2 <- subtypeRhoE retType1 retType2 $ InstUntil Explicit
-      return $ \x -> lam v2 $ f2 (App x p1 v1)
+      ctx <- getContext
+      return $ \x -> lam v2 (f2 $ App x p1 v1) ctx
 subtypeRhoE' (Pi h p t s) typ2 instUntil | shouldInst p instUntil = do
   v <- exists h p t
   f <- subtypeRhoE (Util.instantiate1 v s) typ2 instUntil
@@ -195,8 +203,8 @@ funSubtypes
   :: Rhotype
   -> Vector Plicitness
   -> Elaborate
-    ( Telescope (Expr MetaVar) FreeV
-    , Scope TeleVar (Expr MetaVar) FreeV
+    ( Telescope (Expr MetaVar) FreeVar
+    , Scope TeleVar (Expr MetaVar) FreeVar
     , Vector (CoreM -> CoreM)
     )
 funSubtypes startType plics = go plics startType mempty mempty
@@ -204,13 +212,13 @@ funSubtypes startType plics = go plics startType mempty mempty
     go ps typ vs fs
       | Vector.null ps = do
         let vars = toVector vs
-            tele = varTelescope vars
-            typeScope = abstract (teleAbstraction vars) typ
+        tele <- varTelescope vars
+        let typeScope = abstract (teleAbstraction vars) typ
         return (tele, typeScope, toVector fs)
       | otherwise = do
         let p = Vector.head ps
         (h, argType, resScope, f) <- funSubtype typ p
-        extendContext h p argType $ \v ->
+        Context.freshExtend (binding h p argType) $ \v ->
           go
             (Vector.tail ps)
             (Util.instantiate1 (pure v) resScope)
@@ -221,7 +229,7 @@ funSubtypes startType plics = go plics startType mempty mempty
 funSubtype
   :: Rhotype
   -> Plicitness
-  -> Elaborate (NameHint, Rhotype, Scope1 (Expr MetaVar) FreeV, CoreM -> CoreM)
+  -> Elaborate (NameHint, Rhotype, Scope1 (Expr MetaVar) FreeVar, CoreM -> CoreM)
 funSubtype typ p = do
   typ' <- whnf typ
   funSubtype' typ' p
@@ -229,7 +237,7 @@ funSubtype typ p = do
 funSubtype'
   :: Rhotype
   -> Plicitness
-  -> Elaborate (NameHint, Rhotype, Scope1 (Expr MetaVar) FreeV, CoreM -> CoreM)
+  -> Elaborate (NameHint, Rhotype, Scope1 (Expr MetaVar) FreeVar, CoreM -> CoreM)
 funSubtype' (Pi h p t s) p' | p == p' = return (h, t, s, identity)
 funSubtype' typ p = do
   (argType, resScope) <- existsPi
@@ -240,7 +248,7 @@ funSubtype' typ p = do
 subtypeFun
   :: Rhotype
   -> Plicitness
-  -> Elaborate (Rhotype, Scope1 (Expr MetaVar) FreeV, CoreM -> CoreM)
+  -> Elaborate (Rhotype, Scope1 (Expr MetaVar) FreeVar, CoreM -> CoreM)
 subtypeFun typ p = do
   typ' <- whnf typ
   subtypeFun' typ' p
@@ -248,14 +256,14 @@ subtypeFun typ p = do
 subtypeFun'
   :: Rhotype
   -> Plicitness
-  -> Elaborate (Rhotype, Scope1 (Expr MetaVar) FreeV, CoreM -> CoreM)
+  -> Elaborate (Rhotype, Scope1 (Expr MetaVar) FreeVar, CoreM -> CoreM)
 subtypeFun' (Pi _ p t s) p' | p == p' = return (t, s, identity)
 subtypeFun' typ p = do
   (argType, resScope) <- existsPi
   f <- subtype typ $ Pi mempty p argType resScope
   return (argType, resScope, f)
 
-existsPi :: Elaborate (CoreM, Scope1 (Expr MetaVar) FreeV)
+existsPi :: Elaborate (CoreM, Scope1 (Expr MetaVar) FreeVar)
 existsPi = do
   argType <- existsType mempty
   resType <- existsType mempty

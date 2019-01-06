@@ -12,7 +12,7 @@ import Data.Vector(Vector)
 
 import Driver.Query
 import Effect
-import FreeVar
+import Effect.Context as Context
 import Syntax hiding (Definition)
 import Syntax.Sized.Anno
 import Syntax.Sized.Definition
@@ -28,7 +28,7 @@ data MetaReturnIndirect
 
 type RetDirM = ReturnDirection MetaReturnIndirect
 
-existsMetaReturnIndirect :: VIX MetaReturnIndirect
+existsMetaReturnIndirect :: Infer MetaReturnIndirect
 existsMetaReturnIndirect = liftIO $ MRef <$> newIORef Nothing
 
 instance Show MetaReturnIndirect where
@@ -40,7 +40,7 @@ fromReturnIndirect :: ReturnIndirect -> MetaReturnIndirect
 fromReturnIndirect Projection = MProjection
 fromReturnIndirect OutParam = MOutParam
 
-toReturnIndirect :: ReturnIndirect -> MetaReturnIndirect -> VIX ReturnIndirect
+toReturnIndirect :: ReturnIndirect -> MetaReturnIndirect -> Infer ReturnIndirect
 toReturnIndirect def m = do
   m' <- normaliseMetaReturnIndirect m
   return $ case m' of
@@ -48,7 +48,7 @@ toReturnIndirect def m = do
     MOutParam -> OutParam
     MRef _ -> def
 
-normaliseMetaReturnIndirect :: MetaReturnIndirect -> VIX MetaReturnIndirect
+normaliseMetaReturnIndirect :: MetaReturnIndirect -> Infer MetaReturnIndirect
 normaliseMetaReturnIndirect MProjection = return MProjection
 normaliseMetaReturnIndirect MOutParam = return MOutParam
 normaliseMetaReturnIndirect m@(MRef ref) = do
@@ -60,13 +60,13 @@ normaliseMetaReturnIndirect m@(MRef ref) = do
       liftIO $ writeIORef ref $ Just m''
       return m''
 
-maxMetaReturnIndirect :: MetaReturnIndirect -> MetaReturnIndirect -> VIX MetaReturnIndirect
+maxMetaReturnIndirect :: MetaReturnIndirect -> MetaReturnIndirect -> Infer MetaReturnIndirect
 maxMetaReturnIndirect m1 m2 = do
   m1' <- normaliseMetaReturnIndirect m1
   m2' <- normaliseMetaReturnIndirect m2
   maxMetaReturnIndirect' m1' m2'
 
-maxMetaReturnIndirect' :: MetaReturnIndirect -> MetaReturnIndirect -> VIX MetaReturnIndirect
+maxMetaReturnIndirect' :: MetaReturnIndirect -> MetaReturnIndirect -> Infer MetaReturnIndirect
 maxMetaReturnIndirect' MOutParam _ = return MOutParam
 maxMetaReturnIndirect' _ MOutParam = return MOutParam
 maxMetaReturnIndirect' MProjection m = return m
@@ -76,13 +76,13 @@ maxMetaReturnIndirect' m@(MRef _) (MRef ref2) = do
   liftIO $ writeIORef ref2 $ Just m
   return m
 
-unifyMetaReturnIndirect :: MetaReturnIndirect -> MetaReturnIndirect -> VIX ()
+unifyMetaReturnIndirect :: MetaReturnIndirect -> MetaReturnIndirect -> Infer ()
 unifyMetaReturnIndirect m1 m2 = do
   m1' <- normaliseMetaReturnIndirect m1
   m2' <- normaliseMetaReturnIndirect m2
   unifyMetaReturnIndirect' m1' m2'
 
-unifyMetaReturnIndirect' :: MetaReturnIndirect -> MetaReturnIndirect -> VIX ()
+unifyMetaReturnIndirect' :: MetaReturnIndirect -> MetaReturnIndirect -> Infer ()
 unifyMetaReturnIndirect' m1 m2 | m1 == m2 = return ()
 unifyMetaReturnIndirect' m (MRef ref2) = liftIO $ writeIORef ref2 $ Just m
 unifyMetaReturnIndirect' (MRef ref1) m = liftIO $ writeIORef ref1 $ Just m
@@ -95,21 +95,15 @@ data MetaData = MetaData
   , metaFunSig :: Maybe (RetDirM, Vector Direction)
   } deriving Show
 
-type FreeV = FreeVar MetaData
-
-forall
-  :: NameHint
-  -> Plicitness
-  -> Location
-  -> Maybe (RetDirM, Vector Direction)
-  -> VIX FreeV
-forall h p loc call = freeVar h p $ MetaData loc call
+type Infer = ReaderT (ContextEnvT MetaData VIX.Env) (Sequential (Task Query))
 
 infer
-  :: Expr FreeV
-  -> VIX (Expr FreeV, Location)
+  :: Expr FreeVar
+  -> Infer (Expr FreeVar, Location)
 infer expr = case expr of
-  Var v -> return (expr, metaLocation $ varData v)
+  Var v -> do
+    metaData <- Context.lookupType v
+    return (expr, metaLocation metaData)
   Global _ -> return (expr, MProjection)
   Lit _ -> return (expr, MOutParam)
   Con c es -> do
@@ -128,9 +122,10 @@ infer expr = case expr of
       args
   Let h e s -> do
     (e', eloc) <- inferAnno e
-    v <- forall h Explicit eloc Nothing
-    (s', sloc) <- infer $ instantiate1 (pure v) s
-    return (let_ v e' s', sloc)
+    Context.freshExtend (binding h Explicit $ MetaData eloc Nothing) $ \v -> do
+      (s', sloc) <- infer $ instantiate1 (pure v) s
+      res <- letTyped v e' s'
+      return (res, sloc)
   Case e brs -> do
     (e', eloc) <- inferAnno e
     (brs', loc) <- inferBranches eloc brs
@@ -140,19 +135,19 @@ infer expr = case expr of
     c' <- mapM (fmap fst . inferAnno) c
     return (ExternCode c' retType', MOutParam)
 
-inferAnno :: Anno Expr FreeV -> VIX (Anno Expr FreeV, Location)
+inferAnno :: Anno Expr FreeVar -> Infer (Anno Expr FreeVar, Location)
 inferAnno (Anno e t) = do
   (e', loc) <- infer e
   (t', _) <- infer t
   return (Anno e' t', loc)
 
 inferCall
-  :: (Expr FreeV -> Vector (Anno Expr FreeV) -> Expr FreeV)
+  :: (Expr FreeVar -> Vector (Anno Expr FreeVar) -> Expr FreeVar)
   -> ReturnDirection MetaReturnIndirect
   -> Vector Direction
-  -> Expr FreeV
-  -> Vector (Anno Expr FreeV)
-  -> VIX (Expr FreeV, MetaReturnIndirect)
+  -> Expr FreeVar
+  -> Vector (Anno Expr FreeVar)
+  -> Infer (Expr FreeVar, MetaReturnIndirect)
 inferCall con (ReturnIndirect mretIndirect) argDirs f es = do
   (f', _) <- infer f
   locatedEs <- mapM inferAnno es
@@ -170,18 +165,19 @@ inferCall con _ _ f es = do
 
 inferBranches
   :: Location
-  -> Branches Expr FreeV
-  -> VIX (Branches Expr FreeV, Location)
+  -> Branches Expr FreeVar
+  -> Infer (Branches Expr FreeVar, Location)
 inferBranches loc (ConBranches cbrs) = do
-  locatedCBrs <- forM cbrs $ \(ConBranch c tele brScope) -> do
-    vs <- forMTele tele $ \h p _ -> forall h p loc Nothing
-    let br = instantiateTele pure vs brScope
-    sizes <- forMTele tele $ \_ _ s -> do
-      let sz = instantiateTele pure vs s
-      (sz', _szLoc)  <- infer sz
-      return sz'
-    (br', brLoc) <- infer br
-    return (typedConBranch c (Vector.zip vs sizes) br', brLoc)
+  locatedCBrs <- forM cbrs $ \(ConBranch c tele brScope) ->
+    teleMapExtendContext tele (pure . const (MetaData loc Nothing)) $ \vs -> do
+      let br = instantiateTele pure vs brScope
+      sizes <- forMTele tele $ \_ _ s -> do
+        let sz = instantiateTele pure vs s
+        (sz', _szLoc)  <- infer sz
+        return sz'
+      (br', brLoc) <- infer br
+      res <- typedConBranch c (Vector.zip vs sizes) br'
+      return (res, brLoc)
   let (cbrs', brLocs) = NonEmpty.unzip locatedCBrs
   brLoc <- foldM maxMetaReturnIndirect MProjection brLocs
   return (ConBranches cbrs', brLoc)
@@ -195,39 +191,42 @@ inferBranches _loc (LitBranches lbrs def) = do
   return (LitBranches lbrs' def', loc)
 
 inferFunction
-  :: Expr FreeV
-  -> VIX (Expr FreeV, (RetDirM, Vector Direction))
+  :: Expr FreeVar
+  -> Infer (Expr FreeVar, (RetDirM, Vector Direction))
 inferFunction expr = case expr of
-  Var v -> return (expr, fromMaybe def $ metaFunSig $ varData v)
+  Var v -> do
+    metaData <- Context.lookupType v
+    return (expr, fromMaybe def $ metaFunSig metaData)
   Global g -> do
     sig <- fetch $ DirectionSignature g
     case sig of
       Just (FunctionSig _ retDir argDirs) -> return (Global g, (fromReturnIndirect <$> retDir, argDirs))
       Just (ConstantSig _) -> def
       Just (AliasSig aliasee) -> inferFunction $ Global aliasee
-      Nothing -> panic "ReturnDirection.inferFunction no sig"
+      Nothing -> panic $ "ReturnDirection.inferFunction no sig " <> shower g
   _ -> return def
   where
     def = panic "ReturnDirection.inferFunction non-function"
 
 inferDefinition
-  :: FreeV
-  -> Definition Expr FreeV
-  -> VIX (Definition Expr FreeV, Signature MetaReturnIndirect)
-inferDefinition FreeVar {varData = MetaData {metaFunSig = Just (retDir, argDirs)}} (FunctionDef vis cl (Function args s)) = do
-  vs <- forMTele args $ \h p _ -> forall h p MProjection Nothing
-  args' <- forMTele args $ \_ _ szScope -> do
-    let sz = instantiateTele pure vs szScope
-    (sz', _szLoc) <- infer sz
-    return sz'
-  let e = instantiateAnnoTele pure vs s
-  (e', loc) <- inferAnno e
-  case retDir of
-    ReturnIndirect m -> do
-      glbdir <- maxMetaReturnIndirect loc m
-      unifyMetaReturnIndirect glbdir m
-    ReturnDirect _ -> return ()
-  return (FunctionDef vis cl $ function (Vector.zip vs args') e', FunctionSig SixtenCompatible retDir argDirs)
+  :: Binding MetaData
+  -> Definition Expr FreeVar
+  -> Infer (Definition Expr FreeVar, Signature MetaReturnIndirect)
+inferDefinition Binding {_type = MetaData {metaFunSig = Just (retDir, argDirs)}} (FunctionDef vis cl (Function args s)) =
+  teleMapExtendContext args (pure . const (MetaData MProjection Nothing)) $ \vs -> do
+    args' <- forMTele args $ \_ _ szScope -> do
+      let sz = instantiateTele pure vs szScope
+      (sz', _szLoc) <- infer sz
+      return sz'
+    let e = instantiateAnnoTele pure vs s
+    (e', loc) <- inferAnno e
+    case retDir of
+      ReturnIndirect m -> do
+        glbdir <- maxMetaReturnIndirect loc m
+        unifyMetaReturnIndirect glbdir m
+      ReturnDirect _ -> return ()
+    fun <- typedFunction (Vector.zip vs args') e'
+    return (FunctionDef vis cl fun, FunctionSig SixtenCompatible retDir argDirs)
 inferDefinition _ (ConstantDef _ (Constant (Anno (Global glob) _))) =
   return (AliasDef, AliasSig glob)
 inferDefinition _ (ConstantDef vis (Constant e)) = do
@@ -236,8 +235,8 @@ inferDefinition _ (ConstantDef vis (Constant e)) = do
 inferDefinition _ _ = panic "ReturnDirection.inferDefinition"
 
 generaliseDefs
-  :: Vector (Definition Expr FreeV, Signature MetaReturnIndirect)
-  -> VIX (Vector (Definition Expr FreeV, Signature ReturnIndirect))
+  :: Vector (Definition Expr FreeVar, Signature MetaReturnIndirect)
+  -> Infer (Vector (Definition Expr FreeVar, Signature ReturnIndirect))
 generaliseDefs
   = traverse
   $ bitraverse pure (traverse $ toReturnIndirect Projection)
@@ -245,53 +244,57 @@ generaliseDefs
 inferRecursiveDefs
   :: Vector (GName, Closed (Definition Expr))
   -> VIX (Vector (GName, Closed (Definition Expr), Signature ReturnIndirect))
-inferRecursiveDefs defs = do
+inferRecursiveDefs defs = withContextEnvT $ do
   let names = fst <$> defs
 
-  evars <- Vector.forM defs $ \(v, Closed d) -> do
-    logPretty "returndir" "InferDirection.inferRecursiveDefs 1" (v, d)
-    let h = fromGName v
-        funSig = case d of
-          FunctionDef _ cl (Function args s) ->
-            Just
-              ( returnDir
-              , forTele args $ \_ _ s' -> typeDir $ fromScope s'
-              )
-            where
-              returnDir = case (cl, fromAnnoScope s) of
-                (NonClosure, Anno _ t) -> toReturnDirection Nothing $ typeDir t
-                _ -> ReturnIndirect (Just MOutParam)
-          ConstantDef {} -> Nothing
-          AliasDef -> Nothing
+  bindings_ <- Vector.forM defs $ \(v, Closed d) -> do
+    logPretty "returndir" "InferDirection.inferRecursiveDefs 1" $ pure (v, d)
+    let
+      h = fromGName v
+      funSig = case d of
+        FunctionDef _ cl (Function args s) ->
+          Just
+            ( returnDir
+            , forTele args $ \_ _ s' -> typeDir $ fromScope s'
+            )
+          where
+            returnDir = case (cl, fromAnnoScope s) of
+              (NonClosure, Anno _ t) -> toReturnDirection Nothing $ typeDir t
+              _ -> ReturnIndirect (Just MOutParam)
+        ConstantDef {} -> Nothing
+        AliasDef -> Nothing
     funSig' <- traverse (bitraverse (traverse $ maybe existsMetaReturnIndirect pure) pure) funSig
-    forall h Explicit MProjection funSig'
+    return $ binding h Explicit $ MetaData MProjection funSig'
 
-  let nameIndex = hashedElemIndex names
+  freshExtends bindings_ $ \evars -> do
+    let
+      nameIndex = hashedElemIndex names
       expose name = case nameIndex name of
         Nothing -> global name
         Just index -> pure
           $ fromMaybe (panic "InferDirection.inferRecursiveDefs expose")
           $ evars Vector.!? index
 
-  let exposedDefs = flip Vector.map defs $ \(_, Closed e) ->
+      exposedDefs = flip Vector.map defs $ \(_, Closed e) ->
         gbound expose e
 
-  inferredDefs <- Vector.forM (Vector.zip evars exposedDefs) $ \(v, d) -> do
-    logPretty "returndir" "InferDirection.inferRecursiveDefs 2" (pretty v, pretty <$> d)
-    inferDefinition v d
+    inferredDefs <- Vector.forM (Vector.zip bindings_ exposedDefs) $ \(b, d) -> do
+      logPretty "returndir" "InferDirection.inferRecursiveDefs 2" $ traverse prettyVar d
+      inferDefinition b d
 
-  genDefs <- generaliseDefs inferredDefs
+    genDefs <- generaliseDefs inferredDefs
 
-  let varIndex = hashedElemIndex evars
+    let
+      varIndex = hashedElemIndex evars
       unexpose evar = case varIndex evar of
         Nothing -> pure evar
         Just index -> global
           $ fromMaybe (panic "inferRecursiveDefs 2")
           $ names Vector.!? index
-      vf :: FreeV -> VIX b
+      vf :: FreeVar -> Infer b
       vf v = panic $ "inferRecursiveDefs " <> shower v
 
-  forM (Vector.zip names genDefs) $ \(name, (def ,sig)) -> do
-    let unexposedDef = def >>>= unexpose
-    unexposedDef' <- traverse vf unexposedDef
-    return (name, close identity unexposedDef', sig)
+    forM (Vector.zip names genDefs) $ \(name, (def ,sig)) -> do
+      let unexposedDef = def >>>= unexpose
+      unexposedDef' <- traverse vf unexposedDef
+      return (name, close identity unexposedDef', sig)

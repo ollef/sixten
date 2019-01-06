@@ -1,6 +1,8 @@
 module Elaboration.TypeCheck.Expr where
 
+import Protolude
+
 import Elaboration.Monad
 
-checkPoly :: PreM -> Polytype -> Elaborate CoreM
+checkPoly :: HasCallStack => PreM -> Polytype -> Elaborate CoreM
 checkRho :: PreM -> Rhotype -> Elaborate CoreM

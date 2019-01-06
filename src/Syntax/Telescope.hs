@@ -28,7 +28,10 @@ import Data.List(groupBy)
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
+import Syntax.Context
 
+import Effect
+import qualified Effect.Context as Context
 import Pretty
 import Syntax.Annotation
 import Syntax.GlobalBind
@@ -51,12 +54,87 @@ unTelescope (Telescope xs) = xs
 data TeleArg expr v = TeleArg !NameHint !Plicitness !(Scope TeleVar expr v)
   deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
 
-telescope :: (Foldable t, Monad expr, Eq v, Hashable v) => (v -> NameHint) -> t (v, Plicitness, expr v) -> Telescope expr v
-telescope hint vs
+bindingTelescope
+  :: (Monad e, Eq v, Hashable v)
+  => Vector (v, Binding (e v))
+  -> Telescope e v
+bindingTelescope vs
   = Telescope
-  $ fmap snd
-  $ forWithPrefix (toVector vs) $ \(v, p, e) vts ->
-    (v, TeleArg (hint v) p $ abstract (teleAbstraction (fst <$> vts)) e)
+  $ (\(_, Binding h p t _) -> TeleArg h p $ abstract abstr t)
+  <$> vs
+  where
+    abstr = teleAbstraction $ fst <$> vs
+
+varTelescope
+  :: (Monad e, MonadContext (e FreeVar) m)
+  => Vector FreeVar
+  -> m (Telescope e FreeVar)
+varTelescope vs = do
+  context <- getContext
+  let
+    bs = (`Context.lookup` context) <$> vs
+  return
+    $ Telescope
+    $ (\(Binding h p t _) -> TeleArg h p $ abstract abstr t)
+    <$> bs
+  where
+    abstr = teleAbstraction vs
+
+plicitVarTelescope
+  :: (Monad e, MonadContext (e FreeVar) m)
+  => Vector (Plicitness, FreeVar)
+  -> m (Telescope e FreeVar)
+plicitVarTelescope pvs = do
+  context <- getContext
+  let
+    pbs = second (`Context.lookup` context) <$> pvs
+  return
+    $ Telescope
+    $ (\(p, Binding h _ t _) -> TeleArg h p $ abstract abstr t)
+    <$> pbs
+  where
+    abstr = teleAbstraction $ snd <$> pvs
+
+varTypeTelescope
+  :: (Monad e, MonadContext e' m)
+  => Vector (FreeVar, e FreeVar)
+  -> m (Telescope e FreeVar)
+varTypeTelescope vs = do
+  context <- getContext
+  let
+    bs = first (`Context.lookup` context) <$> vs
+  return
+    $ Telescope
+    $ (\(Binding h p _ _, t) -> TeleArg h p $ abstract abstr t)
+    <$> bs
+  where
+    abstr = teleAbstraction (fst <$> vs)
+
+teleExtendContext
+  :: (MonadFresh m, MonadContext (e FreeVar) m, Monad e)
+  => Telescope e FreeVar
+  -> (Vector FreeVar -> m a)
+  -> m a
+teleExtendContext tele k = do
+  vs <- forTeleWithPrefixM tele $ \h p s vs -> do
+    let e = instantiateTele (pure . fst) vs s
+    v <- Context.freeVar
+    return (v, binding h p e)
+  Context.extends vs $ k $ fst <$> vs
+
+teleMapExtendContext
+  :: (MonadFresh m, MonadContext e' m, Monad e)
+  => Telescope e FreeVar
+  -> (e FreeVar -> m e')
+  -> (Vector FreeVar -> m a)
+  -> m a
+teleMapExtendContext tele f k = do
+  vs <- forTeleWithPrefixM tele $ \h p s vs -> do
+    let e = instantiateTele (pure . fst) vs s
+    e' <- Context.extends vs $ f e
+    v <- Context.freeVar
+    return (v, binding h p e')
+  Context.extends vs $ k $ fst <$> vs
 
 mapPlics :: (Plicitness -> Plicitness) -> Telescope e v -> Telescope e v
 mapPlics f (Telescope xs) = Telescope $ (\(TeleArg h a s) -> TeleArg h (f a) s) <$> xs
@@ -124,8 +202,8 @@ instantiatePrefix es (Telescope tele)
       | i < len = es' Vector.! i
       | otherwise = pure $ B $ TeleVar $! i - len
 
-teleNames :: Telescope expr v -> Vector NameHint
-teleNames (Telescope t) = (\(TeleArg h _ _) -> h) <$> t
+teleHints :: Telescope expr v -> Vector NameHint
+teleHints (Telescope t) = (\(TeleArg h _ _) -> h) <$> t
 
 addTeleNames :: Telescope expr v -> Vector NameHint -> Telescope expr v
 addTeleNames (Telescope t) hs = Telescope $ Vector.imap (\i (TeleArg h p s) -> TeleArg (maybe h (h <>) $ hs Vector.!? i) p s) t
@@ -159,7 +237,7 @@ withTeleHints
   :: Telescope expr v
   -> (Vector Name -> PrettyDoc)
   -> PrettyDoc
-withTeleHints = withNameHints . teleNames
+withTeleHints = withNameHints . teleHints
 
 prettyTeleVars
   :: Vector Name

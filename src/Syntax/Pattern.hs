@@ -12,8 +12,9 @@ import qualified Data.Vector as Vector
 import Util
 
 type PatternScope = Scope PatternVar
+
 newtype PatternVar = PatternVar Int
-  deriving (Eq, Ord, Show, Num)
+  deriving (Eq, Ord, Show, Num, Hashable)
 
 unPatternVar :: PatternVar -> Int
 unPatternVar (PatternVar i) = i
@@ -65,13 +66,13 @@ abstractPatternTypes vars
 indexedPatterns
   :: (Traversable f, Traversable pat)
   => f (p, pat b)
-  -> f (p, pat (PatternVar, b))
+  -> f (p, pat PatternVar)
 indexedPatterns = flip evalState 0 . traverse (traverse $ traverse inc)
   where
-    inc b = do
+    inc _ = do
       n <- get
       put $! n + 1
-      pure (n, b)
+      pure n
 
 renamePatterns
   :: (Traversable f, Traversable pat)
@@ -79,7 +80,7 @@ renamePatterns
   -> f (p, pat b)
   -> f (p, pat v)
 renamePatterns vs pats
-  = fmap (fmap (\(v, _) -> vs Vector.! unPatternVar v)) <$> indexedPatterns pats
+  = fmap (fmap (\(PatternVar v) -> vs Vector.! v)) <$> indexedPatterns pats
 
 instantiatePattern
   :: Monad f

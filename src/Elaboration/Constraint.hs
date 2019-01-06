@@ -13,6 +13,7 @@ import Analysis.Simplify
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect
+import qualified Effect.Context as Context
 import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
@@ -21,7 +22,6 @@ import Elaboration.Subtype
 import Elaboration.TypeOf
 import Syntax
 import Syntax.Core
-import TypedFreeVar
 import Util
 
 trySolveMetaVar
@@ -39,9 +39,10 @@ trySolveConstraint
   :: MonadElaborate m
   => MetaVar
   -> m (Maybe (Closed (Expr MetaVar)))
-trySolveConstraint m = inUpdatedContext (const mempty) $ do
+trySolveConstraint m = modifyContext (const mempty) $ do
   logShow "tc.constraint" "trySolveConstraint" $ metaId m
   withInstantiatedMetaType m $ \vs typ -> do
+    ctx <- getContext
     typ' <- whnf typ
     case typ' of
       (appsView -> (unSourceLoc -> Builtin.QGlobal className, _)) -> do
@@ -62,11 +63,12 @@ trySolveConstraint m = inUpdatedContext (const mempty) $ do
               Just matchingInstance -> do
                 logMeta "tc.constraint" "Matching instance" $ zonk matchingInstance
                 logMeta "tc.constraint" "Matching instance typ" $ zonk typ'
-                let sol = close (panic "trySolveConstraint not closed") $ lams vs matchingInstance
+                openSol <- lams vs matchingInstance
+                let sol = close (panic "trySolveConstraint not closed") openSol
                 solve m sol
                 return $ Just sol
           candidates
-            = [pure v | v <- toList vs, varPlicitness v == Constraint]
+            = [pure v | v <- toList vs, Context.lookupPlicitness v ctx == Constraint]
             <> [Global $ gname g | g <- HashSet.toList globalClassInstances]
         logShow "tc.constraint" "Candidates" $ length candidates
         go candidates
@@ -85,8 +87,8 @@ solveExprConstraints = bindMetas $ \m es -> do
     Just e -> solveExprConstraints $ betaApps (open e) es
 
 solveDefConstraints
-  :: Definition (Expr MetaVar) FreeV
-  -> Elaborate (Definition (Expr MetaVar) FreeV)
+  :: Definition (Expr MetaVar) FreeVar
+  -> Elaborate (Definition (Expr MetaVar) FreeVar)
 solveDefConstraints (ConstantDefinition a e)
   = ConstantDefinition a <$> solveExprConstraints e
 solveDefConstraints (DataDefinition (DataDef ps constrs) rep) =
@@ -97,14 +99,16 @@ solveDefConstraints (DataDefinition (DataDef ps constrs) rep) =
       return $ ConstrDef c e'
 
     rep' <- solveExprConstraints rep
-    return $ DataDefinition (dataDef vs constrs') rep'
+    dd <- dataDef vs constrs'
+    return $ DataDefinition dd rep'
 
 solveRecursiveDefConstraints
-  :: Vector (FreeV, name, loc, Definition (Expr MetaVar) FreeV)
-  -> Elaborate (Vector (FreeV, name, loc, Definition (Expr MetaVar) FreeV))
+  :: Vector (FreeVar, name, loc, Definition (Expr MetaVar) FreeVar)
+  -> Elaborate (Vector (FreeVar, name, loc, Definition (Expr MetaVar) FreeVar))
 solveRecursiveDefConstraints defs = forM defs $ \(v, name, loc, def) -> do
   def' <- solveDefConstraints def
-  _typ' <- solveExprConstraints $ varType v
+  typ <- Context.lookupType v
+  _typ' <- solveExprConstraints typ
   return (v, name, loc, def')
 
 mergeConstraintVars
@@ -136,12 +140,12 @@ mergeConstraintVars vars = do
             Nothing -> return $ Map.insert (arity, ctyp) m varTypes
     go varTypes _ = return varTypes
     solveVar m m' =
-      withInstantiatedMetaType m' $ \vs _ ->
-        solve m'
-          $ close (panic "mergeConstraintVars not closed")
-          $ lams vs
+      withInstantiatedMetaType m' $ \vs _ -> do
+        ctx <- getContext
+        e <- lams vs
           $ Meta m
-          $ (\v -> (varPlicitness v, pure v)) <$> vs
+          $ (\v -> (Context.lookupPlicitness v ctx, pure v)) <$> vs
+        solve m' $ close (panic "mergeConstraintVars not closed") e
 
 whnf :: MonadElaborate m => CoreM -> m CoreM
 whnf e = Normalise.whnf' Normalise.Args

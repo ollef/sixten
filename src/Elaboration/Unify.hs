@@ -14,6 +14,7 @@ import qualified Data.Vector as Vector
 import {-# SOURCE #-} Elaboration.Constraint
 import Analysis.Simplify
 import Effect
+import qualified Effect.Context as Context
 import Effect.Log as Log
 import qualified Elaboration.Equal as Equal
 import Elaboration.MetaVar
@@ -24,7 +25,6 @@ import Elaboration.TypeOf
 import Pretty
 import Syntax
 import Syntax.Core
-import TypedFreeVar
 import Util
 
 runUnify :: Monad m => ExceptT Error m a -> (Error -> m a) -> m a
@@ -60,10 +60,10 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
   (Lam h1 p1 t1 s1, Lam h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
   -- Eta-expand
   (Lam h p t s, _) ->
-    extendContext h p t $ \v ->
+    Context.freshExtend (binding h p t) $ \v ->
       unify cxt (instantiate1 (pure v) s) (App expr2 p $ pure v)
   (_, Lam h p t s) ->
-    extendContext h p t $ \v ->
+    Context.freshExtend (binding h p t) $ \v ->
       unify cxt (App expr1 p $ pure v) (instantiate1 (pure v) s)
   -- Eta-reduce
   (etaReduce -> Just expr1', _) -> unify cxt expr1' expr2
@@ -97,7 +97,7 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
   where
     absCase h p t1 t2 s1 s2 = do
       unify cxt t1 t2
-      extendContext h p t1 $ \v ->
+      Context.freshExtend (binding h p t1) $ \v ->
         unify cxt (instantiate1 (pure v) s1) (instantiate1 (pure v) s2)
 
     solveVar recurse m pvs t = do
@@ -105,11 +105,10 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
       case msol of
         Nothing -> do
           let vs = snd <$> pvs
-              plicitVs = (\(p, v) -> v { varPlicitness = p }) <$> pvs
           t' <- prune (toHashSet vs) t
-          let lamt = lams plicitVs t'
+          lamt <- plicitLams pvs t'
           normLamt <- normalise lamt
-          logShow "tc.unify" "vs" (varId <$> vs)
+          logShow "tc.unify" "vs" vs
           logMeta "tc.unify" ("solving t " <> show (metaId m)) $ zonk t
           logMeta "tc.unify" ("solving t' " <> show (metaId m)) $ zonk t'
           logMeta "tc.unify" ("solving lamt " <> show (metaId m)) $ zonk lamt
@@ -138,7 +137,7 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
         withInstantiatedMetaType' (Vector.length pes1) m $ \vs typ -> do
           let vs' = snd <$> Vector.filter fst (Vector.zip keep vs)
           prunedType <- prune (toHashSet vs') typ
-          let newMetaType = pis vs' prunedType
+          newMetaType <- pis vs' prunedType
           newMetaType' <- normalise newMetaType
 
           case closed newMetaType' of
@@ -150,8 +149,9 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
                 (close identity newMetaType'')
                 (Vector.length vs')
                 (metaSourceLoc m)
-              let e = Meta m' $ (\v -> (varPlicitness v, pure v)) <$> vs'
-                  e' = lams vs e
+              ctx <- getContext
+              let e = Meta m' $ (\v -> (Context.lookupPlicitness v ctx, pure v)) <$> vs'
+              e' <- lams vs e
               solve m $ close (panic "unify sameVar not closed") e'
               unify cxt expr1 expr2
 
@@ -162,11 +162,10 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
     typeMismatch = do
       printedCxt <- prettyContext cxt
       loc <- getCurrentLocation
-      throwError $ TypeError
-        ("Type mismatch" <> PP.line <>
-          PP.vcat printedCxt)
-          loc
-          mempty
+      let
+        err = "Type mismatch" <> PP.line <> PP.vcat printedCxt
+      logCategory "tc.unify.error" $ shower err
+      throwError $ TypeError err loc mempty
 
 occurs
   :: (MonadElaborate m, MonadError Error m)
@@ -214,67 +213,89 @@ prettyContext cxt = do
 
 prune
   :: (MonadElaborate m, MonadError Error m)
-  => HashSet FreeV
+  => HashSet FreeVar
   -> CoreM
   -> m CoreM
 prune allowed expr = Log.indent $ do
   logMeta "tc.unify.prune" "prune expr" $ zonk expr
-  logShow "tc.unify.prune" "prune allowed" $ pretty <$> toList allowed
-  res <- inUpdatedContext (const mempty) $ bindMetas go expr
+  logShow "tc.unify.prune" "prune allowed" $ toList allowed
+  localVarMarker <- Context.freeVar
+  res <- bindMetas (go localVarMarker) expr
   logMeta "tc.unify.prune" "prune res" $ zonk res
   return res
   where
-    go m es = do
+    go localVarMarker m es = do
       -- logShow 30 "prune" $ metaId m
       sol <- solution m
       case sol of
         Just e ->
-          bindMetas go $ betaApps (open e) es
+          bindMetas (go localVarMarker) $ betaApps (open e) es
         Nothing -> do
           es' <- mapM (mapM whnf) es
-          localAllowed <- toHashSet <$> getLocalVars
-          case distinctVarView es' of
-            Nothing ->
-              return $ Meta m es'
-            Just pvs
-              | Vector.length vs' == Vector.length vs ->
+          let
+            allowedes' = map (\x -> (isAllowedExpr x, x)) es'
+            es'' = snd <$> Vector.filter fst allowedes'
+          if Vector.length es'' == Vector.length es' then
+            return $ Meta m es'
+          else do
+            -- newMetaType <- pruneType (open $ metaType m) (fst <$> allowedes')
+
+            -- newMetaType <- prune (toHashSet vs') mType
+            -- newMetaType' <- normalise =<< pis vs' newMetaType
+            -- logShow "tc.prune" "prune m" $ metaId m
+            -- logMeta "tc.prune" "prune metaType" $ zonk (open $ metaType m :: CoreM)
+            -- logMeta "tc.prune" "prune newMetaType'" $ zonk newMetaType'
+            -- logShow "tc.prune" "prune vs" vs
+            -- logShow "tc.prune" "prune vs'" vs'
+            maybeNewMetaType <- pruneMetaType (toList $ fst <$> allowedes') $ metaType m
+            case maybeNewMetaType of
+              Nothing -> do
+                logCategory "tc.prune" "prune not closed newMetaType'"
                 return $ Meta m es'
-              | otherwise -> do
-                newMetaType <- prune (toHashSet vs') mType
-                newMetaType' <- normalise $ pis vs' newMetaType
-                logShow "tc.prune" "prune m" $ metaId m
-                logMeta "tc.prune" "prune metaType" $ zonk (open $ metaType m :: CoreM)
-                logMeta "tc.prune" "prune newMetaType'" $ zonk newMetaType'
-                logShow "tc.prune" "prune vs" $ varId <$> vs
-                logShow "tc.prune" "prune vs'" $ varId <$> vs'
-                case closed newMetaType' of
+              Just newMetaType -> do
+                m' <- explicitExists
+                  (metaHint m)
+                  (metaPlicitness m)
+                  newMetaType
+                  (Vector.length es'')
+                  (metaSourceLoc m)
+                let
+                  tele = takeTele (metaArity m) $ piTelescope $ open $ metaType m
+                e <- teleExtendContext tele $ \vs ->
+                  lams vs
+                    $ Meta m' (snd <$> Vector.filter fst (Vector.zipWith (\(b, (p, _)) v -> (b, (p, pure v))) allowedes' vs))
+                -- logShow 30 "prune varTypes" =<< mapM (prettyMeta . varType) vs
+                -- logShow 30 "prune vs'" $ varId <$> vs'
+                -- logShow 30 "prune varTypes'" =<< mapM (prettyMeta . varType) vs'
+                logMeta "tc.prune" "prune e'" $ zonk e
+                case closed e of
                   Nothing -> do
-                    logShow "tc.prune" "prune not closed newMetaType'" ()
+                    logCategory "tc.prune" "prune not closed e'"
                     return $ Meta m es'
-                  Just newMetaType'' -> do
-                    m' <- explicitExists
-                      (metaHint m)
-                      (metaPlicitness m)
-                      (close identity newMetaType'')
-                      (Vector.length vs')
-                      (metaSourceLoc m)
-                    let e = Meta m' $ (\v -> (varPlicitness v, pure v)) <$> vs'
-                        e' = lams plicitVs e
-                    -- logShow 30 "prune varTypes" =<< mapM (prettyMeta . varType) vs
-                    -- logShow 30 "prune vs'" $ varId <$> vs'
-                    -- logShow 30 "prune varTypes'" =<< mapM (prettyMeta . varType) vs'
-                    logMeta "tc.prune" "prune e'" $ zonk e'
-                    case closed e' of
-                      Nothing -> do
-                        logShow "tc.prune" "prune not closed e'" ()
-                        return $ Meta m es'
-                      Just closedSol -> do
-                        logMeta "tc.prune" "prune closed" $ zonk closedSol
-                        solve m $ close identity closedSol
-                        return e
-              | otherwise -> return $ Meta m es'
-              where
-                vs = snd <$> pvs
-                vs' = Vector.filter (`HashSet.member` (allowed <> localAllowed)) vs
-                plicitVs = (\(p, v) -> v { varPlicitness = p }) <$> pvs
-                Just mType = typeApps (open $ metaType m) es
+                  Just closedSol -> do
+                    logMeta "tc.prune" "prune closed" $ vacuous <$> zonk closedSol
+                    solve m $ close identity closedSol
+                    return $ Meta m' es''
+          where
+            isAllowedExpr (_, Var v) = v > localVarMarker || v `HashSet.member` allowed
+            isAllowedExpr _ = True
+
+pruneMetaType
+  :: (MonadElaborate m, MonadError Error m)
+  => [Bool]
+  -> Closed (Expr MetaVar)
+  -> m (Maybe (Closed (Expr MetaVar)))
+pruneMetaType filt (Closed expr) = do
+  result <- go mempty filt expr
+  return $ close identity <$> closed result
+  where
+    go allowed [] e = prune allowed e
+    go allowed (True:xs) (Pi h p t s) = do
+      t' <- prune allowed t
+      Context.freshExtend (binding h p t') $ \v -> do
+        e <- go (HashSet.insert v allowed) xs $ instantiate1 (pure v) s
+        pi_ v e
+    go allowed (False:xs) (Pi h p t s) =
+      Context.freshExtend (binding h p t) $ \v ->
+        go allowed xs $ instantiate1 (pure v) s
+    go _ (_:_) _ = panic "pruneMetaType non-pi"

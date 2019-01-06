@@ -8,17 +8,17 @@ import Data.List.NonEmpty(NonEmpty)
 import Data.Vector(Vector)
 
 import Syntax hiding (Definition)
-import Syntax.Pre.Literal as Literal
+import qualified Syntax.Pre.Literal as Pre
 import Syntax.Pre.Pattern
 
 data Expr
   = Var PreName
-  | Lit Literal.Literal
-  | Pi !Plicitness (Pat PreName Type PreName) Expr
-  | Lam !Plicitness (Pat PreName Type PreName) Expr
+  | Lit Pre.Literal
+  | Pi !Plicitness (Pat PreName Pre.Literal Type PreName) Expr
+  | Lam !Plicitness (Pat PreName Pre.Literal Type PreName) Expr
   | App Expr !Plicitness Expr
   | Let (Vector (SourceLoc, Definition Expr)) Expr
-  | Case Expr [(Pat PreName Expr PreName, Expr)]
+  | Case Expr [(Pat PreName Pre.Literal Expr PreName, Expr)]
   | ExternCode (Extern Expr)
   | Wildcard
   | SourceLoc !SourceLoc Type
@@ -42,19 +42,19 @@ data TopLevelDefinition
   deriving (Show)
 
 data Clause e
-  = Clause (Vector (Plicitness, Pat PreName e PreName)) e
+  = Clause (Vector (Plicitness, Pat PreName Pre.Literal e PreName)) e
   deriving (Show)
 
 -------------------------------------------------------------------------------
 -- Smart constructors
 pis
-  :: [(Plicitness, Pat PreName Type PreName)]
+  :: [(Plicitness, Pat PreName Pre.Literal Type PreName)]
   -> Expr
   -> Expr
 pis ps e = foldr (uncurry Pi) e ps
 
 lams
-  :: [(Plicitness, Pat PreName Type PreName)]
+  :: [(Plicitness, Pat PreName Pre.Literal Type PreName)]
   -> Expr
   -> Expr
 lams ps e = foldr (uncurry Lam)  e ps

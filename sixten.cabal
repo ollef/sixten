@@ -96,11 +96,9 @@ library
                        Elaboration.TypeCheck.Definition
                        Elaboration.TypeCheck.Expr
                        Elaboration.TypeCheck.Literal
-                       Elaboration.TypeCheck.Pattern
                        Elaboration.TypeOf
                        Elaboration.Unify
                        Error
-                       FreeVar
                        Frontend.DupCheck
                        Frontend.Parse
                        Frontend.ResolveNames
@@ -111,8 +109,8 @@ library
                        Syntax.Branches
                        Syntax.Class
                        Syntax.Closed
+                       Syntax.Context
                        Syntax.Core
-                       Syntax.Core.Pattern
                        Syntax.Data
                        Syntax.Definition
                        Syntax.Direction
@@ -138,7 +136,6 @@ library
                        Syntax.Sized.SLambda
                        Syntax.Telescope
                        TypeRep
-                       TypedFreeVar
                        Util
                        Util.MultiHashMap
                        Util.TopoSort

@@ -7,14 +7,13 @@ import Bound
 import Control.Monad.Morph
 import Data.Vector(Vector)
 
-import FreeVar
+import Effect.Context as Context
 import Pretty
 import Syntax.Annotation
 import Syntax.GlobalBind
 import Syntax.Name
 import Syntax.Sized.Anno
 import Syntax.Telescope
-import qualified TypedFreeVar as Typed
 
 data Function expr v
   = Function (Telescope expr v) (AnnoScope TeleVar expr v)
@@ -37,19 +36,23 @@ data Definition expr v
 
 -------------------------------------------------------------------------------
 -- Helpers
-function
-  :: Monad expr
-  => Vector (FreeVar d, expr (FreeVar d))
-  -> Anno expr (FreeVar d)
-  -> Function expr (FreeVar d)
-function vs = Function (varTelescope vs) . abstractAnno (teleAbstraction $ fst <$> vs)
+typedFunction
+  :: (Monad expr, MonadContext expr' m)
+  => Vector (FreeVar, expr FreeVar)
+  -> Anno expr FreeVar
+  -> m (Function expr FreeVar)
+typedFunction vs e = do
+  tele <- varTypeTelescope vs
+  return $ Function tele $ abstractAnno (teleAbstraction $ fst <$> vs) e
 
-functionTyped
-  :: Monad expr
-  => Vector (Typed.FreeVar expr)
-  -> Anno expr (Typed.FreeVar expr)
-  -> Function expr (Typed.FreeVar expr)
-functionTyped vs = Function (Typed.varTelescope vs) . abstractAnno (teleAbstraction vs)
+function
+  :: (Monad expr, MonadContext (expr FreeVar) m)
+  => Vector FreeVar
+  -> Anno expr FreeVar
+  -> m (Function expr FreeVar)
+function vs e = do
+  tele <- varTelescope vs
+  return $ Function tele $ abstractAnno (teleAbstraction vs) e
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -88,7 +91,7 @@ instance GBound Definition where
 
 instance (v ~ Doc, Pretty (expr v), Monad expr) => Pretty (Function expr v) where
   prettyM (Function vs s) = parens `above` absPrec $
-    withNameHints (teleNames vs) $ \ns ->
+    withTeleHints vs $ \ns ->
       "\\" <> prettyTeleVars ns vs <> "." <+>
       associate absPrec (prettyM $ instantiateAnnoTele (pure . fromName) ns s)
 

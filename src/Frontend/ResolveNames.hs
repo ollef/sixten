@@ -221,12 +221,12 @@ resolveParams
   => [(Plicitness, Name, Unscoped.Type)]
   -> ResolveNames (Telescope Scoped.Expr PreName, f PreName -> Scope TeleVar f PreName)
 resolveParams params = do
-  params' <- forM params $ \(p, n, t) -> do
+  params' <- forM (toVector params) $ \(p, n, t) -> do
     t' <- resolveExpr t
-    return (fromName n, p, t')
-  let paramNames = fst3 <$> params'
-      abstr = abstract $ teleAbstraction $ Vector.fromList paramNames
-  return (telescope fromPreName params', abstr)
+    return (fromName n, binding (fromName n) p t')
+  let paramNames = fst <$> params'
+      abstr = abstract $ teleAbstraction paramNames
+  return (bindingTelescope params', abstr)
 
 resolveDefinition
   :: Unscoped.Definition Unscoped.Expr
@@ -296,8 +296,8 @@ resolveExpr expr = case expr of
         (Scoped.Lit $ Literal.String $ shower $ pretty e)
 
 resolvePat
-  :: Pat PreName Unscoped.Expr PreName
-  -> ResolveNames (Pat (HashSet QConstr) (Scoped.Expr PreName) PreName)
+  :: Pat PreName Scoped.Literal Unscoped.Expr PreName
+  -> ResolveNames (Pat (HashSet QConstr) Scoped.Literal (Scoped.Expr PreName) PreName)
 resolvePat pat = case pat of
   VarPat h v -> do
     constrCandidates <- asks (($ v) . scopeConstrs)

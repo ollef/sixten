@@ -26,3 +26,4 @@ import Syntax.Pattern as X
 import Syntax.PreName as X
 import Syntax.QName as X
 import Syntax.Telescope as X
+import Syntax.Context as X(Context, FreeVar)

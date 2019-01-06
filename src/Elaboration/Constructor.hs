@@ -10,11 +10,11 @@ import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect
+import qualified Effect.Context as Context
 import Elaboration.Constraint
 import Elaboration.Monad
 import Syntax
 import qualified Syntax.Core as Core
-import TypedFreeVar
 import Util
 
 resolveConstr
@@ -50,9 +50,9 @@ resolveConstr cs expected = do
     findExpectedDataType typ = do
       typ' <- whnf typ
       case typ' of
-        Core.Pi h p t s -> do
-          v <- freeVar h p t
-          findExpectedDataType $ Util.instantiate1 (pure v) s
+        Core.Pi h p t s ->
+          Context.freshExtend (binding h p t) $ \v ->
+            findExpectedDataType $ Util.instantiate1 (pure v) s
         Core.App t1 _ _ -> findExpectedDataType t1
         Builtin.QGlobal v -> do
           d <- fetchDefinition $ gname v

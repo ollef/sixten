@@ -2,12 +2,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Elaboration.TypeCheck.Data where
 
-import Prelude(unzip3)
 import Protolude hiding (typeRep)
+
+import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect
+import qualified Effect.Context as Context
 import Elaboration.Constraint as Constraint
 import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
@@ -18,25 +20,26 @@ import Elaboration.Unify
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
-import TypedFreeVar
 import qualified TypeRep
 
 checkDataDef
-  :: FreeV
-  -> DataDef Pre.Expr FreeV
-  -> Elaborate (DataDef (Core.Expr MetaVar) FreeV, CoreM)
-checkDataDef var (DataDef ps cs) =
+  :: FreeVar
+  -> DataDef Pre.Expr FreeVar
+  -> CoreM
+  -> Elaborate (DataDef (Core.Expr MetaVar) FreeVar, CoreM)
+checkDataDef var (DataDef ps cs) typ =
   -- TODO: These vars are typechecked twice (in checkAndGeneraliseDefs as the
 -- expected type and here). Can we clean this up?
   teleMapExtendContext ps (`checkPoly` Builtin.Type) $ \vs -> do
-    runUnify (unify [] (Core.pis vs Builtin.Type) $ varType var) report
+    typ' <- Core.pis vs Builtin.Type
+    runUnify (unify [] typ' typ) report
 
-    let constrRetType = Core.apps (pure var) $ (\v -> (varPlicitness v, pure v)) <$> vs
+    let
+      pvs = Vector.zipWith (\p v -> (p, pure v)) (telePlics ps) vs
+      constrRetType = Core.apps (pure var) pvs
 
-    (cs', rets, sizes) <- fmap unzip3 $ forM cs $ \(ConstrDef c t) ->
-      checkConstrDef $ ConstrDef c $ instantiateTele pure vs t
-
-    mapM_ (flip runUnify report . unify [] constrRetType) rets
+    (cs', sizes) <- fmap unzip $ forM cs $ \(ConstrDef c t) ->
+      checkConstrDef (ConstrDef c $ instantiateTele pure vs t) constrRetType
 
     intRep <- fetchIntRep
 
@@ -57,26 +60,35 @@ checkDataDef var (DataDef ps cs) =
     typeRep' <- whnfExpandingTypeReps typeRep
     logMeta "tc.data" "checkDataDef typeRep" $ zonk typeRep'
 
-    return (dataDef vs cs', Core.lams vs typeRep')
+    result <- dataDef vs cs'
+    paramTypeRep <- Core.lams vs typeRep'
+    return (result, paramTypeRep)
 
 checkConstrDef
   :: ConstrDef PreM
-  -> Elaborate (ConstrDef CoreM, CoreM, CoreM)
-checkConstrDef (ConstrDef c typ) = do
-  typ' <- checkPoly typ Builtin.Type
-  (sizes, ret) <- go typ'
+  -> CoreM
+  -> Elaborate (ConstrDef CoreM, CoreM)
+checkConstrDef (ConstrDef c ctype) retType = do
+  logPretty "tc.def.constr" "checkConstrDef constr" $ pure c
+  ctype' <- checkPoly ctype Builtin.Type
+  logMeta "tc.def.constr" "checkConstrDef ctype" $ zonk ctype'
+  sizes <- go ctype'
   let size = foldl' productType (Core.MkType TypeRep.UnitRep) sizes
-  return (ConstrDef c typ', ret, size)
+  logMeta "tc.def.constr" "checkConstrDef size" $ zonk size
+  return (ConstrDef c ctype', size)
   where
-    -- TODO: Check for escaping type variables?
+    -- TODO: Check for escaping type variables and improve error message
     go t = do
       t' <- whnf t
       go' t'
-    go' (Core.Pi h p t s) =
-      extendContext h p t $ \v -> do
-        (sizes, ret) <- go $ instantiate1 (pure v) s
-        return (t : sizes, ret)
-    go' ret = return ([], ret)
+    go' (Core.Pi h p t s) = do
+      rep <- whnfExpandingTypeReps t
+      Context.freshExtend (binding h p t) $ \v -> do
+        sizes <- go $ instantiate1 (pure v) s
+        return $ rep : sizes
+    go' ret = do
+      runUnify (unify [] retType ret) report
+      return []
 
 -------------------------------------------------------------------------------
 -- Type helpers

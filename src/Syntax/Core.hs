@@ -21,8 +21,9 @@ import Data.Deriving
 import Data.Foldable as Foldable
 import Data.Vector(Vector)
 
+import Effect
+import qualified Effect.Context as Context
 import Syntax
-import TypedFreeVar
 import TypeRep(TypeRep)
 import Util
 import Util.Tsil
@@ -56,31 +57,86 @@ sourceLocView :: Expr m v -> (SourceLoc, Expr m v)
 sourceLocView (SourceLoc loc (unSourceLoc -> e)) = (loc, e)
 sourceLocView e = (noSourceLoc "sourceLocView", e)
 
-type FreeExprVar m = FreeVar (Expr m)
+lam
+  :: MonadContext (Expr meta FreeVar) m
+  => FreeVar
+  -> Expr meta FreeVar
+  -> m (Expr meta FreeVar)
+lam v e = do
+  Context.Binding h p t _ <- Context.lookup v
+  return $ Lam h p t $ abstract1 v e
 
-lam :: FreeExprVar m -> Expr m (FreeExprVar m) -> Expr m (FreeExprVar m)
-lam v e = Lam (varHint v) (varPlicitness v) (varType v) $ abstract1 v e
+plicitLam
+  :: MonadContext (Expr meta FreeVar) m
+  => Plicitness
+  -> FreeVar
+  -> Expr meta FreeVar
+  -> m (Expr meta FreeVar)
+plicitLam p v e = do
+  Context.Binding h _ t _ <- Context.lookup v
+  return $ Lam h p t $ abstract1 v e
 
-pi_ :: FreeExprVar m -> Expr m (FreeExprVar m) -> Expr m (FreeExprVar m)
-pi_ v e = Pi (varHint v) (varPlicitness v) (varType v) $ abstract1 v e
+pi_
+  :: MonadContext (Expr meta FreeVar) m
+  => FreeVar
+  -> Expr meta FreeVar
+  -> m (Expr meta FreeVar)
+pi_ v e = do
+  Context.Binding h p t _ <- Context.lookup v
+  return $ Pi h p t $ abstract1 v e
 
-lams :: Foldable t => t (FreeExprVar m) -> Expr m (FreeExprVar m) -> Expr m (FreeExprVar m)
-lams xs e = foldr lam e xs
+plicitPi
+  :: MonadContext (Expr meta FreeVar) m
+  => Plicitness
+  -> FreeVar
+  -> Expr meta FreeVar
+  -> m (Expr meta FreeVar)
+plicitPi p v e = do
+  Context.Binding h _ t _ <- Context.lookup v
+  return $ Pi h p t $ abstract1 v e
 
-pis :: Foldable t => t (FreeExprVar m) -> Expr m (FreeExprVar m) -> Expr m (FreeExprVar m)
-pis xs e = foldr pi_ e xs
+lams
+  :: (MonadContext (Expr meta FreeVar) m, Foldable t)
+  => t FreeVar
+  -> Expr meta FreeVar
+  -> m (Expr meta FreeVar)
+lams xs e = foldrM lam e xs
+
+plicitLams
+  :: (MonadContext (Expr meta FreeVar) m, Foldable t)
+  => t (Plicitness, FreeVar)
+  -> Expr meta FreeVar
+  -> m (Expr meta FreeVar)
+plicitLams xs e = foldrM (uncurry plicitLam) e xs
+
+pis
+  :: (MonadContext (Expr meta FreeVar) m, Foldable t)
+  => t FreeVar
+  -> Expr meta FreeVar
+  -> m (Expr meta FreeVar)
+pis xs e = foldrM pi_ e xs
+
+plicitPis
+  :: (MonadContext (Expr meta FreeVar) m, Foldable t)
+  => t (Plicitness, FreeVar)
+  -> Expr meta FreeVar
+  -> m (Expr meta FreeVar)
+plicitPis xs e = foldrM (uncurry plicitPi) e xs
 
 let_
-  :: Vector (FreeExprVar m, SourceLoc, Expr m (FreeExprVar m))
-  -> Expr m (FreeExprVar m)
-  -> Expr m (FreeExprVar m)
+  :: MonadContext (Expr meta FreeVar) m
+  => Vector (FreeVar, SourceLoc, Expr meta FreeVar)
+  -> Expr meta FreeVar
+  -> m (Expr meta FreeVar)
 let_ ds body = do
+  context <- getContext
   let abstr = letAbstraction $ fst3 <$> ds
       ds' = LetRec
-        [ LetBinding (varHint v) loc (abstract abstr e) (varType v)
+        [ LetBinding h loc (abstract abstr e) t
         | (v, loc, e) <- ds
+        , let Context.Binding h _ t _ = Context.lookup v context
         ]
-  Let ds' $ abstract abstr body
+  return $ Let ds' $ abstract abstr body
 
 pattern MkType :: TypeRep -> Expr m v
 pattern MkType rep = Lit (TypeRep rep)
@@ -262,7 +318,7 @@ instance (v ~ Doc, Pretty m, Eq m) => Pretty (Expr m v) where
       <+> "in" <+> prettyM (instantiateLet (pure . fromName) ns s)
     Case e brs retType -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+> "of" <+> parens (prettyM retType)
-        <$$> indent 2 (prettyM brs)
+        <$$> Syntax.indent 2 (prettyM brs)
     ExternCode c t -> parens `above` annoPrec $
       prettyM c <+> ":" <+> prettyM t
     SourceLoc _ e -> prettyM e

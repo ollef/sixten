@@ -245,7 +245,7 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
     withReportEnv $ \reportEnv_ ->
       fmap concat $ for (HashMap.toList coreDefs) $ \(name, (_, ClosedDefinition def, _)) ->
         runVIX logEnv_ reportEnv_ $ do
-          def' <- SLam.runSlam $ SLam.slamDef def
+          def' <- SLam.runSLam $ SLam.slamDef def
           let def'' = denatAnno def'
           liftToDefinition name $ close (panic "LambdaLifted close") def''
 

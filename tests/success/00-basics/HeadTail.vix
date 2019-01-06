@@ -7,6 +7,7 @@ type List a where
   Cons : a -> Ptr (List a) -> List a
 
 error 0 = error 0
+error n = error 0
 
 head : @(a : Type) -> Ptr (List a) -> a
 head xs = case deref xs of

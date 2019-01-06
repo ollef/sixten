@@ -9,11 +9,14 @@ import Protolude hiding (diff, typeRep)
 import qualified Data.HashSet as HashSet
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
+import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect
+import qualified Effect.Context as Context
 import Elaboration.Constraint
+import Elaboration.MetaVar.Zonk
 import Elaboration.MetaVar
 import Elaboration.Monad
 import Elaboration.Subtype
@@ -24,26 +27,28 @@ import Elaboration.Unify
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
-import TypedFreeVar
 import qualified TypeRep
 import Util
 
 checkClassDef
-  :: FreeV
-  -> ClassDef Pre.Expr FreeV
-  -> Elaborate (ClassDef (Core.Expr MetaVar) FreeV)
-checkClassDef classVar (ClassDef params ms) =
+  :: ClassDef Pre.Expr FreeVar
+  -> CoreM
+  -> Elaborate (ClassDef (Core.Expr MetaVar) FreeVar)
+checkClassDef (ClassDef params ms) typ = do
   -- TODO: These vars are typechecked twice (in checkAndGeneraliseDefs as the
   -- expected type and here). Can we clean this up?
+  logMeta "tc.class" "class type" $ zonk typ
   teleMapExtendContext params (`checkPoly` Builtin.Type) $ \paramVars -> do
-    runUnify (unify [] (Core.pis paramVars Builtin.Type) $ varType classVar) report
+    typ' <- Core.pis paramVars Builtin.Type
+    runUnify (unify [] typ' typ) report
 
     ms' <- forM ms $ \(Method mname mloc s) -> do
-      let typ = instantiateTele pure paramVars s
-      typ' <- checkPoly typ Builtin.Type
-      return $ Method mname mloc typ'
+      let
+        methodType = instantiateTele pure paramVars s
+      methodType' <- checkPoly methodType Builtin.Type
+      return $ Method mname mloc methodType'
 
-    return $ classDef paramVars ms'
+    classDef paramVars ms'
 
 {-
   class C a where
@@ -56,57 +61,64 @@ checkClassDef classVar (ClassDef params ms) =
   f (MkC f') = f'
 -}
 desugarClassDef
-  :: FreeV
+  :: FreeVar
   -> QName
   -> SourceLoc
-  -> ClassDef (Core.Expr MetaVar) FreeV
-  -> Elaborate (Vector (FreeV, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
+  -> ClassDef (Core.Expr MetaVar) FreeVar
+  -> Elaborate
+    ( (FreeVar, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeVar)
+    , Vector (FreeVar, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeVar, CoreM)
+    )
 desugarClassDef classVar name loc (ClassDef params ms) =
   teleExtendContext params $ \paramVars -> do
+    let
+      ms' = [Method mname mloc $ instantiateTele pure paramVars s | Method mname mloc s <- ms]
 
-    let ms' = [Method mname mloc $ instantiateTele pure paramVars s | Method mname mloc s <- ms]
+      plicitParamVars =
+        Vector.zip (telePlics params) paramVars
+      implicitParamVars =
+        first implicitise <$> plicitParamVars
 
-    let implicitParamVars = (\v -> v { varPlicitness = implicitise $ varPlicitness v }) <$> paramVars
-        qcon = classConstr name
-        abstr = teleAbstraction paramVars
-        classType = Core.apps (pure classVar) $ (\v -> (varPlicitness v, pure v)) <$> paramVars
-        classConstrType = foldr
-          (\(Method mname _ mtyp) -> Core.Pi (fromName mname) Explicit mtyp . abstractNone)
-          classType
-          ms'
+      qcon = classConstr name
+      classType = Core.apps (pure classVar) $ second pure <$> plicitParamVars
+      classConstrType = foldr
+        (\(Method mname _ mtyp) -> Core.Pi (fromName mname) Explicit mtyp . abstractNone)
+        classType
+        ms'
 
-        sizes = methodExpr <$> ms'
-        typeRep = foldl' productType (Core.MkType TypeRep.UnitRep) sizes
+      sizes = methodExpr <$> ms'
+      typeRep = foldl' productType (Core.MkType TypeRep.UnitRep) sizes
 
     typeRep' <- whnfExpandingTypeReps typeRep
+    parameterisedTypeRep <- Core.lams paramVars typeRep'
 
-    let classDataDef
-          = DataDefinition
-            (DataDef
-              (varTelescope paramVars)
-              [ConstrDef (qconstrConstr qcon) $ abstract abstr classConstrType]
-            )
-          $ Core.lams paramVars typeRep'
+    dd <- dataDef paramVars [ConstrDef (qconstrConstr qcon) classConstrType]
 
-    conArgVars <- forM ms' $ \(Method mname _ t) ->
-      forall (fromName mname) Explicit t
-
-    lamVar <- forall mempty Constraint classType
-
-    methodDefs <- forM (zip conArgVars ms') $ \(v, Method mname mloc mtyp) -> do
-      let fullType = Core.pis implicitParamVars $ Core.pi_ lamVar mtyp
-          mdef
-            = ConstantDefinition Concrete
-            $ Core.lams implicitParamVars
-            $ Core.lam lamVar
+    let
+      classDataDef = DataDefinition dd parameterisedTypeRep
+      conArgBindings = foreach ms' $ \(Method mname _ t) ->
+        binding (fromName mname) Explicit t
+    Context.freshExtends conArgBindings $ \conArgVars -> do
+      methodDefs <- forM (zip conArgVars ms') $ \(v, Method mname mloc mtyp) ->
+        Context.freshExtend (binding mempty Constraint classType) $ \lamVar -> do
+          fullType <- Core.plicitPis implicitParamVars =<< Core.pi_ lamVar mtyp
+          br <- conBranch qcon (toVector conArgVars) $ pure v
+          lam
+            <- Core.lam lamVar
             $ Core.Case
               (pure lamVar)
-              (ConBranches [conBranchTyped qcon (toVector conArgVars) $ pure v])
+              (ConBranches [br])
               fullType
-      var <- forall (fromName mname) Explicit fullType
-      return (var, gname $ QName (qnameModule name) mname, mloc, mdef)
+          mdef
+            <- ConstantDefinition Concrete
+            <$> Core.plicitLams implicitParamVars lam
+          var <- Context.freeVar
+          return (var, gname $ QName (qnameModule name) mname, mloc, mdef, fullType)
 
-    return $ pure (classVar, gname name, loc, classDataDef) <> toVector methodDefs
+      return
+        ( (classVar, gname name, loc, classDataDef)
+        , toVector methodDefs
+        )
 
 {-
   instanceName = instance C a => C [a] where
@@ -121,23 +133,34 @@ desugarClassDef classVar name loc (ClassDef params ms) =
     MkC instanceName-f
 -}
 checkInstance
-  :: FreeV
+  :: FreeVar
   -> QName
   -> SourceLoc
-  -> Pre.InstanceDef Pre.Expr FreeV
-  -> Elaborate (Vector (FreeV, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
-checkInstance ivar iname iloc (Pre.InstanceDef _instanceType methods) =
-  deepSkolemiseInner (varType ivar) mempty $ \skolemVars innerInstanceType skolemFun -> do
+  -> Pre.InstanceDef Pre.Expr FreeVar
+  -> CoreM
+  -> Elaborate
+    ( (FreeVar, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeVar)
+    , Vector (FreeVar, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeVar, CoreM)
+    )
+checkInstance ivar iname iloc (Pre.InstanceDef _instanceType methods) typ =
+  deepSkolemiseInner typ mempty $ \skolemVars innerInstanceType skolemFun -> do
     innerInstanceType' <- whnf innerInstanceType
+    let
+      errorInstance = do
+        lam
+          <- Core.lams skolemVars
+          $ Builtin.Fail innerInstanceType'
+        return ((ivar, gname iname, iloc, ConstantDefinition Concrete $ skolemFun lam), mempty)
     case Core.appsView innerInstanceType' of
       (Builtin.QGlobal className, args) -> do
         maybeClassDef <- getClassDef className
         case maybeClassDef of
-          Nothing -> return mempty
+          Nothing -> errorInstance
           Just (ClassDef _params methodDefs) -> do
-            let names = methodName <$> methodDefs
-                methods' = sortOn (hashedElemIndex (toVector names) . methodName) methods
-                names' = methodName <$> methods'
+            let
+              names = methodName <$> methodDefs
+              methods' = sortOn (hashedElemIndex (toVector names) . methodName) methods
+              names' = methodName <$> methods'
             if names /= names' then do
               -- TODO more fine-grained recovery
               reportMethodProblem
@@ -145,39 +168,46 @@ checkInstance ivar iname iloc (Pre.InstanceDef _instanceType methods) =
                 (diff names names')
                 (diff names' names)
                 (duplicates names')
-              return mempty
+              errorInstance
             else do
               methodDefs' <- forM (zip methodDefs methods')
-                $ \(Method name _defLoc defType, Method _name loc (Pre.ConstantDef a clauses mtyp)) -> located loc $ do
-                  let instMethodType
-                        = instantiateTele snd (toVector args) defType
-                  expr <- case mtyp of
+                $ \(Method name _defLoc defType, Method _name loc (Pre.ConstantDef a clauses msig)) -> located loc $ do
+                  let
+                    instMethodType
+                      = instantiateTele snd (toVector args) defType
+                  expr <- case msig of
                     Nothing -> checkClauses clauses instMethodType
-                    Just typ -> do
-                      typ' <- checkPoly typ Builtin.Type
+                    Just sig -> do
+                      typ' <- checkPoly sig Builtin.Type
                       expr <- checkClauses clauses typ'
                       f <- subtype typ' instMethodType
                       return $ f expr
-                  v <- forall (fromName name) Explicit $ Core.pis skolemVars instMethodType
-                  let gn = GName iname $ pure name
-                  return (v, gn, loc, ConstantDefinition a $ Core.lams skolemVars expr)
-              let skolemArgs = (\v -> (varPlicitness v, pure v)) <$> skolemVars
-                  methodArgs = (\(v, _, _, _) -> (Explicit, Core.apps (pure v) skolemArgs)) <$> methodDefs'
-                  implicitArgs = first implicitise <$> args
+                  fullType <- Core.pis skolemVars instMethodType
+                  v <- Context.freeVar
+                  let
+                    gn = GName iname $ pure name
+                  lam <- Core.lams skolemVars expr
+                  return (v, gn, loc, ConstantDefinition a lam, fullType)
+              ctx <- getContext
+              let
+                skolemArgs = (\v -> (Context.lookupPlicitness v ctx, pure v)) <$> skolemVars
+                methodArgs = (\(v, _, _, _, _) -> (Explicit, Core.apps (pure v) skolemArgs)) <$> methodDefs'
+                implicitArgs = first implicitise <$> args
+              lam
+                <- Core.lams skolemVars
+                $ Core.apps (Core.Con $ classConstr className)
+                $ implicitArgs <> methodArgs
               return
-                $ pure
-                  ( ivar
+                ( ( ivar
                   , gname iname
                   , iloc
-                  , ConstantDefinition Concrete
-                    $ skolemFun
-                    $ Core.lams skolemVars
-                    $ Core.apps (Core.Con $ classConstr className) $ implicitArgs <> methodArgs
+                  , ConstantDefinition Concrete $ skolemFun lam
                   )
-                <> toVector methodDefs'
+                , toVector methodDefs'
+                )
       _ -> do
         reportInvalidInstance
-        return mempty
+        errorInstance
   where
     diff xs ys = HashSet.toList $ HashSet.difference (toHashSet xs) (toHashSet ys)
     duplicates xs = mapMaybe p $ group xs
