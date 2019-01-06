@@ -1,4 +1,6 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
 module TypedFreeVar where
 
 import Prelude(showsPrec, showParen, showString, showChar)
@@ -21,33 +23,28 @@ import Syntax.NameHint
 import Syntax.Telescope
 import Util
 
-data FreeVar e = FreeVar
-  { varId :: !Int
-  , varHint :: !NameHint
-  , varPlicitness :: !Plicitness
-  , varValue :: Maybe (IORef (Maybe (e (FreeVar e))))
-  , varType :: e (FreeVar e)
+newtype FreeVar = FreeVar
+  { _varId :: Int
+  } deriving (Eq, Ord, Show, Hashable)
+
+data ContextEntry d e = ContextEntry
+  { _var :: !FreeVar
+  , _hint :: !NameHint
+  , _data :: !d
+  , _value :: !(Maybe (IORef (Maybe (e FreeVar))))
+  , _type :: e FreeVar
   }
 
-instance (Show1 e) => Show (FreeVar e) where
-  showsPrec d (FreeVar i h p _ t) = showParen (d > 10) $
-    showString "FreeVar" .
+instance (Show d, Show1 e) => Show (ContextEntry d e) where
+  showsPrec d (ContextEntry (FreeVar i) h p _ t) = showParen (d > 10) $
+    showString "ContextEntry" .
     showChar ' ' . showsPrec 11 i .
     showChar ' ' . showsPrec 11 h .
     showChar ' ' . showsPrec 11 p .
     showChar ' ' . showsPrec1 11 t
 
-instance Eq (FreeVar e) where
-  (==) = (==) `on` varId
-
-instance Ord (FreeVar e) where
-  compare = compare `on` varId
-
-instance Hashable (FreeVar e) where
-  hashWithSalt s = hashWithSalt s . varId
-
-instance Pretty (FreeVar e) where
-  pretty (FreeVar i h _ _ _)
+instance Pretty (ContextEntry d e) where
+  pretty (ContextEntry (FreeVar i) h _ _ _)
     | Text.null hintText = "$" <> shower i
     | isDigit (Text.last hintText) = "$" <> hint <> "-" <> shower i
     | otherwise = "$" <> hint <> shower i
@@ -57,41 +54,33 @@ instance Pretty (FreeVar e) where
 
 freeVar
   :: MonadFresh m
-  => NameHint
-  -> Plicitness
-  -> e (FreeVar e)
-  -> m (FreeVar e)
-freeVar h p t = do
-  i <- fresh
-  return $ FreeVar i h p Nothing t
+  => m FreeVar
+freeVar = FreeVar <$> fresh
 
 -- | Like freeVar, but with logging. TODO merge with freeVar?
 forall
   :: (MonadFresh m, MonadLog m)
-  => NameHint
-  -> Plicitness
-  -> e (FreeVar e)
-  -> m (FreeVar e)
-forall h p t = do
-  v <- freeVar h p t
-  logCategory "forall" $ "forall: " <> shower (varId v)
+  => m FreeVar
+forall = do
+  v <- freeVar
+  logCategory "forall" $ "forall: " <> shower (_varId v)
   return v
 
 extendContext
-  :: (MonadFresh m, MonadLog m, MonadContext (FreeVar e) m)
+  :: (MonadFresh m, MonadLog m, MonadContext (ContextEntry d e) m)
   => NameHint
-  -> Plicitness
-  -> e (FreeVar e)
-  -> (FreeVar e -> m a)
+  -> d
+  -> e FreeVar
+  -> (FreeVar -> m a)
   -> m a
 extendContext h p t k = do
-  v <- forall h p t
-  withVar v $ k v
+  v <- forall
+  withVar (ContextEntry v h p t) $ k v
 
 teleExtendContext
-  :: (MonadFresh m, MonadLog m, MonadContext (FreeVar e) m, Monad e)
-  => Telescope e (FreeVar e)
-  -> (Vector (FreeVar e) -> m a)
+  :: (MonadFresh m, MonadLog m, MonadContext (ContextEntry d e) m, Monad e)
+  => Telescope d e FreeVar
+  -> (Vector FreeVar -> m a)
   -> m a
 teleExtendContext tele k = do
   vs <- forTeleWithPrefixM tele $ \h p s vs -> do
@@ -100,10 +89,10 @@ teleExtendContext tele k = do
   withVars vs $ k vs
 
 teleMapExtendContext
-  :: (MonadFresh m, MonadLog m, MonadContext (FreeVar e') m, Monad e)
-  => Telescope e (FreeVar e')
-  -> (e (FreeVar e') -> m (e' (FreeVar e')))
-  -> (Vector (FreeVar e') -> m a)
+  :: (MonadFresh m, MonadLog m, MonadContext (ContextEntry d e') m, Monad e)
+  => Telescope d e FreeVar
+  -> (e FreeVar -> m (e' FreeVar))
+  -> (Vector FreeVar -> m a)
   -> m a
 teleMapExtendContext tele f k = do
   vs <- forTeleWithPrefixM tele $ \h p s vs -> do
@@ -113,9 +102,9 @@ teleMapExtendContext tele f k = do
   withVars vs $ k vs
 
 letExtendContext
-  :: (MonadFresh m, MonadLog m, MonadContext (FreeVar e) m)
-  => LetRec e (FreeVar e)
-  -> (Vector (FreeVar e) -> m a)
+  :: (MonadFresh m, MonadLog m, MonadContext (ContextEntry Plicitness e) m)
+  => LetRec e (ContextEntry Plicitness e)
+  -> (Vector (ContextEntry Plicitness e) -> m a)
   -> m a
 letExtendContext ds k = do
   vs <- forMLet ds $ \h _ _ t ->
@@ -123,10 +112,10 @@ letExtendContext ds k = do
   withVars vs $ k vs
 
 letMapExtendContext
-  :: (MonadFresh m, MonadLog m, MonadContext (FreeVar e') m)
-  => LetRec e (FreeVar e')
-  -> (e (FreeVar e') -> m (e' (FreeVar e')))
-  -> (Vector (FreeVar e') -> m a)
+  :: (MonadFresh m, MonadLog m, MonadContext (ContextEntry Plicitness e') m)
+  => LetRec e FreeVar
+  -> (e FreeVar -> m (e' FreeVar))
+  -> (Vector FreeVar -> m a)
   -> m a
 letMapExtendContext tele f k = do
   vs <- forMLet tele $ \h _ _ t -> do
@@ -137,12 +126,13 @@ letMapExtendContext tele f k = do
 letVar
   :: (MonadFresh m, MonadIO m)
   => NameHint
-  -> e (FreeVar e)
-  -> m (FreeVar e, e (FreeVar e) -> m ())
-letVar h t = do
+  -> d
+  -> e FreeVar
+  -> m (ContextEntry d e, e FreeVar -> m ())
+letVar h d t = do
   i <- fresh
   ref <- liftIO $ newIORef Nothing
-  return (FreeVar i h Explicit (Just ref) t, liftIO . writeIORef ref . Just)
+  return (ContextEntry (FreeVar i) h d (Just ref) t, liftIO . writeIORef ref . Just)
 
 showFreeVar
   :: (Functor e, Functor f, Foldable f, Pretty (f Doc), Pretty (e Doc))
