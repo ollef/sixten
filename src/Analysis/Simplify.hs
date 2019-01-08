@@ -113,9 +113,9 @@ etaLams glob applied tele scope = case go 0 $ fromScope scope of
   Nothing -> quantify Lam tele scope
   Just (i, expr) -> quantify Lam (takeTele (len - i) tele) $ toScope expr
   where
-    go i (App e a (Var (B n)))
+    go i (App e p (Var (B n)))
       | n == TeleVar (len - i')
-      , a == as Vector.! unTeleVar n
+      , p == ps Vector.! unTeleVar n
       , B n `Set.notMember` toSet (second (const ()) <$> e)
       = case go i' e of
         Nothing | etaAllowed e i' -> Just (i', e)
@@ -127,11 +127,11 @@ etaLams glob applied tele scope = case go 0 $ fromScope scope of
       = applied >= n -- termination doesn't matter since the expression is applied anyway
       || terminates glob e -- Use glob for termination to e.g. avoid making `loop = loop` out of `loop x = loop x`
     len = teleLength tele
-    as = telePlics tele
+    ps = telePlics tele
 
 betaApp ::  Expr meta v -> Plicitness -> Expr meta v -> Expr meta v
-betaApp (sourceLocView -> (loc, Lam h a1 t s)) a2 e2 | a1 == a2 = let_ (const True) h loc e2 t s
-betaApp e1 a e2 = App e1 a e2
+betaApp (sourceLocView -> (loc, Lam h p1 t s)) p2 e2 | p1 == p2 = let_ (const True) h loc e2 t s
+betaApp e1 p e2 = App e1 p e2
 
 betaApps
   :: Foldable t

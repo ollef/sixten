@@ -11,6 +11,8 @@ import Data.Functor.Classes
 import Data.Vector(Vector)
 
 import Pretty
+import Syntax.Annotation
+import Syntax.Context
 import Syntax.GlobalBind
 import Syntax.Name
 import Syntax.Telescope

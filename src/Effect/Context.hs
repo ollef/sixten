@@ -4,15 +4,13 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
 module Effect.Context where
 
 import Protolude
 
-import Control.Lens
+import Control.Lens hiding (Context)
 import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.ListT
@@ -21,48 +19,37 @@ import qualified Data.List.Class as ListT
 
 import qualified Util.Tsil as Tsil
 import Util.Tsil(Tsil)
+import Syntax.Context
 
-class Monad m => MonadContext v m | m -> v where
-  getLocalVars :: m (Tsil v)
-  default getLocalVars
-    :: (MonadTrans t, MonadContext v m1, m ~ t m1)
-    => m (Tsil v)
-  getLocalVars = lift getLocalVars
-  inUpdatedContext :: (Tsil v -> Tsil v) -> m a -> m a
+class Monad m => MonadContext e m | m -> e where
+  getContext :: m (Context e)
+  default getContext
+    :: (MonadTrans t, MonadContext e m1, m ~ t m1)
+    => m (Context e)
+  getContext = lift getContext
+  modifyContext :: (Context e -> Context e) -> m a -> m a
 
-newtype ContextEnv v = ContextEnv
-  { _localVars :: Tsil v
-  } deriving (Semigroup, Monoid)
+class HasContext e env | env -> e where
+  context :: Lens' env (Context e)
 
-makeLenses ''ContextEnv
-
-class HasContextEnv v env | env -> v where
-  contextEnv :: Lens' env (ContextEnv v)
-
-instance (HasContextEnv v env, Monad m) => MonadContext v (ReaderT env m) where
-  getLocalVars = view (contextEnv.localVars)
-  inUpdatedContext = local . over (contextEnv.localVars)
-
-withVar :: MonadContext v m => v -> m a -> m a
-withVar v = inUpdatedContext $ \vs -> Tsil.Snoc vs v
-
-withVars :: (MonadContext v m, Foldable t) => t v -> m a -> m a
-withVars vs' = inUpdatedContext (<> Tsil.fromList (toList vs'))
+instance (HasContext e env, Monad m) => MonadContext e (ReaderT env m) where
+  getContext = view context
+  modifyContext = local . over context
 
 ------------------------------------------------------------------------------
 -- mtl instances
 -------------------------------------------------------------------------------
-instance MonadContext v m => MonadContext v (StateT s m) where
-  inUpdatedContext f (StateT s) = StateT $ inUpdatedContext f <$> s
-instance MonadContext v m => MonadContext v (ListT m) where
-  inUpdatedContext f (ListT mxs) = ListT $ do
-    xs <- inUpdatedContext f mxs
+instance MonadContext e m => MonadContext e (StateT s m) where
+  modifyContext f (StateT s) = StateT $ modifyContext f <$> s
+instance MonadContext e m => MonadContext e (ListT m) where
+  modifyContext f (ListT mxs) = ListT $ do
+    xs <- modifyContext f mxs
     pure $ case xs of
       ListT.Nil -> ListT.Nil
-      ListT.Cons x xs' -> ListT.Cons x $ inUpdatedContext f xs'
-instance MonadContext v m => MonadContext v (ExceptT e m) where
-  inUpdatedContext f (ExceptT m) = ExceptT $ inUpdatedContext f m
-instance MonadContext v m => MonadContext v (MaybeT m) where
-  inUpdatedContext f (MaybeT m) = MaybeT $ inUpdatedContext f m
-instance MonadContext v m => MonadContext v (IdentityT m) where
-  inUpdatedContext f (IdentityT m) = IdentityT $ inUpdatedContext f m
+      ListT.Cons x xs' -> ListT.Cons x $ modifyContext f xs'
+instance MonadContext e m => MonadContext e (ExceptT e m) where
+  modifyContext f (ExceptT m) = ExceptT $ modifyContext f m
+instance MonadContext e m => MonadContext e (MaybeT m) where
+  modifyContext f (MaybeT m) = MaybeT $ modifyContext f m
+instance MonadContext e m => MonadContext e (IdentityT m) where
+  modifyContext f (IdentityT m) = IdentityT $ modifyContext f m

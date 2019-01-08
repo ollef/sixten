@@ -27,6 +27,7 @@ import Data.Functor.Classes
 import Data.List(groupBy)
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
+import Syntax.Context
 import qualified Data.Vector as Vector
 
 import Pretty
@@ -51,12 +52,16 @@ unTelescope (Telescope xs) = xs
 data TeleArg expr v = TeleArg !NameHint !Plicitness !(Scope TeleVar expr v)
   deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
 
-telescope :: (Foldable t, Monad expr, Eq v, Hashable v) => (v -> NameHint) -> t (v, Plicitness, expr v) -> Telescope expr v
-telescope hint vs
+varTelescope
+  :: Monad e
+  => Vector (FreeVar, Binding (e FreeVar))
+  -> Telescope d e FreeVar
+varTelescope vs = telescope
   = Telescope
-  $ fmap snd
-  $ forWithPrefix (toVector vs) $ \(v, p, e) vts ->
-    (v, TeleArg (hint v) p $ abstract (teleAbstraction (fst <$> vts)) e)
+  $ (\(v, Binding h p t _) -> TeleArg h p $ abstract abstr t)
+  <$> vs
+  where
+    abstr = teleAbstraction $ fst <$> vs
 
 mapPlics :: (Plicitness -> Plicitness) -> Telescope e v -> Telescope e v
 mapPlics f (Telescope xs) = Telescope $ (\(TeleArg h a s) -> TeleArg h (f a) s) <$> xs

@@ -223,10 +223,10 @@ resolveParams
 resolveParams params = do
   params' <- forM params $ \(p, n, t) -> do
     t' <- resolveExpr t
-    return (fromName n, p, t')
+    return (fromName n, Binding (fromName n) p t')
   let paramNames = fst3 <$> params'
       abstr = abstract $ teleAbstraction $ Vector.fromList paramNames
-  return (telescope fromPreName params', abstr)
+  return (varTelescope fromPreName params', abstr)
 
 resolveDefinition
   :: Unscoped.Definition Unscoped.Expr

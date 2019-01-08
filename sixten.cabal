@@ -111,6 +111,7 @@ library
                        Syntax.Branches
                        Syntax.Class
                        Syntax.Closed
+                       Syntax.Context
                        Syntax.Core
                        Syntax.Core.Pattern
                        Syntax.Data
