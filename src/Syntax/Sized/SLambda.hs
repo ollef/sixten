@@ -32,7 +32,7 @@ data Expr v
   | Lam !NameHint (Type v) (AnnoScope1 Expr v)
   | App (Expr v) (Anno Expr v)
   | Let (LetRec Expr v) (Scope LetVar Expr v)
-  | Case (Anno Expr v) (Branches () Expr v)
+  | Case (Anno Expr v) (Branches Expr v)
   | ExternCode (Extern (Anno Expr v)) (Type v)
   deriving (Foldable, Functor, Traversable)
 
@@ -43,10 +43,10 @@ type Type = Expr
 pattern MkType :: TypeRep -> Expr v
 pattern MkType rep = Lit (TypeRep rep)
 
-lam :: FreeVar d e -> Type (FreeVar d e) -> Anno Expr (FreeVar d e) -> Expr (FreeVar d e)
+lam :: FreeVar e -> Type (FreeVar e) -> Anno Expr (FreeVar e) -> Expr (FreeVar e)
 lam v t = Lam (varHint v) t . abstract1Anno v
 
-letRec :: Vector (FreeVar d e, Anno Expr (FreeVar d e)) -> Expr (FreeVar d e) -> Expr (FreeVar d e)
+letRec :: Vector (FreeVar e, Anno Expr (FreeVar e)) -> Expr (FreeVar e) -> Expr (FreeVar e)
 letRec ds expr = do
   let ds' = [LetBinding (varHint v) (noSourceLoc "SLambda") (abstr e) t | (v, Anno e t) <- ds]
   Let (LetRec ds') $ abstr expr
@@ -59,8 +59,8 @@ appsView = go []
     go args (App e1 e2) = go (e2:args) e1
     go args e = (e, Vector.fromList args)
 
-lamView :: Expr v -> Maybe (NameHint, (), Expr v, AnnoScope () Expr v)
-lamView (Lam h e s) = Just (h, (), e, s)
+lamView :: Expr v -> Maybe (NameHint, Plicitness, Expr v, AnnoScope () Expr v)
+lamView (Lam h t s) = Just (h, Explicit, t, s)
 lamView _ = Nothing
 
 let_ :: NameHint -> Expr v -> Type v -> Scope1 Expr v -> Expr v
@@ -92,7 +92,7 @@ instance Monad Expr where
     Case e brs -> Case (e >>>= f) (brs >>>= f)
     ExternCode c retType -> ExternCode ((>>>= f) <$> c) (retType >>= f)
 
-pattern Lams :: Telescope () Expr v -> AnnoScope TeleVar Expr v -> Expr v
+pattern Lams :: Telescope Expr v -> AnnoScope TeleVar Expr v -> Expr v
 pattern Lams tele s <- (annoBindingsViewM lamView -> Just (tele, s))
 
 instance GBind Expr GName where

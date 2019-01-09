@@ -106,7 +106,7 @@ simplifyDef glob = hoist $ simplifyExpr glob 0
 etaLams
   :: (GName -> Bool)
   -> Int
-  -> Telescope Plicitness (Expr meta) v
+  -> Telescope (Expr meta) v
   -> Scope TeleVar (Expr meta) v
   -> Expr meta v
 etaLams glob applied tele scope = case go 0 $ fromScope scope of
@@ -127,7 +127,7 @@ etaLams glob applied tele scope = case go 0 $ fromScope scope of
       = applied >= n -- termination doesn't matter since the expression is applied anyway
       || terminates glob e -- Use glob for termination to e.g. avoid making `loop = loop` out of `loop x = loop x`
     len = teleLength tele
-    as = teleAnnotations tele
+    as = telePlics tele
 
 betaApp ::  Expr meta v -> Plicitness -> Expr meta v -> Expr meta v
 betaApp (sourceLocView -> (loc, Lam h a1 t s)) a2 e2 | a1 == a2 = let_ (const True) h loc e2 t s

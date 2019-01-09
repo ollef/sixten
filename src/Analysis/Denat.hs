@@ -41,7 +41,7 @@ denatAnno (Anno e t) = Anno (denat e) (denat t)
 
 denatCase
   :: Anno Expr v
-  -> Branches () Expr v
+  -> Branches Expr v
   -> Expr v
 denatCase (Anno expr _) (ConBranches [ConBranch ZeroConstr _ztele zs, ConBranch SuccConstr _stele ss])
   = let_ mempty expr (global $ gname NatName)

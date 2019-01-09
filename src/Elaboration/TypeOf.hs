@@ -16,9 +16,7 @@ import Syntax.Core
 import TypedFreeVar
 import Util
 
-type ExprFreeVar meta = FreeVar Plicitness (Expr meta)
-
-type MonadTypeOf meta m = (Show meta, MonadIO m, MonadFetch Query m, MonadFresh m, MonadLog m, MonadContext (ExprFreeVar meta) m)
+type MonadTypeOf meta m = (Show meta, MonadIO m, MonadFetch Query m, MonadFresh m, MonadLog m, MonadContext (FreeVar (Expr meta)) m)
 
 data Args meta m = Args
   { typeOfMeta :: !(meta -> Closed (Expr meta))
@@ -37,8 +35,8 @@ typeOf = typeOf' metaVarArgs
 typeOf'
   :: MonadTypeOf meta m
   => Args meta m
-  -> Expr meta (ExprFreeVar meta)
-  -> m (Expr meta (ExprFreeVar meta))
+  -> Expr meta (FreeVar (Expr meta))
+  -> m (Expr meta (FreeVar (Expr meta)))
 typeOf' args expr = case expr of
   Global v -> fetchType v
   Var v -> return $ varType v

@@ -90,7 +90,7 @@ exists hint d typ = do
   let typ'' = close (panic "exists not closed") typ'
   loc <- getCurrentLocation
   v <- explicitExists hint d typ'' (Vector.length locals) loc
-  return $ Core.Meta v $ (\fv -> (varData fv, pure fv)) <$> locals
+  return $ Core.Meta v $ (\fv -> (varPlicitness fv, pure fv)) <$> locals
 
 existsType
   :: NameHint

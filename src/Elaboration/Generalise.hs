@@ -227,7 +227,7 @@ replaceDefs
 replaceDefs defs = do
   let appSubMap
         = toHashMap
-        $ (\(v, (_, _, _, _, vs)) -> (v, apps (pure v) ((\v' -> (implicitise $ varData v', pure v')) <$> vs)))
+        $ (\(v, (_, _, _, _, vs)) -> (v, apps (pure v) ((\v' -> (implicitise $ varPlicitness v', pure v')) <$> vs)))
         <$> defs
       appSub v = HashMap.lookupDefault (pure v) v appSubMap
 
@@ -240,7 +240,7 @@ replaceDefs defs = do
     (def', typ') <- abstractDefImplicits vs subbedDef subbedType
     logDefMeta "tc.gen" "replaceDefs subbedDef" $ zonkDef subbedDef
     logMeta "tc.gen" "replaceDefs subbedType" $ zonk subbedType
-    newVar <- forall (varHint oldVar) (varData oldVar) typ'
+    newVar <- forall (varHint oldVar) (varPlicitness oldVar) typ'
     return (oldVar, newVar, name, loc, def')
 
   let renameMap
@@ -272,7 +272,7 @@ abstractDefImplicits vs (DataDefinition (DataDef ps cs) rep) typ =
         gtyp = abstractImplicits vs pi_ typ
     return (DataDefinition (dataDef (implicitiseVar <$> toVector vs <|> vs') cs') grep, gtyp)
   where
-    implicitiseVar v = v { varData = implicitise $ varData v }
+    implicitiseVar v = v { varPlicitness = implicitise $ varPlicitness v }
 
 abstractImplicits
   :: Foldable t
@@ -280,4 +280,4 @@ abstractImplicits
   -> (FreeV -> CoreM -> CoreM)
   -> CoreM
   -> CoreM
-abstractImplicits vs c b = foldr (\v -> c (v { varData = implicitise $ varData v })) b vs
+abstractImplicits vs c b = foldr (\v -> c (v { varPlicitness = implicitise $ varPlicitness v })) b vs

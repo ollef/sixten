@@ -74,7 +74,7 @@ import VIX
 --       , biclose identity (panic "cycleCheckGroup close typ") typ
 --       )
 
-type FreeV m = FreeVar Plicitness (Expr m)
+type FreeV m = FreeVar (Expr m)
 
 cycleCheck
   :: Vector (GName, SourceLoc, ClosedDefinition Expr, Biclosed Expr)
@@ -170,8 +170,8 @@ cycleCheckExpr expr = case expr of
         return $ c v e
 
 cycleCheckBranches
-  :: Branches Plicitness (Expr Void) (FreeV m)
-  -> VIX (Branches Plicitness (Expr m) (FreeV m))
+  :: Branches (Expr Void) (FreeV m)
+  -> VIX (Branches (Expr m) (FreeV m))
 cycleCheckBranches (ConBranches cbrs) = ConBranches <$> do
   forM cbrs $ \(ConBranch c tele brScope) -> do
     vs <- forTeleWithPrefixM tele $ \h p s vs -> do

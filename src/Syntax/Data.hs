@@ -11,7 +11,6 @@ import Data.Functor.Classes
 import Data.Vector(Vector)
 
 import Pretty
-import Syntax.Annotation
 import Syntax.GlobalBind
 import Syntax.Name
 import Syntax.Telescope
@@ -19,15 +18,15 @@ import TypedFreeVar
 import Util
 
 data DataDef typ v = DataDef
-  { dataParams :: Telescope Plicitness typ v
+  { dataParams :: Telescope typ v
   , dataConstructors :: [ConstrDef (Scope TeleVar typ v)]
   } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 dataDef
   :: Monad typ
-  => Vector (FreeVar Plicitness typ)
-  -> [ConstrDef (typ (FreeVar Plicitness typ))]
-  -> DataDef typ (FreeVar Plicitness typ)
+  => Vector (FreeVar typ)
+  -> [ConstrDef (typ (FreeVar typ))]
+  -> DataDef typ (FreeVar typ)
 dataDef vs cs = DataDef (varTelescope vs) $ fmap abstr <$> cs
   where
     abstr = abstract $ teleAbstraction vs

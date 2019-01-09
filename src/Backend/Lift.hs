@@ -81,7 +81,7 @@ runLift gn postfix (Lift l)
   , liftedThings = mempty
   }
 
-type FV = FreeVar () Lifted.Expr
+type FV = FreeVar Lifted.Expr
 
 type LambdaLift = Lift (Closed (Sized.Function Lifted.Expr)) VIX
 
@@ -106,7 +106,7 @@ liftAnnoExpr
 liftAnnoExpr (Anno e t) = Anno <$> liftExpr e <*> liftExpr t
 
 liftLambda
-  :: Telescope () SLambda.Expr FV
+  :: Telescope SLambda.Expr FV
   -> AnnoScope TeleVar SLambda.Expr FV
   -> LambdaLift (Lifted.Expr FV)
 liftLambda tele lamScope = do
@@ -129,15 +129,15 @@ liftLambda tele lamScope = do
   return $ addArgs $ global g
 
 closeLambda
-  :: Telescope () SLambda.Expr FV
+  :: Telescope SLambda.Expr FV
   -> AnnoScope TeleVar SLambda.Expr FV
   -> Vector FV
   -> LambdaLift (Vector FV, Anno Lifted.Expr FV)
 closeLambda tele lamScope sortedFvs = do
-  vs <- forTeleWithPrefixM tele $ \h () s vs -> do
+  vs <- forTeleWithPrefixM tele $ \h p s vs -> do
     let e = instantiateTele pure vs s
     e' <- liftExpr e
-    freeVar h () e'
+    freeVar h p e'
 
   let lamExpr = instantiateAnnoTele pure vs lamScope
   lamExpr' <- liftAnnoExpr lamExpr
@@ -163,7 +163,7 @@ liftLet
 liftLet ds scope = do
   vs <- forMLet ds $ \h _ _ t -> do
     t' <- liftExpr t
-    freeVar h () t'
+    freeVar h Explicit t'
 
   let instantiatedDs = Vector.zip vs $ instantiateLet pure vs <$> letBodies ds
       dsToLift = [(v, body) | (v, body@(SLambda.lamView -> Just _)) <- toList instantiatedDs]
@@ -211,14 +211,14 @@ liftLet ds scope = do
   return $ lets sortedDs letBody
 
 liftBranches
-  :: Branches () SLambda.Expr FV
-  -> LambdaLift (Branches () Lifted.Expr FV)
+  :: Branches SLambda.Expr FV
+  -> LambdaLift (Branches Lifted.Expr FV)
 liftBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(ConBranch qc tele brScope) -> do
-    vs <- forTeleWithPrefixM tele $ \h () s vs -> do
+    vs <- forTeleWithPrefixM tele $ \h p s vs -> do
       let e = instantiateTele pure vs s
       e' <- liftExpr e
-      freeVar h () e'
+      freeVar h p e'
     let brExpr = instantiateTele pure vs brScope
     brExpr' <- liftExpr brExpr
     return $ conBranchTyped qc vs brExpr'
@@ -238,10 +238,10 @@ liftToDefinitionM
   :: Closed (Anno SLambda.Expr)
   -> LambdaLift (Closed (Sized.Definition Lifted.Expr))
 liftToDefinitionM (Closed (Anno (SLambda.Lams tele bodyScope) _)) = do
-  vs <- forTeleWithPrefixM tele $ \h () s vs -> do
+  vs <- forTeleWithPrefixM tele $ \h p s vs -> do
     let e = instantiateTele pure vs s
     e' <- liftExpr e
-    freeVar h () e'
+    freeVar h p e'
   let body = instantiateAnnoTele pure vs bodyScope
   body' <- liftAnnoExpr body
   return

@@ -20,7 +20,7 @@ import TypedFreeVar
 import Util
 import VIX
 
-type FreeV = FreeVar Plicitness (Core.Expr Void)
+type FreeV = FreeVar (Core.Expr Void)
 
 newtype SLam a = SLam { runSlam :: VIX a }
   deriving (Functor, Applicative, Monad, MonadIO, MonadFresh, MonadReport, MonadLog, MonadFetch Query)
@@ -103,8 +103,8 @@ slam expr = do
   return res
 
 slamBranches
-  :: Branches Plicitness (Core.Expr Void) FreeV
-  -> SLam (Branches () SLambda.Expr FreeV)
+  :: Branches (Core.Expr Void) FreeV
+  -> SLam (Branches SLambda.Expr FreeV)
 slamBranches (ConBranches cbrs) = do
   cbrs' <- Log.indent $ forM cbrs $ \(ConBranch c tele brScope) -> do
     vs <- forTeleWithPrefixM tele $ \h p s vs -> freeVar h p $ instantiateTele pure vs s

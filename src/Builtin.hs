@@ -75,7 +75,7 @@ deref e
   $ pure
   $ ConBranch
     Ref
-    (Telescope $ pure $ TeleArg "dereferenced" () $ Scope unknownSize)
+    (Telescope $ pure $ TeleArg "dereferenced" Explicit $ Scope unknownSize)
     (toScope $ pure $ B 0)
   where
     unknownSize = global $ GName "Sixten.Builtin.deref" $ pure "unknownSize"
@@ -85,14 +85,14 @@ maxArity = 6
 
 apply :: Target -> Int -> Closed (Sized.Definition Lifted.Expr)
 apply target numArgs = evalFresh $ do
-  this <- freeVar "this" () ptrRep
+  this <- freeVar "this" Explicit ptrRep
   argTypes <- Vector.forM (Vector.enumFromN 0 numArgs) $ \i ->
-    freeVar ("x" <> shower (i :: Int) <> "type") () typeRep
+    freeVar ("x" <> shower (i :: Int) <> "type") Explicit typeRep
   args <- iforM argTypes $ \i argType ->
-    freeVar ("x" <> shower i) () $ pure argType
+    freeVar ("x" <> shower i) Explicit $ pure argType
 
-  funknown <- freeVar "funknown" () piRep
-  farity <- freeVar "arity" () intRep
+  funknown <- freeVar "funknown" Explicit piRep
+  farity <- freeVar "arity" Explicit intRep
 
   let funArgs = pure this <> argTypes <> args
       clArgs = pure funknown <> pure farity
@@ -103,7 +103,7 @@ apply target numArgs = evalFresh $ do
         $ (\v -> (directType, varAnno v)) <$> argTypes'
         <|> (\v -> (Indirect, varAnno v)) <$> args'
 
-      br :: Int -> Lifted.Expr (FreeVar () Lifted.Expr)
+      br :: Int -> Lifted.Expr (FreeVar Lifted.Expr)
       br arity
         | numArgs < arity
           = Lifted.Con Ref
@@ -149,19 +149,19 @@ apply target numArgs = evalFresh $ do
 
 pap :: Target -> Int -> Int -> Closed (Sized.Definition Lifted.Expr)
 pap target k m = evalFresh $ do
-  this <- freeVar "this" () ptrRep
+  this <- freeVar "this" Explicit ptrRep
   argTypes <- Vector.forM (Vector.enumFromN 0 k) $ \i ->
-    freeVar ("x" <> shower (i :: Int) <> "type") () typeRep
+    freeVar ("x" <> shower (i :: Int) <> "type") Explicit typeRep
   args <- iforM argTypes $ \i argType ->
-    freeVar ("x" <> shower i) () $ pure argType
+    freeVar ("x" <> shower i) Explicit $ pure argType
 
-  unused1 <- freeVar "_" () ptrRep
-  unused2 <- freeVar "_" () intRep
-  that <- freeVar "that" () ptrRep
+  unused1 <- freeVar "_" Explicit ptrRep
+  unused2 <- freeVar "_" Explicit intRep
+  that <- freeVar "that" Explicit ptrRep
   clArgTypes <- Vector.forM (Vector.enumFromN 0 m) $ \i ->
-    freeVar ("y" <> shower (i :: Int) <> "type") () typeRep
+    freeVar ("y" <> shower (i :: Int) <> "type") Explicit typeRep
   clArgs <- iforM clArgTypes $ \i argType ->
-    freeVar ("y" <> shower i) () $ pure argType
+    freeVar ("y" <> shower i) Explicit $ pure argType
 
   let funArgs = pure this <> argTypes <> args
       clArgs' = pure unused1 <> pure unused2 <> pure that <> clArgTypes <> clArgs

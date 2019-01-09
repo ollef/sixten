@@ -12,7 +12,6 @@ import Data.Vector(Vector)
 
 import Error
 import Pretty
-import Syntax.Annotation
 import Syntax.GlobalBind
 import Syntax.Name
 import Syntax.Telescope
@@ -22,15 +21,15 @@ import Util
 -------------------------------------------------------------------------------
 -- * Class definitions
 data ClassDef typ v = ClassDef
-  { classParams :: Telescope Plicitness typ v
+  { classParams :: Telescope typ v
   , classMethods :: [Method (Scope TeleVar typ v)]
   } deriving (Foldable, Functor, Show, Traversable)
 
 classDef
   :: Monad typ
-  => Vector (FreeVar Plicitness typ)
-  -> [Method (typ (FreeVar Plicitness typ))]
-  -> ClassDef typ (FreeVar Plicitness typ)
+  => Vector (FreeVar typ)
+  -> [Method (typ (FreeVar typ))]
+  -> ClassDef typ (FreeVar typ)
 classDef vs ms = ClassDef (varTelescope vs) $ fmap abstr <$> ms
   where
     abstr = abstract $ teleAbstraction vs

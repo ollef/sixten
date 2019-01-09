@@ -42,31 +42,31 @@ newtype TeleVar = TeleVar Int
 unTeleVar :: TeleVar -> Int
 unTeleVar (TeleVar i) = i
 
-newtype Telescope anno expr v = Telescope (Vector (TeleArg anno expr v))
+newtype Telescope expr v = Telescope (Vector (TeleArg expr v))
   deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
 
-unTelescope :: Telescope anno expr v -> Vector (TeleArg anno expr v)
+unTelescope :: Telescope expr v -> Vector (TeleArg expr v)
 unTelescope (Telescope xs) = xs
 
-data TeleArg anno expr v = TeleArg !NameHint !anno !(Scope TeleVar expr v)
+data TeleArg expr v = TeleArg !NameHint !Plicitness !(Scope TeleVar expr v)
   deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
 
-telescope :: (Foldable t, Monad expr, Eq v, Hashable v) => (v -> NameHint) -> t (v, anno, expr v) -> Telescope anno expr v
+telescope :: (Foldable t, Monad expr, Eq v, Hashable v) => (v -> NameHint) -> t (v, Plicitness, expr v) -> Telescope expr v
 telescope hint vs
   = Telescope
   $ fmap snd
-  $ forWithPrefix (toVector vs) $ \(v, a, e) vts ->
-    (v, TeleArg (hint v) a $ abstract (teleAbstraction (fst <$> vts)) e)
+  $ forWithPrefix (toVector vs) $ \(v, p, e) vts ->
+    (v, TeleArg (hint v) p $ abstract (teleAbstraction (fst <$> vts)) e)
 
-mapAnnotations :: (a -> a') -> Telescope a e v -> Telescope a' e v
-mapAnnotations f (Telescope xs) = Telescope $ (\(TeleArg h a s) -> TeleArg h (f a) s) <$> xs
+mapPlics :: (Plicitness -> Plicitness) -> Telescope e v -> Telescope e v
+mapPlics f (Telescope xs) = Telescope $ (\(TeleArg h a s) -> TeleArg h (f a) s) <$> xs
 
 bimapTelescope
   :: Bifunctor e
   => (a -> a')
   -> (v -> v')
-  -> Telescope p (e a) v
-  -> Telescope p (e a') v'
+  -> Telescope (e a) v
+  -> Telescope (e a') v'
 bimapTelescope f g (Telescope xs)
   = Telescope $ (\(TeleArg h p s) -> TeleArg h p (bimapScope f g s)) <$> xs
 
@@ -74,7 +74,7 @@ bifoldMapTelescope
   :: (Bifoldable e, Monoid m)
   => (a -> m)
   -> (v -> m)
-  -> Telescope p (e a) v
+  -> Telescope (e a) v
   -> m
 bifoldMapTelescope f g (Telescope xs)
   = Foldable.fold $ (\(TeleArg _ _ s) -> bifoldMapScope f g s) <$> xs
@@ -83,19 +83,19 @@ bitraverseTelescope
   :: (Bitraversable e, Applicative f)
   => (a -> f a')
   -> (v -> f v')
-  -> Telescope p (e a) v
-  -> f (Telescope p (e a') v')
+  -> Telescope (e a) v
+  -> f (Telescope (e a') v')
 bitraverseTelescope f g (Telescope xs)
   = Telescope <$> traverse (\(TeleArg h p s) -> TeleArg h p <$> bitraverseScope f g s) xs
 
-teleLength :: Telescope a e v -> Int
+teleLength :: Telescope e v -> Int
 teleLength = Vector.length . unTelescope
 
 dropTele
   :: Functor expr
   => Int
-  -> Telescope a expr v
-  -> Telescope a expr v
+  -> Telescope expr v
+  -> Telescope expr v
 dropTele n
   = Telescope
   . fmap (\(TeleArg h p s) -> TeleArg h p $ mapBound (subtract $ TeleVar n) s)
@@ -104,15 +104,15 @@ dropTele n
 
 takeTele
   :: Int
-  -> Telescope a expr v
-  -> Telescope a expr v
+  -> Telescope expr v
+  -> Telescope expr v
 takeTele n = Telescope . Vector.take n . unTelescope
 
 instantiatePrefix
   :: Monad expr
   => Vector (expr v)
-  -> Telescope a expr v
-  -> Telescope a expr v
+  -> Telescope expr v
+  -> Telescope expr v
 instantiatePrefix es (Telescope tele)
   = Telescope
   $ (\(TeleArg h p s) -> TeleArg h p $ toScope $ instantiate f $ F <$> s)
@@ -124,25 +124,25 @@ instantiatePrefix es (Telescope tele)
       | i < len = es' Vector.! i
       | otherwise = pure $ B $ TeleVar $! i - len
 
-teleNames :: Telescope a expr v -> Vector NameHint
+teleNames :: Telescope expr v -> Vector NameHint
 teleNames (Telescope t) = (\(TeleArg h _ _) -> h) <$> t
 
-addTeleNames :: Telescope a expr v -> Vector NameHint -> Telescope a expr v
-addTeleNames (Telescope t) hs = Telescope $ Vector.imap (\i (TeleArg h a s) -> TeleArg (maybe h (h <>) $ hs Vector.!? i) a s) t
+addTeleNames :: Telescope expr v -> Vector NameHint -> Telescope expr v
+addTeleNames (Telescope t) hs = Telescope $ Vector.imap (\i (TeleArg h p s) -> TeleArg (maybe h (h <>) $ hs Vector.!? i) p s) t
 
-teleAnnotations :: Telescope a expr v -> Vector a
-teleAnnotations (Telescope t) = (\(TeleArg _ a _) -> a) <$> t
+telePlics :: Telescope expr v -> Vector Plicitness
+telePlics (Telescope t) = (\(TeleArg _ p _) -> p) <$> t
 
-teleTypes :: Telescope a expr v -> Vector (Scope TeleVar expr v)
+teleTypes :: Telescope expr v -> Vector (Scope TeleVar expr v)
 teleTypes (Telescope t) = (\(TeleArg _ _ x) -> x) <$> t
 
 quantify
   :: Monad expr
-  => (NameHint -> a
+  => (NameHint -> Plicitness
                -> expr (Var TeleVar v)
                -> Scope1 expr (Var TeleVar v')
                -> expr (Var TeleVar v'))
-  -> Telescope a expr v
+  -> Telescope expr v
   -> Scope TeleVar expr v'
   -> expr v'
 quantify pifun (Telescope ps) s =
@@ -156,74 +156,73 @@ quantify pifun (Telescope ps) s =
     err = panic "quantify Telescope"
 
 withTeleHints
-  :: Telescope a expr v
+  :: Telescope expr v
   -> (Vector Name -> PrettyDoc)
   -> PrettyDoc
 withTeleHints = withNameHints . teleNames
 
 prettyTeleVars
-  :: PrettyAnnotation a
-  => Vector Name
-  -> Telescope a expr v
+  :: Vector Name
+  -> Telescope expr v
   -> PrettyDoc
 prettyTeleVars ns t = hsep
-  [ prettyAnnotation a $ prettyM $ ns Vector.! i
-  | (i, a) <- zip [0..] $ Vector.toList $ teleAnnotations t
+  [ prettyAnnotation p $ prettyM $ ns Vector.! i
+  | (i, p) <- zip [0..] $ Vector.toList $ telePlics t
   ]
 
 prettyTeleVarTypes
-  :: (Eq1 expr, Pretty (expr Doc), Monad expr, PrettyAnnotation a)
+  :: (Eq1 expr, Pretty (expr Doc), Monad expr)
   => Vector Name
-  -> Telescope a expr Doc
+  -> Telescope expr Doc
   -> PrettyDoc
 prettyTeleVarTypes ns (Telescope v) = hcat $ map go grouped
   where
     inst = instantiateTele (pure . fromName) ns
     vlist = Vector.toList v
     grouped =
-      [ (n : [n' | (n', _) <- vlist'], a, t)
-      | (n, TeleArg _ a t):vlist' <- groupBy ((==) `on` (fmap PP.layoutCompact . snd)) $ zip [(0 :: Int)..] vlist]
-    go (xs, a, t)
-      = prettyAnnotationParens a
+      [ (n : [n' | (n', _) <- vlist'], p, t)
+      | (n, TeleArg _ p t):vlist' <- groupBy ((==) `on` (fmap PP.layoutCompact . snd)) $ zip [(0 :: Int)..] vlist]
+    go (xs, p, t)
+      = prettyAnnotationParens p
       $ hsep (map (prettyM . (ns Vector.!)) xs) <+> ":" <+> prettyM (inst t)
 
 forMTele
   :: Monad m
-  => Telescope a expr v
-  -> (NameHint -> a -> Scope TeleVar expr v -> m v')
+  => Telescope expr v
+  -> (NameHint -> Plicitness -> Scope TeleVar expr v -> m v')
   -> m (Vector v')
 forMTele (Telescope t) f = forM t $ \(TeleArg h d s) -> f h d s
 
 forTeleWithPrefixM
   :: Monad m
-  => Telescope a expr v
-  -> (NameHint -> a -> Scope TeleVar expr v -> Vector v' -> m v')
+  => Telescope expr v
+  -> (NameHint -> Plicitness -> Scope TeleVar expr v -> Vector v' -> m v')
   -> m (Vector v')
 forTeleWithPrefixM (Telescope t) f = mapWithPrefixM (\(TeleArg h d s) -> f h d s) t
 
 forTele
-  :: Telescope a expr v
-  -> (NameHint -> a -> Scope TeleVar expr v -> v')
+  :: Telescope expr v
+  -> (NameHint -> Plicitness -> Scope TeleVar expr v -> v')
   -> Vector v'
 forTele (Telescope t) f = (\(TeleArg h d s) -> f h d s) <$> t
 
 iforMTele
   :: Monad m
-  => Telescope a expr v
-  -> (Int -> NameHint -> a -> Scope TeleVar expr v -> m v')
+  => Telescope expr v
+  -> (Int -> NameHint -> Plicitness -> Scope TeleVar expr v -> m v')
   -> m (Vector v')
 iforMTele (Telescope t) f = flip Vector.imapM t $ \i (TeleArg h d s) -> f i h d s
 
 iforTeleWithPrefixM
   :: Monad m
-  => Telescope a expr v
-  -> (Int -> NameHint -> a -> Scope TeleVar expr v -> Vector v' -> m v')
+  => Telescope expr v
+  -> (Int -> NameHint -> Plicitness -> Scope TeleVar expr v -> Vector v' -> m v')
   -> m (Vector v')
 iforTeleWithPrefixM (Telescope t) f = mapWithPrefixM (\(i, TeleArg h d s) -> f i h d s) $ Vector.indexed t
 
 iforTele
-  :: Telescope a expr v
-  -> (Int -> NameHint -> a -> Scope TeleVar expr v -> v')
+  :: Telescope expr v
+  -> (Int -> NameHint -> Plicitness -> Scope TeleVar expr v -> v')
   -> Vector v'
 iforTele (Telescope t) f = (\(i, TeleArg h d s) -> f i h d s) <$> Vector.indexed t
 
@@ -242,18 +241,18 @@ teleAbstraction vs = fmap TeleVar . hashedElemIndex vs
 -- | View consecutive bindings at the same time
 bindingsViewM
   :: (Monad expr, Monad expr')
-  => (forall v'. expr' v' -> Maybe (NameHint, a, expr v', Scope1 expr' v'))
+  => (forall v'. expr' v' -> Maybe (NameHint, Plicitness, expr v', Scope1 expr' v'))
   -> expr' v
-  -> Maybe (Telescope a expr v, Scope TeleVar expr' v)
+  -> Maybe (Telescope expr v, Scope TeleVar expr' v)
 bindingsViewM f expr@(f -> Just _) = Just $ bindingsView f expr
 bindingsViewM _ _ = Nothing
 
 -- | View consecutive bindings at the same time
 bindingsView
   :: (Monad expr, Monad expr')
-  => (forall v'. expr' v' -> Maybe (NameHint, a, expr v', Scope1 expr' v'))
+  => (forall v'. expr' v' -> Maybe (NameHint, Plicitness, expr v', Scope1 expr' v'))
   -> expr' v
-  -> (Telescope a expr v, Scope TeleVar expr' v)
+  -> (Telescope expr v, Scope TeleVar expr' v)
 bindingsView f expr = go 0 $ F <$> expr
   where
     go x (f -> Just (n, p, e, s)) = (Telescope $ pure (TeleArg n p $ toScope e) <> ns, s')
@@ -264,51 +263,51 @@ bindingsView f expr = go 0 $ F <$> expr
 transverseTelescope
   :: (Monad f, Traversable expr)
   => (forall r. expr r -> f (expr' r))
-  -> Telescope a expr v
-  -> f (Telescope a expr' v)
+  -> Telescope expr v
+  -> f (Telescope expr' v)
 transverseTelescope f (Telescope xs) = Telescope <$> traverse (transverseTeleArg f) xs
 
 transverseTeleArg
   :: (Monad f, Traversable expr)
   => (forall r. expr r -> f (expr' r))
-  -> TeleArg a expr v
-  -> f (TeleArg a expr' v)
-transverseTeleArg f (TeleArg h a s) = TeleArg h a <$> transverseScope f s
+  -> TeleArg expr v
+  -> f (TeleArg expr' v)
+transverseTeleArg f (TeleArg h p s) = TeleArg h p <$> transverseScope f s
 
 -------------------------------------------------------------------------------
 -- Instances
-instance (a ~ Plicitness, v ~ Doc, Eq1 expr, Pretty (expr v), Monad expr)
-  => Pretty (Telescope a expr v) where
+instance (v ~ Doc, Eq1 expr, Pretty (expr v), Monad expr)
+  => Pretty (Telescope expr v) where
   prettyM tele = withTeleHints tele $ \ns -> prettyTeleVarTypes ns tele
 
-instance Bound (Telescope a) where
+instance Bound Telescope where
   Telescope tele >>>= f
-    = Telescope $ (\(TeleArg h a s) -> TeleArg h a $ s >>>= f) <$> tele
+    = Telescope $ (\(TeleArg h p s) -> TeleArg h p $ s >>>= f) <$> tele
 
-instance GBound (Telescope a) where
+instance GBound Telescope where
   gbound f (Telescope tele)
-    = Telescope $ (\(TeleArg h a s) -> TeleArg h a $ gbound f s) <$> tele
+    = Telescope $ (\(TeleArg h p s) -> TeleArg h p $ gbound f s) <$> tele
 
-instance MFunctor (Telescope a) where
+instance MFunctor Telescope where
   hoist f (Telescope xs)
     = Telescope $ (\(TeleArg h p s) -> TeleArg h p $ hoist f s) <$> xs
 
 $(return mempty)
 
-instance (Eq anno, Eq1 expr, Monad expr) => Eq1 (Telescope anno expr) where
+instance (Eq1 expr, Monad expr) => Eq1 (Telescope expr) where
   liftEq = $(makeLiftEq ''Telescope)
 
-instance (Ord anno, Ord1 expr, Monad expr) => Ord1 (Telescope anno expr) where
+instance (Ord1 expr, Monad expr) => Ord1 (Telescope expr) where
   liftCompare = $(makeLiftCompare ''Telescope)
 
-instance (Show anno, Show1 expr, Monad expr) => Show1 (Telescope anno expr) where
+instance (Show1 expr, Monad expr) => Show1 (Telescope expr) where
   liftShowsPrec = $(makeLiftShowsPrec ''Telescope)
 
-instance (Eq anno, Eq1 expr, Monad expr) => Eq1 (TeleArg anno expr) where
+instance (Eq1 expr, Monad expr) => Eq1 (TeleArg expr) where
   liftEq = $(makeLiftEq ''TeleArg)
 
-instance (Ord anno, Ord1 expr, Monad expr) => Ord1 (TeleArg anno expr) where
+instance (Ord1 expr, Monad expr) => Ord1 (TeleArg expr) where
   liftCompare = $(makeLiftCompare ''TeleArg)
 
-instance (Show anno, Show1 expr, Monad expr) => Show1 (TeleArg anno expr) where
+instance (Show1 expr, Monad expr) => Show1 (TeleArg expr) where
   liftShowsPrec = $(makeLiftShowsPrec ''TeleArg)

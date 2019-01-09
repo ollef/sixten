@@ -75,7 +75,7 @@ pis pats e = foldr (uncurry pi_) e pats
 
 telePis
   :: (Hashable v, Eq v)
-  => Telescope Plicitness Type v
+  => Telescope Type v
   -> Expr v
   -> Expr v
 telePis tele e = fmap (unvar (panic "telePis") identity) $ pis pats $ F <$> e

@@ -27,7 +27,7 @@ inside row column (Span start end)
   && (row /= visualRow start || column >= visualColumn start)
   && (row /= visualRow end || column < visualColumn end)
 
-type FreeV = FreeVar Plicitness (Expr Void)
+type FreeV = FreeVar (Expr Void)
 
 -- TODO check file as well
 
@@ -147,7 +147,7 @@ hoverExpr f expr = case expr of
 
 hoverBranches
   :: (Span -> Bool)
-  -> Branches Plicitness (Expr Void) FreeV
+  -> Branches (Expr Void) FreeV
   -> Hover (Span, Expr Void FreeV)
 hoverBranches f (LitBranches lbrs def) =
   foldMap (\(LitBranch _ e) -> hoverExpr f e) lbrs

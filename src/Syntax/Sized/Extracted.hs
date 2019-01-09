@@ -31,7 +31,7 @@ data Expr v
   | Call (Expr v) (Vector (Anno Expr v)) -- ^ Fully applied, only global
   | PrimCall (Maybe Language) RetDir (Expr v) (Vector (Direction, Anno Expr v))
   | Let NameHint (Anno Expr v) (Scope1 Expr v)
-  | Case (Anno Expr v) (Branches () Expr v)
+  | Case (Anno Expr v) (Branches Expr v)
   deriving (Foldable, Functor, Traversable)
 
 type Type = Expr
@@ -55,10 +55,10 @@ emptySubmodule contents = (\() -> contents) <$> mempty
 -------------------------------------------------------------------------------
 -- Helpers
 let_
-  :: FreeVar d Expr
-  -> Expr (FreeVar d Expr)
-  -> Expr (FreeVar d Expr)
-  -> Expr (FreeVar d Expr)
+  :: FreeVar Expr
+  -> Expr (FreeVar Expr)
+  -> Expr (FreeVar Expr)
+  -> Expr (FreeVar Expr)
 let_ v e = Let (varHint v) (Anno e $ varType v) . abstract1 v
 
 pattern MkType :: TypeRep -> Expr v

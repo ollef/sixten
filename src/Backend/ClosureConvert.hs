@@ -23,7 +23,7 @@ import VIX
 
 type FV = FreeVar ()
 type ClosureConvert = Lift (Closed (Sized.Definition Expr)) VIX
-type ConvertedSignature = (Closed (Telescope () Type), Closed (Scope TeleVar Type))
+type ConvertedSignature = (Closed (Telescope Type), Closed (Scope TeleVar Type))
 
 runConvertDefinition
   :: GName
@@ -44,10 +44,10 @@ convertSignature
   -> ClosureConvert (Maybe ConvertedSignature)
 convertSignature def = case open def of
   Sized.FunctionDef _ _ (Sized.Function tele (AnnoScope _ tscope)) -> do
-    vs <- forMTele tele $ \h () _ ->
-      freeVar h ()
+    vs <- forMTele tele $ \h p _ ->
+      freeVar h p ()
 
-    es <- forMTele tele $ \_ () s ->
+    es <- forMTele tele $ \_ _ s ->
       convertExpr $ instantiateTele pure vs s
 
     let t = instantiateTele pure vs tscope
@@ -65,12 +65,12 @@ convertDefinition
   -> Closed (Sized.Definition Expr)
   -> ClosureConvert (Closed (Sized.Definition Expr))
 convertDefinition name (Closed (Sized.FunctionDef vis cl (Sized.Function tele scope@(AnnoScope exprScope _)))) = do
-  vs <- forMTele tele $ \h () _ ->
-    freeVar h ()
+  vs <- forMTele tele $ \h p _ ->
+    freeVar h p ()
   msig <- fetch $ ConvertedSignature name
   case msig of
     Nothing -> do
-      es <- forMTele tele $ \_ () s ->
+      es <- forMTele tele $ \_ _ s ->
         convertExpr $ instantiateTele pure vs s
 
       let annoExpr = instantiateAnnoTele pure vs scope
@@ -80,7 +80,7 @@ convertDefinition name (Closed (Sized.FunctionDef vis cl (Sized.Function tele sc
         $ Sized.FunctionDef vis cl
         $ Sized.function (Vector.zip vs es) annoExpr'
     Just (tele', typeScope) -> do
-      let es = forTele (open tele') $ \_ () s ->
+      let es = forTele (open tele') $ \_ _ s ->
             instantiateTele pure vs s
 
       let expr = instantiateTele pure vs exprScope
@@ -140,7 +140,7 @@ convertExpr expr = case expr of
     return $ PrimCall retDir e' es'
   Let h e bodyScope -> do
     e' <- convertAnnoExpr e
-    v <- freeVar h ()
+    v <- freeVar h Explicit ()
     let bodyExpr = Util.instantiate1 (pure v) bodyScope
     bodyExpr' <- convertExpr bodyExpr
     return $ let_ v e' bodyExpr'
@@ -191,8 +191,8 @@ liftClosureFun
   -> Int
   -> ClosureConvert GName
 liftClosureFun f (Closed tele, Closed returnTypeScope) numCaptured = do
-  vs <- forTeleWithPrefixM tele $ \h _ s vs -> do
-    v <- freeVar h ()
+  vs <- forTeleWithPrefixM tele $ \h p s vs -> do
+    v <- freeVar h p ()
     return (v, instantiateTele pure (fst <$> vs) s)
 
   typeRep <- MkType <$> fetchTypeRep
@@ -201,9 +201,9 @@ liftClosureFun f (Closed tele, Closed returnTypeScope) numCaptured = do
   intRep <- MkType <$> fetchIntRep
 
   let (capturedArgs, remainingParams) = Vector.splitAt numCaptured vs
-  this <- freeVar "this" ()
+  this <- freeVar "this" Explicit ()
   typeParams <- forM remainingParams $ \(v, _) -> do
-    v' <- freeVar (varHint v) ()
+    v' <- freeVar (varHint v) (varPlicitness v) ()
     return (v', typeRep)
   let remainingParams'
         = flip fmap (Vector.zip remainingParams typeParams)
@@ -211,8 +211,8 @@ liftClosureFun f (Closed tele, Closed returnTypeScope) numCaptured = do
 
   let funParams = pure (this, ptrRep) <> typeParams <> remainingParams'
 
-  unused1 <- freeVar "unused" ()
-  unused2 <- freeVar "unused" ()
+  unused1 <- freeVar "unused" Explicit ()
+  unused2 <- freeVar "unused" Explicit ()
   let clArgs
         = Vector.cons (unused1, piRep)
         $ Vector.cons (unused2, intRep)
@@ -238,13 +238,13 @@ liftClosureFun f (Closed tele, Closed returnTypeScope) numCaptured = do
       fReturnType
 
 convertBranches
-  :: Branches () Expr FV
-  -> ClosureConvert (Branches () Expr FV)
+  :: Branches Expr FV
+  -> ClosureConvert (Branches Expr FV)
 convertBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(ConBranch qc tele brScope) -> do
-    vs <- forMTele tele $ \h () _ ->
-      freeVar h ()
-    es <- forMTele tele $ \_ () s ->
+    vs <- forMTele tele $ \h p _ ->
+      freeVar h p ()
+    es <- forMTele tele $ \_ _ s ->
       convertExpr $ instantiateTele pure vs s
     let brExpr = instantiateTele pure vs brScope
     brExpr' <- convertExpr brExpr

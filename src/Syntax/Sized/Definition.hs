@@ -17,7 +17,7 @@ import Syntax.Telescope
 import qualified TypedFreeVar as Typed
 
 data Function expr v
-  = Function (Telescope () expr v) (AnnoScope TeleVar expr v)
+  = Function (Telescope expr v) (AnnoScope TeleVar expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 newtype Constant expr v
@@ -46,9 +46,9 @@ function vs = Function (varTelescope vs) . abstractAnno (teleAbstraction $ fst <
 
 functionTyped
   :: Monad expr
-  => Vector (Typed.FreeVar () expr)
-  -> Anno expr (Typed.FreeVar () expr)
-  -> Function expr (Typed.FreeVar () expr)
+  => Vector (Typed.FreeVar expr)
+  -> Anno expr (Typed.FreeVar expr)
+  -> Function expr (Typed.FreeVar expr)
 functionTyped vs = Function (Typed.varTelescope vs) . abstractAnno (teleAbstraction vs)
 
 -------------------------------------------------------------------------------

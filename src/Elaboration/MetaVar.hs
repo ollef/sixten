@@ -23,7 +23,7 @@ import Util
 
 type MetaRef = IORef (Maybe (Closed (Expr MetaVar)))
 
-type FreeV = FreeVar Plicitness (Expr MetaVar)
+type FreeV = FreeVar (Expr MetaVar)
 
 data MetaVar = MetaVar
   { metaId :: !Int
@@ -163,7 +163,7 @@ logDefMeta c@(Category ct) s mdef = whenLoggingCategory c $ do
   d <- prettyDefMeta def
   Effect.log $ "[" <> ct <> "] " <> fromString s <> ": " <> showWide d
 
-type FreeBindVar meta = FreeVar Plicitness (Expr meta)
+type FreeBindVar meta = FreeVar (Expr meta)
 
 withInstantiatedMetaType
   :: (MonadLog m, MonadFresh m, MonadContext (FreeBindVar MetaVar) m)
@@ -265,8 +265,8 @@ bindMetas' f = bindMetas $ \m es -> do
 bindBranchMetas
   :: MonadBindMetas meta' m
   => (meta -> Vector (Plicitness, Expr meta (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
-  -> Branches Plicitness (Expr meta) (FreeBindVar meta')
-  -> m (Branches Plicitness (Expr meta') (FreeBindVar meta'))
+  -> Branches (Expr meta) (FreeBindVar meta')
+  -> m (Branches (Expr meta') (FreeBindVar meta'))
 bindBranchMetas f brs = case brs of
   ConBranches cbrs -> ConBranches <$> do
     forM cbrs $ \(ConBranch c tele scope) ->

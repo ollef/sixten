@@ -97,8 +97,13 @@ data MetaData = MetaData
 
 type FreeV = FreeVar MetaData
 
-forall :: NameHint -> Location -> Maybe (RetDirM, Vector Direction) -> VIX FreeV
-forall h loc call = freeVar h $ MetaData loc call
+forall
+  :: NameHint
+  -> Plicitness
+  -> Location
+  -> Maybe (RetDirM, Vector Direction)
+  -> VIX FreeV
+forall h p loc call = freeVar h p $ MetaData loc call
 
 infer
   :: Expr FreeV
@@ -123,7 +128,7 @@ infer expr = case expr of
       args
   Let h e s -> do
     (e', eloc) <- inferAnno e
-    v <- forall h eloc Nothing
+    v <- forall h Explicit eloc Nothing
     (s', sloc) <- infer $ instantiate1 (pure v) s
     return (let_ v e' s', sloc)
   Case e brs -> do
@@ -165,11 +170,11 @@ inferCall con _ _ f es = do
 
 inferBranches
   :: Location
-  -> Branches () Expr FreeV
-  -> VIX (Branches () Expr FreeV, Location)
+  -> Branches Expr FreeV
+  -> VIX (Branches Expr FreeV, Location)
 inferBranches loc (ConBranches cbrs) = do
   locatedCBrs <- forM cbrs $ \(ConBranch c tele brScope) -> do
-    vs <- forMTele tele $ \h _ _ -> forall h loc Nothing
+    vs <- forMTele tele $ \h p _ -> forall h p loc Nothing
     let br = instantiateTele pure vs brScope
     sizes <- forMTele tele $ \_ _ s -> do
       let sz = instantiateTele pure vs s
@@ -210,8 +215,8 @@ inferDefinition
   -> Definition Expr FreeV
   -> VIX (Definition Expr FreeV, Signature MetaReturnIndirect)
 inferDefinition FreeVar {varData = MetaData {metaFunSig = Just (retDir, argDirs)}} (FunctionDef vis cl (Function args s)) = do
-  vs <- forMTele args $ \h _ _ -> forall h MProjection Nothing
-  args' <- forMTele args $ \_ () szScope -> do
+  vs <- forMTele args $ \h p _ -> forall h p MProjection Nothing
+  args' <- forMTele args $ \_ _ szScope -> do
     let sz = instantiateTele pure vs szScope
     (sz', _szLoc) <- infer sz
     return sz'
@@ -259,7 +264,7 @@ inferRecursiveDefs defs = do
           ConstantDef {} -> Nothing
           AliasDef -> Nothing
     funSig' <- traverse (bitraverse (traverse $ maybe existsMetaReturnIndirect pure) pure) funSig
-    forall h MProjection funSig'
+    forall h Explicit MProjection funSig'
 
   let nameIndex = hashedElemIndex names
       expose name = case nameIndex name of

@@ -68,7 +68,7 @@ deepSkolemiseInner' typ@(Pi h p t resScope) argsToPass k = case p of
       deepSkolemiseInner resType (HashSet.insert y argsToPass) $ \vs resType' f -> k
         vs
         (pi_ y resType')
-        (\x -> lam y $ f $ lams vs $ betaApp (betaApps x $ (\v -> (varData v, pure v)) <$> vs) p $ pure y)
+        (\x -> lam y $ f $ lams vs $ betaApp (betaApps x $ (\v -> (varPlicitness v, pure v)) <$> vs) p $ pure y)
   Implicit -> implicitCase
   Constraint -> implicitCase
   where
@@ -195,7 +195,7 @@ funSubtypes
   :: Rhotype
   -> Vector Plicitness
   -> Elaborate
-    ( Telescope Plicitness (Expr MetaVar) FreeV
+    ( Telescope (Expr MetaVar) FreeV
     , Scope TeleVar (Expr MetaVar) FreeV
     , Vector (CoreM -> CoreM)
     )

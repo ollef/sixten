@@ -93,9 +93,9 @@ abstraction c h1 p1 t1 s1 h2 p2 t2 s2 = do
 
 branches
   :: MonadEqual m
-  => Branches Plicitness (Expr MetaVar) FreeV
-  -> Branches Plicitness (Expr MetaVar) FreeV
-  -> m (Branches Plicitness (Expr MetaVar) FreeV)
+  => Branches (Expr MetaVar) FreeV
+  -> Branches (Expr MetaVar) FreeV
+  -> m (Branches (Expr MetaVar) FreeV)
 branches (ConBranches cbrs1) (ConBranches cbrs2) = do
   guard $ length cbrs1 == length cbrs2
   ConBranches <$> zipWithM conBranch cbrs1 cbrs2
@@ -106,9 +106,9 @@ branches _ _ = fail "not equal"
 
 conBranch
   :: MonadEqual m
-  => ConBranch Plicitness (Expr MetaVar) FreeV
-  -> ConBranch Plicitness (Expr MetaVar) FreeV
-  -> m (ConBranch Plicitness (Expr MetaVar) FreeV)
+  => ConBranch (Expr MetaVar) FreeV
+  -> ConBranch (Expr MetaVar) FreeV
+  -> m (ConBranch (Expr MetaVar) FreeV)
 conBranch (ConBranch c1 tele1 s1) (ConBranch c2 tele2 s2) = do
   c <- eq c1 c2
   guard $ teleLength tele1 == teleLength tele2

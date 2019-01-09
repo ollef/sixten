@@ -31,7 +31,7 @@ checkDataDef var (DataDef ps cs) =
   teleMapExtendContext ps (`checkPoly` Builtin.Type) $ \vs -> do
     runUnify (unify [] (Core.pis vs Builtin.Type) $ varType var) report
 
-    let constrRetType = Core.apps (pure var) $ (\v -> (varData v, pure v)) <$> vs
+    let constrRetType = Core.apps (pure var) $ (\v -> (varPlicitness v, pure v)) <$> vs
 
     (cs', rets, sizes) <- fmap unzip3 $ forM cs $ \(ConstrDef c t) ->
       checkConstrDef $ ConstrDef c $ instantiateTele pure vs t

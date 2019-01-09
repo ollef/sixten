@@ -101,7 +101,7 @@ emitSignature
   -> Extract ()
 emitSignature name sig = modify $ \s -> s { extractedSignatures = HashMap.insert name sig $ extractedSignatures s }
 
-type FV = FreeVar () Extracted.Expr
+type FV = FreeVar Extracted.Expr
 
 extractExpr
   :: Lifted.Expr FV
@@ -117,7 +117,7 @@ extractExpr expr = case expr of
     <*> traverse (traverse extractAnnoExpr) es
   Lifted.Let h e s -> do
     Anno e' t' <- extractAnnoExpr e
-    v <- freeVar h () t'
+    v <- freeVar h Explicit t'
     let body = instantiate1 (pure v) s
     body' <- extractExpr body
     return $ Extracted.let_ v e' body'
@@ -242,14 +242,14 @@ externType (Direct rep) = "uint" <> shower (8 * TypeRep.size rep) <> "_t"
 externType Indirect = "uint8_t*"
 
 extractBranches
-  :: Branches () Lifted.Expr FV
-  -> Extract (Branches () Extracted.Expr FV)
+  :: Branches Lifted.Expr FV
+  -> Extract (Branches Extracted.Expr FV)
 extractBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(ConBranch qc tele brScope) -> do
-    vs <- forTeleWithPrefixM tele $ \h () s vs -> do
+    vs <- forTeleWithPrefixM tele $ \h p s vs -> do
       let e = instantiateTele pure vs s
       e' <- extractExpr e
-      freeVar h () e'
+      freeVar h p e'
     let brExpr = instantiateTele pure vs brScope
     brExpr' <- extractExpr brExpr
     return $ conBranchTyped qc vs brExpr'
@@ -265,10 +265,10 @@ extractDef
 extractDef name def = fmap flatten $ runExtract names $ case open def of
   Sized.FunctionDef vis cl (Sized.Function tele scope) ->
     fmap (close noFV . Sized.FunctionDef vis cl) $ do
-      vs <- forTeleWithPrefixM tele $ \h () s vs -> do
+      vs <- forTeleWithPrefixM tele $ \h p s vs -> do
         let e = instantiateTele pure vs s
         e' <- extractExpr e
-        freeVar h () e'
+        freeVar h p e'
       let expr = instantiateAnnoTele pure vs scope
       expr' <- extractAnnoExpr expr
       return $ Sized.functionTyped vs expr'

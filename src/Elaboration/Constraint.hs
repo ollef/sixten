@@ -66,7 +66,7 @@ trySolveConstraint m = inUpdatedContext (const mempty) $ do
                 solve m sol
                 return $ Just sol
           candidates
-            = [pure v | v <- toList vs, varData v == Constraint]
+            = [pure v | v <- toList vs, varPlicitness v == Constraint]
             <> [Global $ gname g | g <- HashSet.toList globalClassInstances]
         logShow "tc.constraint" "Candidates" $ length candidates
         go candidates
@@ -141,7 +141,7 @@ mergeConstraintVars vars = do
           $ close (panic "mergeConstraintVars not closed")
           $ lams vs
           $ Meta m
-          $ (\v -> (varData v, pure v)) <$> vs
+          $ (\v -> (varPlicitness v, pure v)) <$> vs
 
 whnf :: MonadElaborate m => CoreM -> m CoreM
 whnf e = Normalise.whnf' Normalise.Args

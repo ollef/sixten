@@ -38,7 +38,7 @@ data Expr m v
   | Lam !NameHint !Plicitness (Type m v) (Scope1 (Expr m) v)
   | App (Expr m v) !Plicitness (Expr m v)
   | Let (LetRec (Expr m) v) (Scope LetVar (Expr m) v)
-  | Case (Expr m v) (Branches Plicitness (Expr m) v) (Type m v)
+  | Case (Expr m v) (Branches (Expr m) v) (Type m v)
   | ExternCode (Extern (Expr m v)) (Type m v)
   | SourceLoc !SourceLoc (Expr m v)
   deriving (Foldable, Functor, Traversable)
@@ -56,13 +56,13 @@ sourceLocView :: Expr m v -> (SourceLoc, Expr m v)
 sourceLocView (SourceLoc loc (unSourceLoc -> e)) = (loc, e)
 sourceLocView e = (noSourceLoc "sourceLocView", e)
 
-type FreeExprVar m = FreeVar Plicitness (Expr m)
+type FreeExprVar m = FreeVar (Expr m)
 
 lam :: FreeExprVar m -> Expr m (FreeExprVar m) -> Expr m (FreeExprVar m)
-lam v e = Lam (varHint v) (varData v) (varType v) $ abstract1 v e
+lam v e = Lam (varHint v) (varPlicitness v) (varType v) $ abstract1 v e
 
 pi_ :: FreeExprVar m -> Expr m (FreeExprVar m) -> Expr m (FreeExprVar m)
-pi_ v e = Pi (varHint v) (varData v) (varType v) $ abstract1 v e
+pi_ v e = Pi (varHint v) (varPlicitness v) (varType v) $ abstract1 v e
 
 lams :: Foldable t => t (FreeExprVar m) -> Expr m (FreeExprVar m) -> Expr m (FreeExprVar m)
 lams xs e = foldr lam e xs
@@ -124,16 +124,16 @@ usedPiView
 usedPiView (piView -> Just (n, p, e, s@(unusedScope -> Nothing))) = Just (n, p, e, s)
 usedPiView _ = Nothing
 
-usedPisViewM :: Expr m v -> Maybe (Telescope Plicitness (Expr m) v, Scope TeleVar (Expr m) v)
+usedPisViewM :: Expr m v -> Maybe (Telescope (Expr m) v, Scope TeleVar (Expr m) v)
 usedPisViewM = bindingsViewM usedPiView
 
-piTelescope :: Expr m v -> Telescope Plicitness (Expr m) v
+piTelescope :: Expr m v -> Telescope (Expr m) v
 piTelescope (pisView -> (tele, _)) = tele
 
-pisView :: Expr m v -> (Telescope Plicitness (Expr m) v, Scope TeleVar (Expr m) v)
+pisView :: Expr m v -> (Telescope (Expr m) v, Scope TeleVar (Expr m) v)
 pisView = bindingsView piView
 
-lamsViewM :: Expr m v -> Maybe (Telescope Plicitness (Expr m) v, Scope TeleVar (Expr m) v)
+lamsViewM :: Expr m v -> Maybe (Telescope (Expr m) v, Scope TeleVar (Expr m) v)
 lamsViewM = bindingsViewM lamView
 
 arrow :: Plicitness -> Expr m v -> Expr m v -> Expr m v
@@ -145,7 +145,7 @@ quantifiedConstrTypes
   -> [ConstrDef (Type m v)]
 quantifiedConstrTypes (DataDef ps cs) anno = map (fmap $ quantify Pi ps') cs
   where
-    ps' = mapAnnotations anno ps
+    ps' = mapPlics anno ps
 
 -------------------------------------------------------------------------------
 -- Instances

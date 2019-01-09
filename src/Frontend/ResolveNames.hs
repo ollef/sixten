@@ -219,7 +219,7 @@ resolveTopLevelDefinition (Unscoped.TopLevelInstanceDefinition typ ms) = do
 resolveParams
   :: Monad f
   => [(Plicitness, Name, Unscoped.Type)]
-  -> ResolveNames (Telescope Plicitness Scoped.Expr PreName, f PreName -> Scope TeleVar f PreName)
+  -> ResolveNames (Telescope Scoped.Expr PreName, f PreName -> Scope TeleVar f PreName)
 resolveParams params = do
   params' <- forM params $ \(p, n, t) -> do
     t' <- resolveExpr t

@@ -31,22 +31,22 @@ data Expr v
   | Call (Expr v) (Vector (Anno Expr v)) -- ^ Fully applied, only global
   | PrimCall RetDir (Expr v) (Vector (Direction, Anno Expr v))
   | Let NameHint (Anno Expr v) (Scope1 Expr v)
-  | Case (Anno Expr v) (Branches () Expr v)
+  | Case (Anno Expr v) (Branches Expr v)
   | ExternCode (Extern (Anno Expr v)) (Type v)
   deriving (Foldable, Functor, Traversable)
 
 type Type = Expr
 
-type FunSignature = (Closed (Telescope () Type), Closed (Scope TeleVar Type))
+type FunSignature = (Closed (Telescope Type), Closed (Scope TeleVar Type))
 
 -------------------------------------------------------------------------------
 -- Helpers
 
 letTyped
-  :: Typed.FreeVar d Expr
-  -> Expr (Typed.FreeVar d Expr)
-  -> Expr (Typed.FreeVar d Expr)
-  -> Expr (Typed.FreeVar d Expr)
+  :: Typed.FreeVar Expr
+  -> Expr (Typed.FreeVar Expr)
+  -> Expr (Typed.FreeVar Expr)
+  -> Expr (Typed.FreeVar Expr)
 letTyped v e = Let (Typed.varHint v) (Anno e $ Typed.varType v) . abstract1 v
 
 let_

@@ -62,18 +62,18 @@ mapAnnoBound f (AnnoScope s s') = AnnoScope (mapBound f s) (mapBound f s')
 
 annoBindingsViewM
   :: (Monad expr, Monad expr')
-  => (forall v'. expr' v' -> Maybe (NameHint, a, expr v', AnnoScope1 expr' v'))
+  => (forall v'. expr' v' -> Maybe (NameHint, Plicitness, expr v', AnnoScope1 expr' v'))
   -> expr' v
-  -> Maybe (Telescope a expr v, AnnoScope TeleVar expr' v)
+  -> Maybe (Telescope expr v, AnnoScope TeleVar expr' v)
 annoBindingsViewM f expr@(f -> Just _) = Just $ annoBindingsView f $ Anno expr $ panic "annoBindingsViewM"
 annoBindingsViewM _ _ = Nothing
 
 -- | View consecutive bindings at the same time
 annoBindingsView
   :: (Monad expr, Monad expr')
-  => (forall v'. expr' v' -> Maybe (NameHint, a, expr v', AnnoScope1 expr' v'))
+  => (forall v'. expr' v' -> Maybe (NameHint, Plicitness, expr v', AnnoScope1 expr' v'))
   -> Anno expr' v
-  -> (Telescope a expr v, AnnoScope TeleVar expr' v)
+  -> (Telescope expr v, AnnoScope TeleVar expr' v)
 annoBindingsView f expr = go 0 $ F <$> expr
   where
     go x (Anno (f -> Just (n, p, e, s)) _) = (Telescope $ pure (TeleArg n p $ toScope e) <> ns, s')

@@ -66,7 +66,7 @@ inferPat p pat = do
 tcPats
   :: Vector (Plicitness, Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ())
   -> BoundPatVars
-  -> Telescope Plicitness (Core.Expr MetaVar) FreeV
+  -> Telescope (Core.Expr MetaVar) FreeV
   -> Elaborate (Vector (Core.Pat CoreM FreeV, CoreM, CoreM), PatVars)
 tcPats pats vs tele = do
   unless (Vector.length pats == teleLength tele)
@@ -143,7 +143,7 @@ tcPat' p pat vs expected = case pat of
 
         let numParams = teleLength paramsTele
             (tele, retScope) = Core.pisView conType
-            argPlics = Vector.drop numParams $ teleAnnotations tele
+            argPlics = Vector.drop numParams $ telePlics tele
 
         pats' <- Vector.fromList <$> exactlyEqualisePats (Vector.toList argPlics) (Vector.toList pats)
 
@@ -157,7 +157,7 @@ tcPat' p pat vs expected = case pat of
         let argExprs = snd3 <$> pats''
             argTypes = thd3 <$> pats''
             pats''' = Vector.zip3 argPlics (fst3 <$> pats'') argTypes
-            params = Vector.zip (teleAnnotations paramsTele) paramVars
+            params = Vector.zip (telePlics paramsTele) paramVars
             iparams = first implicitise <$> params
             patExpr = Core.apps (Core.Con qc) $ iparams <> Vector.zip argPlics argExprs
 

@@ -21,15 +21,13 @@ import TypeRep(TypeRep)
 import qualified TypeRep
 import Util
 
-type ExprFreeVar meta = FreeVar Plicitness (Expr meta)
-
-type MonadNormalise meta m = (MonadIO m, MonadFetch Query m, MonadFresh m, MonadContext (ExprFreeVar meta) m, MonadLog m)
+type MonadNormalise meta m = (MonadIO m, MonadFetch Query m, MonadFresh m, MonadContext (FreeVar (Expr meta)) m, MonadLog m)
 
 data Args meta m = Args
   { _expandTypeReps :: !Bool
     -- ^ Should types be reduced to type representations (i.e. forget what the
     -- type is and only remember its representation)?
-  , _prettyExpr :: !(Expr meta (ExprFreeVar meta) -> m Doc)
+  , _prettyExpr :: !(Expr meta (FreeVar (Expr meta)) -> m Doc)
   , _handleMetaVar :: !(meta -> m (Maybe (Closed (Expr meta))))
     -- ^ Allows whnf to try to solve unsolved class constraints when they're
     -- encountered.
@@ -65,9 +63,9 @@ whnf expr = whnf' metaVarSolutionArgs expr mempty
 whnf'
   :: MonadNormalise meta m
   => Args meta m
-  -> Expr meta (ExprFreeVar meta) -- ^ Expression to normalise
-  -> [(Plicitness, Expr meta (ExprFreeVar meta))] -- ^ Arguments to the expression
-  -> m (Expr meta (ExprFreeVar meta))
+  -> Expr meta (FreeVar (Expr meta)) -- ^ Expression to normalise
+  -> [(Plicitness, Expr meta (FreeVar (Expr meta)))] -- ^ Arguments to the expression
+  -> m (Expr meta (FreeVar (Expr meta)))
 whnf' args expr exprs = Log.indent $ do
   whenLoggingCategory "tc.whnf" $ do
     pe <- _prettyExpr args $ apps expr exprs
@@ -143,9 +141,9 @@ normalise e = normalise' metaVarSolutionArgs e mempty
 normalise'
   :: MonadNormalise meta m
   => Args meta m
-  -> Expr meta (ExprFreeVar meta) -- ^ Expression to normalise
-  -> [(Plicitness, Expr meta (ExprFreeVar meta))] -- ^ Arguments to the expression
-  -> m (Expr meta (ExprFreeVar meta))
+  -> Expr meta (FreeVar (Expr meta)) -- ^ Expression to normalise
+  -> [(Plicitness, Expr meta (FreeVar (Expr meta)))] -- ^ Arguments to the expression
+  -> m (Expr meta (FreeVar (Expr meta)))
 normalise' args = normaliseBuiltins go
   where
     go e@(Var FreeVar { varValue = Just ref }) es = do
@@ -298,7 +296,7 @@ typeRepBinOp lzero rzero op cop k x y = do
 
 chooseBranch
   :: Expr meta v
-  -> Branches Plicitness (Expr meta) v
+  -> Branches (Expr meta) v
   -> Maybe (Expr meta v)
 chooseBranch (Lit l) (LitBranches lbrs def) = Just chosenBranch
   where
@@ -326,10 +324,10 @@ chooseBranch _ _ = Nothing
 -- hopefully rarely the case in practice.
 normaliseDef
   :: Monad m
-  => (Expr meta (ExprFreeVar meta) -> m (Expr meta (ExprFreeVar meta))) -- ^ How to normalise case scrutinees
-  -> Expr meta (ExprFreeVar meta) -- ^ The definition
-  -> [(Plicitness, Expr meta (ExprFreeVar meta))] -- ^ Arguments
-  -> m (Maybe (Expr meta (ExprFreeVar meta), [(Plicitness, Expr meta (ExprFreeVar meta))]))
+  => (Expr meta (FreeVar (Expr meta)) -> m (Expr meta (FreeVar (Expr meta)))) -- ^ How to normalise case scrutinees
+  -> Expr meta (FreeVar (Expr meta)) -- ^ The definition
+  -> [(Plicitness, Expr meta (FreeVar (Expr meta)))] -- ^ Arguments
+  -> m (Maybe (Expr meta (FreeVar (Expr meta)), [(Plicitness, Expr meta (FreeVar (Expr meta)))]))
   -- ^ The definition body applied to some arguments and any arguments that are still left
 normaliseDef norm = lambdas
   where
@@ -347,12 +345,12 @@ normaliseDef norm = lambdas
 
 instantiateLetM
   :: (MonadFresh m, MonadIO m)
-  => LetRec (Expr meta) (ExprFreeVar meta)
-  -> Scope LetVar (Expr meta) (ExprFreeVar meta)
-  -> m (Expr meta (ExprFreeVar meta))
+  => LetRec (Expr meta) (FreeVar (Expr meta))
+  -> Scope LetVar (Expr meta) (FreeVar (Expr meta))
+  -> m (Expr meta (FreeVar (Expr meta)))
 instantiateLetM ds scope = do
   (vs, setters) <- fmap Vector.unzip $ forMLet ds $ \h _ _ t ->
-    letVar h Explicit t
+    letVar h t
   forM_ (Vector.zip (letBodies ds) setters) $ \(s, set) ->
     set $ instantiateLet pure vs s
   return $ instantiateLet pure vs scope

@@ -403,7 +403,7 @@ generateGlobal g = do
 
 generateBranches
   :: Anno Expr Var
-  -> Branches () Expr Var
+  -> Branches Expr Var
   -> (Expr Var -> InstrGen a)
   -> InstrGen [(a, LLVM.Name)]
 generateBranches (Anno caseExpr caseExprType) branches brCont = do
@@ -427,7 +427,7 @@ generateBranches (Anno caseExpr caseExprType) branches brCont = do
 
       typeRepBits <- fetchTypeRepBits
 
-      argsReps <- forTeleWithPrefixM tele $ \h () s argsReps -> do
+      argsReps <- forTeleWithPrefixM tele $ \h _ s argsReps -> do
         let args = fst <$> argsReps
             reps = snd <$> argsReps
             fullRep
@@ -490,7 +490,7 @@ generateBranches (Anno caseExpr caseExprType) branches brCont = do
 
         typeRepBits <- fetchTypeRepBits
 
-        argsReps <- forTeleWithPrefixM tele $ \h () s argsReps -> do
+        argsReps <- forTeleWithPrefixM tele $ \h _ s argsReps -> do
           let args = fst <$> argsReps
               reps = snd <$> argsReps
               fullRep

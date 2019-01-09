@@ -105,7 +105,7 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
       case msol of
         Nothing -> do
           let vs = snd <$> pvs
-              plicitVs = (\(p, v) -> v { varData = p }) <$> pvs
+              plicitVs = (\(p, v) -> v { varPlicitness = p }) <$> pvs
           t' <- prune (toHashSet vs) t
           let lamt = lams plicitVs t'
           normLamt <- normalise lamt
@@ -150,7 +150,7 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
                 (close identity newMetaType'')
                 (Vector.length vs')
                 (metaSourceLoc m)
-              let e = Meta m' $ (\v -> (varData v, pure v)) <$> vs'
+              let e = Meta m' $ (\v -> (varPlicitness v, pure v)) <$> vs'
                   e' = lams vs e
               solve m $ close (panic "unify sameVar not closed") e'
               unify cxt expr1 expr2
@@ -258,7 +258,7 @@ prune allowed expr = Log.indent $ do
                       (close identity newMetaType'')
                       (Vector.length vs')
                       (metaSourceLoc m)
-                    let e = Meta m' $ (\v -> (varData v, pure v)) <$> vs'
+                    let e = Meta m' $ (\v -> (varPlicitness v, pure v)) <$> vs'
                         e' = lams plicitVs e
                     -- logShow 30 "prune varTypes" =<< mapM (prettyMeta . varType) vs
                     -- logShow 30 "prune vs'" $ varId <$> vs'
@@ -276,5 +276,5 @@ prune allowed expr = Log.indent $ do
               where
                 vs = snd <$> pvs
                 vs' = Vector.filter (`HashSet.member` (allowed <> localAllowed)) vs
-                plicitVs = (\(p, v) -> v { varData = p }) <$> pvs
+                plicitVs = (\(p, v) -> v { varPlicitness = p }) <$> pvs
                 Just mType = typeApps (open $ metaType m) es

@@ -66,10 +66,10 @@ desugarClassDef classVar name loc (ClassDef params ms) =
 
     let ms' = [Method mname mloc $ instantiateTele pure paramVars s | Method mname mloc s <- ms]
 
-    let implicitParamVars = (\v -> v { varData = implicitise $ varData v }) <$> paramVars
+    let implicitParamVars = (\v -> v { varPlicitness = implicitise $ varPlicitness v }) <$> paramVars
         qcon = classConstr name
         abstr = teleAbstraction paramVars
-        classType = Core.apps (pure classVar) $ (\v -> (varData v, pure v)) <$> paramVars
+        classType = Core.apps (pure classVar) $ (\v -> (varPlicitness v, pure v)) <$> paramVars
         classConstrType = foldr
           (\(Method mname _ mtyp) -> Core.Pi (fromName mname) Explicit mtyp . abstractNone)
           classType
@@ -161,7 +161,7 @@ checkInstance ivar iname iloc (Pre.InstanceDef _instanceType methods) =
                   v <- forall (fromName name) Explicit $ Core.pis skolemVars instMethodType
                   let gn = GName iname $ pure name
                   return (v, gn, loc, ConstantDefinition a $ Core.lams skolemVars expr)
-              let skolemArgs = (\v -> (varData v, pure v)) <$> skolemVars
+              let skolemArgs = (\v -> (varPlicitness v, pure v)) <$> skolemVars
                   methodArgs = (\(v, _, _, _) -> (Explicit, Core.apps (pure v) skolemArgs)) <$> methodDefs'
                   implicitArgs = first implicitise <$> args
               return

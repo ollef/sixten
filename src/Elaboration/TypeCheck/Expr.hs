@@ -202,7 +202,7 @@ tcLet
 tcLet ds scope expected expectedAppResult = do
   varDefs <- forM ds $ \(loc, h, def) -> do
     typ <- existsType h
-    (var, set) <- letVar h Explicit typ
+    (var, set) <- letVar h typ
     return (var, (set, loc, def))
 
   let vars = fst <$> varDefs
