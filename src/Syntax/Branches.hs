@@ -16,14 +16,15 @@ import Data.Monoid as Monoid
 import Data.Semigroup as Semigroup
 import Data.Vector(Vector)
 
+import Effect.Context
 import FreeVar
 import Pretty
+import Syntax.Context
 import Syntax.GlobalBind
 import Syntax.Literal
 import Syntax.Name
 import Syntax.QName
 import Syntax.Telescope
-import qualified TypedFreeVar as Typed
 import Util
 
 data Branches expr v
@@ -37,12 +38,18 @@ data LitBranch expr v = LitBranch Literal (expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 conBranchTyped
-  :: Monad expr
+  :: (Monad expr, MonadContext (expr FreeVar) m)
   => QConstr
-  -> Vector (Typed.FreeVar expr)
-  -> expr (Typed.FreeVar expr)
-  -> ConBranch expr (Typed.FreeVar expr)
-conBranchTyped c vs br = ConBranch c (Typed.varTelescope vs) (abstract (teleAbstraction vs) br)
+  -> Vector FreeVar
+  -> expr FreeVar
+  -> m (ConBranch expr FreeVar)
+conBranchTyped c vs br = do
+  tele <- varTelescope vs
+  return
+    $ ConBranch
+      c
+      tele
+      (abstract (teleAbstraction vs) br)
 
 typedConBranchTyped
   :: Monad expr

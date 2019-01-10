@@ -36,6 +36,3 @@ instance Functor Context where
 
 (|>) :: Context e -> (FreeVar, Binding e) -> Context e
 Context vs m |> (v, b) = Context (Tsil.Snoc vs (v, b)) (HashMap.insert v b m)
-
-lookup :: FreeVar -> Context e -> Binding e
-lookup v (Context _ m) = HashMap.lookupDefault (panic "lookup") v m

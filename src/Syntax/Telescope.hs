@@ -36,6 +36,7 @@ import Syntax.GlobalBind
 import Syntax.Name
 import Syntax.NameHint
 import Util
+import Effect.Context as Context
 
 newtype TeleVar = TeleVar Int
   deriving (Eq, Enum, Hashable, Ord, Show, Num)
@@ -53,15 +54,18 @@ data TeleArg expr v = TeleArg !NameHint !Plicitness !(Scope TeleVar expr v)
   deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
 
 varTelescope
-  :: Monad e
-  => Vector (FreeVar, Binding (e FreeVar))
-  -> Telescope d e FreeVar
-varTelescope vs = telescope
-  = Telescope
-  $ (\(v, Binding h p t _) -> TeleArg h p $ abstract abstr t)
-  <$> vs
+  :: (Monad e, MonadContext (e FreeVar) m)
+  => Vector FreeVar
+  -> m (Telescope e FreeVar)
+varTelescope vs = do
+  context <- getContext
+  let bs = (`Context.lookup` context) <$> vs
+  return
+    $ Telescope
+    $ (\(Binding h p t _) -> TeleArg h p $ abstract abstr t)
+    <$> bs
   where
-    abstr = teleAbstraction $ fst <$> vs
+    abstr = teleAbstraction vs
 
 mapPlics :: (Plicitness -> Plicitness) -> Telescope e v -> Telescope e v
 mapPlics f (Telescope xs) = Telescope $ (\(TeleArg h a s) -> TeleArg h (f a) s) <$> xs

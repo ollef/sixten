@@ -10,6 +10,7 @@ import Data.Bitraversable
 import Data.Functor.Classes
 import Data.Vector(Vector)
 
+import Effect.Context as Context
 import Pretty
 import Syntax.Annotation
 import Syntax.Context
@@ -25,11 +26,13 @@ data DataDef typ v = DataDef
   } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 dataDef
-  :: Monad typ
-  => Vector (FreeVar typ)
-  -> [ConstrDef (typ (FreeVar typ))]
-  -> DataDef typ (FreeVar typ)
-dataDef vs cs = DataDef (varTelescope vs) $ fmap abstr <$> cs
+  :: (Monad typ, MonadContext (typ FreeVar) m)
+  => Vector FreeVar
+  -> [ConstrDef (typ FreeVar)]
+  -> m (DataDef typ FreeVar)
+dataDef vs cs = do
+  tele <- varTelescope vs
+  return $ DataDef tele $ fmap abstr <$> cs
   where
     abstr = abstract $ teleAbstraction vs
 

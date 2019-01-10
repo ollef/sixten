@@ -5,6 +5,7 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE UndecidableInstances #-}
 module Effect.Context where
 
@@ -15,11 +16,12 @@ import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.ListT
 import Control.Monad.Trans.Maybe
+import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.List.Class as ListT
 
+import Syntax.Context
 import qualified Util.Tsil as Tsil
 import Util.Tsil(Tsil)
-import Syntax.Context
 
 class Monad m => MonadContext e m | m -> e where
   getContext :: m (Context e)
@@ -35,6 +37,18 @@ class HasContext e env | env -> e where
 instance (HasContext e env, Monad m) => MonadContext e (ReaderT env m) where
   getContext = view context
   modifyContext = local . over context
+
+instance HasContext e (Context e) where
+  context = identity
+
+instance HasContext e env => MonadContext e ((->) env) where
+  getContext = view context
+  modifyContext = local . over context
+
+lookup :: MonadContext e m => FreeVar -> m (Binding e)
+lookup v = do
+  Context _ m <- getContext
+  return $ HashMap.lookupDefault (panic "lookup") v m
 
 ------------------------------------------------------------------------------
 -- mtl instances
