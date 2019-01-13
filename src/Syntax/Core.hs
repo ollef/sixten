@@ -21,6 +21,7 @@ import Data.Deriving
 import Data.Foldable as Foldable
 import Data.Vector(Vector)
 
+import Effect.Context as Context
 import Syntax
 import TypedFreeVar
 import TypeRep(TypeRep)
@@ -56,31 +57,52 @@ sourceLocView :: Expr m v -> (SourceLoc, Expr m v)
 sourceLocView (SourceLoc loc (unSourceLoc -> e)) = (loc, e)
 sourceLocView e = (noSourceLoc "sourceLocView", e)
 
-type FreeExprVar m = FreeVar (Expr m)
+lam
+  :: MonadContext (Expr meta FreeVar) m
+  => FreeVar
+  -> Expr meta FreeVar
+  -> m (Expr meta FreeVar)
+lam v e = do
+  Binding h p t _ <- Context.lookup v
+  return $ Lam h p t $ abstract1 v e
 
-lam :: FreeExprVar m -> Expr m (FreeExprVar m) -> Expr m (FreeExprVar m)
-lam v e = Lam (varHint v) (varPlicitness v) (varType v) $ abstract1 v e
+pi_
+  :: MonadContext (Expr meta FreeVar) m
+  => FreeVar
+  -> Expr meta FreeVar
+  -> m (Expr meta FreeVar)
+pi_ v e = do
+  Binding h p t _ <- Context.lookup v
+  return $ Pi h p t $ abstract1 v e
 
-pi_ :: FreeExprVar m -> Expr m (FreeExprVar m) -> Expr m (FreeExprVar m)
-pi_ v e = Pi (varHint v) (varPlicitness v) (varType v) $ abstract1 v e
+lams
+  :: (MonadContext (Expr meta FreeVar) m, Foldable t)
+  => t FreeVar
+  -> Expr meta FreeVar
+  -> m (Expr meta FreeVar)
+lams xs e = foldrM lam e xs
 
-lams :: Foldable t => t (FreeExprVar m) -> Expr m (FreeExprVar m) -> Expr m (FreeExprVar m)
-lams xs e = foldr lam e xs
-
-pis :: Foldable t => t (FreeExprVar m) -> Expr m (FreeExprVar m) -> Expr m (FreeExprVar m)
-pis xs e = foldr pi_ e xs
+pis
+  :: (MonadContext (Expr meta FreeVar) m, Foldable t)
+  => t FreeVar
+  -> Expr meta FreeVar
+  -> m (Expr meta FreeVar)
+pis xs e = foldrM pi_ e xs
 
 let_
-  :: Vector (FreeExprVar m, SourceLoc, Expr m (FreeExprVar m))
-  -> Expr m (FreeExprVar m)
-  -> Expr m (FreeExprVar m)
+  :: MonadContext (Expr meta FreeVar) m
+  => Vector (FreeVar, SourceLoc, Expr meta FreeVar)
+  -> Expr meta FreeVar
+  -> m (Expr meta FreeVar)
 let_ ds body = do
+  context <- getContext
   let abstr = letAbstraction $ fst3 <$> ds
       ds' = LetRec
-        [ LetBinding (varHint v) loc (abstract abstr e) (varType v)
+        [ LetBinding h loc (abstract abstr e) t
         | (v, loc, e) <- ds
+        , let Binding h _ t _ = Context.lookup v context
         ]
-  Let ds' $ abstract abstr body
+  return $ Let ds' $ abstract abstr body
 
 pattern MkType :: TypeRep -> Expr m v
 pattern MkType rep = Lit (TypeRep rep)

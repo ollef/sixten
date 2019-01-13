@@ -37,35 +37,33 @@ data ConBranch expr v = ConBranch QConstr (Telescope expr v) (Scope TeleVar expr
 data LitBranch expr v = LitBranch Literal (expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-conBranchTyped
+conBranch
   :: (Monad expr, MonadContext (expr FreeVar) m)
   => QConstr
   -> Vector FreeVar
   -> expr FreeVar
   -> m (ConBranch expr FreeVar)
-conBranchTyped c vs br = do
+conBranch c vs br = do
   tele <- varTelescope vs
   return
     $ ConBranch
       c
       tele
-      (abstract (teleAbstraction vs) br)
-
-typedConBranchTyped
-  :: Monad expr
-  => QConstr
-  -> Vector (Typed.FreeVar expr', expr (Typed.FreeVar expr'))
-  -> expr (Typed.FreeVar expr')
-  -> ConBranch expr (Typed.FreeVar expr')
-typedConBranchTyped c vs br = ConBranch c (Typed.varTypeTelescope vs) (abstract (teleAbstraction $ fst <$> vs) br)
+      $ abstract (teleAbstraction vs) br
 
 typedConBranch
-  :: Monad expr
+  :: (Monad expr, MonadContext expr' m)
   => QConstr
-  -> Vector (FreeVar a, expr (FreeVar a))
-  -> expr (FreeVar a)
-  -> ConBranch expr (FreeVar a)
-typedConBranch c vs br = ConBranch c (varTelescope vs) (abstract (teleAbstraction $ fst <$> vs) br)
+  -> Vector (FreeVar, expr FreeVar)
+  -> expr FreeVar
+  -> m (ConBranch expr FreeVar)
+typedConBranch c vs br = do
+  tele <- varTypeTelescope vs
+  return
+    $ ConBranch
+      c
+      tele
+      $ abstract (teleAbstraction $ fst <$> vs) br
 
 bimapBranches
   :: Bifunctor expr

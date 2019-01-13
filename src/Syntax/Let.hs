@@ -21,8 +21,11 @@ import Data.Functor.Classes
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
+import Effect
+import qualified Effect.Context as Context
 import Error
 import Pretty
+import Syntax.Annotation
 import Syntax.GlobalBind
 import Syntax.Name
 import Syntax.NameHint
@@ -140,6 +143,30 @@ transverseLetBinding
   -> LetBinding expr a
   -> f (LetBinding expr' a)
 transverseLetBinding f (LetBinding h loc s t) = LetBinding h loc <$> transverseScope f s <*> f t
+
+letExtendContext
+  :: (MonadFresh m, MonadLog m, MonadContext (e FreeVar) m)
+  => LetRec e FreeVar
+  -> (Vector FreeVar -> m a)
+  -> m a
+letExtendContext ds k = do
+  vs <- forMLet ds $ \h _ _ t -> do
+    v <- freeVar
+    return (v, binding h Explicit t)
+  Context.extends vs $ k $ fst <$> vs
+
+letMapExtendContext
+  :: (MonadFresh m, MonadLog m, MonadContext (e' FreeVar) m)
+  => LetRec e FreeVar
+  -> (e FreeVar -> m (e' FreeVar))
+  -> (Vector FreeVar -> m a)
+  -> m a
+letMapExtendContext tele f k = do
+  vs <- forMLet tele $ \h _ _ t -> do
+    t' <- f t
+    v <- freeVar
+    return (v, binding h Explicit t')
+  Context.extends vs $ k $ fst <$> vs
 
 -------------------------------------------------------------------------------
 -- Instances

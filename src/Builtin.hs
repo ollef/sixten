@@ -103,7 +103,7 @@ apply target numArgs = evalFresh $ do
         $ (\v -> (directType, varAnno v)) <$> argTypes'
         <|> (\v -> (Indirect, varAnno v)) <$> args'
 
-      br :: Int -> Lifted.Expr (FreeVar Lifted.Expr)
+      br :: Int -> Lifted.Expr FreeVar
       br arity
         | numArgs < arity
           = Lifted.Con Ref
@@ -125,11 +125,11 @@ apply target numArgs = evalFresh $ do
   return
     $ close (panic "Builtin.apply")
     $ Sized.FunctionDef Public Sized.NonClosure
-    $ Sized.functionTyped funArgs
+    $ Sized.function funArgs
     $ flip Anno unknownSize
     $ Lifted.Case (Anno (deref $ pure this) unknownSize)
     $ ConBranches $ pure
-    $ conBranchTyped Closure clArgs
+    $ conBranch Closure clArgs
       $ Lifted.Case (varAnno farity)
       $ LitBranches
         [LitBranch (Integer arity) $ br $ fromIntegral arity | arity <- 1 :| [2..maxArity]]
@@ -169,7 +169,7 @@ pap target k m = evalFresh $ do
   return
     $ close (panic "Builtin.pap")
     $ Sized.FunctionDef Public Sized.NonClosure
-    $ Sized.functionTyped funArgs
+    $ Sized.function funArgs
     $ flip Anno unknownSize
     $ Lifted.Case (Anno (deref $ pure this) unknownSize)
     $ ConBranches $ pure

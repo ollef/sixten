@@ -18,7 +18,9 @@ import Data.Deriving
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
+import Effect.Context as Context
 import Syntax
+import Syntax.Context
 import Syntax.Sized.Anno
 import TypedFreeVar
 import TypeRep(TypeRep)
@@ -43,13 +45,30 @@ type Type = Expr
 pattern MkType :: TypeRep -> Expr v
 pattern MkType rep = Lit (TypeRep rep)
 
-lam :: FreeVar e -> Type (FreeVar e) -> Anno Expr (FreeVar e) -> Expr (FreeVar e)
-lam v t = Lam (varHint v) t . abstract1Anno v
+lam
+  :: MonadContext e m
+  => FreeVar
+  -> Type FreeVar
+  -> Anno Expr FreeVar
+  -> m (Expr FreeVar)
+lam v t e = do
+  Binding h _ _ _ <- Context.lookup v
+  return $ Lam h t $ abstract1Anno v e
 
-letRec :: Vector (FreeVar e, Anno Expr (FreeVar e)) -> Expr (FreeVar e) -> Expr (FreeVar e)
+letRec
+  :: MonadContext e m
+  => Vector (FreeVar, Anno Expr FreeVar)
+  -> Expr FreeVar
+  -> m (Expr FreeVar)
 letRec ds expr = do
-  let ds' = [LetBinding (varHint v) (noSourceLoc "SLambda") (abstr e) t | (v, Anno e t) <- ds]
-  Let (LetRec ds') $ abstr expr
+  context <- getContext
+  let
+    ds' = do
+      (v, Anno e t) <- ds
+      let
+        Binding h _ _ _ = Context.lookup v context
+      return $ LetBinding h (noSourceLoc "SLambda") (abstr e) t
+  return $ Let (LetRec ds') $ abstr expr
   where
     abstr = abstract $ letAbstraction $ fst <$> ds
 

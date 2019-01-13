@@ -27,16 +27,17 @@ import Data.Functor.Classes
 import Data.List(groupBy)
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
-import Syntax.Context
 import qualified Data.Vector as Vector
+import Syntax.Context
 
+import Effect
+import Effect.Context as Context
 import Pretty
 import Syntax.Annotation
 import Syntax.GlobalBind
 import Syntax.Name
 import Syntax.NameHint
 import Util
-import Effect.Context as Context
 
 newtype TeleVar = TeleVar Int
   deriving (Eq, Enum, Hashable, Ord, Show, Num)
@@ -53,19 +54,72 @@ unTelescope (Telescope xs) = xs
 data TeleArg expr v = TeleArg !NameHint !Plicitness !(Scope TeleVar expr v)
   deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
 
+bindingTelescope
+  :: (Monad e, Eq v, Hashable v)
+  => Vector (v, Binding (e v))
+  -> Telescope e v
+bindingTelescope vs
+  = Telescope
+  $ (\(v, Binding h p t _) -> TeleArg h p $ abstract abstr t)
+  <$> vs
+  where
+    abstr = teleAbstraction $ fst <$> vs
+
 varTelescope
   :: (Monad e, MonadContext (e FreeVar) m)
   => Vector FreeVar
   -> m (Telescope e FreeVar)
 varTelescope vs = do
   context <- getContext
-  let bs = (`Context.lookup` context) <$> vs
+  let
+    bs = (`Context.lookup` context) <$> vs
   return
     $ Telescope
     $ (\(Binding h p t _) -> TeleArg h p $ abstract abstr t)
     <$> bs
   where
     abstr = teleAbstraction vs
+
+varTypeTelescope
+  :: (Monad e, MonadContext e' m)
+  => Vector (FreeVar, e FreeVar)
+  -> m (Telescope e FreeVar)
+varTypeTelescope vs = do
+  context <- getContext
+  let
+    bs = first (`Context.lookup` context) <$> vs
+  return
+    $ Telescope
+    $ (\(Binding h p _ _, t) -> TeleArg h p $ abstract abstr t)
+    <$> bs
+  where
+    abstr = teleAbstraction (fst <$> vs)
+
+teleExtendContext
+  :: (MonadFresh m, MonadLog m, MonadContext (e FreeVar) m, Monad e)
+  => Telescope e FreeVar
+  -> (Vector FreeVar -> m a)
+  -> m a
+teleExtendContext tele k = do
+  vs <- forTeleWithPrefixM tele $ \h p s vs -> do
+    let e = instantiateTele (pure . fst) vs s
+    v <- freeVar
+    return (v, binding h p e)
+  Context.extends vs $ k $ fst <$> vs
+
+teleMapExtendContext
+  :: (MonadFresh m, MonadLog m, MonadContext (e' FreeVar) m, Monad e)
+  => Telescope e FreeVar
+  -> (e FreeVar -> m (e' FreeVar))
+  -> (Vector FreeVar -> m a)
+  -> m a
+teleMapExtendContext tele f k = do
+  vs <- forTeleWithPrefixM tele $ \h p s vs -> do
+    let e = instantiateTele (pure . fst) vs s
+    e' <- Context.extends vs $ f e
+    v <- freeVar
+    return (v, binding h p e')
+  Context.extends vs $ k $ fst <$> vs
 
 mapPlics :: (Plicitness -> Plicitness) -> Telescope e v -> Telescope e v
 mapPlics f (Telescope xs) = Telescope $ (\(TeleArg h a s) -> TeleArg h (f a) s) <$> xs

@@ -1,5 +1,4 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE OverloadedStrings #-}
 module Syntax.Context where
 
 import Protolude
@@ -7,14 +6,18 @@ import Protolude
 import Bound
 import Data.HashMap.Lazy as HashMap
 import Data.Vector(Vector)
+
+import Effect.Fresh
+import Syntax.Annotation
+import Syntax.NameHint
 import Util.Tsil(Tsil)
 import qualified Util.Tsil as Tsil
 
-import Syntax.Annotation
-import Syntax.NameHint
-
 newtype FreeVar = FreeVar Int
   deriving (Eq, Ord, Show, Hashable)
+
+freeVar :: MonadFresh m => m FreeVar
+freeVar = FreeVar <$> fresh
 
 data Binding e = Binding
   { _hint :: !NameHint
@@ -22,6 +25,9 @@ data Binding e = Binding
   , _type :: e
   , _value :: !(Maybe e)
   } deriving Show
+
+binding :: NameHint -> Plicitness -> e -> Binding e
+binding h p t = Binding h p t Nothing
 
 instance Functor Binding where
   fmap f (Binding h p t v) = Binding h p (f t) (fmap f v)
@@ -36,3 +42,9 @@ instance Functor Context where
 
 (|>) :: Context e -> (FreeVar, Binding e) -> Context e
 Context vs m |> (v, b) = Context (Tsil.Snoc vs (v, b)) (HashMap.insert v b m)
+
+instance Semigroup (Context e) where
+  Context vs1 m1 <> Context vs2 m2 = Context (vs1 <> vs2) (m1 <> m2)
+
+instance Monoid (Context e) where
+  mempty = Context mempty mempty

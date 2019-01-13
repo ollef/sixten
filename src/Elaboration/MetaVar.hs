@@ -15,15 +15,15 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import Effect
+import qualified Effect.Context as Context
 import Error
 import Syntax
 import Syntax.Core
 import TypedFreeVar
 import Util
+import qualified Util.Tsil as Tsil
 
 type MetaRef = IORef (Maybe (Closed (Expr MetaVar)))
-
-type FreeV = FreeVar (Expr MetaVar)
 
 data MetaVar = MetaVar
   { metaId :: !Int
@@ -163,68 +163,66 @@ logDefMeta c@(Category ct) s mdef = whenLoggingCategory c $ do
   d <- prettyDefMeta def
   Effect.log $ "[" <> ct <> "] " <> fromString s <> ": " <> showWide d
 
-type FreeBindVar meta = FreeVar (Expr meta)
-
 withInstantiatedMetaType
-  :: (MonadLog m, MonadFresh m, MonadContext (FreeBindVar MetaVar) m)
+  :: (MonadLog m, MonadFresh m, MonadContext (Expr MetaVar FreeVar) m)
   => MetaVar
-  -> (Vector FreeV -> Expr MetaVar (FreeBindVar MetaVar) -> m a)
+  -> (Vector FreeVar -> Expr MetaVar FreeVar -> m a)
   -> m a
 withInstantiatedMetaType m = withInstantiatedMetaType' (metaArity m) m
 
 withInstantiatedMetaType'
-  :: (MonadLog m, MonadFresh m, MonadContext (FreeBindVar MetaVar) m)
+  :: (MonadLog m, MonadFresh m, MonadContext (Expr MetaVar FreeVar) m)
   => Int
   -> MetaVar
-  -> (Vector FreeV -> Expr MetaVar (FreeBindVar MetaVar) -> m a)
+  -> (Vector FreeVar -> Expr MetaVar FreeVar -> m a)
   -> m a
 withInstantiatedMetaType' arity m = go mempty arity (open $ metaType m)
   where
-    go vs 0 t k = k (toVector $ reverse vs) t
+    go vs 0 t k = k (toVector vs) t
     go vs n (Pi h a t s) k =
-      extendContext h a t $ \v ->
-        go (v:vs) (n - 1) (instantiate1 (pure v) s) k
+      Context.freshExtend (binding h a t) $ \v ->
+        go (Tsil.Snoc vs v) (n - 1) (instantiate1 (pure v) s) k
     go _ _ _ _ = panic "instantiatedMetaType'"
 
-type MonadBindMetas meta' m = (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadLog m, MonadIO m)
+type MonadBindMetas meta' m = (MonadFresh m, MonadContext (Expr meta' FreeVar) m, MonadLog m, MonadIO m)
 
 -- TODO move?
 bindDefMetas
   :: MonadBindMetas meta' m
-  => (meta -> Vector (Plicitness, Expr meta (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
-  -> Definition (Expr meta) (FreeBindVar meta')
-  -> m (Definition (Expr meta') (FreeBindVar meta'))
+  => (meta -> Vector (Plicitness, Expr meta FreeVar) -> m (Expr meta' FreeVar))
+  -> Definition (Expr meta) FreeVar
+  -> m (Definition (Expr meta') FreeVar)
 bindDefMetas f def = case def of
   ConstantDefinition a e -> ConstantDefinition a <$> bindMetas f e
   DataDefinition d rep -> DataDefinition <$> bindDataDefMetas f d <*> bindMetas f rep
 
 bindDefMetas'
   :: MonadBindMetas meta' m
-  => (meta -> Vector (Plicitness, Expr meta' (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
-  -> Definition (Expr meta) (FreeBindVar meta')
-  -> m (Definition (Expr meta') (FreeBindVar meta'))
+  => (meta -> Vector (Plicitness, Expr meta' FreeVar) -> m (Expr meta' FreeVar))
+  -> Definition (Expr meta) FreeVar
+  -> m (Definition (Expr meta') FreeVar)
 bindDefMetas' f = bindDefMetas $ \m es -> do
   es' <- traverse (traverse $ bindMetas' f) es
   f m es'
 
 bindDataDefMetas
   :: MonadBindMetas meta' m
-  => (meta -> Vector (Plicitness, Expr meta (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
-  -> DataDef (Expr meta) (FreeBindVar meta')
-  -> m (DataDef (Expr meta') (FreeBindVar meta'))
+  => (meta -> Vector (Plicitness, Expr meta FreeVar) -> m (Expr meta' FreeVar))
+  -> DataDef (Expr meta) FreeVar
+  -> m (DataDef (Expr meta') FreeVar)
 bindDataDefMetas f (DataDef ps cs) =
   teleMapExtendContext ps (bindMetas f) $ \vs -> do
     cs' <- forM cs $ \(ConstrDef c s) -> do
       e <- bindMetas f $ instantiateTele pure vs s
       return $ ConstrDef c e
 
-    return $ dataDef vs cs'
+    dataDef vs cs'
 
 bindMetas
   :: MonadBindMetas meta' m
-  => (meta -> Vector (Plicitness, Expr meta (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
-  -> Expr meta (FreeBindVar meta')
-  -> m (Expr meta' (FreeBindVar meta'))
+  => (meta -> Vector (Plicitness, Expr meta FreeVar) -> m (Expr meta' FreeVar))
+  -> Expr meta FreeVar
+  -> m (Expr meta' FreeVar)
 bindMetas f expr = case expr of
   Var v -> return $ Var v
   Meta m es -> f m es
@@ -241,32 +239,32 @@ bindMetas f expr = case expr of
         bindMetas f e
       let e = instantiateLet pure vs scope
       e' <- bindMetas f e
-      return $ let_ (Vector.zip3 vs (letSourceLocs ds) es) e'
+      let_ (Vector.zip3 vs (letSourceLocs ds) es) e'
   Case e brs t -> Case <$> bindMetas f e <*> bindBranchMetas f brs <*> bindMetas f t
   ExternCode e t -> ExternCode <$> mapM (bindMetas f) e <*> bindMetas f t
   SourceLoc loc e -> SourceLoc loc <$> bindMetas f e
   where
     absCase h p t s c = do
       t' <- bindMetas f t
-      extendContext h p t' $ \v -> do
+      Context.freshExtend (binding h p t') $ \v -> do
         let e = instantiate1 (pure v) s
         e' <- bindMetas f e
-        return $ c v e'
+        c v e'
 
 bindMetas'
   :: MonadBindMetas meta' m
-  => (meta -> Vector (Plicitness, Expr meta' (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
-  -> Expr meta (FreeBindVar meta')
-  -> m (Expr meta' (FreeBindVar meta'))
+  => (meta -> Vector (Plicitness, Expr meta' FreeVar) -> m (Expr meta' FreeVar))
+  -> Expr meta FreeVar
+  -> m (Expr meta' FreeVar)
 bindMetas' f = bindMetas $ \m es -> do
   es' <- traverse (traverse $ bindMetas' f) es
   f m es'
 
 bindBranchMetas
   :: MonadBindMetas meta' m
-  => (meta -> Vector (Plicitness, Expr meta (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
-  -> Branches (Expr meta) (FreeBindVar meta')
-  -> m (Branches (Expr meta') (FreeBindVar meta'))
+  => (meta -> Vector (Plicitness, Expr meta FreeVar) -> m (Expr meta' FreeVar))
+  -> Branches (Expr meta) FreeVar
+  -> m (Branches (Expr meta') FreeVar)
 bindBranchMetas f brs = case brs of
   ConBranches cbrs -> ConBranches <$> do
     forM cbrs $ \(ConBranch c tele scope) ->
@@ -274,7 +272,7 @@ bindBranchMetas f brs = case brs of
         let expr = instantiateTele pure vs scope
         expr' <- bindMetas f expr
 
-        return $ conBranchTyped c vs expr'
+        conBranch c vs expr'
   LitBranches lbrs def ->
     LitBranches
       <$> mapM (\(LitBranch l br) -> LitBranch l <$> bindMetas f br) lbrs

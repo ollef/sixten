@@ -7,19 +7,22 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE UndecidableInstances #-}
-module Effect.Context where
+module Effect.Context(module Effect.Context, module Syntax.Context) where
 
 import Protolude
 
-import Control.Lens hiding (Context)
+import Control.Lens hiding (Context, (|>))
 import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.ListT
 import Control.Monad.Trans.Maybe
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.List.Class as ListT
+import Effect.Fresh
 
+import Syntax.Annotation
 import Syntax.Context
+import Syntax.NameHint
 import qualified Util.Tsil as Tsil
 import Util.Tsil(Tsil)
 
@@ -49,6 +52,30 @@ lookup :: MonadContext e m => FreeVar -> m (Binding e)
 lookup v = do
   Context _ m <- getContext
   return $ HashMap.lookupDefault (panic "lookup") v m
+
+freshExtend
+  :: (MonadContext e m, MonadFresh m)
+  => Binding e
+  -> (FreeVar -> m a)
+  -> m a
+freshExtend b k = do
+  v <- FreeVar <$> fresh
+  extend v b $ k v
+
+extend
+  :: MonadContext e m
+  => FreeVar
+  -> Binding e
+  -> m a
+  -> m a
+extend v b = modifyContext (|> (v, b))
+
+extends
+  :: (Foldable t, MonadContext e m)
+  => t (FreeVar, Binding e)
+  -> m a
+  -> m a
+extends vs k = foldr (uncurry extend) k vs
 
 ------------------------------------------------------------------------------
 -- mtl instances

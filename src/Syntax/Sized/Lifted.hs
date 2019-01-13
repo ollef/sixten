@@ -16,8 +16,10 @@ import Data.Deriving
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
+import Effect.Context as Context
 import FreeVar
 import Syntax hiding (Definition)
+import Syntax.Context as Context
 import Syntax.Sized.Anno
 import qualified TypedFreeVar as Typed
 import TypeRep(TypeRep)
@@ -42,19 +44,22 @@ type FunSignature = (Closed (Telescope Type), Closed (Scope TeleVar Type))
 -------------------------------------------------------------------------------
 -- Helpers
 
-letTyped
-  :: Typed.FreeVar Expr
-  -> Expr (Typed.FreeVar Expr)
-  -> Expr (Typed.FreeVar Expr)
-  -> Expr (Typed.FreeVar Expr)
-letTyped v e = Let (Typed.varHint v) (Anno e $ Typed.varType v) . abstract1 v
-
 let_
-  :: FreeVar d
-  -> Anno Expr (FreeVar d)
-  -> Expr (FreeVar d)
-  -> Expr (FreeVar d)
-let_ v e = Let (varHint v) e . abstract1 v
+  :: MonadContext (Expr FreeVar) m
+  => FreeVar
+  -> Expr FreeVar
+  -> Expr FreeVar
+  -> m (Expr FreeVar)
+let_ v e e' = do
+  Binding h _ t _ <- Context.lookup v
+  return $ Let h (Anno e t) $ abstract1 v e'
+
+-- let_
+--   :: FreeVar
+--   -> Anno Expr FreeVar
+--   -> Expr FreeVar
+--   -> Expr FreeVar
+-- let_ v e = Let (varHint v) e . abstract1 v
 
 pattern MkType :: TypeRep -> Expr v
 pattern MkType rep = Lit (TypeRep rep)

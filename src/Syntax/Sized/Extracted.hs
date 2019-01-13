@@ -17,7 +17,9 @@ import Data.HashMap.Lazy(HashMap)
 import Data.Text(Text)
 import Data.Vector(Vector)
 
+import Effect.Context as Context
 import Syntax hiding (Definition)
+import Syntax.Context as Context
 import Syntax.Sized.Anno
 import TypedFreeVar
 import TypeRep(TypeRep)
@@ -55,11 +57,14 @@ emptySubmodule contents = (\() -> contents) <$> mempty
 -------------------------------------------------------------------------------
 -- Helpers
 let_
-  :: FreeVar Expr
-  -> Expr (FreeVar Expr)
-  -> Expr (FreeVar Expr)
-  -> Expr (FreeVar Expr)
-let_ v e = Let (varHint v) (Anno e $ varType v) . abstract1 v
+  :: MonadContext (Expr FreeVar) m
+  => FreeVar
+  -> Expr FreeVar
+  -> Expr FreeVar
+  -> m (Expr FreeVar)
+let_ v e e' = do
+  Binding h _ t _ <- Context.lookup v
+  return $ Let h (Anno e t) $ abstract1 v e'
 
 pattern MkType :: TypeRep -> Expr v
 pattern MkType rep = Lit (TypeRep rep)
