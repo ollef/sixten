@@ -109,7 +109,7 @@ hoverDef f (ConstantDefinition _ e) = hoverExpr f e
 hoverDef f (DataDefinition (DataDef params cs) _rep) =
   teleExtendContext params $ \vs -> do
     context <- getContext
-    foldMap (hoverExpr f . _type . (`Context.lookup` context)) vs
+    foldMap (hoverExpr f . (`Context.lookupType` context)) vs
     <> foldMap (\(ConstrDef _ s) -> hoverExpr f $ instantiateTele pure vs s) cs
 
 hoverExpr
@@ -156,5 +156,5 @@ hoverBranches f (ConBranches cbrs) =
   flip foldMap cbrs $ \(ConBranch _ tele scope) ->
     teleExtendContext tele $ \vs -> do
       context <- getContext
-      foldMap (hoverExpr f . _type . (`Context.lookup` context)) vs
+      foldMap (hoverExpr f . (`Context.lookupType` context)) vs
       <> hoverExpr f (instantiateTele pure vs scope)

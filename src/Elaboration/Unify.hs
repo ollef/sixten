@@ -14,6 +14,7 @@ import qualified Data.Vector as Vector
 import {-# SOURCE #-} Elaboration.Constraint
 import Analysis.Simplify
 import Effect
+import Effect.Context as Context
 import Effect.Log as Log
 import qualified Elaboration.Equal as Equal
 import Elaboration.MetaVar
@@ -60,10 +61,10 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
   (Lam h1 p1 t1 s1, Lam h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
   -- Eta-expand
   (Lam h p t s, _) ->
-    extendContext h p t $ \v ->
+    Context.freshExtend (binding h p t) $ \v ->
       unify cxt (instantiate1 (pure v) s) (App expr2 p $ pure v)
   (_, Lam h p t s) ->
-    extendContext h p t $ \v ->
+    Context.freshExtend (binding h p t) $ \v ->
       unify cxt (App expr1 p $ pure v) (instantiate1 (pure v) s)
   -- Eta-reduce
   (etaReduce -> Just expr1', _) -> unify cxt expr1' expr2
@@ -97,7 +98,7 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
   where
     absCase h p t1 t2 s1 s2 = do
       unify cxt t1 t2
-      extendContext h p t1 $ \v ->
+      Context.freshExtend (binding h p t1) $ \v ->
         unify cxt (instantiate1 (pure v) s1) (instantiate1 (pure v) s2)
 
     solveVar recurse m pvs t = do
@@ -105,11 +106,10 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
       case msol of
         Nothing -> do
           let vs = snd <$> pvs
-              plicitVs = (\(p, v) -> v { varPlicitness = p }) <$> pvs
           t' <- prune (toHashSet vs) t
-          let lamt = lams plicitVs t'
+          lamt <- plicitLams pvs t'
           normLamt <- normalise lamt
-          logShow "tc.unify" "vs" (varId <$> vs)
+          logShow "tc.unify" "vs" vs
           logMeta "tc.unify" ("solving t " <> show (metaId m)) $ zonk t
           logMeta "tc.unify" ("solving t' " <> show (metaId m)) $ zonk t'
           logMeta "tc.unify" ("solving lamt " <> show (metaId m)) $ zonk lamt
@@ -138,7 +138,7 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
         withInstantiatedMetaType' (Vector.length pes1) m $ \vs typ -> do
           let vs' = snd <$> Vector.filter fst (Vector.zip keep vs)
           prunedType <- prune (toHashSet vs') typ
-          let newMetaType = pis vs' prunedType
+          newMetaType <- pis vs' prunedType
           newMetaType' <- normalise newMetaType
 
           case closed newMetaType' of
@@ -150,8 +150,9 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
                 (close identity newMetaType'')
                 (Vector.length vs')
                 (metaSourceLoc m)
-              let e = Meta m' $ (\v -> (varPlicitness v, pure v)) <$> vs'
-                  e' = lams vs e
+              context <- getContext
+              let e = Meta m' $ (\v -> (Context._plicitness $ Context.lookup v context, pure v)) <$> vs'
+              e' <- lams vs e
               solve m $ close (panic "unify sameVar not closed") e'
               unify cxt expr1 expr2
 
@@ -214,13 +215,13 @@ prettyContext cxt = do
 
 prune
   :: (MonadElaborate m, MonadError Error m)
-  => HashSet FreeV
+  => HashSet FreeVar
   -> CoreM
   -> m CoreM
 prune allowed expr = Log.indent $ do
   logMeta "tc.unify.prune" "prune expr" $ zonk expr
-  logShow "tc.unify.prune" "prune allowed" $ pretty <$> toList allowed
-  res <- inUpdatedContext (const mempty) $ bindMetas go expr
+  logShow "tc.unify.prune" "prune allowed" $ toList allowed
+  res <- modifyContext (const mempty) $ bindMetas go expr
   logMeta "tc.unify.prune" "prune res" $ zonk res
   return res
   where
@@ -232,7 +233,7 @@ prune allowed expr = Log.indent $ do
           bindMetas go $ betaApps (open e) es
         Nothing -> do
           es' <- mapM (mapM whnf) es
-          localAllowed <- toHashSet <$> getLocalVars
+          localAllowed <- toHashSet . Context._vars <$> getContext
           case distinctVarView es' of
             Nothing ->
               return $ Meta m es'
@@ -241,12 +242,12 @@ prune allowed expr = Log.indent $ do
                 return $ Meta m es'
               | otherwise -> do
                 newMetaType <- prune (toHashSet vs') mType
-                newMetaType' <- normalise $ pis vs' newMetaType
+                newMetaType' <- normalise =<< pis vs' newMetaType
                 logShow "tc.prune" "prune m" $ metaId m
                 logMeta "tc.prune" "prune metaType" $ zonk (open $ metaType m :: CoreM)
                 logMeta "tc.prune" "prune newMetaType'" $ zonk newMetaType'
-                logShow "tc.prune" "prune vs" $ varId <$> vs
-                logShow "tc.prune" "prune vs'" $ varId <$> vs'
+                logShow "tc.prune" "prune vs" vs
+                logShow "tc.prune" "prune vs'" vs'
                 case closed newMetaType' of
                   Nothing -> do
                     logShow "tc.prune" "prune not closed newMetaType'" ()
@@ -258,8 +259,9 @@ prune allowed expr = Log.indent $ do
                       (close identity newMetaType'')
                       (Vector.length vs')
                       (metaSourceLoc m)
-                    let e = Meta m' $ (\v -> (varPlicitness v, pure v)) <$> vs'
-                        e' = lams plicitVs e
+                    context <- getContext
+                    let e = Meta m' $ (\v -> (Context._plicitness $ Context.lookup v context, pure v)) <$> vs'
+                    e' <- plicitLams pvs e
                     -- logShow 30 "prune varTypes" =<< mapM (prettyMeta . varType) vs
                     -- logShow 30 "prune vs'" $ varId <$> vs'
                     -- logShow 30 "prune varTypes'" =<< mapM (prettyMeta . varType) vs'
@@ -269,12 +271,11 @@ prune allowed expr = Log.indent $ do
                         logShow "tc.prune" "prune not closed e'" ()
                         return $ Meta m es'
                       Just closedSol -> do
-                        logMeta "tc.prune" "prune closed" $ zonk closedSol
+                        logMeta "tc.prune" "prune closed" $ fmap vacuous $ zonk closedSol
                         solve m $ close identity closedSol
                         return e
               | otherwise -> return $ Meta m es'
               where
                 vs = snd <$> pvs
                 vs' = Vector.filter (`HashSet.member` (allowed <> localAllowed)) vs
-                plicitVs = (\(p, v) -> v { varPlicitness = p }) <$> pvs
                 Just mType = typeApps (open $ metaType m) es

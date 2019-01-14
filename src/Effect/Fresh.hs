@@ -24,18 +24,6 @@ class Monad m => MonadFresh m where
     => m Int
   fresh = lift fresh
 
-newtype Fresh a = Fresh (State Int a)
-  deriving (Functor, Applicative, Monad, MonadState Int)
-
-evalFresh :: Fresh a -> a
-evalFresh (Fresh m) = evalState m 0
-
-instance MonadFresh Fresh where
-  fresh = do
-    i <- get
-    put $! i + 1
-    return i
-
 newtype FreshEnv = FreshEnv
   { _freshVar :: MVar Int
   }

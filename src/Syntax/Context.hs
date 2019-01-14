@@ -33,15 +33,15 @@ instance Functor Binding where
   fmap f (Binding h p t v) = Binding h p (f t) (fmap f v)
 
 data Context e = Context
-  { _vars :: Tsil (FreeVar, Binding e)
+  { _vars :: Tsil FreeVar
   , _varMap :: !(HashMap FreeVar (Binding e))
   }
 
 instance Functor Context where
-  fmap f (Context vs m) = Context (fmap (fmap $ fmap f) vs) (fmap (fmap f) m)
+  fmap f (Context vs m) = Context vs (fmap (fmap f) m)
 
 (|>) :: Context e -> (FreeVar, Binding e) -> Context e
-Context vs m |> (v, b) = Context (Tsil.Snoc vs (v, b)) (HashMap.insert v b m)
+Context vs m |> (v, b) = Context (Tsil.Snoc vs v) (HashMap.insert v b m)
 
 instance Semigroup (Context e) where
   Context vs1 m1 <> Context vs2 m2 = Context (vs1 <> vs2) (m1 <> m2)

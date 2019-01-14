@@ -56,7 +56,7 @@ instance Show MetaVar where
     showString "<Ref>"
 
 explicitExists
-  :: (MonadLog m, MonadIO m, MonadFresh m)
+  :: (MonadContext e m, MonadLog m, MonadIO m, MonadFresh m)
   => NameHint
   -> Plicitness
   -> Closed (Expr MetaVar)
@@ -67,7 +67,7 @@ explicitExists hint p typ a loc = do
   i <- fresh
   ref <- liftIO $ newIORef Nothing
   logCategory "tc.metavar" $ "exists: " <> shower i
-  logMeta "tc.metavar" "exists typ: " $ pure (open typ :: Expr MetaVar Doc)
+  logMeta "tc.metavar" "exists typ: " $ pure $ open typ
   return $ MetaVar i typ a hint p loc ref
 
 solution
@@ -109,7 +109,7 @@ instance Pretty a => Pretty (WithVar a) where
   prettyM (WithVar _ x) = prettyM x
 
 prettyMetaVar
-  :: (MonadLog m, MonadIO m)
+  :: (MonadContext e m, MonadLog m, MonadIO m)
   => MetaVar
   -> m Doc
 prettyMetaVar x = do
@@ -119,33 +119,33 @@ prettyMetaVar x = do
     Nothing -> return name
     Just sol -> do
       p <- getLogCategories
-      sol' <- prettyMeta (open sol :: Expr MetaVar Doc)
+      sol' <- prettyMeta $ open sol
       if p "tc.metavar" then
         return $ PP.parens $ name PP.<+> "=" PP.<+> sol'
       else
         return $ PP.parens sol'
 
 prettyMeta
-  :: (Pretty v, MonadLog m, MonadIO m)
-  => Expr MetaVar v
+  :: (MonadContext e m, MonadLog m, MonadIO m)
+  => Expr MetaVar FreeVar
   -> m Doc
 prettyMeta e = do
-  e' <- bitraverse (\m -> WithVar m <$> prettyMetaVar m) (pure . pretty) e
+  e' <- bitraverse (\m -> WithVar m <$> prettyMetaVar m) prettyVar e
   return $ pretty e'
 
 prettyDefMeta
-  :: (Pretty v, MonadLog m, MonadIO m)
-  => Definition (Expr MetaVar) v
+  :: (MonadContext e m, MonadLog m, MonadIO m)
+  => Definition (Expr MetaVar) FreeVar
   -> m Doc
 prettyDefMeta e = do
-  e' <- bitraverseDefinition (\m -> WithVar m <$> prettyMetaVar m) (pure . pretty) e
+  e' <- bitraverseDefinition (\m -> WithVar m <$> prettyMetaVar m) prettyVar e
   return $ pretty e'
 
 logMeta
-  :: (MonadLog m, Pretty v, MonadIO m)
+  :: (MonadContext e m, MonadLog m, MonadIO m)
   => Category
   -> String
-  -> m (Expr MetaVar v)
+  -> m (Expr MetaVar FreeVar)
   -> m ()
 logMeta c@(Category ct) s me = whenLoggingCategory c $ do
   e <- me
@@ -153,10 +153,10 @@ logMeta c@(Category ct) s me = whenLoggingCategory c $ do
   Effect.log $ "[" <> ct <> "] " <> fromString s <> ": " <> showWide d
 
 logDefMeta
-  :: (MonadLog m, Pretty v, MonadIO m)
+  :: (MonadContext e m, MonadLog m, MonadIO m)
   => Category
   -> String
-  -> m (Definition (Expr MetaVar) v)
+  -> m (Definition (Expr MetaVar) FreeVar)
   -> m ()
 logDefMeta c@(Category ct) s mdef = whenLoggingCategory c $ do
   def <- mdef

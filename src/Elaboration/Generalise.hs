@@ -31,19 +31,19 @@ generaliseDefs
   :: (MetaVar -> Bool)
   -> GeneraliseDefsMode
   -> Vector
-    ( FreeV
+    ( FreeVar
     , GName
     , SourceLoc
-    , Definition (Expr MetaVar) FreeV
+    , Definition (Expr MetaVar) FreeVar
     )
   -> Elaborate
     ( Vector
-      ( FreeV
+      ( FreeVar
       , GName
       , SourceLoc
-      , Definition (Expr MetaVar) FreeV
+      , Definition (Expr MetaVar) FreeVar
       )
-    , FreeV -> FreeV
+    , FreeVar -> FreeVar
     )
 generaliseDefs mpred mode defs = do
   defs' <- solveRecursiveDefConstraints defs
@@ -60,10 +60,10 @@ collectMetas
   :: (MetaVar -> Bool)
   -> GeneraliseDefsMode
   -> Vector
-    ( FreeV
+    ( FreeVar
     , GName
     , SourceLoc
-    , Definition (Expr MetaVar) FreeV
+    , Definition (Expr MetaVar) FreeVar
     )
   -> Elaborate (HashSet MetaVar)
 collectMetas mpred mode defs = do
@@ -93,7 +93,7 @@ collectMetas mpred mode defs = do
 
 generaliseMetas
   :: HashSet MetaVar
-  -> Elaborate (HashMap MetaVar FreeV)
+  -> Elaborate (HashMap MetaVar FreeVar)
 generaliseMetas metas = do
   logShow "tc.gen" "generaliseMetas metas" metas
   instMetas <- forM (toList metas) $ \m ->
@@ -124,19 +124,19 @@ generaliseMetas metas = do
     acyclic (CyclicSCC _) = panic "generaliseMetas"
 
 replaceMetas
-  :: HashMap MetaVar FreeV
+  :: HashMap MetaVar FreeVar
   -> Vector
-    ( FreeV
+    ( FreeVar
     , GName
     , SourceLoc
-    , Definition (Expr MetaVar) FreeV
+    , Definition (Expr MetaVar) FreeVar
     )
   -> Elaborate
     ( Vector
-      ( FreeV
+      ( FreeVar
       , GName
       , SourceLoc
-      , Definition (Expr MetaVar) FreeV
+      , Definition (Expr MetaVar) FreeVar
       , CoreM
       )
     )
@@ -173,21 +173,21 @@ replaceMetas varMap defs = forM defs $ \(v, name, loc, d) -> do
             $ "A " <> varKind <> " of type " <> red printedTyp <> " could not be resolved."
 
 collectDefDeps
-  :: HashSet FreeV
+  :: HashSet FreeVar
   -> Vector
-    ( FreeV
+    ( FreeVar
     , GName
     , SourceLoc
-    , Definition (Expr MetaVar) FreeV
+    , Definition (Expr MetaVar) FreeVar
     , CoreM
     )
   -> Vector
-    ( FreeV
+    ( FreeVar
     , ( GName
       , SourceLoc
-      , Definition (Expr MetaVar) FreeV
+      , Definition (Expr MetaVar) FreeVar
       , CoreM
-      , [FreeV]
+      , [FreeVar]
       )
     )
 collectDefDeps vars defs = do
@@ -207,22 +207,22 @@ collectDefDeps vars defs = do
 
 replaceDefs
   :: Vector
-    ( FreeV
+    ( FreeVar
     , ( GName
       , SourceLoc
-      , Definition (Expr MetaVar) FreeV
+      , Definition (Expr MetaVar) FreeVar
       , CoreM
-      , [FreeV]
+      , [FreeVar]
       )
     )
   -> Elaborate
     ( Vector
-      ( FreeV
+      ( FreeVar
       , GName
       , SourceLoc
-      , Definition (Expr MetaVar) FreeV
+      , Definition (Expr MetaVar) FreeVar
       )
-    , FreeV -> FreeV
+    , FreeVar -> FreeVar
     )
 replaceDefs defs = do
   let appSubMap
@@ -256,10 +256,10 @@ replaceDefs defs = do
 
 abstractDefImplicits
   :: Foldable t
-  => t FreeV
-  -> Definition (Expr MetaVar) FreeV
+  => t FreeVar
+  -> Definition (Expr MetaVar) FreeVar
   -> CoreM
-  -> Elaborate (Definition (Expr MetaVar) FreeV, CoreM)
+  -> Elaborate (Definition (Expr MetaVar) FreeVar, CoreM)
 abstractDefImplicits vs (ConstantDefinition a e) t = do
   let ge = abstractImplicits vs lam e
       gt = abstractImplicits vs pi_ t
@@ -276,8 +276,8 @@ abstractDefImplicits vs (DataDefinition (DataDef ps cs) rep) typ =
 
 abstractImplicits
   :: Foldable t
-  => t FreeV
-  -> (FreeV -> CoreM -> CoreM)
+  => t FreeVar
+  -> (FreeVar -> CoreM -> CoreM)
   -> CoreM
   -> CoreM
 abstractImplicits vs c b = foldr (\v -> c (v { varPlicitness = implicitise $ varPlicitness v })) b vs

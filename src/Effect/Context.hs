@@ -6,6 +6,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UndecidableInstances #-}
 module Effect.Context(module Effect.Context, module Syntax.Context) where
 
@@ -16,13 +17,18 @@ import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.ListT
 import Control.Monad.Trans.Maybe
+import Data.Char
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.List.Class as ListT
-import Effect.Fresh
 
+import qualified Data.Text as Text
+import Effect.Fresh
+import Pretty
 import Syntax.Annotation
 import Syntax.Context
+import Syntax.Name
 import Syntax.NameHint
+import Util
 import qualified Util.Tsil as Tsil
 import Util.Tsil(Tsil)
 
@@ -53,6 +59,18 @@ lookup v = do
   Context _ m <- getContext
   return $ HashMap.lookupDefault (panic "lookup") v m
 
+lookupHint :: MonadContext e m => FreeVar -> m NameHint
+lookupHint = fmap _hint . lookup
+
+lookupType :: MonadContext e m => FreeVar -> m e
+lookupType = fmap _type . lookup
+
+lookupPlicitness :: MonadContext e m => FreeVar -> m Plicitness
+lookupPlicitness = fmap _plicitness . lookup
+
+lookupValue :: MonadContext e m => FreeVar -> m (Maybe e)
+lookupValue = fmap _value . lookup
+
 freshExtend
   :: (MonadContext e m, MonadFresh m)
   => Binding e
@@ -61,6 +79,16 @@ freshExtend
 freshExtend b k = do
   v <- FreeVar <$> fresh
   extend v b $ k v
+
+freshExtends
+  :: (MonadContext e m, MonadFresh m, Traversable t)
+  => t (Binding e)
+  -> (t FreeVar -> m a)
+  -> m a
+freshExtends bs k = do
+  v <- FreeVar <$> fresh
+  vs <- traverse (\b -> (,b) . FreeVar <$> fresh) bs
+  extends vs $ k $ fst <$> vs
 
 extend
   :: MonadContext e m
@@ -77,6 +105,44 @@ extends
   -> m a
 extends vs k = foldr (uncurry extend) k vs
 
+prettyVar
+  :: MonadContext e m
+  => FreeVar
+  -> m Doc
+prettyVar v@(FreeVar i) = do
+  Binding h p t _ <- lookup v
+  return $ case () of
+    ()
+      | Text.null hintText -> "$" <> shower i
+      | isDigit (Text.last hintText) -> "$" <> hint <> "-" <> shower i
+      | otherwise -> "$" <> hint <> shower i
+      where
+        hintText = fromNameHint mempty fromName h
+        hint = pretty hintText
+
+set
+  :: MonadContext e m
+  => FreeVar
+  -> e
+  -> m a
+  -> m a
+set v e = modifyContext go
+  where
+    go (Context vs m)
+      = Context
+        vs
+        (HashMap.adjust (\(Binding h p t _) -> Binding h p t $ Just e) v m)
+
+sets
+  :: (MonadContext e m, Foldable f)
+  => f (FreeVar, e)
+  -> m a
+  -> m a
+sets xs = modifyContext go
+  where
+    f m (v, e) = HashMap.adjust (\(Binding h p t _) -> Binding h p t $ Just e) v m
+    go (Context vs m) = Context vs $ foldl' f m xs
+
 ------------------------------------------------------------------------------
 -- mtl instances
 -------------------------------------------------------------------------------
@@ -88,7 +154,7 @@ instance MonadContext e m => MonadContext e (ListT m) where
     pure $ case xs of
       ListT.Nil -> ListT.Nil
       ListT.Cons x xs' -> ListT.Cons x $ modifyContext f xs'
-instance MonadContext e m => MonadContext e (ExceptT e m) where
+instance MonadContext e m => MonadContext e (ExceptT err m) where
   modifyContext f (ExceptT m) = ExceptT $ modifyContext f m
 instance MonadContext e m => MonadContext e (MaybeT m) where
   modifyContext f (MaybeT m) = MaybeT $ modifyContext f m

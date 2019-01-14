@@ -52,7 +52,7 @@ lam
   -> Anno Expr FreeVar
   -> m (Expr FreeVar)
 lam v t e = do
-  Binding h _ _ _ <- Context.lookup v
+  h <- Context.lookupHint v
   return $ Lam h t $ abstract1Anno v e
 
 letRec

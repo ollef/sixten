@@ -66,6 +66,16 @@ lam v e = do
   Binding h p t _ <- Context.lookup v
   return $ Lam h p t $ abstract1 v e
 
+plicitLam
+  :: MonadContext (Expr meta FreeVar) m
+  => Plicitness
+  -> FreeVar
+  -> Expr meta FreeVar
+  -> m (Expr meta FreeVar)
+plicitLam p v e = do
+  Binding h _ t _ <- Context.lookup v
+  return $ Lam h p t $ abstract1 v e
+
 pi_
   :: MonadContext (Expr meta FreeVar) m
   => FreeVar
@@ -81,6 +91,13 @@ lams
   -> Expr meta FreeVar
   -> m (Expr meta FreeVar)
 lams xs e = foldrM lam e xs
+
+plicitLams
+  :: (MonadContext (Expr meta FreeVar) m, Foldable t)
+  => t (Plicitness, FreeVar)
+  -> Expr meta FreeVar
+  -> m (Expr meta FreeVar)
+plicitLams xs e = foldrM (uncurry plicitLam) e xs
 
 pis
   :: (MonadContext (Expr meta FreeVar) m, Foldable t)

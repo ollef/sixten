@@ -11,10 +11,12 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
+import Effect.Context as Context
 import Elaboration.MetaVar
 import Elaboration.Monad
 import Elaboration.Normalise
-import Syntax
+import Syntax hiding (conBranch)
+import qualified Syntax.Branches
 import Syntax.Core
 import TypedFreeVar
 import Util
@@ -57,10 +59,10 @@ expr' (SourceLoc _ e1) e2 = expr' e1 e2
 expr' e1 (SourceLoc _ e2) = expr' e1 e2
 -- Eta-expand
 expr' (Lam h p t s) e2 =
-  extendContext h p t $ \v ->
+  Context.freshExtend (binding h p t) $ \v ->
     expr (instantiate1 (pure v) s) (App e2 p $ pure v)
 expr' e1 (Lam h p t s) =
-  extendContext h p t $ \v ->
+  Context.freshExtend (binding h p t) $ \v ->
     expr (App e1 p $ pure v) (instantiate1 (pure v) s)
 -- Eta-reduce
 expr' (etaReduce -> Just e1) e2 = expr e1 e2
@@ -79,23 +81,23 @@ arguments es1 es2 = do
 
 abstraction
   :: MonadEqual m
-  => (FreeV -> CoreM -> b)
-  -> NameHint -> Plicitness -> CoreM -> Scope1 (Expr MetaVar) FreeV
-  -> NameHint -> Plicitness -> CoreM -> Scope1 (Expr MetaVar) FreeV
+  => (FreeVar -> CoreM -> m b)
+  -> NameHint -> Plicitness -> CoreM -> Scope1 (Expr MetaVar) FreeVar
+  -> NameHint -> Plicitness -> CoreM -> Scope1 (Expr MetaVar) FreeVar
   -> m b
 abstraction c h1 p1 t1 s1 h2 p2 t2 s2 = do
   let h = h1 <> h2
   p <- eq p1 p2
   t <- expr t1 t2
-  extendContext h p t $ \v -> do
+  Context.freshExtend (binding h p t) $ \v -> do
     s <- expr (instantiate1 (pure v) s1) (instantiate1 (pure v) s2)
-    return $ c v s
+    c v s
 
 branches
   :: MonadEqual m
-  => Branches (Expr MetaVar) FreeV
-  -> Branches (Expr MetaVar) FreeV
-  -> m (Branches (Expr MetaVar) FreeV)
+  => Branches (Expr MetaVar) FreeVar
+  -> Branches (Expr MetaVar) FreeVar
+  -> m (Branches (Expr MetaVar) FreeVar)
 branches (ConBranches cbrs1) (ConBranches cbrs2) = do
   guard $ length cbrs1 == length cbrs2
   ConBranches <$> zipWithM conBranch cbrs1 cbrs2
@@ -106,29 +108,30 @@ branches _ _ = fail "not equal"
 
 conBranch
   :: MonadEqual m
-  => ConBranch (Expr MetaVar) FreeV
-  -> ConBranch (Expr MetaVar) FreeV
-  -> m (ConBranch (Expr MetaVar) FreeV)
+  => ConBranch (Expr MetaVar) FreeVar
+  -> ConBranch (Expr MetaVar) FreeVar
+  -> m (ConBranch (Expr MetaVar) FreeVar)
 conBranch (ConBranch c1 tele1 s1) (ConBranch c2 tele2 s2) = do
   c <- eq c1 c2
   guard $ teleLength tele1 == teleLength tele2
   teleExtendContext tele1 $ \vs -> do
+    context <- getContext
     let
       types2 = forTele tele2 $ \_ _ s -> instantiateTele pure vs s
       go v type2 = do
-        t <- expr (varType v) type2
-        return $ v { varType = t }
+        t <- expr (Context.lookupType v context) type2
+        return v
     vs' <- Vector.zipWithM go vs types2
     let e1 = instantiateTele pure vs' s1
         e2 = instantiateTele pure vs' s2
     e <- expr e1 e2
-    return $ conBranchTyped c vs' e
+    Syntax.Branches.conBranch c vs' e
 
 litBranch
   :: MonadEqual m
-  => LitBranch (Expr MetaVar) FreeV
-  -> LitBranch (Expr MetaVar) FreeV
-  -> m (LitBranch (Expr MetaVar) FreeV)
+  => LitBranch (Expr MetaVar) FreeVar
+  -> LitBranch (Expr MetaVar) FreeVar
+  -> m (LitBranch (Expr MetaVar) FreeVar)
 litBranch (LitBranch l1 e1) (LitBranch l2 e2)
   = LitBranch <$> eq l1 l2 <*> expr e1 e2
 
