@@ -1,3 +1,6 @@
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Syntax.Context where
 
@@ -10,6 +13,7 @@ import Data.Vector(Vector)
 import Effect.Fresh
 import Syntax.Annotation
 import Syntax.NameHint
+import Util
 import Util.Tsil(Tsil)
 import qualified Util.Tsil as Tsil
 
@@ -24,21 +28,23 @@ data Binding e = Binding
   , _plicitness :: !Plicitness
   , _type :: e
   , _value :: !(Maybe e)
-  } deriving Show
+  } deriving (Functor, Foldable, Traversable, Show)
 
 binding :: NameHint -> Plicitness -> e -> Binding e
 binding h p t = Binding h p t Nothing
 
-instance Functor Binding where
-  fmap f (Binding h p t v) = Binding h p (f t) (fmap f v)
-
 data Context e = Context
   { _vars :: Tsil FreeVar
   , _varMap :: !(HashMap FreeVar (Binding e))
-  }
+  } deriving Functor
 
-instance Functor Context where
-  fmap f (Context vs m) = Context vs (fmap (fmap f) m)
+instance Foldable Context where
+  foldMap f (Context vs m) = foldMap (foldMap f . (m HashMap.!)) vs
+
+instance Traversable Context where
+  traverse f (Context vs m)
+    = Context vs . toHashMap
+    <$> traverse (\v -> (,) v <$> traverse f (m HashMap.! v)) vs
 
 (|>) :: Context e -> (FreeVar, Binding e) -> Context e
 Context vs m |> (v, b) = Context (Tsil.Snoc vs v) (HashMap.insert v b m)

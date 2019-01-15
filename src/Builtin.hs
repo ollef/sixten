@@ -113,15 +113,14 @@ apply target numArgs
       context <- getContext
 
       let
-        varAnno v = Anno (pure v) $ Context.lookupType v context
         funArgs = pure this <> argTypes <> args
         clArgs = pure funknown <> pure farity
 
         callfunknown argTypes' args' =
           Lifted.PrimCall (ReturnIndirect OutParam) (pure funknown)
-          $ Vector.cons (directPtr, varAnno this)
-          $ (\v -> (directType, varAnno v)) <$> argTypes'
-          <|> (\v -> (Indirect, varAnno v)) <$> args'
+          $ Vector.cons (directPtr, varAnno this context)
+          $ (\v -> (directType, varAnno v context)) <$> argTypes'
+          <|> (\v -> (Indirect, varAnno v context)) <$> args'
 
         br :: Int -> Lifted.Expr FreeVar
         br arity
@@ -131,19 +130,19 @@ apply target numArgs
             $ sizedCon target (Lifted.MkType TypeRep.UnitRep) Closure
             $ Vector.cons (Anno (global $ gname $ papName (arity - numArgs) numArgs) piRep)
             $ Vector.cons (Anno (Lifted.Lit $ Integer $ fromIntegral $ arity - numArgs) intRep)
-            $ varAnno <$> pure this <> argTypes <> args
+            $ (`varAnno` context) <$> pure this <> argTypes <> args
           | numArgs == arity = callfunknown argTypes args
           | otherwise
             = Lifted.Call (global $ gname $ applyName $ numArgs - arity)
             $ Vector.cons
               (flip Anno ptrRep $ callfunknown preArgTypes preArgs)
-            $ varAnno <$> postArgTypes <> postArgs
+            $ (`varAnno` context) <$> postArgTypes <> postArgs
             where
               (preArgTypes, postArgTypes) = Vector.splitAt arity argTypes
               (preArgs, postArgs) = Vector.splitAt arity args
 
       cbr <- conBranch Closure clArgs
-        $ Lifted.Case (varAnno farity)
+        $ Lifted.Case (varAnno farity context)
         $ LitBranches
           [LitBranch (Integer arity) $ br $ fromIntegral arity | arity <- 1 :| [2..maxArity]]
           (Lifted.Call (global $ gname FailName) $ pure $ Anno unitRep typeRep)
@@ -191,11 +190,10 @@ pap target k m
         let
           funArgs = pure this <> argTypes <> args
           clArgs' = pure unused1 <> pure unused2 <> pure that <> clArgTypes <> clArgs
-          varAnno v = Anno (pure v) $ Context.lookupType v context
 
         br <- conBranch Closure clArgs'
           $ Lifted.Call (global $ gname $ applyName $ m + k)
-          $ varAnno <$> pure that <> clArgTypes <> argTypes <> clArgs <> args
+          $ (`varAnno` context) <$> pure that <> clArgTypes <> argTypes <> clArgs <> args
 
         fun <- Sized.function funArgs
           $ flip Anno unknownSize

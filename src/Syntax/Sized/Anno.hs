@@ -16,6 +16,7 @@ import Data.Functor.Classes
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
+import Effect.Context as Context
 import Syntax
 import Util
 
@@ -24,6 +25,14 @@ data Anno e v = Anno (e v) (e v)
 
 typeAnno :: Anno e v -> e v
 typeAnno (Anno _ t) = t
+
+varAnno
+  :: (MonadContext (e FreeVar) m, Applicative e)
+  => FreeVar
+  -> m (Anno e FreeVar)
+varAnno v = do
+  t <- Context.lookupType v
+  return $ Anno (pure v) t
 
 data AnnoScope b e a = AnnoScope (Scope b e a) (Scope b e a)
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
