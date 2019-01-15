@@ -38,27 +38,27 @@ data LiftState thing = LiftState
   , liftedThings :: [(GName, thing)]
   }
 
-data LiftEnv = LiftEnv
-  { _context :: !(Context (Lifted.Expr FreeVar))
+data LiftEnv context = LiftEnv
+  { _context :: !(Context context)
   , _vixEnv :: !VIX.Env
   }
 
 makeLenses ''LiftEnv
 
-instance HasLogEnv LiftEnv where
+instance HasLogEnv (LiftEnv context) where
   logEnv = vixEnv.logEnv
 
-instance HasReportEnv LiftEnv where
+instance HasReportEnv (LiftEnv context) where
   reportEnv = vixEnv.reportEnv
 
-instance HasFreshEnv LiftEnv where
+instance HasFreshEnv (LiftEnv context) where
   freshEnv = vixEnv.freshEnv
 
-instance HasContext (Lifted.Expr FreeVar) LiftEnv where
+instance HasContext context (LiftEnv context) where
   context = Backend.Lift.context
 
-newtype Lift thing a = Lift (StateT (LiftState thing) (ReaderT LiftEnv (Sequential (Task Query))) a)
-  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadFresh, MonadIO, MonadLog, MonadFetch Query, MonadContext (Lifted.Expr FreeVar))
+newtype Lift context thing a = Lift (StateT (LiftState thing) (ReaderT (LiftEnv context) (Sequential (Task Query))) a)
+  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadFresh, MonadIO, MonadLog, MonadFetch Query, MonadContext context)
 
 freshName = do
   s <- get
@@ -92,7 +92,7 @@ liftThing thing = do
 runLift
   :: GName
   -> Name
-  -> Lift thing a
+  -> Lift context thing a
   -> VIX (a, [(GName, thing)])
 runLift gn postfix (Lift l)
   = withReaderT (\env -> LiftEnv { _context = mempty, _vixEnv = env })
@@ -103,7 +103,7 @@ runLift gn postfix (Lift l)
   , liftedThings = mempty
   }
 
-type LambdaLift = Lift (Closed (Sized.Function Lifted.Expr))
+type LambdaLift = Lift (Lifted.Expr FreeVar) (Closed (Sized.Function Lifted.Expr))
 
 liftExpr
   :: SLambda.Expr FreeVar

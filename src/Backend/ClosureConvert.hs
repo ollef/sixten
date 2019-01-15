@@ -12,6 +12,7 @@ import Backend.Lift(runLift, liftThing, Lift)
 import qualified Builtin
 import qualified Builtin.Names as Builtin
 import Driver.Query
+import Effect.Context as Context
 import FreeVar
 import Syntax
 import Syntax.Sized.Anno
@@ -21,8 +22,7 @@ import qualified TypeRep
 import Util
 import VIX
 
-type FV = FreeVar ()
-type ClosureConvert = Lift (Closed (Sized.Definition Expr)) VIX
+type ClosureConvert = Lift () (Closed (Sized.Definition Expr))
 type ConvertedSignature = (Closed (Telescope Type), Closed (Scope TeleVar Type))
 
 runConvertDefinition
@@ -43,19 +43,19 @@ convertSignature
   :: Closed (Sized.Definition Expr)
   -> ClosureConvert (Maybe ConvertedSignature)
 convertSignature def = case open def of
-  Sized.FunctionDef _ _ (Sized.Function tele (AnnoScope _ tscope)) -> do
-    vs <- forMTele tele $ \h p _ ->
-      freeVar h p ()
+  Sized.FunctionDef _ _ (Sized.Function tele (AnnoScope _ tscope)) ->
+    teleMapExtendContext tele (pure . const ()) $ \vs -> do
+      es <- forMTele tele $ \_ _ s ->
+        convertExpr $ instantiateTele pure vs s
 
-    es <- forMTele tele $ \_ _ s ->
-      convertExpr $ instantiateTele pure vs s
+      let t = instantiateTele pure vs tscope
+      convertedType <- convertExpr t
 
-    let t = instantiateTele pure vs tscope
-    convertedType <- convertExpr t
+      tele' <- varTelescope (Vector.zip vs es)
 
-    let tele' = close (panic "convertDefinitions") $ varTelescope (Vector.zip vs es)
-        typeScope = close (panic "convertDefinitions") $ abstract (teleAbstraction vs) convertedType
-    return $ Just (tele', typeScope)
+      let closedTele' = close (panic "convertDefinitions") tele'
+          typeScope = close (panic "convertDefinitions") $ abstract (teleAbstraction vs) convertedType
+      return $ Just (closedTele', typeScope)
   Sized.ConstantDef _ (Sized.Constant (Anno (Global glob) _)) ->
     fetch $ ConvertedSignature glob
   _ -> return Nothing
@@ -64,33 +64,32 @@ convertDefinition
   :: GName
   -> Closed (Sized.Definition Expr)
   -> ClosureConvert (Closed (Sized.Definition Expr))
-convertDefinition name (Closed (Sized.FunctionDef vis cl (Sized.Function tele scope@(AnnoScope exprScope _)))) = do
-  vs <- forMTele tele $ \h p _ ->
-    freeVar h p ()
-  msig <- fetch $ ConvertedSignature name
-  case msig of
-    Nothing -> do
-      es <- forMTele tele $ \_ _ s ->
-        convertExpr $ instantiateTele pure vs s
+convertDefinition name (Closed (Sized.FunctionDef vis cl (Sized.Function tele scope@(AnnoScope exprScope _)))) =
+  teleMapExtendContext tele (pure . const ()) $ \vs -> do
+    msig <- fetch $ ConvertedSignature name
+    case msig of
+      Nothing -> do
+        es <- forMTele tele $ \_ _ s ->
+          convertExpr $ instantiateTele pure vs s
 
-      let annoExpr = instantiateAnnoTele pure vs scope
-      annoExpr' <- convertAnnoExpr annoExpr
-      return
-        $ close (panic "convertDefinition Function")
-        $ Sized.FunctionDef vis cl
-        $ Sized.function (Vector.zip vs es) annoExpr'
-    Just (tele', typeScope) -> do
-      let es = forTele (open tele') $ \_ _ s ->
-            instantiateTele pure vs s
+        let annoExpr = instantiateAnnoTele pure vs scope
+        annoExpr' <- convertAnnoExpr annoExpr
+        fun <- Sized.function (Vector.zip vs es) annoExpr'
+        return
+          $ close (panic "convertDefinition Function")
+          $ Sized.FunctionDef vis cl fun
+      Just (tele', typeScope) -> do
+        let es = forTele (open tele') $ \_ _ s ->
+              instantiateTele pure vs s
 
-      let expr = instantiateTele pure vs exprScope
-          type' = instantiateTele pure vs $ open typeScope
-      expr' <- convertExpr expr
-      let annoExpr' = Anno expr' type'
-      return
-        $ close (panic "convertDefinition Function")
-        $ Sized.FunctionDef vis cl
-        $ Sized.function (Vector.zip vs es) annoExpr'
+        let expr = instantiateTele pure vs exprScope
+            type' = instantiateTele pure vs $ open typeScope
+        expr' <- convertExpr expr
+        let annoExpr' = Anno expr' type'
+        fun <- Sized.function (Vector.zip vs es) annoExpr'
+        return
+          $ close (panic "convertDefinition Function")
+          $ Sized.FunctionDef vis cl fun
 convertDefinition _ (Closed (Sized.ConstantDef vis (Sized.Constant expr@(Anno (Global glob) sz)))) = do
   msig <- fetch $ ConvertedSignature glob
   expr' <- case msig of
@@ -110,10 +109,10 @@ convertDefinition _ (Closed (Sized.ConstantDef vis (Sized.Constant expr))) = do
     $ Sized.Constant expr'
 convertDefinition _ (Closed Sized.AliasDef) = return $ close identity Sized.AliasDef
 
-convertAnnoExpr :: Anno Expr FV -> ClosureConvert (Anno Expr FV)
+convertAnnoExpr :: Anno Expr FreeVar -> ClosureConvert (Anno Expr FreeVar)
 convertAnnoExpr (Anno expr typ) = Anno <$> convertExpr expr <*> convertExpr typ
 
-convertExpr :: Expr FV -> ClosureConvert (Expr FV)
+convertExpr :: Expr FreeVar -> ClosureConvert (Expr FreeVar)
 convertExpr expr = case expr of
   Var v -> return $ Var v
   Global g -> do
@@ -140,17 +139,17 @@ convertExpr expr = case expr of
     return $ PrimCall retDir e' es'
   Let h e bodyScope -> do
     e' <- convertAnnoExpr e
-    v <- freeVar h Explicit ()
-    let bodyExpr = Util.instantiate1 (pure v) bodyScope
-    bodyExpr' <- convertExpr bodyExpr
-    return $ let_ v e' bodyExpr'
+    Context.freshExtend h Explicit () $ \v -> do
+      let bodyExpr = Util.instantiate1 (pure v) bodyScope
+      bodyExpr' <- convertExpr bodyExpr
+      let_ v e' bodyExpr'
   Case e brs -> Case <$> convertAnnoExpr e <*> convertBranches brs
   ExternCode c retType -> ExternCode <$> mapM convertAnnoExpr c <*> convertExpr retType
 
 unknownCall
-  :: Expr FV
-  -> Vector (Anno Expr FV)
-  -> ClosureConvert (Expr FV)
+  :: Expr FreeVar
+  -> Vector (Anno Expr FreeVar)
+  -> ClosureConvert (Expr FreeVar)
 unknownCall e es = do
   ptrRep <- MkType <$> fetchPtrRep
   intRep <- MkType <$> fetchIntRep
@@ -162,8 +161,8 @@ unknownCall e es = do
 knownCall
   :: GName
   -> FunSignature
-  -> Vector (Anno Expr FV)
-  -> ClosureConvert (Expr FV)
+  -> Vector (Anno Expr FreeVar)
+  -> ClosureConvert (Expr FreeVar)
 knownCall f (Closed tele, Closed returnTypeScope) args
   | numArgs < arity = do
     target <- fetch Target
@@ -221,8 +220,9 @@ liftClosureFun f (Closed tele, Closed returnTypeScope) numCaptured = do
       funArgs' = flip fmap funArgs $ \(v, t) -> Anno (pure v) t
 
       returnType = instantiateTele pure (fst <$> vs) returnTypeScope
+      returnTypeVars = toHashSet returnType
       fReturnType
-        | any (\x -> HashSet.member x $ toHashSet returnType) $ fst <$> capturedArgs =
+        | any (`HashSet.member` returnTypeVars) $ fst <$> capturedArgs =
           Case (Anno (Builtin.deref $ pure this) (Global $ gname "ClosureConvert.knownCall.unknownSize"))
           $ ConBranches $ pure $ typedConBranch Builtin.Closure clArgs returnType
         | otherwise = returnType
@@ -238,8 +238,8 @@ liftClosureFun f (Closed tele, Closed returnTypeScope) numCaptured = do
       fReturnType
 
 convertBranches
-  :: Branches Expr FV
-  -> ClosureConvert (Branches Expr FV)
+  :: Branches Expr FreeVar
+  -> ClosureConvert (Branches Expr FreeVar)
 convertBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(ConBranch qc tele brScope) -> do
     vs <- forMTele tele $ \h p _ ->
