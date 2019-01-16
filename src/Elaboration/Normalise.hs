@@ -73,13 +73,9 @@ whnf'
   -> [(Plicitness, Expr meta FreeVar)] -- ^ Arguments to the expression
   -> m (Expr meta FreeVar)
 whnf' args expr exprs = Log.indent $ do
-  whenLoggingCategory "tc.whnf" $ do
-    pe <- _prettyExpr args $ apps expr exprs
-    logPretty "tc.whnf" "whnf e" pe
+  logPretty "tc.whnf" "whnf e" $ _prettyExpr args $ apps expr exprs
   res <- normaliseBuiltins go expr exprs
-  whenLoggingCategory "tc.whnf" $ do
-    pres <- _prettyExpr args res
-    logPretty "tc.whnf" "whnf res" pres
+  logPretty "tc.whnf" "whnf res" $ _prettyExpr args res
   return res
   where
     go e@(Var v) es = do

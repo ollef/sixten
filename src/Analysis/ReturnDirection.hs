@@ -249,7 +249,7 @@ inferRecursiveDefs defs = do
   let names = fst <$> defs
 
   evars <- Vector.forM defs $ \(v, Closed d) -> do
-    logPretty "returndir" "InferDirection.inferRecursiveDefs 1" (v, d)
+    logPretty "returndir" "InferDirection.inferRecursiveDefs 1" $ pure (v, d)
     let h = fromGName v
         funSig = case d of
           FunctionDef _ cl (Function args s) ->
@@ -277,7 +277,7 @@ inferRecursiveDefs defs = do
         gbound expose e
 
   inferredDefs <- Vector.forM (Vector.zip evars exposedDefs) $ \(v, d) -> do
-    logPretty "returndir" "InferDirection.inferRecursiveDefs 2" (pretty v, pretty <$> d)
+    logPretty "returndir" "InferDirection.inferRecursiveDefs 2" $ pure (pretty v, pretty <$> d)
     inferDefinition v d
 
   genDefs <- generaliseDefs inferredDefs

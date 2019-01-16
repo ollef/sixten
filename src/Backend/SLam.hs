@@ -1,14 +1,26 @@
-{-# LANGUAGE FlexibleContexts, FlexibleInstances, GeneralizedNewtypeDeriving, LambdaCase, MonadComprehensions, MultiParamTypeClasses, OverloadedStrings, TypeSynonymInstances, ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MonadComprehensions #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ViewPatterns #-}
 module Backend.SLam where
 
 import Protolude
 
 import Bound.Scope hiding (instantiate1)
+import Control.Lens hiding (Context)
+import Control.Monad.Reader
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect
+import Effect.Context as Context
 import Effect.Log as Log
 import qualified Elaboration.Normalise as Normalise
 import qualified Elaboration.TypeOf as TypeOf
@@ -20,33 +32,49 @@ import TypedFreeVar
 import Util
 import VIX
 
-type FreeV = FreeVar (Core.Expr Void)
+data SLamEnv = SLamEnv
+  { _context :: !(Context (Core.Expr Void FreeVar))
+  , _vixEnv :: !VIX.Env
+  }
 
-newtype SLam a = SLam { runSlam :: VIX a }
-  deriving (Functor, Applicative, Monad, MonadIO, MonadFresh, MonadReport, MonadLog, MonadFetch Query)
+makeLenses ''SLamEnv
 
-whnf :: Core.Expr Void FreeV -> SLam (Core.Expr Void FreeV)
+instance HasLogEnv SLamEnv where
+  logEnv = vixEnv.logEnv
+
+instance HasReportEnv SLamEnv where
+  reportEnv = vixEnv.reportEnv
+
+instance HasFreshEnv SLamEnv where
+  freshEnv = vixEnv.freshEnv
+
+instance HasContext (Core.Expr Void FreeVar) SLamEnv where
+  context = Backend.SLam.context
+
+newtype SLam a = SLam (ReaderT SLamEnv (Sequential (Task Query)) a)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadFresh, MonadContext (Core.Expr Void FreeVar), MonadReport, MonadLog, MonadFetch Query)
+
+runSLam :: SLam a -> VIX a
+runSLam (SLam s)
+  = withReaderT (\env -> SLamEnv { _context = mempty, _vixEnv = env }) s
+
+whnf :: Core.Expr Void FreeVar -> SLam (Core.Expr Void FreeVar)
 whnf e = Normalise.whnf' Normalise.voidArgs
   { Normalise._expandTypeReps = True
   } e mempty
 
-typeOf :: Core.Expr Void FreeV -> SLam (Core.Expr Void FreeV)
+typeOf :: Core.Expr Void FreeVar -> SLam (Core.Expr Void FreeVar)
 typeOf = TypeOf.typeOf' TypeOf.voidArgs
 
--- | Dummy instance, since we don't use the context
-instance MonadContext FreeV SLam where
-  getLocalVars = return mempty
-  inUpdatedContext _ m = m
-
-slamAnno :: Core.Expr Void FreeV -> SLam (Anno SLambda.Expr FreeV)
+slamAnno :: Core.Expr Void FreeVar -> SLam (Anno SLambda.Expr FreeVar)
 slamAnno e = Anno <$> slam e <*> (slam =<< whnf =<< typeOf e)
 
 typeArity :: Core.Type a b -> Int
 typeArity = teleLength . fst . Core.pisView
 
-slam :: Core.Expr Void FreeV -> SLam (SLambda.Expr FreeV)
+slam :: Core.Expr Void FreeVar -> SLam (SLambda.Expr FreeVar)
 slam expr = do
-  logPretty "slam" "slam expr" $ pretty <$> expr
+  logPretty "slam" "slam expr" $ traverse prettyVar expr
   res <- Log.indent $ case expr of
     Core.Var v -> return $ SLambda.Var v
     Core.Meta m _ -> absurd m
@@ -57,10 +85,10 @@ slam expr = do
       slam t
     Core.Lam h p t s -> do
       t' <- whnf t
-      v <- freeVar h p t'
-      e <- slamAnno $ instantiate1 (pure v) s
-      rep <- slam t'
-      return $ SLambda.lam v rep e
+      Context.freshExtend (binding h p t') $ \v -> do
+        e <- slamAnno $ instantiate1 (pure v) s
+        rep <- slam t'
+        SLambda.lam v rep e
     (Core.appsView -> (Core.unSourceLoc -> Core.Con qc@(QConstr typeName _), es)) -> do
       def <- fetchDefinition $ gname typeName
       case def of
@@ -86,35 +114,35 @@ slam expr = do
     Core.Con _qc -> panic "slam impossible"
     Core.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamAnno e2
     Core.Case e brs _retType -> SLambda.Case <$> slamAnno e <*> slamBranches brs
-    Core.Let ds scope -> do
-      vs <- forMLet ds $ \h _ _ t -> freeVar h Explicit t
-      ds' <- forMLet ds $ \_ _ s t -> do
-        e <- slam $ instantiateLet pure vs s
-        t' <- slam t
-        return $ Anno e t'
-      body <- slam $ instantiateLet pure vs scope
-      return $ SLambda.letRec (Vector.zip vs ds') body
+    Core.Let ds scope ->
+      letExtendContext ds $ \vs -> do
+        ds' <- forMLet ds $ \_ _ s t -> do
+          e <- slam $ instantiateLet pure vs s
+          t' <- slam t
+          return $ Anno e t'
+        body <- slam $ instantiateLet pure vs scope
+        SLambda.letRec (Vector.zip vs ds') body
     Core.ExternCode c retType -> do
       retType' <- slam =<< whnf retType
       c' <- slamExtern c
       return $ SLambda.ExternCode c' retType'
     Core.SourceLoc _ e -> slam e
-  logPretty "slam" "slam res" $ pretty <$> res
+  logPretty "slam" "slam res" $ pure $ pretty <$> res
   return res
 
 slamBranches
-  :: Branches (Core.Expr Void) FreeV
-  -> SLam (Branches SLambda.Expr FreeV)
+  :: Branches (Core.Expr Void) FreeVar
+  -> SLam (Branches SLambda.Expr FreeVar)
 slamBranches (ConBranches cbrs) = do
-  cbrs' <- Log.indent $ forM cbrs $ \(ConBranch c tele brScope) -> do
-    vs <- forTeleWithPrefixM tele $ \h p s vs -> freeVar h p $ instantiateTele pure vs s
-    reps <- forM vs $ \v -> do
-      t' <- whnf $ varType v
-      slam t'
+  cbrs' <- Log.indent $ forM cbrs $ \(ConBranch c tele brScope) ->
+    teleExtendContext tele $ \vs -> do
+      context <- getContext
+      reps <- forM vs $ \v -> do
+        t' <- whnf $ Context.lookupType v context
+        slam t'
 
-    brExpr <- slam $ instantiateTele pure vs brScope
-    return $ typedConBranchTyped c (Vector.zip vs reps) brExpr
-  logPretty "slam" "slamBranches res" $ pretty <$> ConBranches cbrs'
+      brExpr <- slam $ instantiateTele pure vs brScope
+      typedConBranch c (Vector.zip vs reps) brExpr
   return $ ConBranches cbrs'
 slamBranches (LitBranches lbrs d)
   = LitBranches
@@ -122,8 +150,8 @@ slamBranches (LitBranches lbrs d)
     <*> slam d
 
 slamExtern
-  :: Extern (Core.Expr Void FreeV)
-  -> SLam (Extern (Anno SLambda.Expr FreeV))
+  :: Extern (Core.Expr Void FreeVar)
+  -> SLam (Extern (Anno SLambda.Expr FreeVar))
 slamExtern (Extern lang parts)
   = fmap (Extern lang) $ forM parts $ \case
     ExternPart str -> return $ ExternPart str
@@ -132,7 +160,7 @@ slamExtern (Extern lang parts)
     TargetMacroPart m -> return $ TargetMacroPart m
 
 slamDef
-  :: Definition (Core.Expr Void) FreeV
-  -> SLam (Anno SLambda.Expr FreeV)
+  :: Definition (Core.Expr Void) FreeVar
+  -> SLam (Anno SLambda.Expr FreeVar)
 slamDef (ConstantDefinition _ e) = slamAnno e
 slamDef (DataDefinition _ e) = slamAnno e

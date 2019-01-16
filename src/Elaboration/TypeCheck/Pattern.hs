@@ -92,12 +92,10 @@ tcPat
   -> ExpectedPat
   -> Elaborate (Core.Pat CoreM FreeV, CoreM, PatVars)
 tcPat p pat vs expected = do
-  whenLoggingCategory "tc.pat" $ do
-    let shownPat = first (pretty . fmap pretty . instantiatePattern pure vs) pat
-    logPretty "tc.pat" "tcPat" shownPat
-  logPretty "tc.pat" "tcPat vs" vs
+  logPretty "tc.pat" "tcPat" $ pure $ first (pretty . fmap pretty . instantiatePattern pure vs) pat
+  logPretty "tc.pat" "tcPat vs" $ pure vs
   (pat', patExpr, vs') <- Log.indent $ tcPat' p pat vs expected
-  logPretty "tc.pat" "tcPat vs res" vs'
+  logPretty "tc.pat" "tcPat vs res" $ pure vs'
   logMeta "tc.pat" "tcPat patExpr" $ zonk patExpr
   return (pat', patExpr, vs')
 

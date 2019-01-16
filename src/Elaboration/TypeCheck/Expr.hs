@@ -45,7 +45,7 @@ instExpected (Check t2) t1 = subtype t1 t2
 -- Polytypes
 checkPoly :: PreM -> Polytype -> Elaborate CoreM
 checkPoly expr typ = do
-  logPretty "tc.expr" "checkPoly expr" $ pretty <$> expr
+  logPretty "tc.expr" "checkPoly expr" $ pure $ pretty <$> expr
   logMeta "tc.expr" "checkPoly type" $ zonk typ
   res <- Log.indent $ checkPoly' expr typ
   logMeta "tc.expr" "checkPoly res expr" $ zonk res
@@ -85,7 +85,7 @@ instantiateForalls' typ _ = return (typ, identity)
 -- Rhotypes
 checkRho :: PreM -> Rhotype -> Elaborate CoreM
 checkRho expr typ = do
-  logPretty "tc.expr" "checkRho expr" $ pretty <$> expr
+  logPretty "tc.expr" "checkRho expr" $ pure $ pretty <$> expr
   logMeta "tc.expr" "checkRho type" $ zonk typ
   res <- Log.indent $ checkRho' expr typ
   logMeta "tc.expr" "checkRho res expr" $ zonk res
@@ -96,7 +96,7 @@ checkRho' expr ty = tcRho expr (Check ty) (Just ty)
 
 inferRho :: PreM -> InstUntil -> Maybe Rhotype -> Elaborate (CoreM, Rhotype)
 inferRho expr instUntil expectedAppResult = do
-  logPretty "tc.expr" "inferRho" $ pretty <$> expr
+  logPretty "tc.expr" "inferRho" $ pure $ pretty <$> expr
   (resExpr, resType) <- Log.indent $ inferRho' expr instUntil expectedAppResult
   logMeta "tc.expr" "inferRho res expr" $ zonk resExpr
   logMeta "tc.expr" "inferRho res typ" $ zonk resType

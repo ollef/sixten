@@ -39,7 +39,7 @@ checkClauses
   -> Polytype
   -> Elaborate CoreM
 checkClauses clauses polyType = Log.indent $ do
-  forM_ clauses $ \clause -> logPretty "tc.clause" "checkClauses clause" $ pretty <$> clause
+  forM_ clauses $ \clause -> logPretty "tc.clause" "checkClauses clause" $ pure $ pretty <$> clause
   logMeta "tc.clause" "checkClauses typ" $ zonk polyType
 
   skolemise polyType (minimum $ instUntilClause <$> clauses) $ \rhoType f -> do
@@ -51,7 +51,7 @@ checkClauses clauses polyType = Log.indent $ do
 
     let equalisedClauses = equaliseClauses clauses'
 
-    forM_ equalisedClauses $ \clause -> logPretty "tc.clause" "checkClauses equalisedClause" $ pretty <$> clause
+    forM_ equalisedClauses $ \clause -> logPretty "tc.clause" "checkClauses equalisedClause" $ pure $ pretty <$> clause
 
     res <- checkClausesRho equalisedClauses rhoType
 
@@ -80,16 +80,14 @@ checkClausesRho
   -> Rhotype
   -> Elaborate CoreM
 checkClausesRho clauses rhoType = do
-  forM_ clauses $ \clause -> logPretty "tc.clause" "checkClausesRho clause" $ pretty <$> clause
+  forM_ clauses $ \clause -> logPretty "tc.clause" "checkClausesRho clause" $ pure $ pretty <$> clause
   logMeta "tc.clause" "checkClausesRho type" $ zonk rhoType
 
   let (ps, firstPats) = Vector.unzip ppats
         where
           Pre.Clause ppats _ = NonEmpty.head clauses
   (argTele, returnTypeScope, fs) <- funSubtypes rhoType ps
-  whenLoggingCategory "tc.clause" $ do
-    pargTele <- bitraverseTelescope (\m -> WithVar m <$> prettyMetaVar m) (pure . pretty) argTele
-    logPretty "tc.clause" "argTele" pargTele
+  logPretty "tc.clause" "argTele" $ bitraverseTelescope (\m -> WithVar m <$> prettyMetaVar m) (pure . pretty) argTele
 
   clauses' <- forM clauses $ \(Pre.Clause pats bodyScope) -> do
     logShow "tc.clause" "start" ()
@@ -97,16 +95,16 @@ checkClausesRho clauses rhoType = do
     let body = instantiatePattern pure (boundPatVars patVars) bodyScope
         argExprs = snd3 <$> pats'
         returnType = instantiateTele identity argExprs returnTypeScope
-    logPretty "tc.clause" "patVars" patVars
+    logPretty "tc.clause" "patVars" $ pure patVars
     body' <- Log.indent $ withPatVars patVars $ checkRho body returnType
     return (fst3 <$> pats', body')
 
   forM_ clauses' $ \(pats, body) -> do
-    forM_ pats $ logPretty "tc.clause" "checkClausesRho clause pat" <=< bitraverse prettyMeta (pure . pretty)
+    forM_ pats $ logPretty "tc.clause" "checkClausesRho clause pat" $ bitraverse prettyMeta (pure . pretty)
     logMeta "tc.clause" "checkClausesRho clause body" $ zonk body
 
   teleExtendContext (addTeleNames argTele $ Pre.patternHint <$> firstPats) $ \argVars -> do
-    logPretty "tc.clause" "argVars" argVars
+    logPretty "tc.clause" "argVars" $ pure argVars
 
     let returnType = instantiateTele pure argVars returnTypeScope
 
