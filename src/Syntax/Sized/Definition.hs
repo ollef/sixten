@@ -94,7 +94,7 @@ instance GBound Definition where
 
 instance (v ~ Doc, Pretty (expr v), Monad expr) => Pretty (Function expr v) where
   prettyM (Function vs s) = parens `above` absPrec $
-    withNameHints (teleNames vs) $ \ns ->
+    withTeleHints vs $ \ns ->
       "\\" <> prettyTeleVars ns vs <> "." <+>
       associate absPrec (prettyM $ instantiateAnnoTele (pure . fromName) ns s)
 

@@ -57,9 +57,11 @@ instance HasFreshEnv (LiftEnv context) where
 instance HasContext context (LiftEnv context) where
   context = Backend.Lift.context
 
+-- TODO do we need Sequential here?
 newtype Lift context thing a = Lift (StateT (LiftState thing) (ReaderT (LiftEnv context) (Sequential (Task Query))) a)
   deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadFresh, MonadIO, MonadLog, MonadFetch Query, MonadContext context)
 
+freshName :: Lift context thing GName
 freshName = do
   s <- get
   case freshNames s of
@@ -69,6 +71,7 @@ freshName = do
       return $ case baseName s of
         GName qn parts -> GName qn $ parts <> pure name
 
+freshNameWithHint :: Name -> Lift context thing GName
 freshNameWithHint hint = do
   s <- get
   case freshNames s of
@@ -79,11 +82,13 @@ freshNameWithHint hint = do
         GName qn parts ->
           GName qn $ parts <> pure (name <> "-" <> hint)
 
+liftNamedThing :: GName -> thing -> Lift context thing ()
 liftNamedThing name thing =
   modify $ \s -> s
     { liftedThings = (name, thing) : liftedThings s
     }
 
+liftThing :: thing -> Lift context thing GName
 liftThing thing = do
   name <- freshName
   liftNamedThing name thing

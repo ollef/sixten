@@ -108,9 +108,9 @@ teleExtendContext tele k = do
   Context.extends vs $ k $ fst <$> vs
 
 teleMapExtendContext
-  :: (MonadFresh m, MonadLog m, MonadContext (e' FreeVar) m, Monad e)
+  :: (MonadFresh m, MonadLog m, MonadContext e' m, Monad e)
   => Telescope e FreeVar
-  -> (e FreeVar -> m (e' FreeVar))
+  -> (e FreeVar -> m e')
   -> (Vector FreeVar -> m a)
   -> m a
 teleMapExtendContext tele f k = do
@@ -187,8 +187,8 @@ instantiatePrefix es (Telescope tele)
       | i < len = es' Vector.! i
       | otherwise = pure $ B $ TeleVar $! i - len
 
-teleNames :: Telescope expr v -> Vector NameHint
-teleNames (Telescope t) = (\(TeleArg h _ _) -> h) <$> t
+teleHints :: Telescope expr v -> Vector NameHint
+teleHints (Telescope t) = (\(TeleArg h _ _) -> h) <$> t
 
 addTeleNames :: Telescope expr v -> Vector NameHint -> Telescope expr v
 addTeleNames (Telescope t) hs = Telescope $ Vector.imap (\i (TeleArg h p s) -> TeleArg (maybe h (h <>) $ hs Vector.!? i) p s) t
@@ -222,7 +222,7 @@ withTeleHints
   :: Telescope expr v
   -> (Vector Name -> PrettyDoc)
   -> PrettyDoc
-withTeleHints = withNameHints . teleNames
+withTeleHints = withNameHints . teleHints
 
 prettyTeleVars
   :: Vector Name

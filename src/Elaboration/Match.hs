@@ -16,13 +16,14 @@ import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
 import Elaboration.TypeOf
+import Effect.Context as Context
 import Syntax
 import Syntax.Core
 import Syntax.Core.Pattern
 import TypedFreeVar
 import Util
 
-type PatM = Pat CoreM FreeV
+type PatM = Pat CoreM FreeVar
 -- | An expression possibly containing a pattern-match failure variable
 type ExprF = CoreM
 type Clause =
@@ -30,8 +31,8 @@ type Clause =
   , ExprF
   )
 
-fatBar :: FreeV -> CoreM -> CoreM -> CoreM
-fatBar failVar e e' = case filter (== failVar) $ toList e of
+fatBar :: Context CoreM -> FreeVar -> CoreM -> CoreM -> CoreM
+fatBar context failVar e e' = case filter (== failVar) $ toList e of
   _ | Simplify.duplicable e' -> dup
   [] -> e
   [_] -> dup
@@ -40,7 +41,7 @@ fatBar failVar e e' = case filter (== failVar) $ toList e of
     mempty
     (noSourceLoc "fatBar")
     (Lam mempty Explicit Builtin.UnitType $ abstractNone e')
-    (Pi mempty Explicit Builtin.UnitType $ abstractNone $ varType failVar)
+    (Pi mempty Explicit Builtin.UnitType $ abstractNone $ Context.lookupType failVar context)
     $ abstract1 failVar
     $ substitute failVar (App (pure failVar) Explicit Builtin.MkUnit) e
   where
@@ -53,7 +54,7 @@ matchSingle
   -> CoreM
   -> Elaborate ExprF
 matchSingle expr pat innerExpr retType =
-  extendContext "fail" Explicit retType $ \failVar -> do
+  Context.freshExtend (binding "fail" Explicit retType) $ \failVar -> do
     result <- match failVar retType [expr] [([pat], innerExpr)] innerExpr
     return $ substitute failVar (Builtin.Fail retType) result
 
@@ -63,7 +64,7 @@ matchCase
   -> CoreM
   -> Elaborate ExprF
 matchCase expr pats retType =
-  extendContext "fail" Explicit retType $ \failVar -> do
+  Context.freshExtend (binding "fail" Explicit retType) $ \failVar -> do
     result <- match failVar retType [expr] (first pure <$> pats) (pure failVar)
     return $ substitute failVar (Builtin.Fail retType) result
 
@@ -73,12 +74,12 @@ matchClauses
   -> CoreM
   -> Elaborate ExprF
 matchClauses exprs pats retType =
-  extendContext "fail" Explicit retType $ \failVar -> do
+  Context.freshExtend (binding "fail" Explicit retType) $ \failVar -> do
     result <- match failVar retType exprs pats (pure failVar)
     return $ substitute failVar (Builtin.Fail retType) result
 
 type Match
-  = FreeV -- ^ Failure variable
+  = FreeVar -- ^ Failure variable
   -> ExprF -- ^ Return type
   -> [CoreM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
   -> [Clause] -- ^ Clauses
@@ -86,7 +87,7 @@ type Match
   -> Elaborate ExprF
 
 type NonEmptyMatch
-  = FreeV -- ^ Failure variable
+  = FreeVar -- ^ Failure variable
   -> ExprF -- ^ Return type
   -> [CoreM] -- ^ Expressions to case on corresponding to the patterns in the clauses (usually variables)
   -> NonEmpty Clause -- ^ Clauses
@@ -96,11 +97,13 @@ type NonEmptyMatch
 -- | Desugar pattern matching clauses
 match :: Match
 match _ _ _ [] expr0 = return expr0
-match failVar _ [] clauses expr0 = return $ foldr go expr0 clauses
-  where
+match failVar _ [] clauses expr0 = do
+  context <- getContext
+  let
     go :: Clause -> ExprF -> ExprF
-    go ([], s) x = fatBar failVar s x
+    go ([], s) x = fatBar context failVar s x
     go _ _ = panic "match go"
+  return $ foldr go expr0 clauses
 match failVar retType xs clauses expr0
   = foldrM
     (matchMix failVar retType xs)
@@ -139,9 +142,10 @@ matchCon expr failVar retType exprs clauses expr0 = do
     withConPatArgs c params $ \ys -> do
       let exprs' = (pure <$> Vector.toList ys) ++ exprs
       rest <- match failVar retType exprs' (decon clausesStartingWithC) (pure failVar)
-      return $ conBranchTyped c ys rest
+      conBranch c ys rest
 
-  return $ fatBar failVar (Case expr (ConBranches cbrs) retType) expr0
+  context <- getContext
+  return $ fatBar context failVar (Case expr (ConBranches cbrs) retType) expr0
   where
     firstCon (c:_, _) = constr c
     firstCon _ = panic "firstCon "
@@ -159,7 +163,7 @@ matchCon expr failVar retType exprs clauses expr0 = do
 withConPatArgs
   :: QConstr
   -> Vector (Plicitness, CoreM)
-  -> (Vector FreeV -> Elaborate a)
+  -> (Vector FreeVar -> Elaborate a)
   -> Elaborate a
 withConPatArgs c params k = do
   ctype <- fetchQConstructor c
@@ -190,7 +194,6 @@ matchVar expr failVar retType exprs clauses expr0 = do
       logMeta "tc.match" "matchVar expr" $ zonk expr
       logMeta "tc.match" "matchVar e" $ zonk e
       logMeta "tc.match" "matchVar var" $ zonk $ pure y
-      logMeta "tc.match" "matchVar varType" $ zonk $ varType y
       exprType <- typeOf expr
       logMeta "tc.match" "matchVar exprType" $ zonk exprType
       logMeta "tc.match" "matchVar retType" $ zonk retType

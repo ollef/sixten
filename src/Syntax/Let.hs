@@ -156,9 +156,9 @@ letExtendContext ds k = do
   Context.extends vs $ k $ fst <$> vs
 
 letMapExtendContext
-  :: (MonadFresh m, MonadLog m, MonadContext (e' FreeVar) m)
+  :: (MonadFresh m, MonadLog m, MonadContext e' m)
   => LetRec e FreeVar
-  -> (e FreeVar -> m (e' FreeVar))
+  -> (e FreeVar -> m e')
   -> (Vector FreeVar -> m a)
   -> m a
 letMapExtendContext tele f k = do
