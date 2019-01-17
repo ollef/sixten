@@ -24,8 +24,7 @@ import qualified TypeRep
 import Util
 import VIX
 
--- TODO specalise lift
-type ClosureConvert = Lift (Expr FreeVar) (Closed (Sized.Definition Expr))
+type ClosureConvert = Lift (Closed (Sized.Definition Expr))
 type ConvertedSignature = (Closed (Telescope Type), Closed (Scope TeleVar Type))
 
 runConvertDefinition

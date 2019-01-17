@@ -38,30 +38,11 @@ data LiftState thing = LiftState
   , liftedThings :: [(GName, thing)]
   }
 
-data LiftEnv context = LiftEnv
-  { _context :: !(Context context)
-  , _vixEnv :: !VIX.Env
-  }
-
-makeLenses ''LiftEnv
-
-instance HasLogEnv (LiftEnv context) where
-  logEnv = vixEnv.logEnv
-
-instance HasReportEnv (LiftEnv context) where
-  reportEnv = vixEnv.reportEnv
-
-instance HasFreshEnv (LiftEnv context) where
-  freshEnv = vixEnv.freshEnv
-
-instance HasContext context (LiftEnv context) where
-  context = Backend.Lift.context
-
 -- TODO do we need Sequential here?
-newtype Lift context thing a = Lift (StateT (LiftState thing) (ReaderT (LiftEnv context) (Sequential (Task Query))) a)
-  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadFresh, MonadIO, MonadLog, MonadFetch Query, MonadContext context)
+newtype Lift thing a = Lift (StateT (LiftState thing) (ReaderT (ContextEnvT (Lifted.Expr FreeVar) VIX.Env) (Sequential (Task Query))) a)
+  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadFresh, MonadIO, MonadLog, MonadFetch Query, MonadContext (Lifted.Expr FreeVar))
 
-freshName :: Lift context thing GName
+freshName :: Lift thing GName
 freshName = do
   s <- get
   case freshNames s of
@@ -71,7 +52,7 @@ freshName = do
       return $ case baseName s of
         GName qn parts -> GName qn $ parts <> pure name
 
-freshNameWithHint :: Name -> Lift context thing GName
+freshNameWithHint :: Name -> Lift thing GName
 freshNameWithHint hint = do
   s <- get
   case freshNames s of
@@ -82,13 +63,13 @@ freshNameWithHint hint = do
         GName qn parts ->
           GName qn $ parts <> pure (name <> "-" <> hint)
 
-liftNamedThing :: GName -> thing -> Lift context thing ()
+liftNamedThing :: GName -> thing -> Lift thing ()
 liftNamedThing name thing =
   modify $ \s -> s
     { liftedThings = (name, thing) : liftedThings s
     }
 
-liftThing :: thing -> Lift context thing GName
+liftThing :: thing -> Lift thing GName
 liftThing thing = do
   name <- freshName
   liftNamedThing name thing
@@ -97,10 +78,10 @@ liftThing thing = do
 runLift
   :: GName
   -> Name
-  -> Lift context thing a
+  -> Lift thing a
   -> VIX (a, [(GName, thing)])
 runLift gn postfix (Lift l)
-  = withReaderT (\env -> LiftEnv { _context = mempty, _vixEnv = env })
+  = withContextEnvT
   $ second liftedThings
   <$> runStateT l LiftState
   { baseName = gn
@@ -108,7 +89,7 @@ runLift gn postfix (Lift l)
   , liftedThings = mempty
   }
 
-type LambdaLift = Lift (Lifted.Expr FreeVar) (Closed (Sized.Function Lifted.Expr))
+type LambdaLift = Lift (Closed (Sized.Function Lifted.Expr))
 
 liftExpr
   :: SLambda.Expr FreeVar

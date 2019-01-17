@@ -6,6 +6,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UndecidableInstances #-}
 module Effect.Context(module Effect.Context, module Syntax.Context) where
@@ -16,6 +17,7 @@ import Control.Lens hiding (Context, (|>))
 import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.ListT
+import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import Data.Char
 import qualified Data.HashMap.Lazy as HashMap
@@ -23,6 +25,8 @@ import qualified Data.List.Class as ListT
 
 import qualified Data.Text as Text
 import Effect.Fresh
+import Effect.Log
+import Effect.Report
 import Pretty
 import Syntax.Annotation
 import Syntax.Context
@@ -142,6 +146,35 @@ sets xs = modifyContext go
   where
     f m (v, e) = HashMap.adjust (\(Binding h p t _) -> Binding h p t $ Just e) v m
     go (Context vs m) = Context vs $ foldl' f m xs
+
+------------------------------------------------------------------------------
+
+data ContextEnvT e env = ContextEnvT
+  { _contextEnvContext :: !(Context e)
+  , _env :: !env
+  }
+
+makeLenses ''ContextEnvT
+
+instance HasLogEnv env => HasLogEnv (ContextEnvT e env) where
+  logEnv = env.logEnv
+
+instance HasReportEnv env => HasReportEnv (ContextEnvT e env) where
+  reportEnv = env.reportEnv
+
+instance HasFreshEnv env => HasFreshEnv (ContextEnvT e env) where
+  freshEnv = env.freshEnv
+
+instance HasContext e (ContextEnvT e env) where
+  context = contextEnvContext
+
+withContextEnvT
+  :: ReaderT (ContextEnvT e env) m a
+  -> ReaderT env m a
+withContextEnvT = withReaderT $ \env -> ContextEnvT
+  { _contextEnvContext = mempty
+  , _env = env
+  }
 
 ------------------------------------------------------------------------------
 -- mtl instances

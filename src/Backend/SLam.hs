@@ -127,7 +127,7 @@ slam expr = do
       c' <- slamExtern c
       return $ SLambda.ExternCode c' retType'
     Core.SourceLoc _ e -> slam e
-  logPretty "slam" "slam res" $ pure $ pretty <$> res
+  logPretty "slam" "slam res" $ traverse prettyVar res
   return res
 
 slamBranches
