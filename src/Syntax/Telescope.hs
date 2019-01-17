@@ -80,6 +80,21 @@ varTelescope vs = do
   where
     abstr = teleAbstraction vs
 
+plicitVarTelescope
+  :: (Monad e, MonadContext (e FreeVar) m)
+  => Vector (Plicitness, FreeVar)
+  -> m (Telescope e FreeVar)
+plicitVarTelescope pvs = do
+  context <- getContext
+  let
+    pbs = second (`Context.lookup` context) <$> pvs
+  return
+    $ Telescope
+    $ (\(p, Binding h _ t _) -> TeleArg h p $ abstract abstr t)
+    <$> pbs
+  where
+    abstr = teleAbstraction $ snd <$> pvs
+
 varTypeTelescope
   :: (Monad e, MonadContext e' m)
   => Vector (FreeVar, e FreeVar)

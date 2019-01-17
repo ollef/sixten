@@ -36,6 +36,17 @@ dataDef vs cs = do
   where
     abstr = abstract $ teleAbstraction vs
 
+plicitDataDef
+  :: (Monad typ, MonadContext (typ FreeVar) m)
+  => Vector (Plicitness, FreeVar)
+  -> [ConstrDef (typ FreeVar)]
+  -> m (DataDef typ FreeVar)
+plicitDataDef pvs cs = do
+  tele <- plicitVarTelescope pvs
+  return $ DataDef tele $ fmap abstr <$> cs
+  where
+    abstr = abstract $ teleAbstraction $ snd <$> pvs
+
 instance Bound DataDef where
   DataDef ps cs >>>= f = DataDef (ps >>>= f) $ fmap (>>>= f) <$> cs
 

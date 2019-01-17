@@ -12,6 +12,7 @@ import Data.Vector(Vector)
 import Analysis.Simplify
 import qualified Builtin.Names as Builtin
 import Effect
+import Effect.Context as Context
 import Elaboration.Constraint
 import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
@@ -243,8 +244,9 @@ replaceDefs defs = do
     logShow "tc.gen" "replaceDefs vs" (varId <$> vs)
     logDefMeta "tc.gen" "replaceDefs def" $ zonkDef def
     logMeta "tc.gen" "replaceDefs type" $ zonk typ
-    let subbedDef = def >>>= appSub
-        subbedType = typ >>= appSub
+    let
+      subbedDef = def >>>= appSub
+      subbedType = typ >>= appSub
     (def', typ') <- abstractDefImplicits vs subbedDef subbedType
     logDefMeta "tc.gen" "replaceDefs subbedDef" $ zonkDef subbedDef
     logMeta "tc.gen" "replaceDefs subbedType" $ zonk subbedType
@@ -270,26 +272,21 @@ abstractDefImplicits
   -> CoreM
   -> Elaborate (Definition (Expr MetaVar) FreeVar, CoreM)
 abstractDefImplicits vs (ConstantDefinition a e) t = do
+  context <- getContext
   let
-    ge = abstractImplicits vs lam e
-    gt = abstractImplicits vs pi_ t
+    pvs = (\v -> (implicitise $ Context.lookupPlicitness v context, v)) <$> vs
+  ge <- plicitLams pvs e
+  gt <- plicitPis pvs t
   return (ConstantDefinition a ge, gt)
 abstractDefImplicits vs (DataDefinition (DataDef ps cs) rep) typ =
   teleExtendContext ps $ \vs' -> do
+    context <- getContext
     let
       cs' = [ConstrDef c $ instantiateTele pure vs' s | ConstrDef c s <- cs]
+      pvs = (\v -> (implicitise $ Context.lookupPlicitness v context, v)) <$> vs
 
-      grep = abstractImplicits vs lam rep
-      gtyp = abstractImplicits vs pi_ typ
+    grep <- plicitLams pvs rep
+    gtyp <- plicitPis pvs typ
     return (DataDefinition (dataDef (implicitiseVar <$> toVector vs <|> vs') cs') grep, gtyp)
   where
     implicitiseVar v = v { varPlicitness = implicitise $ varPlicitness v }
-
-abstractImplicits
-  :: Foldable t
-  => t FreeVar
-  -> (FreeVar -> CoreM -> CoreM)
-  -> CoreM
-  -> CoreM
-abstractImplicits vs c b =
-  foldr (\v -> c (v { varPlicitness = implicitise $ varPlicitness v })) b vs
