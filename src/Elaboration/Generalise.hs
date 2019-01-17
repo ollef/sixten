@@ -53,7 +53,8 @@ generaliseDefs mpred mode defs = do
   logShow "tc.gen" "generaliseDefs varMap" varMap
   defs'' <- replaceMetas varMap defs'
   logShow "tc.gen" "generaliseDefs vars" (toHashSet $ HashMap.elems varMap)
-  let defDeps = collectDefDeps (toHashSet $ HashMap.elems varMap) defs''
+  let
+    defDeps = collectDefDeps (toHashSet $ HashMap.elems varMap) defs''
   replaceDefs defDeps
 
 collectMetas
@@ -72,9 +73,10 @@ collectMetas mpred mode defs = do
   -- resolved (unresolved class instances are assumed to depend on all
   -- instances), so we can't be sure that we have a single cycle. Therefore we
   -- separately compute dependencies for each definition.
-  let isLocalConstraint m@MetaVar { metaPlicitness = Constraint }
-        | mpred m = isUnsolved m
-      isLocalConstraint _ = return False
+  let
+    isLocalConstraint m@MetaVar { metaPlicitness = Constraint }
+      | mpred m = isUnsolved m
+    isLocalConstraint _ = return False
 
   defVars <- case mode of
     GeneraliseType -> return mempty
@@ -101,20 +103,23 @@ generaliseMetas metas = do
       deps <- metaVars instTyp
       return (m, (instVs, instTyp, deps))
 
-  let sortedMetas = acyclic <$> topoSortWith fst (thd3 . snd) instMetas
+  let
+    sortedMetas = acyclic <$> topoSortWith fst (thd3 . snd) instMetas
   logShow "tc.gen" "generaliseMetas sorted" sortedMetas
 
   flip execStateT mempty $ forM_ sortedMetas $ \(m, (instVs, instTyp, _deps)) -> do
     sub <- get
-    let go m' es = do
-          msol <- solution m'
-          case msol of
-            Nothing -> return $ case HashMap.lookup m' sub of
-              Nothing -> Meta m' es
-              Just v -> pure v
-            Just e -> bindMetas' go $ betaApps (open e) es
+    let
+      go m' es = do
+        msol <- solution m'
+        case msol of
+          Nothing -> return $ case HashMap.lookup m' sub of
+            Nothing -> Meta m' es
+            Just v -> pure v
+          Just e -> bindMetas' go $ betaApps (open e) es
     instTyp' <- bindMetas' go instTyp
-    let localDeps = toHashSet instTyp' `HashSet.intersection` toHashSet instVs
+    let
+      localDeps = toHashSet instTyp' `HashSet.intersection` toHashSet instVs
     when (HashSet.null localDeps) $ do
       v <- forall (metaHint m) (metaPlicitness m) instTyp'
       modify $ HashMap.insert m v
@@ -191,15 +196,17 @@ collectDefDeps
       )
     )
 collectDefDeps vars defs = do
-  let allDeps = flip fmap defs $ \(v, name, loc, def, typ) -> do
-        let d = toHashSet def
-            t = toHashSet typ
-        (v, (name, loc, def, typ, d <> t))
-      sat
-        = fmap acyclic
-        . topoSortWith identity (toHashSet . varType)
-        . HashSet.intersection vars
-        . saturate (\v -> fold ((\(_, _, _, _, deps) -> deps) <$> hashedLookup allDeps v) <> toHashSet (varType v))
+  let
+    allDeps = flip fmap defs $ \(v, name, loc, def, typ) -> do
+      let
+        d = toHashSet def
+        t = toHashSet typ
+      (v, (name, loc, def, typ, d <> t))
+    sat
+      = fmap acyclic
+      . topoSortWith identity (toHashSet . varType)
+      . HashSet.intersection vars
+      . saturate (\v -> fold ((\(_, _, _, _, deps) -> deps) <$> hashedLookup allDeps v) <> toHashSet (varType v))
   fmap (\(name, loc, def, typ, deps) -> (name, loc, def, typ, sat deps)) <$> allDeps
   where
     acyclic (AcyclicSCC a) = a
@@ -225,11 +232,12 @@ replaceDefs
     , FreeVar -> FreeVar
     )
 replaceDefs defs = do
-  let appSubMap
-        = toHashMap
-        $ (\(v, (_, _, _, _, vs)) -> (v, apps (pure v) ((\v' -> (implicitise $ varPlicitness v', pure v')) <$> vs)))
-        <$> defs
-      appSub v = HashMap.lookupDefault (pure v) v appSubMap
+  let
+    appSubMap
+      = toHashMap
+      $ (\(v, (_, _, _, _, vs)) -> (v, apps (pure v) ((\v' -> (implicitise $ varPlicitness v', pure v')) <$> vs)))
+      <$> defs
+    appSub v = HashMap.lookupDefault (pure v) v appSubMap
 
   subbedDefs <- forM defs $ \(oldVar, (name, loc, def, typ, vs)) -> do
     logShow "tc.gen" "replaceDefs vs" (varId <$> vs)
@@ -243,14 +251,15 @@ replaceDefs defs = do
     newVar <- forall (varHint oldVar) (varPlicitness oldVar) typ'
     return (oldVar, newVar, name, loc, def')
 
-  let renameMap
-        = toHashMap
-        $ (\(oldVar, newVar, _, _, _) -> (oldVar, newVar)) <$> subbedDefs
-      rename v = HashMap.lookupDefault v v renameMap
+  let
+    renameMap
+      = toHashMap
+      $ (\(oldVar, newVar, _, _, _) -> (oldVar, newVar)) <$> subbedDefs
+    rename v = HashMap.lookupDefault v v renameMap
 
-      renamedDefs
-        = (\(_, newVar, name, loc, def) -> (newVar { varType = rename <$> varType newVar }, name, loc, rename <$> def))
-        <$> subbedDefs
+    renamedDefs
+      = (\(_, newVar, name, loc, def) -> (newVar { varType = rename <$> varType newVar }, name, loc, rename <$> def))
+      <$> subbedDefs
 
   return (renamedDefs, rename)
 
@@ -261,15 +270,17 @@ abstractDefImplicits
   -> CoreM
   -> Elaborate (Definition (Expr MetaVar) FreeVar, CoreM)
 abstractDefImplicits vs (ConstantDefinition a e) t = do
-  let ge = abstractImplicits vs lam e
-      gt = abstractImplicits vs pi_ t
+  let
+    ge = abstractImplicits vs lam e
+    gt = abstractImplicits vs pi_ t
   return (ConstantDefinition a ge, gt)
 abstractDefImplicits vs (DataDefinition (DataDef ps cs) rep) typ =
   teleExtendContext ps $ \vs' -> do
-    let cs' = [ConstrDef c $ instantiateTele pure vs' s | ConstrDef c s <- cs]
+    let
+      cs' = [ConstrDef c $ instantiateTele pure vs' s | ConstrDef c s <- cs]
 
-    let grep = abstractImplicits vs lam rep
-        gtyp = abstractImplicits vs pi_ typ
+      grep = abstractImplicits vs lam rep
+      gtyp = abstractImplicits vs pi_ typ
     return (DataDefinition (dataDef (implicitiseVar <$> toVector vs <|> vs') cs') grep, gtyp)
   where
     implicitiseVar v = v { varPlicitness = implicitise $ varPlicitness v }
@@ -280,4 +291,5 @@ abstractImplicits
   -> (FreeVar -> CoreM -> CoreM)
   -> CoreM
   -> CoreM
-abstractImplicits vs c b = foldr (\v -> c (v { varPlicitness = implicitise $ varPlicitness v })) b vs
+abstractImplicits vs c b =
+  foldr (\v -> c (v { varPlicitness = implicitise $ varPlicitness v })) b vs
