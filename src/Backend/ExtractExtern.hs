@@ -1,4 +1,7 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, LambdaCase, MonadComprehensions, OverloadedStrings #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MonadComprehensions #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Backend.ExtractExtern where
 
 import Protolude
@@ -14,6 +17,7 @@ import Rock
 import Backend.Target
 import Driver.Query as Query
 import Effect
+import Effect.Context as Context
 import Syntax
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
@@ -62,12 +66,12 @@ data ExtractState = ExtractState
   , extractedSignatures :: !(HashMap GName (Signature ReturnIndirect))
   }
 
-newtype Extract a = Extract { unExtract :: StateT ExtractState VIX a }
-  deriving (Functor, Applicative, Monad, MonadState ExtractState, MonadFresh, MonadIO, MonadFetch Query)
+newtype Extract a = Extract { unExtract :: StateT ExtractState (ReaderT (ContextEnvT (Extracted.Expr FreeVar) VIX.Env) (Sequential (Task Query))) a }
+  deriving (Functor, Applicative, Monad, MonadState ExtractState, MonadFresh, MonadIO, MonadFetch Query, MonadContext (Extracted.Expr FreeVar), MonadLog)
 
 runExtract :: [GName] -> Extract a -> VIX ([(GName, Closed (Sized.Function Extracted.Expr))], Extracted.Submodule a)
 runExtract names (Extract m) = do
-  (a, s) <- runStateT m $ ExtractState names mempty mempty mempty mempty
+  (a, s) <- withContextEnvT $ runStateT m $ ExtractState names mempty mempty mempty mempty
   let decls = toList $ extractedDecls s
       defs = (,) C <$> toList (extractedCode s)
       cbs = toList $ extractedCallbacks s
@@ -101,11 +105,9 @@ emitSignature
   -> Extract ()
 emitSignature name sig = modify $ \s -> s { extractedSignatures = HashMap.insert name sig $ extractedSignatures s }
 
-type FV = FreeVar Extracted.Expr
-
 extractExpr
-  :: Lifted.Expr FV
-  -> Extract (Extracted.Expr FV)
+  :: Lifted.Expr FreeVar
+  -> Extract (Extracted.Expr FreeVar)
 extractExpr expr = case expr of
   Lifted.Var v -> return $ Extracted.Var v
   Lifted.Global g -> return $ Extracted.Global g
@@ -117,10 +119,10 @@ extractExpr expr = case expr of
     <*> traverse (traverse extractAnnoExpr) es
   Lifted.Let h e s -> do
     Anno e' t' <- extractAnnoExpr e
-    v <- freeVar h Explicit t'
-    let body = instantiate1 (pure v) s
-    body' <- extractExpr body
-    return $ Extracted.let_ v e' body'
+    Context.freshExtend (binding h Explicit t') $ \v -> do
+      let body = instantiate1 (pure v) s
+      body' <- extractExpr body
+      Extracted.let_ v e' body'
   Lifted.Case e brs -> Extracted.Case <$> extractAnnoExpr e <*> extractBranches brs
   Lifted.ExternCode f typ -> do
     typ' <- extractExpr typ
@@ -128,44 +130,51 @@ extractExpr expr = case expr of
     extractExtern typ' f'
 
 extractAnnoExpr
-  :: Anno Lifted.Expr FV
-  -> Extract (Anno Extracted.Expr FV)
+  :: Anno Lifted.Expr FreeVar
+  -> Extract (Anno Extracted.Expr FreeVar)
 extractAnnoExpr (Anno e t) = Anno <$> extractExpr e <*> extractExpr t
 
 extractExtern
-  :: Extracted.Type FV
-  -> Extern (Anno Extracted.Expr FV)
-  -> Extract (Extracted.Expr FV)
+  :: Extracted.Type FreeVar
+  -> Extern (Anno Extracted.Expr FreeVar)
+  -> Extract (Extracted.Expr FreeVar)
 extractExtern retType (Extern C parts) = do
   tgt <- fetch Query.Target
+  context <- getContext
 
-  let freeVars = foldMap (foldMap toHashSet) parts
-      argNames =
-        [ (v, "extern_arg_" <> shower n <> fromNameHint mempty (("_" <>) . fromName) (varHint v))
-        | (v, n) <- zip (HashSet.toList freeVars) [(0 :: Int)..]
-        ]
-      typedArgs =
-        [ (v, (name, typeStr, dir))
-        | (v, name) <- argNames
-        , let dir = typeDirection $ varType v
-        , let typeStr = externType dir
-        ]
-      typedArgsMap = HashMap.fromList typedArgs
-      argNamesMap = HashMap.fromList argNames
+  let
+    freeVars =
+      (\v -> (v, Context.lookup v context))
+      <$> HashSet.toList (foldMap (foldMap toHashSet) parts)
+    argNames =
+      [ (v, "extern_arg_" <> shower n <> fromNameHint mempty (("_" <>) . fromName) h, t)
+      | ((v, Binding h _ t _), n) <- zip freeVars [(0 :: Int)..]
+      ]
+    typedArgs =
+      [ (v, (name, typeStr, dir))
+      | (v, name, t) <- argNames
+      , let dir = typeDirection t
+      , let typeStr = externType dir
+      ]
+    typedArgsMap = HashMap.fromList typedArgs
+    argNamesMap = HashMap.fromList $ (\(v, n, _) -> (v, n)) <$> argNames
 
   renderedParts <- forM parts $ \case
     ExternPart str -> return str
     TypeMacroPart (Anno typ _) -> return $ externType $ typeDirection typ
     ExprMacroPart (Anno (Extracted.Var v) _) -> return $ argNamesMap HashMap.! v
     ExprMacroPart expr@(Anno _ callbackRetType) -> do
-      let callbackFreeVars = toHashSet expr
-          callbackParams = toVector $ acyclic <$> topoSortWith identity varType callbackFreeVars
+      let
+        callbackFreeVars = toHashSet expr
+        callbackParams = toVector $ acyclic <$> topoSortWith identity (`Context.lookupType` context) callbackFreeVars
       callbackName <- freshName
-      let function = close (panic "ExtractExtern: not closed") $ Sized.functionTyped callbackParams expr
-      emitCallback callbackName function
-      let callbackArgs = (typedArgsMap HashMap.!) <$> toList callbackFreeVars
-          callbackArgNames = fst3 <$> callbackArgs
-          callbackArgDirs = toVector $ thd3 <$> callbackArgs
+      let
+      function <- Sized.function callbackParams expr
+      emitCallback callbackName $ close (panic "ExtractExtern: not closed") function
+      let
+        callbackArgs = (typedArgsMap HashMap.!) <$> toList callbackFreeVars
+        callbackArgNames = fst3 <$> callbackArgs
+        callbackArgDirs = toVector $ thd3 <$> callbackArgs
       forwardDeclare callbackName callbackRetType callbackArgDirs
 
       return
@@ -184,7 +193,7 @@ extractExtern retType (Extern C parts) = do
       ReturnDirect rep -> (externType (Direct rep), mempty)
       ReturnIndirect Projection -> ("uint8_t*", mempty)
       ReturnIndirect OutParam -> ("void", [externType retDir <> " return_"])
-    args = toVector [(dir, Anno (pure var) (varType var)) | (var, (_, _, dir)) <- typedArgs]
+    args = toVector [(dir, Anno (pure var) (Context.lookupType var context)) | (var, (_, _, dir)) <- typedArgs]
     argDirs = fst <$> args
   emitDecl $ Extracted.Declaration mangledName retDir' argDirs
   emitCode
@@ -205,7 +214,7 @@ extractExtern retType (Extern C parts) = do
 
 forwardDeclare
   :: GName
-  -> Extracted.Expr FV
+  -> Extracted.Expr FreeVar
   -> Vector Direction
   -> Extract ()
 forwardDeclare name retType argDirs = do
@@ -242,17 +251,14 @@ externType (Direct rep) = "uint" <> shower (8 * TypeRep.size rep) <> "_t"
 externType Indirect = "uint8_t*"
 
 extractBranches
-  :: Branches Lifted.Expr FV
-  -> Extract (Branches Extracted.Expr FV)
+  :: Branches Lifted.Expr FreeVar
+  -> Extract (Branches Extracted.Expr FreeVar)
 extractBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(ConBranch qc tele brScope) -> do
-    vs <- forTeleWithPrefixM tele $ \h p s vs -> do
-      let e = instantiateTele pure vs s
-      e' <- extractExpr e
-      freeVar h p e'
-    let brExpr = instantiateTele pure vs brScope
-    brExpr' <- extractExpr brExpr
-    return $ conBranchTyped qc vs brExpr'
+    teleMapExtendContext tele extractExpr $ \vs -> do
+      let brExpr = instantiateTele pure vs brScope
+      brExpr' <- extractExpr brExpr
+      conBranch qc vs brExpr'
 extractBranches (LitBranches lbrs def) = LitBranches <$> sequence
   [ LitBranch l <$> extractExpr e
   | LitBranch l e <- lbrs
@@ -265,13 +271,10 @@ extractDef
 extractDef name def = fmap flatten $ runExtract names $ case open def of
   Sized.FunctionDef vis cl (Sized.Function tele scope) ->
     fmap (close noFV . Sized.FunctionDef vis cl) $ do
-      vs <- forTeleWithPrefixM tele $ \h p s vs -> do
-        let e = instantiateTele pure vs s
-        e' <- extractExpr e
-        freeVar h p e'
-      let expr = instantiateAnnoTele pure vs scope
-      expr' <- extractAnnoExpr expr
-      return $ Sized.functionTyped vs expr'
+      teleMapExtendContext tele extractExpr $ \vs -> do
+        let expr = instantiateAnnoTele pure vs scope
+        expr' <- extractAnnoExpr expr
+        Sized.function vs expr'
   Sized.ConstantDef vis (Sized.Constant e)
     -> close noFV
     . Sized.ConstantDef vis
@@ -283,7 +286,7 @@ extractDef name def = fmap flatten $ runExtract names $ case open def of
       : [ (n, Extracted.emptySubmodule $ mapClosed (Sized.FunctionDef Public Sized.NonClosure) f)
         | (n, f) <- cbs
         ]
-    noFV :: FV -> void
+    noFV :: FreeVar -> void
     noFV = panic "ExtractExtern noFV"
     names =
       let GName qn parts = name
