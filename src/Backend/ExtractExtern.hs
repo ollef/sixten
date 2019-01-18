@@ -23,7 +23,6 @@ import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Extracted as Extracted
 import qualified Syntax.Sized.Lifted as Lifted
-import TypedFreeVar
 import qualified TypeRep
 import Util
 import Util.TopoSort

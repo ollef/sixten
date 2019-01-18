@@ -13,6 +13,7 @@ import {-# SOURCE #-} Elaboration.TypeCheck.Expr
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect
+import Effect.Context as Context
 import Effect.Log as Log
 import Elaboration.Constructor
 import Elaboration.MetaVar
@@ -36,76 +37,79 @@ data BindingType = WildcardBinding | VarBinding
 
 instance Pretty BindingType where pretty = shower
 
-type PatVars = Vector (BindingType, FreeV)
-type BoundPatVars = Vector FreeV
+type PatVars = Vector (BindingType, FreeVar)
+type BoundPatVars = Vector FreeVar
 
 boundPatVars :: PatVars -> BoundPatVars
 boundPatVars = fmap snd . Vector.filter ((== VarBinding) . fst)
 
-withPatVars :: MonadContext FreeV m => PatVars -> m a -> m a
-withPatVars vs = withVars $ snd <$> vs
-
 checkPat
   :: Plicitness
-  -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
+  -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeVar) ()
   -> BoundPatVars
   -> Polytype
-  -> Elaborate (Core.Pat CoreM FreeV, CoreM, PatVars)
+  -> (Core.Pat CoreM FreeVar -> CoreM -> PatVars -> Elaborate a)
+  -> Elaborate a
 checkPat p pat vs expectedType = tcPat p pat vs $ CheckPat expectedType
 
 inferPat
   :: Plicitness
-  -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
-  -> Elaborate (Core.Pat CoreM FreeV, CoreM, PatVars, Polytype)
-inferPat p pat = do
+  -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeVar) ()
+  -> (Core.Pat CoreM FreeVar -> CoreM -> PatVars -> Polytype -> Elaborate a)
+  -> Elaborate a
+inferPat p pat k = do
   ref <- liftIO $ newIORef $ panic "inferPat: empty result"
-  (pat', patExpr, vs) <- tcPat p pat mempty $ InferPat ref
-  t <- liftIO $ readIORef ref
-  return (pat', patExpr, vs, t)
+  tcPat p pat mempty (InferPat ref) $ \pat' patExpr vs -> do
+    t <- liftIO $ readIORef ref
+    k pat' patExpr vs t
 
 tcPats
-  :: Vector (Plicitness, Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ())
+  :: Vector (Plicitness, Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeVar) ())
   -> BoundPatVars
-  -> Telescope (Core.Expr MetaVar) FreeV
-  -> Elaborate (Vector (Core.Pat CoreM FreeV, CoreM, CoreM), PatVars)
-tcPats pats vs tele = do
+  -> Telescope (Core.Expr MetaVar) FreeVar
+  -> (Vector (Core.Pat CoreM FreeVar, CoreM, CoreM) -> PatVars -> Elaborate a)
+  -> Elaborate a
+tcPats pats vs tele k = do
   unless (Vector.length pats == teleLength tele)
     $ panic "tcPats length mismatch"
 
   results <- iforTeleWithPrefixM tele $ \i _ _ s results -> do
-    let argExprs = snd3 . fst <$> results
-        expectedType = instantiateTele identity argExprs s
-        (p, pat) = pats Vector.! i
-        -- TODO could be more efficient
-        varPrefix = snd =<< results
-        vs' = vs <> boundPatVars varPrefix
-    logShow "tc.pat" "tcPats vars" (varId <$> vs')
-    (pat', patExpr, vs'') <- withPatVars varPrefix $ checkPat p pat vs' expectedType
+    let
+      argExprs = snd3 . fst <$> results
+      expectedType = instantiateTele identity argExprs s
+      (p, pat) = pats Vector.! i
+      -- TODO could be more efficient
+      varPrefix = snd =<< results
+      vs' = vs <> boundPatVars varPrefix
+    logShow "tc.pat" "tcPats vars" vs'
+    (pat', patExpr, vs'') <- checkPat p pat vs' expectedType k
     return ((pat', patExpr, expectedType), vs'')
 
   return (fst <$> results, snd =<< results)
 
 tcPat
   :: Plicitness
-  -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
+  -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeVar) ()
   -> BoundPatVars
   -> ExpectedPat
-  -> Elaborate (Core.Pat CoreM FreeV, CoreM, PatVars)
-tcPat p pat vs expected = do
-  logPretty "tc.pat" "tcPat" $ pure $ first (pretty . fmap pretty . instantiatePattern pure vs) pat
-  logPretty "tc.pat" "tcPat vs" $ pure vs
-  (pat', patExpr, vs') <- Log.indent $ tcPat' p pat vs expected
-  logPretty "tc.pat" "tcPat vs res" $ pure vs'
-  logMeta "tc.pat" "tcPat patExpr" $ zonk patExpr
-  return (pat', patExpr, vs')
+  -> (Core.Pat CoreM FreeVar -> CoreM -> PatVars -> Elaborate a)
+  -> Elaborate a
+tcPat p pat vs expected k =
+  -- logPretty "tc.pat" "tcPat" $ pure $ first (pretty . fmap pretty . instantiatePattern pure vs) pat
+  -- logPretty "tc.pat" "tcPat vs" $ pure vs
+  Log.indent $ tcPat' p pat vs expected $ \pat' patExpr vs' -> do
+    -- logPretty "tc.pat" "tcPat vs res" $ pure vs'
+    logMeta "tc.pat" "tcPat patExpr" $ zonk patExpr
+    k pat' patExpr vs'
 
 tcPat'
   :: Plicitness
-  -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) ()
+  -> Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeVar) ()
   -> BoundPatVars
   -> ExpectedPat
-  -> Elaborate (Core.Pat CoreM FreeV, CoreM, PatVars)
-tcPat' p pat vs expected = case pat of
+  -> (Core.Pat CoreM FreeVar -> CoreM -> PatVars -> Elaborate a)
+  -> Elaborate a
+tcPat' p pat vs expected k = case pat of
   Pre.VarPat h () -> do
     expectedType <- case expected of
       InferPat ref -> do
@@ -113,8 +117,8 @@ tcPat' p pat vs expected = case pat of
         liftIO $ writeIORef ref expectedType
         return expectedType
       CheckPat expectedType -> return expectedType
-    v <- forall h p expectedType
-    return (Core.VarPat h v, pure v, pure (VarBinding, v))
+    Context.freshExtend (binding h p expectedType) $ \v ->
+      k (Core.VarPat h v) (pure v) (pure (VarBinding, v))
   Pre.WildcardPat -> do
     expectedType <- case expected of
       InferPat ref -> do
@@ -122,13 +126,14 @@ tcPat' p pat vs expected = case pat of
         liftIO $ writeIORef ref expectedType
         return expectedType
       CheckPat expectedType -> return expectedType
-    v <- forall "_" p expectedType
-    return (Core.VarPat "_" v, pure v, pure (WildcardBinding, v))
+    Context.freshExtend (binding "_" p expectedType) $ \v ->
+      k (Core.VarPat "_" v) (pure v) (pure (WildcardBinding, v))
   Pre.LitPat lit -> do
-    let (expr, typ) = inferLit lit
-        pat' = litPat lit
+    let
+      (expr, typ) = inferLit lit
+      pat' = litPat lit
     (pat'', expr') <- instPatExpected expected typ pat' expr
-    return (pat'', expr', mempty)
+    k pat'' expr' mempty
   Pre.ConPat cons pats -> do
     qc@(QConstr typeName _) <- resolveConstr cons $ case expected of
       CheckPat expectedType -> Just expectedType
@@ -139,9 +144,10 @@ tcPat' p pat vs expected = case pat of
       DataDefinition (DataDef paramsTele _) _ -> do
         conType <- fetchQConstructor qc
 
-        let numParams = teleLength paramsTele
-            (tele, retScope) = Core.pisView conType
-            argPlics = Vector.drop numParams $ telePlics tele
+        let
+          numParams = teleLength paramsTele
+          (tele, retScope) = Core.pisView conType
+          argPlics = Vector.drop numParams $ telePlics tele
 
         pats' <- Vector.fromList <$> exactlyEqualisePats (Vector.toList argPlics) (Vector.toList pats)
 
@@ -150,9 +156,10 @@ tcPat' p pat vs expected = case pat of
 
         let argTele = instantiatePrefix paramVars tele
 
-        (pats'', vs') <- tcPats pats' vs argTele
+        tcPats pats' vs argTele $ \pats'' vs' -> do
 
-        let argExprs = snd3 <$> pats''
+          let
+            argExprs = snd3 <$> pats''
             argTypes = thd3 <$> pats''
             pats''' = Vector.zip3 argPlics (fst3 <$> pats'') argTypes
             params = Vector.zip (telePlics paramsTele) paramVars
@@ -161,26 +168,27 @@ tcPat' p pat vs expected = case pat of
 
             retType = instantiateTele identity (paramVars <|> argExprs) retScope
 
-        (pat', patExpr') <- instPatExpected expected retType (Core.ConPat qc params pats''') patExpr
+          (pat', patExpr') <- instPatExpected expected retType (Core.ConPat qc params pats''') patExpr
 
-        return (pat', patExpr', vs')
+          k pat' patExpr' vs'
   Pre.AnnoPat pat' s -> do
-    let patType = instantiatePattern pure vs s
+    let
+      patType = instantiatePattern pure vs s
     patType' <- checkPoly patType Builtin.Type
-    (pat'', patExpr, vs') <- checkPat p pat' vs patType'
-    (pat''', patExpr') <- instPatExpected expected patType' pat'' patExpr
-    return (pat''', patExpr', vs')
+    checkPat p pat' vs patType' $ \pat'' patExpr vs' -> do
+      (pat''', patExpr') <- instPatExpected expected patType' pat'' patExpr
+      k pat''' patExpr' vs'
   Pre.ViewPat _ _ -> panic "tcPat ViewPat undefined TODO"
-  Pre.PatLoc loc pat' -> located loc $ do
-    (pat'', patExpr, vs') <- tcPat' p pat' vs expected
-    return (pat'', Core.SourceLoc loc patExpr, vs')
+  Pre.PatLoc loc pat' -> located loc $
+    tcPat' p pat' vs expected $ \pat'' patExpr vs' ->
+      k pat'' (Core.SourceLoc loc patExpr) vs'
 
 instPatExpected
   :: ExpectedPat
   -> Polytype -- ^ patType
-  -> Core.Pat CoreM FreeV -- ^ pat
+  -> Core.Pat CoreM FreeVar -- ^ pat
   -> CoreM -- ^ :: patType
-  -> Elaborate (Core.Pat CoreM FreeV, CoreM) -- ^ (pat :: expectedType, :: expectedType)
+  -> Elaborate (Core.Pat CoreM FreeVar, CoreM) -- ^ (pat :: expectedType, :: expectedType)
 instPatExpected (CheckPat expectedType) patType pat patExpr = do
   f <- subtype expectedType patType
   viewPat expectedType pat patExpr f
@@ -190,21 +198,21 @@ instPatExpected (InferPat ref) patType pat patExpr = do
 
 viewPat
   :: CoreM -- ^ expectedType
-  -> Core.Pat CoreM FreeV -- ^ pat
+  -> Core.Pat CoreM FreeVar -- ^ pat
   -> CoreM -- ^ :: patType
   -> (CoreM -> CoreM) -- ^ expectedType -> patType
-  -> Elaborate (Core.Pat CoreM FreeV, CoreM) -- ^ (expectedType, :: expectedType)
-viewPat expectedType pat patExpr f = do
-  x <- forall mempty Explicit expectedType
-  let fx = f $ pure x
-  if fx == pure x then
-    return (pat, patExpr)
-  else do
-    let fExpr = Core.lam x fx
-    return (Core.ViewPat fExpr pat, pure x)
+  -> Elaborate (Core.Pat CoreM FreeVar, CoreM) -- ^ (expectedType, :: expectedType)
+viewPat expectedType pat patExpr f =
+  Context.freshExtend (binding mempty Explicit expectedType) $ \x -> do
+    let fx = f $ pure x
+    if fx == pure x then
+      return (pat, patExpr)
+    else do
+      fExpr <- Core.lam x fx
+      return (Core.ViewPat fExpr pat, pure x)
 
 patToTerm
-  :: Core.Pat CoreM FreeV
+  :: Core.Pat CoreM FreeVar
   -> Elaborate (Maybe CoreM)
 patToTerm pat = case pat of
   Core.VarPat _ v -> return $ Just $ Core.Var v
