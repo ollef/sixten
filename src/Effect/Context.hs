@@ -33,8 +33,6 @@ import Syntax.Context
 import Syntax.Name
 import Syntax.NameHint
 import Util
-import qualified Util.Tsil as Tsil
-import Util.Tsil(Tsil)
 
 class Monad m => MonadContext e m | m -> e where
   getContext :: m (Context e)
@@ -90,7 +88,6 @@ freshExtends
   -> (t FreeVar -> m a)
   -> m a
 freshExtends bs k = do
-  v <- FreeVar <$> fresh
   vs <- traverse (\b -> (,b) . FreeVar <$> fresh) bs
   extends vs $ k $ fst <$> vs
 
@@ -114,7 +111,7 @@ prettyVar
   => FreeVar
   -> m Doc
 prettyVar v@(FreeVar i) = do
-  Binding h p t _ <- lookup v
+  h <- lookupHint v
   return $ case () of
     ()
       | Text.null hintText -> "$" <> shower i
@@ -151,19 +148,19 @@ sets xs = modifyContext go
 
 data ContextEnvT e env = ContextEnvT
   { _contextEnvContext :: !(Context e)
-  , _env :: !env
+  , _contextEnvEnv :: !env
   }
 
 makeLenses ''ContextEnvT
 
 instance HasLogEnv env => HasLogEnv (ContextEnvT e env) where
-  logEnv = env.logEnv
+  logEnv = contextEnvEnv.logEnv
 
 instance HasReportEnv env => HasReportEnv (ContextEnvT e env) where
-  reportEnv = env.reportEnv
+  reportEnv = contextEnvEnv.reportEnv
 
 instance HasFreshEnv env => HasFreshEnv (ContextEnvT e env) where
-  freshEnv = env.freshEnv
+  freshEnv = contextEnvEnv.freshEnv
 
 instance HasContext e (ContextEnvT e env) where
   context = contextEnvContext
@@ -173,7 +170,7 @@ withContextEnvT
   -> ReaderT env m a
 withContextEnvT = withReaderT $ \env -> ContextEnvT
   { _contextEnvContext = mempty
-  , _env = env
+  , _contextEnvEnv = env
   }
 
 ------------------------------------------------------------------------------

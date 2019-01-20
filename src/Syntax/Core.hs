@@ -21,9 +21,9 @@ import Data.Deriving
 import Data.Foldable as Foldable
 import Data.Vector(Vector)
 
-import Effect.Context as Context
+import Effect
+import qualified Effect.Context as Context
 import Syntax
-import TypedFreeVar
 import TypeRep(TypeRep)
 import Util
 import Util.Tsil
@@ -63,7 +63,7 @@ lam
   -> Expr meta FreeVar
   -> m (Expr meta FreeVar)
 lam v e = do
-  Binding h p t _ <- Context.lookup v
+  Context.Binding h p t _ <- Context.lookup v
   return $ Lam h p t $ abstract1 v e
 
 plicitLam
@@ -73,7 +73,7 @@ plicitLam
   -> Expr meta FreeVar
   -> m (Expr meta FreeVar)
 plicitLam p v e = do
-  Binding h _ t _ <- Context.lookup v
+  Context.Binding h _ t _ <- Context.lookup v
   return $ Lam h p t $ abstract1 v e
 
 pi_
@@ -82,7 +82,7 @@ pi_
   -> Expr meta FreeVar
   -> m (Expr meta FreeVar)
 pi_ v e = do
-  Binding h p t _ <- Context.lookup v
+  Context.Binding h p t _ <- Context.lookup v
   return $ Pi h p t $ abstract1 v e
 
 plicitPi
@@ -92,7 +92,7 @@ plicitPi
   -> Expr meta FreeVar
   -> m (Expr meta FreeVar)
 plicitPi p v e = do
-  Binding h _ t _ <- Context.lookup v
+  Context.Binding h _ t _ <- Context.lookup v
   return $ Lam h p t $ abstract1 v e
 
 lams
@@ -134,7 +134,7 @@ let_ ds body = do
       ds' = LetRec
         [ LetBinding h loc (abstract abstr e) t
         | (v, loc, e) <- ds
-        , let Binding h _ t _ = Context.lookup v context
+        , let Context.Binding h _ t _ = Context.lookup v context
         ]
   return $ Let ds' $ abstract abstr body
 
@@ -318,7 +318,7 @@ instance (v ~ Doc, Pretty m, Eq m) => Pretty (Expr m v) where
       <+> "in" <+> prettyM (instantiateLet (pure . fromName) ns s)
     Case e brs retType -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+> "of" <+> parens (prettyM retType)
-        <$$> indent 2 (prettyM brs)
+        <$$> Syntax.indent 2 (prettyM brs)
     ExternCode c t -> parens `above` annoPrec $
       prettyM c <+> ":" <+> prettyM t
     SourceLoc _ e -> prettyM e

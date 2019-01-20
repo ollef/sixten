@@ -11,16 +11,16 @@ import Data.Vector(Vector)
 import qualified Analysis.Simplify as Simplify
 import qualified Builtin.Names as Builtin
 import Driver.Query
+import Effect
+import qualified Effect.Context as Context
 import Elaboration.Constraint
 import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
 import Elaboration.TypeOf
-import Effect.Context as Context
 import Syntax
 import Syntax.Core
 import Syntax.Core.Pattern
-import TypedFreeVar
 import Util
 
 type PatM = Pat CoreM FreeVar
@@ -32,7 +32,7 @@ type Clause =
   )
 
 fatBar :: Context CoreM -> FreeVar -> CoreM -> CoreM -> CoreM
-fatBar context failVar e e' = case filter (== failVar) $ toList e of
+fatBar ctx failVar e e' = case filter (== failVar) $ toList e of
   _ | Simplify.duplicable e' -> dup
   [] -> e
   [_] -> dup
@@ -41,7 +41,7 @@ fatBar context failVar e e' = case filter (== failVar) $ toList e of
     mempty
     (noSourceLoc "fatBar")
     (Lam mempty Explicit Builtin.UnitType $ abstractNone e')
-    (Pi mempty Explicit Builtin.UnitType $ abstractNone $ Context.lookupType failVar context)
+    (Pi mempty Explicit Builtin.UnitType $ abstractNone $ Context.lookupType failVar ctx)
     $ abstract1 failVar
     $ substitute failVar (App (pure failVar) Explicit Builtin.MkUnit) e
   where
@@ -98,10 +98,10 @@ type NonEmptyMatch
 match :: Match
 match _ _ _ [] expr0 = return expr0
 match failVar _ [] clauses expr0 = do
-  context <- getContext
+  ctx <- getContext
   let
     go :: Clause -> ExprF -> ExprF
-    go ([], s) x = fatBar context failVar s x
+    go ([], s) x = fatBar ctx failVar s x
     go _ _ = panic "match go"
   return $ foldr go expr0 clauses
 match failVar retType xs clauses expr0
@@ -144,8 +144,8 @@ matchCon expr failVar retType exprs clauses expr0 = do
       rest <- match failVar retType exprs' (decon clausesStartingWithC) (pure failVar)
       conBranch c ys rest
 
-  context <- getContext
-  return $ fatBar context failVar (Case expr (ConBranches cbrs) retType) expr0
+  ctx <- getContext
+  return $ fatBar ctx failVar (Case expr (ConBranches cbrs) retType) expr0
   where
     firstCon (c:_, _) = constr c
     firstCon _ = panic "firstCon "

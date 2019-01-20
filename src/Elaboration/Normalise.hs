@@ -3,7 +3,6 @@ module Elaboration.Normalise where
 
 import Protolude hiding (TypeRep)
 
-import Data.IORef
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
@@ -18,7 +17,6 @@ import Elaboration.MetaVar
 import Elaboration.Monad
 import Syntax
 import Syntax.Core
-import TypedFreeVar
 import TypeRep(TypeRep)
 import qualified TypeRep
 import Util
@@ -118,7 +116,7 @@ whnf' args expr exprs = Log.indent $ do
     go e@Lam {} es = return $ apps e es
     go (App e1 p e2) es = whnf' args e1 $ (p, e2) : es
     go (Let ds scope) es =
-      instantiateLetM ds scope $ \vs e ->
+      instantiateLetM ds scope $ \_vs e ->
         whnf' args e es
     go (Case e brs retType) es = do
       e' <- whnf0 e
@@ -187,7 +185,7 @@ normalise' args = normaliseBuiltins go
     go (Lam h p t s) es = normaliseScope lam h p t s es
     go (App e1 p e2) es = normalise' args e1 ((p, e2) : es)
     go (Let ds scope) es =
-      instantiateLetM ds scope $ \vs e ->
+      instantiateLetM ds scope $ \_vs e ->
         normalise' args e es
     go (Case e brs retType) es = do
       e' <- normalise0 e
@@ -345,7 +343,7 @@ normaliseDef norm = lambdas
     cases e = return $ Just e
 
 instantiateLetM
-  :: (MonadContext (Expr meta FreeVar) m, MonadFresh m, MonadIO m)
+  :: (MonadContext (Expr meta FreeVar) m, MonadFresh m)
   => LetRec (Expr meta) FreeVar
   -> Scope LetVar (Expr meta) FreeVar
   -> (Vector FreeVar -> Expr meta FreeVar -> m a)

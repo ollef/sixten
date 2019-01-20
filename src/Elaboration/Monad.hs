@@ -20,12 +20,11 @@ import {-# SOURCE #-} Elaboration.MetaVar.Zonk
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect
-import Effect.Context as Context
+import qualified Effect.Context as Context
 import Elaboration.MetaVar
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
-import TypedFreeVar
 import Util
 import qualified Util.Tsil as Tsil
 import VIX
@@ -85,15 +84,15 @@ exists
   -> CoreM
   -> m CoreM
 exists hint d typ = do
-  context <- getContext
+  ctx <- getContext
   let
-    locals = toVector $ Tsil.filter (isNothing . Context._value . (`Context.lookup` context)) $ _vars context
+    locals = toVector $ Tsil.filter (isNothing . (`Context.lookupValue` ctx)) $ Context._vars ctx
   typ' <- Core.pis locals typ
   logMeta "tc.metavar" "exists typ" $ zonk typ
   let typ'' = close (panic "exists not closed") typ'
   loc <- getCurrentLocation
   v <- explicitExists hint d typ'' (Vector.length locals) loc
-  return $ Core.Meta v $ (\fv -> (Context._plicitness $ Context.lookup fv context, pure fv)) <$> locals
+  return $ Core.Meta v $ (\fv -> (Context.lookupPlicitness fv ctx, pure fv)) <$> locals
 
 existsType
   :: NameHint

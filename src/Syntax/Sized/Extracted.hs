@@ -19,9 +19,7 @@ import Data.Vector(Vector)
 
 import Effect.Context as Context
 import Syntax hiding (Definition)
-import Syntax.Context as Context
 import Syntax.Sized.Anno
-import TypedFreeVar
 import TypeRep(TypeRep)
 import Util
 

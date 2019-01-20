@@ -11,14 +11,14 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import Effect.Context as Context
+import Effect
+import qualified Effect.Context as Context
 import Elaboration.MetaVar
 import Elaboration.Monad
 import Elaboration.Normalise
 import Syntax hiding (conBranch)
 import qualified Syntax.Branches
 import Syntax.Core
-import TypedFreeVar
 import Util
 
 type Equal = MaybeT Elaborate
@@ -115,11 +115,11 @@ conBranch (ConBranch c1 tele1 s1) (ConBranch c2 tele2 s2) = do
   c <- eq c1 c2
   guard $ teleLength tele1 == teleLength tele2
   teleExtendContext tele1 $ \vs -> do
-    context <- getContext
+    ctx <- getContext
     let
       types2 = forTele tele2 $ \_ _ s -> instantiateTele pure vs s
       go v type2 = do
-        t <- expr (Context.lookupType v context) type2
+        _ <- expr (Context.lookupType v ctx) type2
         return v
     vs' <- Vector.zipWithM go vs types2
     let e1 = instantiateTele pure vs' s1

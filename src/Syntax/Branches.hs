@@ -17,9 +17,7 @@ import Data.Semigroup as Semigroup
 import Data.Vector(Vector)
 
 import Effect.Context
-import FreeVar
 import Pretty
-import Syntax.Context
 import Syntax.GlobalBind
 import Syntax.Literal
 import Syntax.Name

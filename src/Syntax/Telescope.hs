@@ -31,7 +31,7 @@ import qualified Data.Vector as Vector
 import Syntax.Context
 
 import Effect
-import Effect.Context as Context
+import qualified Effect.Context as Context
 import Pretty
 import Syntax.Annotation
 import Syntax.GlobalBind
@@ -60,7 +60,7 @@ bindingTelescope
   -> Telescope e v
 bindingTelescope vs
   = Telescope
-  $ (\(v, Binding h p t _) -> TeleArg h p $ abstract abstr t)
+  $ (\(_, Binding h p t _) -> TeleArg h p $ abstract abstr t)
   <$> vs
   where
     abstr = teleAbstraction $ fst <$> vs
@@ -111,19 +111,19 @@ varTypeTelescope vs = do
     abstr = teleAbstraction (fst <$> vs)
 
 teleExtendContext
-  :: (MonadFresh m, MonadLog m, MonadContext (e FreeVar) m, Monad e)
+  :: (MonadFresh m, MonadContext (e FreeVar) m, Monad e)
   => Telescope e FreeVar
   -> (Vector FreeVar -> m a)
   -> m a
 teleExtendContext tele k = do
   vs <- forTeleWithPrefixM tele $ \h p s vs -> do
     let e = instantiateTele (pure . fst) vs s
-    v <- freeVar
+    v <- Context.freeVar
     return (v, binding h p e)
   Context.extends vs $ k $ fst <$> vs
 
 teleMapExtendContext
-  :: (MonadFresh m, MonadLog m, MonadContext e' m, Monad e)
+  :: (MonadFresh m, MonadContext e' m, Monad e)
   => Telescope e FreeVar
   -> (e FreeVar -> m e')
   -> (Vector FreeVar -> m a)
@@ -132,7 +132,7 @@ teleMapExtendContext tele f k = do
   vs <- forTeleWithPrefixM tele $ \h p s vs -> do
     let e = instantiateTele (pure . fst) vs s
     e' <- Context.extends vs $ f e
-    v <- freeVar
+    v <- Context.freeVar
     return (v, binding h p e')
   Context.extends vs $ k $ fst <$> vs
 

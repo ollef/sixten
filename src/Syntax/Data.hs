@@ -13,11 +13,9 @@ import Data.Vector(Vector)
 import Effect.Context as Context
 import Pretty
 import Syntax.Annotation
-import Syntax.Context
 import Syntax.GlobalBind
 import Syntax.Name
 import Syntax.Telescope
-import TypedFreeVar
 import Util
 
 data DataDef typ v = DataDef

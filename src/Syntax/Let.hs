@@ -1,13 +1,11 @@
-{-# LANGUAGE
-  DeriveFoldable,
-  DeriveFunctor,
-  DeriveTraversable,
-  GADTs,
-  GeneralizedNewtypeDeriving,
-  OverloadedStrings,
-  RankNTypes,
-  TemplateHaskell
- #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Syntax.Let where
 
 import Protolude
@@ -145,18 +143,18 @@ transverseLetBinding
 transverseLetBinding f (LetBinding h loc s t) = LetBinding h loc <$> transverseScope f s <*> f t
 
 letExtendContext
-  :: (MonadFresh m, MonadLog m, MonadContext (e FreeVar) m)
+  :: (MonadFresh m, MonadContext (e FreeVar) m)
   => LetRec e FreeVar
   -> (Vector FreeVar -> m a)
   -> m a
 letExtendContext ds k = do
   vs <- forMLet ds $ \h _ _ t -> do
-    v <- freeVar
+    v <- Context.freeVar
     return (v, binding h Explicit t)
   Context.extends vs $ k $ fst <$> vs
 
 letMapExtendContext
-  :: (MonadFresh m, MonadLog m, MonadContext e' m)
+  :: (MonadFresh m, MonadContext e' m)
   => LetRec e FreeVar
   -> (e FreeVar -> m e')
   -> (Vector FreeVar -> m a)
@@ -164,7 +162,7 @@ letMapExtendContext
 letMapExtendContext tele f k = do
   vs <- forMLet tele $ \h _ _ t -> do
     t' <- f t
-    v <- freeVar
+    v <- Context.freeVar
     return (v, binding h Explicit t')
   Context.extends vs $ k $ fst <$> vs
 

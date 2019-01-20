@@ -6,9 +6,7 @@ module Syntax.Context where
 
 import Protolude
 
-import Bound
 import Data.HashMap.Lazy as HashMap
-import Data.Vector(Vector)
 
 import Effect.Fresh
 import Syntax.Annotation

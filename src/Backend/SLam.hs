@@ -13,14 +13,14 @@ module Backend.SLam where
 import Protolude
 
 import Bound.Scope hiding (instantiate1)
-import Control.Lens hiding (Context)
+import Control.Lens hiding (Context, parts)
 import Control.Monad.Reader
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect
-import Effect.Context as Context
+import qualified Effect.Context as Context
 import Effect.Log as Log
 import qualified Elaboration.Normalise as Normalise
 import qualified Elaboration.TypeOf as TypeOf
@@ -28,7 +28,6 @@ import Syntax
 import qualified Syntax.Core as Core
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.SLambda as SLambda
-import TypedFreeVar
 import Util
 import VIX
 
@@ -48,7 +47,7 @@ instance HasReportEnv SLamEnv where
 instance HasFreshEnv SLamEnv where
   freshEnv = vixEnv.freshEnv
 
-instance HasContext (Core.Expr Void FreeVar) SLamEnv where
+instance Context.HasContext (Core.Expr Void FreeVar) SLamEnv where
   context = Backend.SLam.context
 
 newtype SLam a = SLam (ReaderT SLamEnv (Sequential (Task Query)) a)
@@ -136,9 +135,9 @@ slamBranches
 slamBranches (ConBranches cbrs) = do
   cbrs' <- Log.indent $ forM cbrs $ \(ConBranch c tele brScope) ->
     teleExtendContext tele $ \vs -> do
-      context <- getContext
+      ctx <- getContext
       reps <- forM vs $ \v -> do
-        t' <- whnf $ Context.lookupType v context
+        t' <- whnf $ Context.lookupType v ctx
         slam t'
 
       brExpr <- slam $ instantiateTele pure vs brScope

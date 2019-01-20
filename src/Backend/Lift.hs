@@ -4,15 +4,11 @@
 {-# LANGUAGE MonadComprehensions #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
 module Backend.Lift where
 
 import Protolude
 
-import Control.Lens hiding (Context)
-import Control.Monad.Except
-import Control.Monad.Reader
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Vector(Vector)
@@ -21,13 +17,12 @@ import Rock
 
 import Driver.Query
 import Effect
-import Effect.Context as Context
+import qualified Effect.Context as Context
 import Syntax
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Lifted as Lifted
 import qualified Syntax.Sized.SLambda as SLambda
-import TypedFreeVar
 import Util
 import Util.TopoSort
 import VIX
@@ -39,7 +34,7 @@ data LiftState thing = LiftState
   }
 
 -- TODO do we need Sequential here?
-newtype Lift thing a = Lift (StateT (LiftState thing) (ReaderT (ContextEnvT (Lifted.Expr FreeVar) VIX.Env) (Sequential (Task Query))) a)
+newtype Lift thing a = Lift (StateT (LiftState thing) (ReaderT (Context.ContextEnvT (Lifted.Expr FreeVar) VIX.Env) (Sequential (Task Query))) a)
   deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadFresh, MonadIO, MonadLog, MonadFetch Query, MonadContext (Lifted.Expr FreeVar))
 
 freshName :: Lift thing GName

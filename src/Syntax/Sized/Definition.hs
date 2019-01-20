@@ -8,15 +8,12 @@ import Control.Monad.Morph
 import Data.Vector(Vector)
 
 import Effect.Context as Context
-import FreeVar
 import Pretty
 import Syntax.Annotation
-import Syntax.Context as Context
 import Syntax.GlobalBind
 import Syntax.Name
 import Syntax.Sized.Anno
 import Syntax.Telescope
-import qualified TypedFreeVar as Typed
 
 data Function expr v
   = Function (Telescope expr v) (AnnoScope TeleVar expr v)

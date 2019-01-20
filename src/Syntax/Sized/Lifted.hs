@@ -17,11 +17,8 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import Effect.Context as Context
-import FreeVar
 import Syntax hiding (Definition)
-import Syntax.Context as Context
 import Syntax.Sized.Anno
-import qualified TypedFreeVar as Typed
 import TypeRep(TypeRep)
 import Util
 

@@ -16,10 +16,9 @@ import Text.Parsix.Position
 
 import Driver.Query
 import Effect
-import Effect.Context as Context
+import qualified Effect.Context as Context
 import Syntax
 import Syntax.Core
-import TypedFreeVar
 
 inside :: Int -> Int -> Span -> Bool
 inside row column (Span start end)
@@ -108,8 +107,8 @@ hoverDef
 hoverDef f (ConstantDefinition _ e) = hoverExpr f e
 hoverDef f (DataDefinition (DataDef params cs) _rep) =
   teleExtendContext params $ \vs -> do
-    context <- getContext
-    foldMap (hoverExpr f . (`Context.lookupType` context)) vs
+    ctx <- getContext
+    foldMap (hoverExpr f . (`Context.lookupType` ctx)) vs
     <> foldMap (\(ConstrDef _ s) -> hoverExpr f $ instantiateTele pure vs s) cs
 
 hoverExpr
@@ -155,6 +154,6 @@ hoverBranches f (LitBranches lbrs def) =
 hoverBranches f (ConBranches cbrs) =
   flip foldMap cbrs $ \(ConBranch _ tele scope) ->
     teleExtendContext tele $ \vs -> do
-      context <- getContext
-      foldMap (hoverExpr f . (`Context.lookupType` context)) vs
+      ctx <- getContext
+      foldMap (hoverExpr f . (`Context.lookupType` ctx)) vs
       <> hoverExpr f (instantiateTele pure vs scope)

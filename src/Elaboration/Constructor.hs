@@ -10,12 +10,11 @@ import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect
+import qualified Effect.Context as Context
 import Elaboration.Constraint
-import Effect.Context as Context
 import Elaboration.Monad
 import Syntax
 import qualified Syntax.Core as Core
-import TypedFreeVar
 import Util
 
 resolveConstr

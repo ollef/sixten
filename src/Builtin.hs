@@ -13,13 +13,12 @@ import qualified Data.Vector as Vector
 import Backend.Target(Target)
 import Builtin.Names
 import Effect
-import Effect.Context as Context
+import qualified Effect.Context as Context
 import Syntax
 import Syntax.Core as Core
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Lifted as Lifted
-import TypedFreeVar
 import qualified TypeRep
 import Util
 
@@ -101,15 +100,15 @@ instance MonadFresh Fresh where
 apply :: Target -> Int -> Closed (Sized.Definition Lifted.Expr)
 apply target numArgs
   = evalFresh
-  $ freshExtend (binding "this" Explicit ptrRep) $ \this ->
+  $ Context.freshExtend (binding "this" Explicit ptrRep) $ \this ->
 
-    freshExtends (foreach (Vector.enumFromN 0 numArgs) $ \i ->
+    Context.freshExtends (foreach (Vector.enumFromN 0 numArgs) $ \i ->
       binding ("x" <> shower (i :: Int) <> "type") Explicit typeRep) $ \argTypes ->
-    freshExtends (ifor argTypes $ \i argType ->
+    Context.freshExtends (ifor argTypes $ \i argType ->
       binding ("x" <> shower i) Explicit $ pure argType) $ \args ->
 
-    freshExtend (binding "funknown" Explicit piRep) $ \funknown ->
-    freshExtend (binding "arity" Explicit intRep) $ \farity -> do
+    Context.freshExtend (binding "funknown" Explicit piRep) $ \funknown ->
+    Context.freshExtend (binding "arity" Explicit intRep) $ \farity -> do
       context <- getContext
 
       let
@@ -170,20 +169,20 @@ apply target numArgs
 pap :: Target -> Int -> Int -> Closed (Sized.Definition Lifted.Expr)
 pap target k m
   = evalFresh
-  $ freshExtend (binding "this" Explicit ptrRep) $ \this ->
-    freshExtends (foreach (Vector.enumFromN 0 k) $ \i ->
+  $ Context.freshExtend (binding "this" Explicit ptrRep) $ \this ->
+    Context.freshExtends (foreach (Vector.enumFromN 0 k) $ \i ->
       binding ("x" <> shower (i :: Int) <> "type") Explicit typeRep) $ \argTypes ->
-    freshExtends (ifor argTypes $ \i argType ->
+    Context.freshExtends (ifor argTypes $ \i argType ->
       binding ("x" <> shower i) Explicit $ pure argType) $ \args ->
 
-    freshExtend (binding "_" Explicit ptrRep) $ \unused1 ->
-    freshExtend (binding "_" Explicit intRep) $ \unused2 ->
+    Context.freshExtend (binding "_" Explicit ptrRep) $ \unused1 ->
+    Context.freshExtend (binding "_" Explicit intRep) $ \unused2 ->
 
-    freshExtend (binding "that" Explicit ptrRep) $ \that ->
+    Context.freshExtend (binding "that" Explicit ptrRep) $ \that ->
 
-    freshExtends (foreach (Vector.enumFromN 0 m) $ \i ->
+    Context.freshExtends (foreach (Vector.enumFromN 0 m) $ \i ->
       binding ("y" <> shower (i :: Int) <> "type") Explicit typeRep) $ \clArgTypes ->
-    freshExtends (ifor clArgTypes $ \i argType ->
+    Context.freshExtends (ifor clArgTypes $ \i argType ->
       binding ("y" <> shower i) Explicit $ pure argType) $ \clArgs -> do
         context <- getContext
 

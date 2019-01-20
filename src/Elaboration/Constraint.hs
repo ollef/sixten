@@ -13,7 +13,7 @@ import Analysis.Simplify
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect
-import Effect.Context as Context
+import qualified Effect.Context as Context
 import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
@@ -22,7 +22,6 @@ import Elaboration.Subtype
 import Elaboration.TypeOf
 import Syntax
 import Syntax.Core
-import TypedFreeVar
 import Util
 
 trySolveMetaVar
@@ -43,7 +42,7 @@ trySolveConstraint
 trySolveConstraint m = modifyContext (const mempty) $ do
   logShow "tc.constraint" "trySolveConstraint" $ metaId m
   withInstantiatedMetaType m $ \vs typ -> do
-    context <- getContext
+    ctx <- getContext
     typ' <- whnf typ
     case typ' of
       (appsView -> (unSourceLoc -> Builtin.QGlobal className, _)) -> do
@@ -69,7 +68,7 @@ trySolveConstraint m = modifyContext (const mempty) $ do
                 solve m sol
                 return $ Just sol
           candidates
-            = [pure v | v <- toList vs, Context._plicitness (Context.lookup v context) == Constraint]
+            = [pure v | v <- toList vs, Context.lookupPlicitness v ctx == Constraint]
             <> [Global $ gname g | g <- HashSet.toList globalClassInstances]
         logShow "tc.constraint" "Candidates" $ length candidates
         go candidates
@@ -142,10 +141,10 @@ mergeConstraintVars vars = do
     go varTypes _ = return varTypes
     solveVar m m' =
       withInstantiatedMetaType m' $ \vs _ -> do
-        context <- getContext
+        ctx <- getContext
         e <- lams vs
           $ Meta m
-          $ (\v -> (Context.lookupPlicitness v context, pure v)) <$> vs
+          $ (\v -> (Context.lookupPlicitness v ctx, pure v)) <$> vs
         solve m' $ close (panic "mergeConstraintVars not closed") e
 
 whnf :: MonadElaborate m => CoreM -> m CoreM

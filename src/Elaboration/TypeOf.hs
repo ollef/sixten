@@ -14,7 +14,6 @@ import Elaboration.Monad
 import qualified Elaboration.Normalise as Normalise
 import Syntax
 import Syntax.Core
-import TypedFreeVar
 import Util
 
 type MonadTypeOf meta m = (Show meta, MonadIO m, MonadFetch Query m, MonadFresh m, MonadLog m, MonadContext (Expr meta FreeVar) m)

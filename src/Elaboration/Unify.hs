@@ -14,7 +14,7 @@ import qualified Data.Vector as Vector
 import {-# SOURCE #-} Elaboration.Constraint
 import Analysis.Simplify
 import Effect
-import Effect.Context as Context
+import qualified Effect.Context as Context
 import Effect.Log as Log
 import qualified Elaboration.Equal as Equal
 import Elaboration.MetaVar
@@ -25,7 +25,6 @@ import Elaboration.TypeOf
 import Pretty
 import Syntax
 import Syntax.Core
-import TypedFreeVar
 import Util
 
 runUnify :: Monad m => ExceptT Error m a -> (Error -> m a) -> m a
@@ -150,8 +149,8 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
                 (close identity newMetaType'')
                 (Vector.length vs')
                 (metaSourceLoc m)
-              context <- getContext
-              let e = Meta m' $ (\v -> (Context._plicitness $ Context.lookup v context, pure v)) <$> vs'
+              ctx <- getContext
+              let e = Meta m' $ (\v -> (Context.lookupPlicitness v ctx, pure v)) <$> vs'
               e' <- lams vs e
               solve m $ close (panic "unify sameVar not closed") e'
               unify cxt expr1 expr2
@@ -259,8 +258,8 @@ prune allowed expr = Log.indent $ do
                       (close identity newMetaType'')
                       (Vector.length vs')
                       (metaSourceLoc m)
-                    context <- getContext
-                    let e = Meta m' $ (\v -> (Context._plicitness $ Context.lookup v context, pure v)) <$> vs'
+                    ctx <- getContext
+                    let e = Meta m' $ (\v -> (Context.lookupPlicitness v ctx, pure v)) <$> vs'
                     e' <- plicitLams pvs e
                     -- logShow 30 "prune varTypes" =<< mapM (prettyMeta . varType) vs
                     -- logShow 30 "prune vs'" $ varId <$> vs'

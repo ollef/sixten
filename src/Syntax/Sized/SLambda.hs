@@ -18,11 +18,10 @@ import Data.Deriving
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import Effect.Context as Context
+import Effect
+import qualified Effect.Context as Context
 import Syntax
-import Syntax.Context
 import Syntax.Sized.Anno
-import TypedFreeVar
 import TypeRep(TypeRep)
 import Util
 
@@ -66,7 +65,7 @@ letRec ds expr = do
     ds' = do
       (v, Anno e t) <- ds
       let
-        Binding h _ _ _ = Context.lookup v context
+        Context.Binding h _ _ _ = Context.lookup v context
       return $ LetBinding h (noSourceLoc "SLambda") (abstr e) t
   return $ Let (LetRec ds') $ abstr expr
   where
@@ -139,7 +138,7 @@ instance v ~ Doc => Pretty (Expr v) where
       <+> "in" <+> prettyM (instantiateLet (pure . fromName) ns s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+>
-      "of" <$$> indent 2 (prettyM brs)
+      "of" <$$> Syntax.indent 2 (prettyM brs)
     (annoBindingsViewM lamView -> Just (tele, s)) -> parens `above` absPrec $
       withTeleHints tele $ \ns ->
         "\\" <> prettyTeleVarTypes ns tele <> "." <+>

@@ -14,8 +14,8 @@ import Backend.Lift(runLift, liftThing, Lift)
 import qualified Builtin
 import qualified Builtin.Names as Builtin
 import Driver.Query
-import Effect.Context as Context
-import FreeVar
+import Effect
+import qualified Effect.Context as Context
 import Syntax
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
@@ -188,9 +188,6 @@ liftClosureFun
 liftClosureFun f (Closed tele, Closed returnTypeScope) numCaptured =
   teleExtendContext tele $ \vs -> do
     context <- getContext
-    let
-      typedVs = (\v -> (v, Context.lookupType v context)) <$> vs
-
     typeRep <- MkType <$> fetchTypeRep
     ptrRep <- MkType <$> fetchPtrRep
     piRep <- MkType <$> fetchPiRep

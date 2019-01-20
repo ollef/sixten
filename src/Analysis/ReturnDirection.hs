@@ -13,7 +13,6 @@ import Data.Vector(Vector)
 import Driver.Query
 import Effect
 import Effect.Context as Context
-import FreeVar
 import Syntax hiding (Definition)
 import Syntax.Sized.Anno
 import Syntax.Sized.Definition
@@ -248,7 +247,7 @@ inferRecursiveDefs
 inferRecursiveDefs defs = withContextEnvT $ do
   let names = fst <$> defs
 
-  bindings <- Vector.forM defs $ \(v, Closed d) -> do
+  bindings_ <- Vector.forM defs $ \(v, Closed d) -> do
     logPretty "returndir" "InferDirection.inferRecursiveDefs 1" $ pure (v, d)
     let
       h = fromGName v
@@ -267,7 +266,7 @@ inferRecursiveDefs defs = withContextEnvT $ do
     funSig' <- traverse (bitraverse (traverse $ maybe existsMetaReturnIndirect pure) pure) funSig
     return $ binding h Explicit $ MetaData MProjection funSig'
 
-  freshExtends bindings $ \evars -> do
+  freshExtends bindings_ $ \evars -> do
     let
       nameIndex = hashedElemIndex names
       expose name = case nameIndex name of
@@ -279,7 +278,7 @@ inferRecursiveDefs defs = withContextEnvT $ do
       exposedDefs = flip Vector.map defs $ \(_, Closed e) ->
         gbound expose e
 
-    inferredDefs <- Vector.forM (Vector.zip bindings exposedDefs) $ \(b, d) -> do
+    inferredDefs <- Vector.forM (Vector.zip bindings_ exposedDefs) $ \(b, d) -> do
       logPretty "returndir" "InferDirection.inferRecursiveDefs 2" $ traverse prettyVar d
       inferDefinition b d
 

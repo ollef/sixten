@@ -17,7 +17,7 @@ import Rock
 import Backend.Target
 import Driver.Query as Query
 import Effect
-import Effect.Context as Context
+import qualified Effect.Context as Context
 import Syntax
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
@@ -65,7 +65,7 @@ data ExtractState = ExtractState
   , extractedSignatures :: !(HashMap GName (Signature ReturnIndirect))
   }
 
-newtype Extract a = Extract { unExtract :: StateT ExtractState (ReaderT (ContextEnvT (Extracted.Expr FreeVar) VIX.Env) (Sequential (Task Query))) a }
+newtype Extract a = Extract { unExtract :: StateT ExtractState (ReaderT (Context.ContextEnvT (Extracted.Expr FreeVar) VIX.Env) (Sequential (Task Query))) a }
   deriving (Functor, Applicative, Monad, MonadState ExtractState, MonadFresh, MonadIO, MonadFetch Query, MonadContext (Extracted.Expr FreeVar), MonadLog)
 
 runExtract :: [GName] -> Extract a -> VIX ([(GName, Closed (Sized.Function Extracted.Expr))], Extracted.Submodule a)
@@ -147,7 +147,7 @@ extractExtern retType (Extern C parts) = do
       <$> HashSet.toList (foldMap (foldMap toHashSet) parts)
     argNames =
       [ (v, "extern_arg_" <> shower n <> fromNameHint mempty (("_" <>) . fromName) h, t)
-      | ((v, Binding h _ t _), n) <- zip freeVars [(0 :: Int)..]
+      | ((v, Context.Binding h _ t _), n) <- zip freeVars [(0 :: Int)..]
       ]
     typedArgs =
       [ (v, (name, typeStr, dir))

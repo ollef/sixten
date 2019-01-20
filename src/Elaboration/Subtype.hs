@@ -15,7 +15,7 @@ import {-# SOURCE #-} Elaboration.Constraint
 import Analysis.Simplify
 import qualified Builtin.Names as Builtin
 import Effect
-import Effect.Context as Context
+import qualified Effect.Context as Context
 import Effect.Log as Log
 import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
@@ -24,7 +24,6 @@ import Elaboration.Unify
 import Syntax
 import Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
-import TypedFreeVar
 import Util
 import Util.Tsil
 
@@ -45,8 +44,8 @@ deepSkolemise
   -> m a
 deepSkolemise t1 k
   = deepSkolemiseInner t1 mempty $ \vs t2 f -> do
-    context <- getContext
-    k t2 $ \x -> f $ lams vs x context
+    ctx <- getContext
+    k t2 $ \x -> f $ lams vs x ctx
 
 deepSkolemiseInner
   :: MonadElaborate m
@@ -69,11 +68,11 @@ deepSkolemiseInner' typ@(Pi h p t resScope) argsToPass k = case p of
     Context.freshExtend (binding h p t) $ \y -> do
       let resType = Util.instantiate1 (pure y) resScope
       deepSkolemiseInner resType (HashSet.insert y argsToPass) $ \vs resType' f -> do
-        context <- getContext
+        ctx <- getContext
         k
           vs
-          (pi_ y resType' context)
-          (\x -> lam y (f $ lams vs (betaApp (betaApps x $ (\v -> (Context._plicitness $ Context.lookup v context, pure v)) <$> vs) p $ pure y) context) context)
+          (pi_ y resType' ctx)
+          (\x -> lam y (f $ lams vs (betaApp (betaApps x $ (\v -> (Context.lookupPlicitness v ctx, pure v)) <$> vs) p $ pure y) ctx) ctx)
   Implicit -> implicitCase
   Constraint -> implicitCase
   where
@@ -86,11 +85,11 @@ deepSkolemiseInner' typ@(Pi h p t resScope) argsToPass k = case p of
         Context.freshExtend (binding h p t) $ \y -> do
           let resType = Util.instantiate1 (pure y) resScope
           deepSkolemiseInner resType argsToPass $ \vs resType' f -> do
-            context <- getContext
+            ctx <- getContext
             k
               (Vector.cons y vs)
               resType'
-              (\x -> lam y (f $ betaApp x p $ pure y) context)
+              (\x -> lam y (f $ betaApp x p $ pure y) ctx)
 deepSkolemiseInner' typ _ k = k mempty typ identity
 
 --------------------------------------------------------------------------------
@@ -119,8 +118,8 @@ skolemise' (Pi h p t resScope) instUntil k
     Context.freshExtend (binding h p t) $ \v -> do
       let resType = Util.instantiate1 (pure v) resScope
       skolemise resType instUntil $ \resType' f -> do
-        context <- getContext
-        let f' x = lam v (f x) context
+        ctx <- getContext
+        let f' x = lam v (f x) ctx
         k resType' f'
 skolemise' typ _ k = k typ identity
 
@@ -189,8 +188,8 @@ subtypeRhoE' (Pi h1 p1 argType1 retScope1) (Pi h2 p2 argType2 retScope2) _
       let retType1 = Util.instantiate1 v1 retScope1
           retType2 = Util.instantiate1 (pure v2) retScope2
       f2 <- subtypeRhoE retType1 retType2 $ InstUntil Explicit
-      context <- getContext
-      return $ \x -> lam v2 (f2 $ App x p1 v1) context
+      ctx <- getContext
+      return $ \x -> lam v2 (f2 $ App x p1 v1) ctx
 subtypeRhoE' (Pi h p t s) typ2 instUntil | shouldInst p instUntil = do
   v <- exists h p t
   f <- subtypeRhoE (Util.instantiate1 v s) typ2 instUntil

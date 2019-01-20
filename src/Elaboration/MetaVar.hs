@@ -19,7 +19,6 @@ import qualified Effect.Context as Context
 import Error
 import Syntax
 import Syntax.Core
-import TypedFreeVar
 import Util
 import qualified Util.Tsil as Tsil
 
@@ -164,14 +163,14 @@ logDefMeta c@(Category ct) s mdef = whenLoggingCategory c $ do
   Effect.log $ "[" <> ct <> "] " <> fromString s <> ": " <> showWide d
 
 withInstantiatedMetaType
-  :: (MonadLog m, MonadFresh m, MonadContext (Expr MetaVar FreeVar) m)
+  :: (MonadFresh m, MonadContext (Expr MetaVar FreeVar) m)
   => MetaVar
   -> (Vector FreeVar -> Expr MetaVar FreeVar -> m a)
   -> m a
 withInstantiatedMetaType m = withInstantiatedMetaType' (metaArity m) m
 
 withInstantiatedMetaType'
-  :: (MonadLog m, MonadFresh m, MonadContext (Expr MetaVar FreeVar) m)
+  :: (MonadFresh m, MonadContext (Expr MetaVar FreeVar) m)
   => Int
   -> MetaVar
   -> (Vector FreeVar -> Expr MetaVar FreeVar -> m a)
