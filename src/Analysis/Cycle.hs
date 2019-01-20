@@ -20,7 +20,6 @@ import Effect
 import Error
 import Syntax
 import Syntax.Core
-import TypedFreeVar
 import Util
 import Util.TopoSort
 import VIX

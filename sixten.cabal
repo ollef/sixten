@@ -100,7 +100,6 @@ library
                        Elaboration.TypeOf
                        Elaboration.Unify
                        Error
-                       FreeVar
                        Frontend.DupCheck
                        Frontend.Parse
                        Frontend.ResolveNames
@@ -139,7 +138,6 @@ library
                        Syntax.Sized.SLambda
                        Syntax.Telescope
                        TypeRep
-                       TypedFreeVar
                        Util
                        Util.MultiHashMap
                        Util.TopoSort
