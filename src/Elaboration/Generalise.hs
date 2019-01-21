@@ -19,7 +19,6 @@ import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
 import Syntax
 import Syntax.Core
-import TypedFreeVar
 import Util
 import Util.TopoSort
 

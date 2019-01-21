@@ -6,11 +6,13 @@ import Protolude
 import Data.HashSet(HashSet)
 import Data.IORef
 import Data.Vector(Vector)
+import qualified Data.Vector as Vector
 
 import Analysis.Simplify
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect
+import qualified Effect.Context as Context
 import Effect.Log as Log
 import Elaboration.Constraint
 import Elaboration.Constructor
@@ -26,7 +28,6 @@ import Elaboration.Unify
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
-import TypedFreeVar
 import Util
 
 data Expected typ
@@ -112,15 +113,18 @@ inferRho' expr instUntil expectedAppResult = do
 tcRho :: PreM -> Expected Rhotype -> Maybe Rhotype -> Elaborate CoreM
 tcRho expr expected expectedAppResult = case expr of
   Pre.Var v -> do
-    f <- instExpected expected $ varType v
+    t <- Context.lookupType v
+    f <- instExpected expected t
     return $ f $ Core.Var v
   Pre.Global g -> do
-    let gn = gname g
+    let
+      gn = gname g
     typ <- fetchType gn
     f <- instExpected expected typ
     return $ f $ Core.Global gn
   Pre.Lit l -> do
-    let (e, typ) = inferLit l
+    let
+      (e, typ) = inferLit l
     f <- instExpected expected typ
     return $ f e
   Pre.Con cons -> do
@@ -128,25 +132,26 @@ tcRho expr expected expectedAppResult = case expr of
     typ <- fetchQConstructor qc
     f <- instExpected expected typ
     return $ f $ Core.Con qc
-  Pre.Pi p pat bodyScope -> do
-    (pat', _, patVars, patType) <- inferPat p pat
-    withPatVars patVars $ do
-      let body = instantiatePattern pure (boundPatVars patVars) bodyScope
-          h = Pre.patternHint pat
+  Pre.Pi p pat bodyScope ->
+    inferPat p pat $ \pat' _ patVars patType -> do
+      let
+        body = instantiatePattern pure (boundPatVars patVars) bodyScope
+        h = Pre.patternHint pat
       body' <- checkPoly body Builtin.Type
       f <- instExpected expected Builtin.Type
-      extendContext h p patType $ \x -> do
+      Context.freshExtend (binding h p patType) $ \x -> do
         body'' <- matchSingle (pure x) pat' body' Builtin.Type
         return $ f $ Core.pi_ x body''
   Pre.Lam p pat bodyScope -> do
-    let h = Pre.patternHint pat
+    let
+      h = Pre.patternHint pat
     case expected of
-      Infer {} -> do
-        (pat', _, patVars, argType) <- inferPat p pat
-        withPatVars patVars $ do
-          let body = instantiatePattern pure (boundPatVars patVars) bodyScope
+      Infer {} ->
+        inferPat p pat $ \pat' _ patVars argType -> do
+          let
+            body = instantiatePattern pure (boundPatVars patVars) bodyScope
           (body', bodyType) <- inferRho body (InstUntil Explicit) Nothing
-          extendContext h p argType $ \argVar -> do
+          Context.freshExtend (binding h p argType) $ \argVar -> do
             body'' <- matchSingle (pure argVar) pat' body' bodyType
             logMeta "tc.expr" "Lam Infer bodyType" $ zonk bodyType
             f <- instExpected expected $ Core.pi_ argVar bodyType
@@ -154,13 +159,14 @@ tcRho expr expected expectedAppResult = case expr of
             return $ f $ Core.lam argVar body''
       Check expectedType -> do
         (typeh, argType, bodyTypeScope, fResult) <- funSubtype expectedType p
-        let h' = h <> typeh
-        (pat', patExpr, patVars) <- checkPat p pat mempty argType
-        withPatVars patVars $ do
-          let body = instantiatePattern pure (boundPatVars patVars) bodyScope
-              bodyType = Util.instantiate1 patExpr bodyTypeScope
+        let
+          h' = h <> typeh
+        checkPat p pat mempty argType $ \pat' patExpr patVars -> do
+          let
+            body = instantiatePattern pure (boundPatVars patVars) bodyScope
+            bodyType = Util.instantiate1 patExpr bodyTypeScope
           body' <- checkPoly body bodyType
-          extendContext h' p argType $ \argVar -> do
+          Context.freshExtend (binding h' p argType) $ \argVar -> do
             body'' <- matchSingle (pure argVar) pat' body' bodyType
             return $ fResult $ Core.lam argVar body''
   Pre.App fun p arg -> do
@@ -194,52 +200,53 @@ tcRho expr expected expectedAppResult = case expr of
     <$> tcRho e expected expectedAppResult
 
 tcLet
-  :: Vector (SourceLoc, NameHint, Pre.ConstantDef Pre.Expr (Var LetVar FreeV))
-  -> Scope LetVar Pre.Expr FreeV
+  :: Vector (SourceLoc, NameHint, Pre.ConstantDef Pre.Expr (Var LetVar FreeVar))
+  -> Scope LetVar Pre.Expr FreeVar
   -> Expected Rhotype
   -> Maybe Rhotype
   -> Elaborate CoreM
 tcLet ds scope expected expectedAppResult = do
-  varDefs <- forM ds $ \(loc, h, def) -> do
+  bindingDefs <- forM ds $ \(loc, h, def) -> do
     typ <- existsType h
-    (var, set) <- letVar h typ
-    return (var, (set, loc, def))
+    return (binding h Explicit typ, loc, def)
 
-  let vars = fst <$> varDefs
-
-  withVars vars $ do
-    instDefs <- forM varDefs $ \(var, (set, loc, def)) -> located loc $ do
+  Context.freshExtends (fst3 <$> bindingDefs) $ \vars -> do
+    instDefs <- forM (Vector.zip vars bindingDefs) $ \(var, (_, loc, def)) -> located loc $ do
       let instDef@(Pre.ConstantDef _ _ mtyp) = Pre.instantiateLetConstantDef pure vars def
       case mtyp of
         Just typ -> do
           typ' <- checkPoly typ Builtin.Type
-          runUnify (unify [] (varType var) typ') report
+          varType <- Context.lookupType var
+          runUnify (unify [] varType typ') report
         Nothing -> return ()
-      return (var, (set, loc, instDef))
+      return (var, loc, instDef)
 
-    ds' <- forM instDefs $ \(var, (set, loc, def)) -> located loc $ do
-      (a, e) <- checkConstantDef def $ varType var
-      case a of
-        Abstract -> return ()
-        Concrete -> set e
-      return (var, loc, e)
+    ds' <- forM instDefs $ \(var, loc, def) -> located loc $ do
+      varType <- Context.lookupType var
+      (a, e) <- checkConstantDef def varType
+      let
+        set = case a of
+          Abstract -> identity
+          Concrete -> Context.set var e
+      return (var, loc, set)
 
-    body <- tcRho (instantiateLet pure vars scope) expected expectedAppResult
-    return $ Core.let_ ds' body
+    body <- foldr ($) identity (thd3 <$> ds')
+      $ tcRho (instantiateLet pure vars scope) expected expectedAppResult
+    Core.let_ ds' body
 
 tcBranches
   :: PreM
-  -> [(Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeV) (), PatternScope Pre.Expr FreeV)]
+  -> [(Pre.Pat (HashSet QConstr) (PatternScope Pre.Expr FreeVar) (), PatternScope Pre.Expr FreeVar)]
   -> Expected Rhotype
   -> Maybe Rhotype
   -> Elaborate CoreM
 tcBranches expr pbrs expected expectedAppResult = do
   (expr', exprType) <- inferRho expr (InstUntil Explicit) Nothing
 
-  inferredPats <- forM pbrs $ \(pat, brScope) -> do
-    (pat', _, patVars) <- checkPat Explicit (void pat) mempty exprType
-    let br = instantiatePattern pure (boundPatVars patVars) brScope
-    return (pat', br, patVars)
+  inferredPats <- forM pbrs $ \(pat, brScope) ->
+    checkPat Explicit (void pat) mempty exprType $ \pat' _ patVars -> do
+      let br = instantiatePattern pure (boundPatVars patVars) brScope
+      return (pat', br, patVars)
 
   case expected of
     Check resType -> do

@@ -72,19 +72,14 @@ tcPats pats vs tele k = do
   unless (Vector.length pats == teleLength tele)
     $ panic "tcPats length mismatch"
 
-  results <- iforTeleWithPrefixM tele $ \i _ _ s results -> do
-    let
-      argExprs = snd3 . fst <$> results
-      expectedType = instantiateTele identity argExprs s
-      (p, pat) = pats Vector.! i
-      -- TODO could be more efficient
-      varPrefix = snd =<< results
-      vs' = vs <> boundPatVars varPrefix
-    logShow "tc.pat" "tcPats vars" vs'
-    (pat', patExpr, vs'') <- checkPat p pat vs' expectedType k
-    return ((pat', patExpr, expectedType), vs'')
-
-  return (fst <$> results, snd =<< results)
+  let
+    go ((p, pat), s) k' (results, varPrefix) = do
+      let
+        argExprs = snd3 <$> results
+        expectedType = instantiateTele identity argExprs s
+      checkPat p pat (vs <> boundPatVars varPrefix) expectedType $ \pat' patExpr vs' ->
+        k' (results <> pure (pat', patExpr, expectedType), varPrefix <> vs')
+  foldr go (uncurry k) (Vector.zip pats $ teleTypes tele) mempty
 
 tcPat
   :: Plicitness
