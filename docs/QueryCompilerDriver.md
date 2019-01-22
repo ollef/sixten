@@ -1,16 +1,15 @@
 # Sixten's query-based compiler architecture
 
-Compilers are no longer just black boxes that take a bunch of source files and
+Compilers are no longer just black boxes that take a bunch of source files and produce assembly code. We expect them to:
 
-* Incremental, meaning that if recompiling the same project after having made some changes
-only needs
-* They're used for tooling
+* Be incremental, meaning that if recompiling a project after having made a few changes means that we only recompile what is affected by the changes.
+* Provide tooling such as language servers, supporting queries like 
 
-[Anders Hejlsberg on modern compiler construction](https://www.youtube.com/watch?v=wSdV1M7n4gQ)
+This is what Anders Hejlsberg talks about in
+[his video on modern compiler construction](https://www.youtube.com/watch?v=wSdV1M7n4gQ)
+that some of you might have seen.
 
-Can we 
-
-In this post I will talk a about how this is achieved in Sixten, a functional
+In this document I will talk a about how this is achieved in Sixten, a functional
 programming language created to experiment with giving the programmer more
 control over memory layout and boxing than traditional languages do.
 
@@ -54,8 +53,9 @@ What does it take to get the type of an identifier?
 
 ```haskell
 fetchType ident = do
-  moduleName <- fetchModuleName ident
-  parsedModule <-
+  moduleName <- fetch (ModuleName ident)
+  parsedModule <- fetch (ParsedModule moduleName)
+  resolvedModule <- fetch (ResolvedModule
 ```
 
 
