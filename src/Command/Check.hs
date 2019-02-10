@@ -3,6 +3,8 @@ module Command.Check where
 
 import Protolude
 
+import Data.IORef
+import qualified Data.Set as Set
 import qualified Data.Text as Text
 import Options.Applicative as Options
 import System.Directory
@@ -59,22 +61,46 @@ optionsParser = Options
 check :: Options -> IO ()
 check opts = if watch opts then checkWatch opts else join (checkSimple opts)
 
+-- TODO: We do excess number of recompilations right now. For example, editing a
+-- file in Vim and then saving fires three events corresponding to that file -
+--
+-- Removed "/home/varun/Code/sixten/tests/success/syntax/FunSyntax.vix"
+-- Added "/home/varun/Code/sixten/tests/success/syntax/FunSyntax.vix"
+-- Modified "/home/varun/Code/sixten/tests/success/syntax/FunSyntax.vix"
+--
+-- This causes 3 recompilations, even though we should only be doing 1.
+-- The debounce facility in FSNotify suppresses subsequent notifications,
+-- instead of monoidally combining them :(.
+--
+-- Similarly watchTree can return multiple Modified events for a single save in Vim.
 checkWatch :: Options -> IO ()
 checkWatch opts = do
-  (dirs, files) <- splitDirsAndFiles (inputFiles opts)
+  (dirs, initialFiles) <- splitDirsAndFiles (inputFiles opts)
   _exit <- checkSimple opts
-  go dirs myWatchDir $
-    go files myWatchFile $
-      forever (threadDelay oneSecond)
+  presentFiles <- newIORef (Set.fromList initialFiles)
+  let recompile ev = do
+        print ev
+        files <- readIORef presentFiles
+        void $ checkSimple opts {inputFiles = dirs ++ Set.toList files}
+      myWatchDir wm dir = watchTree wm dir isVixFile recompile
+      myWatchFile wm file = do
+        absFile <- canonicalizePath file
+        print absFile
+        watchDir wm (takeDirectory absFile) isVixFile $ \event ->
+          when (eventPath event == absFile) $ do
+            case event of
+              Added{}    -> modifyIORef presentFiles (Set.insert file)
+              Modified{} -> pure ()
+              Removed{}  -> modifyIORef presentFiles (Set.delete file)
+              Unknown{}  -> pure ()
+            recompile event
+  withManager $ \wm -> do
+    mapM_ (myWatchDir wm) dirs
+    mapM_ (myWatchFile wm) initialFiles
+    forever (threadDelay oneSecond)
   where
-    go :: [a] -> (WatchManager -> a -> IO b) -> IO c -> IO c
-    go (p:ps) f end = withManager (\wm -> f wm p >> go ps f end)
-    go [] _ end = end
     oneSecond = 1000000
-    myWatchDir wm dir = watchTree wm dir (const True) recompile
-    myWatchFile wm file =
-      watchDir wm (takeDirectory file) (\event -> eventPath event == file) recompile
-    recompile = const (void $ checkSimple opts)
+    isVixFile = (== ".vix") . takeExtension . eventPath
     splitDirsAndFiles ps = do
       (ds, fs) <- mapAndUnzipM (\p -> do
                                    isDir <- doesDirectoryExist p
