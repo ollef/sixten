@@ -7,6 +7,7 @@ import qualified Data.Text as Text
 import Options.Applicative as Options
 import System.Directory
 import System.FilePath
+import System.FSNotify
 import Util
 
 import qualified Backend.Target as Target
@@ -50,11 +51,41 @@ optionsParser = Options
     <> help "Write logs to FILE instead of standard output"
     <> action "file"
     )
+  <*> switch (
+       long "watch"
+    <> help "Watch the files for any changes, re-typechecking as needed."
+    )
 
-check
+check :: Options -> IO ()
+check opts = if watch opts then checkWatch opts else join (checkSimple opts)
+
+checkWatch :: Options -> IO ()
+checkWatch opts = do
+  (dirs, files) <- splitDirsAndFiles (inputFiles opts)
+  _exit <- checkSimple opts
+  go dirs myWatchDir $
+    go files myWatchFile $
+      forever (threadDelay oneSecond)
+  where
+    go :: [a] -> (WatchManager -> a -> IO b) -> IO c -> IO c
+    go (p:ps) f end = withManager (\wm -> f wm p >> go ps f end)
+    go [] _ end = end
+    oneSecond = 1000000
+    myWatchDir wm dir = watchTree wm dir (const True) recompile
+    myWatchFile wm file =
+      watchDir wm (takeDirectory file) (\event -> eventPath event == file) recompile
+    recompile = const (void $ checkSimple opts)
+    splitDirsAndFiles ps = do
+      (ds, fs) <- mapAndUnzipM (\p -> do
+                                   isDir <- doesDirectoryExist p
+                                   pure $ if isDir then (Just p, Nothing)
+                                          else (Nothing, Just p)) ps
+      pure (catMaybes ds, catMaybes fs)
+
+checkSimple
   :: Options
-  -> IO ()
-check opts = withLogHandle (logFile opts) $ \logHandle -> do
+  -> IO (IO ())
+checkSimple opts = withLogHandle (logFile opts) $ \logHandle -> do
   sourceFiles <- flattenDirectories $ inputFiles opts
   errors <- Driver.checkFiles Driver.Arguments
     { Driver.sourceFiles = sourceFiles
@@ -68,11 +99,11 @@ check opts = withLogHandle (logFile opts) $ \logHandle -> do
   case errors of
     [] -> do
       putText "Type checking completed successfully"
-      exitSuccess
+      pure exitSuccess
     _ -> do
       mapM_ printError errors
       putText "Type checking failed"
-      exitFailure
+      pure exitFailure
   where
     withLogHandle Nothing k = k stdout
     withLogHandle (Just file) k = Util.withFile file WriteMode k

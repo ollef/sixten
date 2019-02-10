@@ -156,6 +156,7 @@ library
                        deriving-gcompare,
                        directory,
                        filepath,
+                       fsnotify,
                        hashable,
                        haskell-lsp,
                        haskell-lsp-types,
