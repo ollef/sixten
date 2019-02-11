@@ -1,10 +1,8 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings, NumericUnderscores #-}
 module Command.Check where
 
 import Protolude
 
-import Data.IORef
-import qualified Data.Set as Set
 import qualified Data.Text as Text
 import Data.Time.Clock (NominalDiffTime)
 import Options.Applicative as Options
@@ -66,23 +64,19 @@ checkWatch :: Options -> IO ()
 checkWatch opts = do
   (dirs, initialFiles) <- splitDirsAndFiles (inputFiles opts)
   _exit <- checkSimple opts
-  presentFiles <- newIORef (Set.fromList initialFiles)
   let recompile ev = do
         print ev
-        files <- readIORef presentFiles
-        void $ checkSimple opts {inputFiles = dirs ++ Set.toList files}
+        -- Make sure that filesystem syncs properly, as editor might delete
+        -- and add file in a short time and we might miss the new file.
+        threadDelay hundredMillis
+        presentFiles <- filterM doesFileExist initialFiles
+        void $ checkSimple opts {inputFiles = dirs ++ presentFiles}
       myWatchDir wm dir = watchTree wm dir isVixFile recompile
       myWatchFile wm file = do
         absFile <- canonicalizePath file
         print absFile
         watchDir wm (takeDirectory absFile) isVixFile $ \event ->
-          when (eventPath event == absFile) $ do
-            case event of
-              Added{}    -> modifyIORef presentFiles (Set.insert file)
-              Modified{} -> pure ()
-              Removed{}  -> modifyIORef presentFiles (Set.delete file)
-              Unknown{}  -> pure ()
-            recompile event
+          when (eventPath event == absFile) (recompile event)
   withManagerConf watchConfig $ \wm -> do
     mapM_ (myWatchDir wm) dirs
     mapM_ (myWatchFile wm) initialFiles
@@ -90,7 +84,8 @@ checkWatch opts = do
   where
     watchConfig = defaultConfig{confDebounce = Debounce fiftyMillis}
     fiftyMillis = 0.050 :: NominalDiffTime
-    oneSecond = 1000000
+    oneSecond = 1_000_000
+    hundredMillis = 100_000
     isVixFile = (== ".vix") . takeExtension . eventPath
     splitDirsAndFiles ps = do
       (ds, fs) <- mapAndUnzipM (\p -> do
