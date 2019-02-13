@@ -1,12 +1,14 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings, NumericUnderscores #-}
 module Command.Check where
 
 import Protolude
 
 import qualified Data.Text as Text
+import Data.Time.Clock (NominalDiffTime)
 import Options.Applicative as Options
 import System.Directory
 import System.FilePath
+import System.FSNotify
 import Util
 
 import qualified Backend.Target as Target
@@ -50,11 +52,52 @@ optionsParser = Options
     <> help "Write logs to FILE instead of standard output"
     <> action "file"
     )
+  <*> switch (
+       long "watch"
+    <> help "Watch the files for any changes, re-typechecking as needed."
+    )
 
-check
+check :: Options -> IO ()
+check opts = if watch opts then checkWatch opts else join (checkSimple opts)
+
+checkWatch :: Options -> IO ()
+checkWatch opts = do
+  (dirs, initialFiles) <- splitDirsAndFiles (inputFiles opts)
+  _exit <- checkSimple opts
+  let recompile ev = do
+        print ev
+        -- Make sure that filesystem syncs properly, as editor might delete
+        -- and add file in a short time and we might miss the new file.
+        threadDelay hundredMillis
+        presentFiles <- filterM doesFileExist initialFiles
+        void $ checkSimple opts {inputFiles = dirs ++ presentFiles}
+      myWatchDir wm dir = watchTree wm dir isVixFile recompile
+      myWatchFile wm file = do
+        absFile <- canonicalizePath file
+        print absFile
+        watchDir wm (takeDirectory absFile) isVixFile $ \event ->
+          when (eventPath event == absFile) (recompile event)
+  withManagerConf watchConfig $ \wm -> do
+    mapM_ (myWatchDir wm) dirs
+    mapM_ (myWatchFile wm) initialFiles
+    forever (threadDelay oneSecond)
+  where
+    watchConfig = defaultConfig{confDebounce = Debounce fiftyMillis}
+    fiftyMillis = 0.050 :: NominalDiffTime
+    oneSecond = 1_000_000
+    hundredMillis = 100_000
+    isVixFile = (== ".vix") . takeExtension . eventPath
+    splitDirsAndFiles ps = do
+      (ds, fs) <- mapAndUnzipM (\p -> do
+                                   isDir <- doesDirectoryExist p
+                                   pure $ if isDir then (Just p, Nothing)
+                                          else (Nothing, Just p)) ps
+      pure (catMaybes ds, catMaybes fs)
+
+checkSimple
   :: Options
-  -> IO ()
-check opts = withLogHandle (logFile opts) $ \logHandle -> do
+  -> IO (IO ())
+checkSimple opts = withLogHandle (logFile opts) $ \logHandle -> do
   sourceFiles <- flattenDirectories $ inputFiles opts
   errors <- Driver.checkFiles Driver.Arguments
     { Driver.sourceFiles = sourceFiles
@@ -68,11 +111,11 @@ check opts = withLogHandle (logFile opts) $ \logHandle -> do
   case errors of
     [] -> do
       putText "Type checking completed successfully"
-      exitSuccess
+      pure exitSuccess
     _ -> do
       mapM_ printError errors
       putText "Type checking failed"
-      exitFailure
+      pure exitFailure
   where
     withLogHandle Nothing k = k stdout
     withLogHandle (Just file) k = Util.withFile file WriteMode k
