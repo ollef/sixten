@@ -1,3 +1,4 @@
 type List a = Nil | Cons a (Ptr (List a))
 
 f (Cons z) = 0
+f Nil = 1

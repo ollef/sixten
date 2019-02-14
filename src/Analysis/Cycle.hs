@@ -14,16 +14,20 @@ import qualified Data.HashSet as HashSet
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
+import Rock
 
 import qualified Builtin.Names as Builtin
+import Driver.Query
 import Effect
+import qualified Effect.Context as Context
 import Error
 import Syntax
 import Syntax.Core
-import TypedFreeVar
 import Util
 import Util.TopoSort
 import VIX
+
+type CycleCheck m = ReaderT (Context.ContextEnvT (Expr m FreeVar) VIX.Env) (Sequential (Task Query))
 
 -- We need to detect possible cycles in top-level constants because if not,
 -- we'll accept e.g. the following program:
@@ -74,58 +78,57 @@ import VIX
 --       , biclose identity (panic "cycleCheckGroup close typ") typ
 --       )
 
-type FreeV m = FreeVar (Expr m)
-
 cycleCheck
   :: Vector (GName, SourceLoc, ClosedDefinition Expr, Biclosed Expr)
   -> VIX (Vector (GName, SourceLoc, ClosedDefinition Expr, Biclosed Expr))
-cycleCheck defs = do
-  vs <- forM defs $ \(name, _loc, _, Biclosed typ) -> do
+cycleCheck defs = withContextEnvT $ do
+  defBindings <- forM defs $ \(name, _loc, _, Biclosed typ) -> do
     typ' <- cycleCheckExpr typ
-    freeVar (fromGName name) Explicit typ'
+    return $ binding (fromGName name) Explicit typ'
   defs' <- forM defs $ \(name, loc, ClosedDefinition def, _) -> located loc $ do
     def' <- cycleCheckDef def
     return (name, loc, def')
-  let nameVarVec
-        = Vector.zipWith (\(name, _, _) v -> (name, v)) defs' vs
-      lookupName = hashedLookup nameVarVec
-      expose g = maybe (global g) pure $ lookupName g
-      exposedDefs = do
-        (v, (name, loc, def)) <- Vector.zip vs defs'
-        let def' = gbound expose def
-        return (v, name, loc, def')
-  cycleCheckTypeReps exposedDefs
-  exposedDefs' <- cycleCheckLets exposedDefs
-  let lookupVar = hashedLookup $ (\(n, v) -> (v, n)) <$> nameVarVec
-      unexpose v = maybe (pure v) global $ lookupVar v
-  return $ do
-    (v, name, loc, def) <- exposedDefs'
-    let def' = def >>>= unexpose
-    return
-      ( name
-      , loc
-      , closeDefinition identity (panic "cycleCheck close def'") def'
-      , biclose identity (panic "cycleCheck close typ") $ varType v
-      )
+  Context.freshExtends defBindings $ \vs -> do
+    let nameVarVec
+          = Vector.zipWith (\(name, _, _) v -> (name, v)) defs' vs
+        lookupName = hashedLookup nameVarVec
+        expose g = maybe (global g) pure $ lookupName g
+        exposedDefs = do
+          (v, (name, loc, def)) <- Vector.zip vs defs'
+          let def' = gbound expose def
+          return (v, name, loc, def')
+    cycleCheckTypeReps exposedDefs
+    exposedDefs' <- cycleCheckLets exposedDefs
+    let lookupVar = hashedLookup $ (\(n, v) -> (v, n)) <$> nameVarVec
+        unexpose v = maybe (pure v) global $ lookupVar v
+    context <- getContext
+    return $ do
+      (v, name, loc, def) <- exposedDefs'
+      let def' = def >>>= unexpose
+      return
+        ( name
+        , loc
+        , closeDefinition identity (panic "cycleCheck close def'") def'
+        , biclose identity (panic "cycleCheck close typ") $ Context.lookupType v context
+        )
 
 cycleCheckDef
-  :: Definition (Expr Void) (FreeV m)
-  -> VIX (Definition (Expr m) (FreeV m))
+  :: Definition (Expr Void) FreeVar
+  -> CycleCheck m (Definition (Expr m) FreeVar)
 cycleCheckDef (ConstantDefinition a e)
   = ConstantDefinition a <$> cycleCheckExpr e
-cycleCheckDef (DataDefinition (DataDef params constrs) rep) = do
-  vs <- forTeleWithPrefixM params $ \h p s vs -> do
-    t <- cycleCheckExpr $ instantiateTele pure vs s
-    freeVar h p t
-  constrs' <- forM constrs $ \cdef ->
-    forM cdef $ \s ->
-      cycleCheckExpr $ instantiateTele pure vs s
-  rep' <- cycleCheckExpr rep
-  return $ DataDefinition (dataDef vs constrs') rep'
+cycleCheckDef (DataDefinition (DataDef params constrs) rep) =
+  teleMapExtendContext params cycleCheckExpr $ \vs -> do
+    constrs' <- forM constrs $ \cdef ->
+      forM cdef $ \s ->
+        cycleCheckExpr $ instantiateTele pure vs s
+    rep' <- cycleCheckExpr rep
+    dd <- dataDef vs constrs'
+    return $ DataDefinition dd rep'
 
 cycleCheckExpr
-  :: Expr Void (FreeV m)
-  -> VIX (Expr m (FreeV m))
+  :: Expr Void FreeVar
+  -> CycleCheck m (Expr m FreeVar)
 cycleCheckExpr expr = case expr of
     Var v -> return $ Var v
     Meta m _ -> absurd m
@@ -143,21 +146,19 @@ cycleCheckExpr expr = case expr of
       <*> cycleCheckBranches brs
       <*> cycleCheckExpr retType
     Let ds bodyScope -> do
-      vs <- forMLet ds $ \h _ _ t -> do
-        t' <- cycleCheckExpr t
-        freeVar h Explicit t'
-      ds' <- iforMLet ds $ \i h loc s _ -> located loc $ do
-        let e = instantiateLet pure vs s
-        e' <- cycleCheckExpr e
-        return (vs Vector.! i, fromNameHint "(no name)" identity h, loc, ConstantDefinition Concrete e')
-      body <- cycleCheckExpr $ instantiateLet pure vs bodyScope
-      ds'' <- cycleCheckLets ds'
-      let ds''' =
-            [ (v, loc, e)
-            | (v, _, loc, def) <- ds''
-            , let ConstantDefinition _ e = def
-            ]
-      return $ let_ ds''' body
+      letMapExtendContext ds cycleCheckExpr $ \vs -> do
+        ds' <- iforMLet ds $ \i h loc s _ -> located loc $ do
+          let e = instantiateLet pure vs s
+          e' <- cycleCheckExpr e
+          return (vs Vector.! i, fromNameHint "(no name)" identity h, loc, ConstantDefinition Concrete e')
+        body <- cycleCheckExpr $ instantiateLet pure vs bodyScope
+        ds'' <- cycleCheckLets ds'
+        let ds''' =
+              [ (v, loc, e)
+              | (v, _, loc, def) <- ds''
+              , let ConstantDefinition _ e = def
+              ]
+        let_ ds''' body
     ExternCode c retType -> ExternCode
       <$> mapM cycleCheckExpr c
       <*> cycleCheckExpr retType
@@ -165,20 +166,18 @@ cycleCheckExpr expr = case expr of
     where
       absCase h p t s c = do
         t' <- cycleCheckExpr t
-        v <- freeVar h p t'
-        e <- cycleCheckExpr $ instantiate1 (pure v) s
-        return $ c v e
+        Context.freshExtend (binding h p t') $ \v -> do
+          e <- cycleCheckExpr $ instantiate1 (pure v) s
+          c v e
 
 cycleCheckBranches
-  :: Branches (Expr Void) (FreeV m)
-  -> VIX (Branches (Expr m) (FreeV m))
+  :: Branches (Expr Void) FreeVar
+  -> CycleCheck m (Branches (Expr m) FreeVar)
 cycleCheckBranches (ConBranches cbrs) = ConBranches <$> do
-  forM cbrs $ \(ConBranch c tele brScope) -> do
-    vs <- forTeleWithPrefixM tele $ \h p s vs -> do
-      t <- cycleCheckExpr $ instantiateTele pure vs s
-      freeVar h p t
-    brExpr <- cycleCheckExpr $ instantiateTele pure vs brScope
-    return $ conBranchTyped c vs brExpr
+  forM cbrs $ \(ConBranch c tele brScope) ->
+    teleMapExtendContext tele cycleCheckExpr $ \vs -> do
+      brExpr <- cycleCheckExpr $ instantiateTele pure vs brScope
+      conBranch c vs brExpr
 cycleCheckBranches (LitBranches lbrs d) = do
   lbrs' <- forM lbrs $ \(LitBranch l e) -> LitBranch l <$> cycleCheckExpr e
   d' <- cycleCheckExpr d
@@ -186,8 +185,8 @@ cycleCheckBranches (LitBranches lbrs d) = do
 
 cycleCheckTypeReps
   :: Pretty name
-  => Vector (FreeV m, name, SourceLoc, Definition (Expr m) (FreeV m))
-  -> VIX ()
+  => Vector (FreeVar, name, SourceLoc, Definition (Expr m) FreeVar)
+  -> CycleCheck m ()
 cycleCheckTypeReps defs = do
   let reps = flip Vector.mapMaybe defs $ \(v, _, _, def) -> case def of
         DataDefinition _ rep -> Just (v, rep)
@@ -214,8 +213,8 @@ cycleCheckTypeReps defs = do
 
 cycleCheckLets
   :: Pretty name
-  => Vector (FreeV m, name, SourceLoc, Definition (Expr m) (FreeV m))
-  -> VIX (Vector (FreeV m, name, SourceLoc, Definition (Expr m) (FreeV m)))
+  => Vector (FreeVar, name, SourceLoc, Definition (Expr m) FreeVar)
+  -> CycleCheck m (Vector (FreeVar, name, SourceLoc, Definition (Expr m) FreeVar))
 cycleCheckLets defs = do
   (peeledDefExprs, locMap) <- peelLets
     $ flip Vector.mapMaybe defs $ \(v, name, loc, def) -> case def of
@@ -224,21 +223,23 @@ cycleCheckLets defs = do
   Any cyclic <- foldForM (topoSortWith fst snd peeledDefExprs) $ \case
     AcyclicSCC _ -> return mempty
     CyclicSCC defExprs -> do
-      let (functions, constants) = foldMap go defExprs
-            where
-              go (v, unSourceLoc -> Lam {}) = (HashSet.singleton v, mempty)
-              go (v, _) = (mempty, HashSet.singleton v)
+      let
+        (functions, constants) = foldMap go defExprs
+          where
+            go (v, unSourceLoc -> Lam {}) = (HashSet.singleton v, mempty)
+            go (v, _) = (mempty, HashSet.singleton v)
       foldForM defExprs $ \(var, expr) -> case unSourceLoc expr of
         Lam {} -> return mempty
         _ -> do
-          let (name, loc) = locMap HashMap.! var
-              constantsInAllOccs = toHashSet expr `HashSet.intersection` constants
-              functionsInImmAppOccs = possiblyImmediatelyAppliedVars expr `HashSet.intersection` functions
-              circularOccs = constantsInAllOccs <> functionsInImmAppOccs
+          let
+            (name, loc) = locMap HashMap.! var
+            constantsInAllOccs = toHashSet expr `HashSet.intersection` constants
+            functionsInImmAppOccs = possiblyImmediatelyAppliedVars expr `HashSet.intersection` functions
+            circularOccs = constantsInAllOccs <> functionsInImmAppOccs
           if HashSet.null circularOccs then
             return mempty
           else do
-            let printedOccs = map pretty $ HashSet.toList circularOccs
+            printedOccs <- traverse prettyVar $ HashSet.toList circularOccs
             report
               $ TypeError
                 "Circular definition"
@@ -248,9 +249,10 @@ cycleCheckLets defs = do
                   , "It depends on " <> prettyHumanList "and" (dullBlue <$> printedOccs) <> " from the same binding group."
                   ]
             return $ Any True
+  context <- getContext
   return $ if cyclic then
     -- TODO use actual error message
-    [ (v, name, loc, ConstantDefinition Abstract $ Builtin.Fail $ varType v)
+    [ (v, name, loc, ConstantDefinition Abstract $ Builtin.Fail $ Context.lookupType v context)
     | (v, name, loc, _) <- defs
     ]
   else
@@ -260,24 +262,25 @@ cycleCheckLets defs = do
 
 
 peelLets
-  :: Vector (name, SourceLoc, FreeV m, Expr m (FreeV m))
-  -> VIX (Vector (FreeV m, Expr m (FreeV m)), HashMap (FreeV m) (name, SourceLoc))
+  :: Vector (name, SourceLoc, FreeVar, Expr m FreeVar)
+  -> CycleCheck m (Vector (FreeVar, Expr m FreeVar), HashMap FreeVar (name, SourceLoc))
 peelLets = fmap fold . mapM go
   where
     go
-     :: (name, SourceLoc, FreeV m, Expr m (FreeV m))
-     -> VIX (Vector (FreeV m, Expr m (FreeV m)), HashMap (FreeV m) (name, SourceLoc))
+     :: (name, SourceLoc, FreeVar, Expr m FreeVar)
+     -> CycleCheck m (Vector (FreeVar, Expr m FreeVar), HashMap FreeVar (name, SourceLoc))
     go (name, loc, var, expr) = case unSourceLoc expr of
-      Let ds scope -> do
-        vs <- forMLet ds $ \h _ _ t ->
-          freeVar h Explicit t
-        let inst = instantiateLet pure vs
-        es <- forMLet ds $ \_ _ s _ ->
-          return $ inst s
-        let ds'
+      Let ds scope ->
+        letExtendContext ds $ \vs -> do
+          let
+            inst = instantiateLet pure vs
+          es <- forMLet ds $ \_ _ s _ ->
+            return $ inst s
+          let
+            ds'
               = pure (name, loc, var, inst scope)
               <> Vector.zipWith (\v e -> (name, loc, v, e)) vs es
-        peelLets ds'
+          peelLets ds'
       _ -> return (pure (var, expr), HashMap.singleton var (name, loc))
 
 possiblyImmediatelyAppliedVars

@@ -22,6 +22,7 @@ import qualified Yi.Rope as Yi
 import Command.LanguageServer.Hover
 import Driver
 import Driver.Query
+import qualified Effect.Context as Context
 import Elaboration.TypeOf
 import Syntax
 import Util
@@ -59,15 +60,22 @@ hover lf (LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) p@(LSP
         | (n, (loc, d, t)) <- concatMap HashMap.toList defs
         ]
       typ <- typeOf' voidArgs expr
-      return (span, expr, typ)
+      ctx <- Context.getContext
+      return (span, ctx, expr, typ)
   sendNotification lf ("result " <> shower (typeOfErrs <> errs))
-  sendNotification lf ("success " <> shower types)
   return $ case types of
     [] -> Nothing
     _ -> do
-      let Just (_, (range, expr, typ)) = unsnoc types
+      let Just (_, (range, ctx, expr, typ)) = unsnoc types
       Just $ LSP.Hover
-        { LSP._contents = LSP.List [LSP.PlainString $ showWide $ pretty (pretty <$> expr) <> " : " <> pretty (pretty <$> typ)]
+        { LSP._contents =
+          LSP.List
+            [ LSP.PlainString
+              $ showWide
+              $ pretty (traverse Context.prettyVar expr ctx)
+              <> " : "
+              <> pretty (traverse Context.prettyVar typ ctx)
+            ]
         , LSP._range = Just
           $ LSP.Range
           { LSP._start = LSP.Position

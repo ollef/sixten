@@ -4,6 +4,7 @@
 module Syntax.Pre.Scoped
   ( module Definition
   , module Pattern
+  , module Pre
   , Expr(..), Type
   , clause, pi_, telePis, lam, case_
   , apps
@@ -21,7 +22,7 @@ import qualified Data.Vector as Vector
 
 import Syntax
 import Syntax.Pre.Definition as Definition
-import Syntax.Pre.Literal as Literal
+import Syntax.Pre.Literal as Pre
 import Syntax.Pre.Pattern as Pattern
 import Util
 import Util.Tsil
@@ -29,13 +30,13 @@ import Util.Tsil
 data Expr v
   = Var v
   | Global QName
-  | Lit Literal.Literal
+  | Lit Pre.Literal
   | Con (HashSet QConstr)
-  | Pi !Plicitness (Pat (HashSet QConstr) (PatternScope Type v) ()) (PatternScope Expr v)
-  | Lam !Plicitness (Pat (HashSet QConstr) (PatternScope Type v) ()) (PatternScope Expr v)
+  | Pi !Plicitness (Pat (HashSet QConstr) Pre.Literal (PatternScope Type v) ()) (PatternScope Expr v)
+  | Lam !Plicitness (Pat (HashSet QConstr) Pre.Literal (PatternScope Type v) ()) (PatternScope Expr v)
   | App (Expr v) !Plicitness (Expr v)
   | Let (Vector (SourceLoc, NameHint, ConstantDef Expr (Var LetVar v))) (Scope LetVar Expr v)
-  | Case (Expr v) [(Pat (HashSet QConstr) (PatternScope Type v) (), PatternScope Expr v)]
+  | Case (Expr v) [(Pat (HashSet QConstr) Pre.Literal (PatternScope Type v) (), PatternScope Expr v)]
   | ExternCode (Extern (Expr v))
   | Wildcard
   | SourceLoc !SourceLoc (Expr v)
@@ -47,7 +48,7 @@ type Type = Expr
 -- Helpers
 clause
   :: (Monad expr, Hashable v, Eq v)
-  => Vector (Plicitness, Pat (HashSet QConstr) (expr v) v)
+  => Vector (Plicitness, Pat (HashSet QConstr) Pre.Literal (expr v) v)
   -> expr v
   -> Clause expr v
 clause plicitPats e = do
@@ -59,7 +60,7 @@ clause plicitPats e = do
 pi_
   :: (Hashable v, Eq v)
   => Plicitness
-  -> Pat (HashSet QConstr) (Type v) v
+  -> Pat (HashSet QConstr) Pre.Literal (Type v) v
   -> Expr v
   -> Expr v
 pi_ p pat = Pi p (void $ abstractPatternTypes vs pat) . abstract (patternAbstraction vs)
@@ -68,7 +69,7 @@ pi_ p pat = Pi p (void $ abstractPatternTypes vs pat) . abstract (patternAbstrac
 
 pis
   :: (Hashable v, Eq v, Foldable t)
-  => t (Plicitness, Pat (HashSet QConstr) (Type v) v)
+  => t (Plicitness, Pat (HashSet QConstr) Pre.Literal (Type v) v)
   -> Expr v
   -> Expr v
 pis pats e = foldr (uncurry pi_) e pats
@@ -85,7 +86,7 @@ telePis tele e = fmap (unvar (panic "telePis") identity) $ pis pats $ F <$> e
 lam
   :: (Hashable v, Eq v)
   => Plicitness
-  -> Pat (HashSet QConstr) (Type v) v
+  -> Pat (HashSet QConstr) Pre.Literal (Type v) v
   -> Expr v
   -> Expr v
 lam p pat = Lam p (void $ abstractPatternTypes vs pat) . abstract (patternAbstraction vs)
@@ -95,7 +96,7 @@ lam p pat = Lam p (void $ abstractPatternTypes vs pat) . abstract (patternAbstra
 case_
   :: (Hashable v, Eq v)
   => Expr v
-  -> [(Pat (HashSet QConstr) (Type v) v, Expr v)]
+  -> [(Pat (HashSet QConstr) Pre.Literal (Type v) v, Expr v)]
   -> Expr v
 case_ expr pats = Case expr $ go <$> pats
   where
@@ -120,13 +121,13 @@ instance Eq1 Expr where
   liftEq _ (Global g1) (Global g2) = g1 == g2
   liftEq _ (Lit l1) (Lit l2) = l1 == l2
   liftEq _ (Con c1) (Con c2) = c1 == c2
-  liftEq f (Pi p1 pat1 s1) (Pi p2 pat2 s2) = p1 == p2 && liftPatEq (==) (liftEq f) (==) pat1 pat2 && liftEq f s1 s2
-  liftEq f (Lam p1 pat1 s1) (Lam p2 pat2 s2) = p1 == p2 && liftPatEq (==) (liftEq f) (==) pat1 pat2 && liftEq f s1 s2
+  liftEq f (Pi p1 pat1 s1) (Pi p2 pat2 s2) = p1 == p2 && liftPatEq (==) (==) (liftEq f) (==) pat1 pat2 && liftEq f s1 s2
+  liftEq f (Lam p1 pat1 s1) (Lam p2 pat2 s2) = p1 == p2 && liftPatEq (==) (==) (liftEq f) (==) pat1 pat2 && liftEq f s1 s2
   liftEq f (App e1 p1 e1') (App e2 p2 e2') = liftEq f e1 e2 && p1 == p2 && liftEq f e1' e2'
   liftEq f (Let defs1 s1) (Let defs2 s2) = liftEq (\(_, _, d1) (_, _, d2) -> liftEq (liftEq f) d1 d2) defs1 defs2 && liftEq f s1 s2
   liftEq f (Case e1 brs1) (Case e2 brs2)
     = liftEq f e1 e2
-    && liftEq (\(pat1, s1) (pat2, s2) -> liftPatEq (==) (liftEq f) (==) pat1 pat2 && liftEq f s1 s2) brs1 brs2
+    && liftEq (\(pat1, s1) (pat2, s2) -> liftPatEq (==) (==) (liftEq f) (==) pat1 pat2 && liftEq f s1 s2) brs1 brs2
   liftEq f (ExternCode c) (ExternCode c') = liftEq (liftEq f) c c'
   liftEq _ Wildcard Wildcard = True
   liftEq f (SourceLoc _ e1) e2 = liftEq f e1 e2

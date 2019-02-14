@@ -3,7 +3,6 @@ module Elaboration.TypeCheck.Clause where
 
 import Protolude hiding (tails)
 
-import Data.Bitraversable
 import Data.Foldable as Foldable
 import Data.HashSet(HashSet)
 import Data.List.NonEmpty(NonEmpty)
@@ -12,6 +11,7 @@ import qualified Data.Vector as Vector
 
 import {-# SOURCE #-} Elaboration.TypeCheck.Expr
 import Effect
+import qualified Effect.Context as Context
 import Effect.Log as Log
 import Elaboration.Constraint
 import Elaboration.Match as Match
@@ -19,15 +19,13 @@ import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
 import Elaboration.Subtype
-import Elaboration.TypeCheck.Pattern
 import Syntax
 import qualified Syntax.Core as Core
+import qualified Syntax.Pre.Literal as Pre
 import qualified Syntax.Pre.Scoped as Pre
-import TypedFreeVar
-import Util
 
 checkConstantDef
-  :: Pre.ConstantDef Pre.Expr FreeV
+  :: Pre.ConstantDef Pre.Expr FreeVar
   -> CoreM
   -> Elaborate (Abstract, CoreM)
 checkConstantDef (Pre.ConstantDef a clauses _) typ = do
@@ -35,11 +33,11 @@ checkConstantDef (Pre.ConstantDef a clauses _) typ = do
   return (a, e')
 
 checkClauses
-  :: NonEmpty (Pre.Clause Pre.Expr FreeV)
+  :: NonEmpty (Pre.Clause Pre.Expr FreeVar)
   -> Polytype
   -> Elaborate CoreM
 checkClauses clauses polyType = Log.indent $ do
-  forM_ clauses $ \clause -> logPretty "tc.clause" "checkClauses clause" $ pretty <$> clause
+  forM_ clauses $ \clause -> logPretty "tc.clause" "checkClauses clause" $ traverse prettyVar clause
   logMeta "tc.clause" "checkClauses typ" $ zonk polyType
 
   skolemise polyType (minimum $ instUntilClause <$> clauses) $ \rhoType f -> do
@@ -51,7 +49,7 @@ checkClauses clauses polyType = Log.indent $ do
 
     let equalisedClauses = equaliseClauses clauses'
 
-    forM_ equalisedClauses $ \clause -> logPretty "tc.clause" "checkClauses equalisedClause" $ pretty <$> clause
+    forM_ equalisedClauses $ \clause -> logPretty "tc.clause" "checkClauses equalisedClause" $ traverse prettyVar clause
 
     res <- checkClausesRho equalisedClauses rhoType
 
@@ -71,56 +69,40 @@ checkClauses clauses polyType = Log.indent $ do
 
     piPlicitnesses' :: CoreM -> Elaborate [Plicitness]
     piPlicitnesses' (Core.Pi h p t s) =
-      extendContext h p t $ \v ->
+      Context.freshExtend (binding h p t) $ \v ->
         (:) p <$> piPlicitnesses (instantiate1 (pure v) s)
     piPlicitnesses' _ = return mempty
 
 checkClausesRho
-  :: NonEmpty (Pre.Clause Pre.Expr FreeV)
+  :: NonEmpty (Pre.Clause Pre.Expr FreeVar)
   -> Rhotype
   -> Elaborate CoreM
 checkClausesRho clauses rhoType = do
-  forM_ clauses $ \clause -> logPretty "tc.clause" "checkClausesRho clause" $ pretty <$> clause
+  forM_ clauses $ \clause -> logPretty "tc.clause" "checkClausesRho clause" $ traverse prettyVar clause
   logMeta "tc.clause" "checkClausesRho type" $ zonk rhoType
 
-  let (ps, firstPats) = Vector.unzip ppats
-        where
-          Pre.Clause ppats _ = NonEmpty.head clauses
+  let
+    (ps, firstPats) = Vector.unzip ppats
+      where
+        Pre.Clause ppats _ = NonEmpty.head clauses
   (argTele, returnTypeScope, fs) <- funSubtypes rhoType ps
-  whenLoggingCategory "tc.clause" $ do
-    pargTele <- bitraverseTelescope (\m -> WithVar m <$> prettyMetaVar m) (pure . pretty) argTele
-    logPretty "tc.clause" "argTele" pargTele
-
-  clauses' <- forM clauses $ \(Pre.Clause pats bodyScope) -> do
-    logShow "tc.clause" "start" ()
-    (pats', patVars) <- Log.indent $ tcPats pats mempty argTele
-    let body = instantiatePattern pure (boundPatVars patVars) bodyScope
-        argExprs = snd3 <$> pats'
-        returnType = instantiateTele identity argExprs returnTypeScope
-    logPretty "tc.clause" "patVars" patVars
-    body' <- Log.indent $ withPatVars patVars $ checkRho body returnType
-    return (fst3 <$> pats', body')
-
-  forM_ clauses' $ \(pats, body) -> do
-    forM_ pats $ logPretty "tc.clause" "checkClausesRho clause pat" <=< bitraverse prettyMeta (pure . pretty)
-    logMeta "tc.clause" "checkClausesRho clause body" $ zonk body
+  logPretty "tc.clause" "argTele" $ bitraverseTelescope (\m -> WithVar m <$> prettyMetaVar m) prettyVar argTele
 
   teleExtendContext (addTeleNames argTele $ Pre.patternHint <$> firstPats) $ \argVars -> do
-    logPretty "tc.clause" "argVars" argVars
+    logPretty "tc.clause" "argVars" $ traverse prettyVar argVars
 
-    let returnType = instantiateTele pure argVars returnTypeScope
-
-    body <- matchClauses
-      (Vector.toList $ pure <$> argVars)
-      (NonEmpty.toList $ first Vector.toList <$> clauses')
-      returnType
+    let
+      returnType = instantiateTele pure argVars returnTypeScope
+    body <- matchClauses argVars clauses returnType checkRho
+    logPretty "tc.clause" "after match" $ pure ()
 
     logMeta "tc.clause" "checkClausesRho body res" $ zonk body
 
-    let result = foldr
-          (\(f, v) e -> f $ Core.lam v e)
-          body
-          (Vector.zip fs argVars)
+    result <- foldrM
+      (\(f, v) e -> f <$> Core.lam v e)
+      body
+      (Vector.zip fs argVars)
+    logPretty "tc.clause" "after f" $ pure ()
 
     logMeta "tc.clause" "checkClausesRho res" $ zonk result
     return result
@@ -138,8 +120,8 @@ equaliseClauses clauses
     (Pre.clauseScope <$> clauses)
   where
     go
-      :: NonEmpty [(Plicitness, Pre.Pat c (Scope b expr v) ())]
-      -> NonEmpty ([(Plicitness, Pre.Pat c (Scope b expr v) ())], [Plicitness])
+      :: NonEmpty [(Plicitness, Pre.Pat c l (Scope b expr v) ())]
+      -> NonEmpty ([(Plicitness, Pre.Pat c l (Scope b expr v) ())], [Plicitness])
     go clausePats
       | numEx == 0 && numIm == 0 = (, mempty) <$> clausePats
       | numEx == len = NonEmpty.zipWith (first . (:)) heads $ go tails
@@ -154,15 +136,15 @@ equaliseClauses clauses
         tails = drop 1 <$> clausePats
         len = length clausePats
     go'
-      :: NonEmpty ([(Plicitness, Pre.Pat c (Scope b expr v) ())], [Plicitness])
-      -> NonEmpty ([(Plicitness, Pre.Pat c (Scope b expr v) ())], [Plicitness])
+      :: NonEmpty ([(Plicitness, Pre.Pat c l (Scope b expr v) ())], [Plicitness])
+      -> NonEmpty ([(Plicitness, Pre.Pat c l (Scope b expr v) ())], [Plicitness])
     go' clausePats
       = NonEmpty.zipWith
         (\ps (pats, ps') -> (pats, ps ++ ps'))
         (snd <$> clausePats)
         (go $ fst <$> clausePats)
 
-    numExplicit, numImplicit :: NonEmpty [(Plicitness, Pre.Pat c (Scope b expr v) ())] -> Int
+    numExplicit, numImplicit :: NonEmpty [(Plicitness, Pre.Pat c l (Scope b expr v) ())] -> Int
     numExplicit = length . NonEmpty.filter (\case
       (Explicit, _):_ -> True
       _ -> False)
@@ -172,8 +154,8 @@ equaliseClauses clauses
       _ -> False)
 
     addImplicit, addExplicit
-      :: [(Plicitness, Pre.Pat c (Scope b expr v) ())]
-      -> ([(Plicitness, Pre.Pat c (Scope b expr v) ())], [Plicitness])
+      :: [(Plicitness, Pre.Pat c l (Scope b expr v) ())]
+      -> ([(Plicitness, Pre.Pat c l (Scope b expr v) ())], [Plicitness])
     addImplicit pats@((Implicit, _):_) = (pats, mempty)
     addImplicit pats = ((Implicit, Pre.WildcardPat) : pats, mempty)
 
@@ -181,7 +163,7 @@ equaliseClauses clauses
     addExplicit pats = ((Explicit, Pre.VarPat mempty ()) : pats, pure Explicit)
 
 etaClause
-  :: [(Plicitness, Pre.Pat (HashSet QConstr) (Scope PatternVar Pre.Expr v) ())]
+  :: [(Plicitness, Pre.Pat (HashSet QConstr) Pre.Literal (Scope PatternVar Pre.Expr v) ())]
   -> [Plicitness]
   -> Scope PatternVar Pre.Expr v
   -> Pre.Clause Pre.Expr v

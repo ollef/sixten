@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 module Syntax.Pre.Literal where
 
 import Protolude
@@ -9,7 +11,7 @@ import Pretty
 data Literal
   = Integer !Integer
   | String !Text
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 instance Pretty Literal where
   prettyM (Integer i) = prettyM i

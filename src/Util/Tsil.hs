@@ -51,3 +51,9 @@ filter _ Nil = Nil
 filter f (Snoc xs x)
   | f x = Snoc (Util.Tsil.filter f xs) x
   | otherwise = Util.Tsil.filter f xs
+
+span :: (a -> Bool) -> Tsil a -> (Tsil a, Tsil a)
+span _ Nil = (Nil, Nil)
+span p as@(Snoc as' a)
+  | p a = second (`Snoc` a) $ span p as'
+  | otherwise = (as, Nil)

@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Syntax.Literal where
 
@@ -13,7 +15,7 @@ data Literal
   | Natural !Natural
   | Byte !Word8
   | TypeRep !TypeRep.TypeRep
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 instance Pretty Literal where
   prettyM (Integer i) = prettyM i

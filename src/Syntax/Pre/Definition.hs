@@ -12,6 +12,7 @@ import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 
 import Syntax hiding (Definition(..))
+import qualified Syntax.Pre.Literal as Pre
 import Syntax.Pre.Pattern
 
 data Definition expr v
@@ -22,7 +23,7 @@ data Definition expr v
   deriving (Foldable, Functor, Show, Traversable)
 
 data Clause expr v = Clause
-  { clausePatterns :: Vector (Plicitness, Pat (HashSet QConstr) (Scope PatternVar expr v) ())
+  { clausePatterns :: Vector (Plicitness, Pat (HashSet QConstr) Pre.Literal (Scope PatternVar expr v) ())
   , clauseScope :: Scope PatternVar expr v
   } deriving Show
 
@@ -114,7 +115,7 @@ $(return mempty)
 
 instance (Eq1 expr, Monad expr) => Eq1 (Clause expr) where
   liftEq f (Clause ps1 s1) (Clause ps2 s2)
-    = liftEq (\(p1, pat1) (p2, pat2) -> p1 == p2 && liftPatEq (==) (liftEq f) (==) pat1 pat2) ps1 ps2
+    = liftEq (\(p1, pat1) (p2, pat2) -> p1 == p2 && liftPatEq (==) (==) (liftEq f) (==) pat1 pat2) ps1 ps2
     && liftEq f s1 s2
 
 instance Bound Clause where

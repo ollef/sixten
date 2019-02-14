@@ -16,14 +16,13 @@ import Data.Monoid as Monoid
 import Data.Semigroup as Semigroup
 import Data.Vector(Vector)
 
-import FreeVar
+import Effect.Context
 import Pretty
 import Syntax.GlobalBind
 import Syntax.Literal
 import Syntax.Name
 import Syntax.QName
 import Syntax.Telescope
-import qualified TypedFreeVar as Typed
 import Util
 
 data Branches expr v
@@ -36,29 +35,33 @@ data ConBranch expr v = ConBranch QConstr (Telescope expr v) (Scope TeleVar expr
 data LitBranch expr v = LitBranch Literal (expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
-conBranchTyped
-  :: Monad expr
+conBranch
+  :: (Monad expr, MonadContext (expr FreeVar) m)
   => QConstr
-  -> Vector (Typed.FreeVar expr)
-  -> expr (Typed.FreeVar expr)
-  -> ConBranch expr (Typed.FreeVar expr)
-conBranchTyped c vs br = ConBranch c (Typed.varTelescope vs) (abstract (teleAbstraction vs) br)
-
-typedConBranchTyped
-  :: Monad expr
-  => QConstr
-  -> Vector (Typed.FreeVar expr', expr (Typed.FreeVar expr'))
-  -> expr (Typed.FreeVar expr')
-  -> ConBranch expr (Typed.FreeVar expr')
-typedConBranchTyped c vs br = ConBranch c (Typed.varTypeTelescope vs) (abstract (teleAbstraction $ fst <$> vs) br)
+  -> Vector FreeVar
+  -> expr FreeVar
+  -> m (ConBranch expr FreeVar)
+conBranch c vs br = do
+  tele <- varTelescope vs
+  return
+    $ ConBranch
+      c
+      tele
+      $ abstract (teleAbstraction vs) br
 
 typedConBranch
-  :: Monad expr
+  :: (Monad expr, MonadContext expr' m)
   => QConstr
-  -> Vector (FreeVar a, expr (FreeVar a))
-  -> expr (FreeVar a)
-  -> ConBranch expr (FreeVar a)
-typedConBranch c vs br = ConBranch c (varTelescope vs) (abstract (teleAbstraction $ fst <$> vs) br)
+  -> Vector (FreeVar, expr FreeVar)
+  -> expr FreeVar
+  -> m (ConBranch expr FreeVar)
+typedConBranch c vs br = do
+  tele <- varTypeTelescope vs
+  return
+    $ ConBranch
+      c
+      tele
+      $ abstract (teleAbstraction $ fst <$> vs) br
 
 bimapBranches
   :: Bifunctor expr

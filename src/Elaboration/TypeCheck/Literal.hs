@@ -4,6 +4,8 @@ module Elaboration.TypeCheck.Literal where
 import Protolude
 
 import Data.ByteString as ByteString
+import Data.HashSet(HashSet)
+import qualified Data.HashSet as HashSet
 import Data.Text(Text)
 import Data.Text.Encoding as Encoding
 import Numeric.Natural
@@ -11,17 +13,23 @@ import Numeric.Natural
 import qualified Builtin.Names as Builtin
 import Syntax
 import qualified Syntax.Core as Core
-import qualified Syntax.Core.Pattern as Core
 import qualified Syntax.Literal as Core
 import qualified Syntax.Pre.Literal as Pre
+import qualified Syntax.Pre.Pattern as Pre
 import Util
 
 inferLit :: Pre.Literal -> (Core.Expr m v, Core.Expr m v)
 inferLit (Pre.Integer i) = (Core.Lit $ Core.Integer i, Builtin.IntType)
 inferLit (Pre.String s) = (string s, Builtin.StringType)
 
-litPat :: Pre.Literal -> Core.Pat (Core.Expr m v) v'
-litPat (Pre.Integer i) = Core.LitPat $ Core.Integer i
+inferCoreLit :: Core.Literal -> Core.Expr m v
+inferCoreLit (Core.Integer _) = Builtin.IntType
+inferCoreLit (Core.Natural _) = Builtin.Nat
+inferCoreLit (Core.Byte _) = Builtin.ByteType
+inferCoreLit (Core.TypeRep _) = Builtin.Type
+
+litPat :: Pre.Literal -> Pre.Pat (HashSet QConstr) Core.Literal typ v
+litPat (Pre.Integer i) = Pre.LitPat (Core.Integer i)
 litPat (Pre.String s) = stringPat s
 
 string :: Text -> Core.Expr m v
@@ -30,12 +38,11 @@ string s
     (Core.Con Builtin.MkStringConstr)
     [(Explicit, byteArray $ Encoding.encodeUtf8 s)]
 
-stringPat :: Text -> Core.Pat (Core.Expr m v) v'
+stringPat :: Text -> Pre.Pat (HashSet QConstr) Core.Literal typ v
 stringPat s
-  = Core.ConPat
-    Builtin.MkStringConstr
-    mempty
-    (toVector [(Explicit, byteArrayPat $ Encoding.encodeUtf8 s, byteArrayType)])
+  = Pre.ConPat
+    (HashSet.singleton Builtin.MkStringConstr)
+    (toVector [(Explicit, byteArrayPat $ Encoding.encodeUtf8 s)])
 
 byteArray :: ByteString -> Core.Expr m v
 byteArray bs
@@ -64,45 +71,30 @@ byteArray bs
       , i + 1
       )
 
-byteArrayPat :: ByteString -> Core.Pat (Core.Expr m t) b
+byteArrayPat :: ByteString -> Pre.Pat (HashSet QConstr) Core.Literal typ v
 byteArrayPat bs
-  = Core.ConPat Builtin.MkArrayConstr
+  = Pre.ConPat (HashSet.singleton Builtin.MkArrayConstr)
   (toVector
-    [ (Explicit, Builtin.ByteType)
-    ])
-  (toVector
-    [ (Explicit, natPat len, Builtin.Nat)
+    [ (Explicit, natPat len)
     , ( Explicit
-      , Core.ConPat Builtin.Ref
-        (toVector [(Explicit, vecType)])
+      , Pre.ConPat (HashSet.singleton Builtin.Ref)
         (toVector
           [ ( Explicit
-            , fst $ ByteString.foldr go (Core.ConPat Builtin.MkUnitConstr mempty mempty, 0) bs
-            , vecType
+            , ByteString.foldr go (Pre.ConPat (HashSet.singleton Builtin.MkUnitConstr) mempty) bs
             )
           ]
         )
-      , ptrType vecType
       )
     ]
   )
   where
     len = fromIntegral $ ByteString.length bs
-    vecType = byteVectorType $ nat len
-    go byte (rest, !restLen) =
-      ( Core.ConPat Builtin.MkPairConstr
+    go byte rest =
+      Pre.ConPat (HashSet.singleton Builtin.MkPairConstr)
         (toVector
-          [ (Explicit, Builtin.ByteType)
-          , (Explicit, restType)
+          [ (Explicit, Pre.LitPat $ Core.Byte byte)
+          , (Explicit, rest)
           ])
-        (toVector
-          [ (Explicit, Core.LitPat $ Core.Byte byte, Builtin.ByteType)
-          , (Explicit, rest, restType)
-          ])
-      , restLen + 1
-      )
-      where
-        restType = byteVectorType $ nat restLen
 
 byteArrayType :: Core.Expr m v
 byteArrayType = Core.App (global $ GName Builtin.ArrayName mempty) Explicit Builtin.ByteType
@@ -120,5 +112,5 @@ byteVectorType len = Core.apps
 nat :: Natural -> Core.Expr m v
 nat = Core.Lit . Core.Natural
 
-natPat :: Natural -> Core.Pat (Core.Expr m v) v'
-natPat = Core.LitPat . Core.Natural
+natPat :: Natural -> Pre.Pat c Core.Literal typ v'
+natPat = Pre.LitPat . Core.Natural

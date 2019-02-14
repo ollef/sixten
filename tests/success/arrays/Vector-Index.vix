@@ -3,14 +3,15 @@ type Maybe a = Nothing | Just a
 index : forall a. (len : Nat) -> Vector len a -> Int -> Maybe a
 index Zero MkUnit _ = Nothing
 index (Succ n) (MkPair x xs) 0 = Just x
-index @a (Succ n) (MkPair x xs) i = index @a n xs (subInt i 1)
+index (Succ n) (MkPair x xs) i = index n xs (subInt i 1)
 
 index2 : forall a. (len : Nat) -> Vector len a -> Int -> a
 index2 Zero MkUnit _ = fail _
 index2 (Succ n) (MkPair x xs) 0 = x
-index2 @a (Succ n) (MkPair x xs) i = index2 @a n xs (subInt i 1)
+index2 (Succ n) (MkPair x xs) i = index2 n xs (subInt i 1)
 
 index2' : forall a. (len : Nat) -> Vector len a -> Int -> a
+index2' Zero MkUnit _ = fail _
 index2' (Succ n) (MkPair x xs) 0 = x
 index2' @a (Succ n) (MkPair x xs) i = index2' @a n xs (subInt i 1)
 

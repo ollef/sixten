@@ -11,26 +11,26 @@ module Elaboration.Monad where
 
 import Protolude
 
-import Control.Lens
+import Control.Lens hiding (Context)
 import Control.Monad.Reader
 import qualified Data.Vector as Vector
 import Rock
 
+import {-# SOURCE #-} Elaboration.MetaVar.Zonk
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect
+import qualified Effect.Context as Context
 import Elaboration.MetaVar
-import {-# SOURCE #-} Elaboration.MetaVar.Zonk
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
-import TypedFreeVar
 import Util
 import qualified Util.Tsil as Tsil
 import VIX
 
-type PreM = Pre.Expr FreeV
-type CoreM = Core.Expr MetaVar FreeV
+type PreM = Pre.Expr FreeVar
+type CoreM = Core.Expr MetaVar FreeVar
 
 type Polytype = CoreM
 type Rhotype = CoreM -- No top-level foralls
@@ -45,7 +45,7 @@ shouldInst p (InstUntil p') | p == p' = False
 shouldInst _ _ = True
 
 data ElabEnv = ElabEnv
-  { _contextEnv :: !(ContextEnv FreeV)
+  { _context :: !(Context CoreM)
   , _elabTouchables :: !(MetaVar -> Bool)
   , _currentModule :: !ModuleName
   , _vixEnv :: !VIX.Env
@@ -62,20 +62,20 @@ instance HasReportEnv ElabEnv where
 instance HasFreshEnv ElabEnv where
   freshEnv = vixEnv.freshEnv
 
-instance HasContextEnv FreeV ElabEnv where
-  contextEnv = Elaboration.Monad.contextEnv
+instance HasContext CoreM ElabEnv where
+  context = Elaboration.Monad.context
 
 type Elaborate = ReaderT ElabEnv (Sequential (Task Query))
 
 runElaborate :: ModuleName -> Elaborate a -> VIX a
 runElaborate mname = withReaderT $ \env -> ElabEnv
-  { _contextEnv = mempty
+  { _context = mempty
   , _elabTouchables = const True
   , _currentModule = mname
   , _vixEnv = env
   }
 
-type MonadElaborate m = (MonadContext FreeV m, MonadLog m, MonadIO m, MonadReport m, MonadFresh m, MonadFetch Query m, MonadReader ElabEnv m)
+type MonadElaborate m = (MonadContext CoreM m, MonadLog m, MonadIO m, MonadReport m, MonadFresh m, MonadFetch Query m, MonadReader ElabEnv m)
 
 exists
   :: MonadElaborate m
@@ -84,13 +84,28 @@ exists
   -> CoreM
   -> m CoreM
 exists hint d typ = do
-  locals <- toVector . Tsil.filter (isNothing . varValue) <$> getLocalVars
-  let typ' = Core.pis locals typ
+  ctx <- getContext
+  let
+    contextVars = Context._vars ctx
+    locals = toVector $ Tsil.filter (isNothing . (`Context.lookupValue` ctx)) $ Context._vars ctx
+  typ' <- go contextVars typ
   logMeta "tc.metavar" "exists typ" $ zonk typ
+  logMeta "tc.metavar" "exists typ'" $ zonk typ'
   let typ'' = close (panic "exists not closed") typ'
   loc <- getCurrentLocation
   v <- explicitExists hint d typ'' (Vector.length locals) loc
-  return $ Core.Meta v $ (\fv -> (varPlicitness fv, pure fv)) <$> locals
+  return $ Core.Meta v $ (\fv -> (Context.lookupPlicitness fv ctx, pure fv)) <$> locals
+
+  where
+    go Tsil.Nil t = return t
+    go (Tsil.Snoc vs v) t = do
+      maybeValue <- Context.lookupValue v
+      case maybeValue of
+        Nothing -> do
+          t' <- Core.pi_ v t
+          go vs t'
+        Just value ->
+          go vs $ substitute v value t
 
 existsType
   :: NameHint

@@ -1,4 +1,9 @@
-{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, MonadComprehensions, OverloadedStrings #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE MonadComprehensions #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 module Syntax.Pre.Pattern where
 
 import Protolude
@@ -10,41 +15,41 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import Syntax
-import qualified Syntax.Pre.Literal as Pre
 import Util
 
-data Pat con typ b
+data Pat con lit typ b
   = VarPat !NameHint b
   | WildcardPat
-  | LitPat Pre.Literal
-  | ConPat con (Vector (Plicitness, Pat con typ b))
-  | AnnoPat (Pat con typ b) typ
-  | ViewPat typ (Pat con typ b)
-  | PatLoc !SourceLoc (Pat con typ b)
+  | LitPat lit
+  | ConPat con (Vector (Plicitness, Pat con lit typ b))
+  | AnnoPat (Pat con lit typ b) typ
+  | ViewPat typ (Pat con lit typ b)
+  | PatLoc !SourceLoc (Pat con lit typ b)
   deriving (Foldable, Functor, Show, Traversable)
 
 -------------------------------------------------------------------------------
 -- Helpers
 liftPatEq
   :: (con1 -> con2 -> Bool)
+  -> (lit1 -> lit2 -> Bool)
   -> (typ1 -> typ2 -> Bool)
   -> (a -> b -> Bool)
-  -> Pat con1 typ1 a
-  -> Pat con2 typ2 b
+  -> Pat con1 lit1 typ1 a
+  -> Pat con2 lit2 typ2 b
   -> Bool
-liftPatEq _ _ g (VarPat _ a) (VarPat _ b) = g a b
-liftPatEq _ _ _ WildcardPat WildcardPat = True
-liftPatEq _ _ _ (LitPat l1) (LitPat l2) = l1 == l2
-liftPatEq e f g (ConPat c1 as1) (ConPat c2 as2)
+liftPatEq _ _ _ g (VarPat _ a) (VarPat _ b) = g a b
+liftPatEq _ _ _ _ WildcardPat WildcardPat = True
+liftPatEq _ l _ _ (LitPat l1) (LitPat l2) = l l1 l2
+liftPatEq e l f g (ConPat c1 as1) (ConPat c2 as2)
   = e c1 c2
-  && liftEq (\(p1, pat1) (p2, pat2) -> p1 == p2 && liftPatEq e f g pat1 pat2) as1 as2
-liftPatEq e f g (AnnoPat p1 t1) (AnnoPat p2 t2) = liftPatEq e f g p1 p2 && f t1 t2
-liftPatEq e f g (ViewPat t1 p1) (ViewPat t2 p2) = f t1 t2 && liftPatEq e f g p1 p2
-liftPatEq e f g (PatLoc _ p1) p2 = liftPatEq e f g p1 p2
-liftPatEq e f g p1 (PatLoc _ p2) = liftPatEq e f g p1 p2
-liftPatEq _ _ _ _ _ = False
+  && liftEq (\(p1, pat1) (p2, pat2) -> p1 == p2 && liftPatEq e l f g pat1 pat2) as1 as2
+liftPatEq e l f g (AnnoPat p1 t1) (AnnoPat p2 t2) = liftPatEq e l f g p1 p2 && f t1 t2
+liftPatEq e l f g (ViewPat t1 p1) (ViewPat t2 p2) = f t1 t2 && liftPatEq e l f g p1 p2
+liftPatEq e l f g (PatLoc _ p1) p2 = liftPatEq e l f g p1 p2
+liftPatEq e l f g p1 (PatLoc _ p2) = liftPatEq e l f g p1 p2
+liftPatEq _ _ _ _ _ _ = False
 
-nameHints :: Pat con typ b -> Vector NameHint
+nameHints :: Pat con lit typ b -> Vector NameHint
 nameHints pat = case pat of
   VarPat h _ -> pure h
   WildcardPat -> mempty
@@ -54,14 +59,30 @@ nameHints pat = case pat of
   ViewPat _ p -> nameHints p
   PatLoc _ p -> nameHints p
 
-patternHint :: Pat con typ b -> NameHint
-patternHint (VarPat h _) = h
-patternHint (PatLoc _ p) = patternHint p
+patternHint :: Pat con lit typ b -> NameHint
+patternHint (unPatLoc -> VarPat h _) = h
 patternHint _ = mempty
+
+unPatLoc :: Pat con lit typ b -> Pat con lit typ b
+unPatLoc (PatLoc _ p) = unPatLoc p
+unPatLoc p = p
+
+bindPatLits
+  :: (lit -> Pat con lit' typ b)
+  -> Pat con lit typ b
+  -> Pat con lit' typ b
+bindPatLits f pat = case pat of
+  VarPat h v -> VarPat h v
+  WildcardPat -> WildcardPat
+  LitPat l -> f l
+  ConPat c ps -> ConPat c (second (bindPatLits f) <$> ps)
+  AnnoPat p t -> AnnoPat (bindPatLits f p) t
+  ViewPat e p -> ViewPat e (bindPatLits f p)
+  PatLoc loc p -> PatLoc loc (bindPatLits f p)
 
 -------------------------------------------------------------------------------
 -- Instances
-instance (Eq con, Eq typ, Eq b) => Eq (Pat con typ b) where
+instance (Eq con, Eq lit, Eq typ, Eq b) => Eq (Pat con lit typ b) where
   VarPat h1 b1 == VarPat h2 b2 = h1 == h2 && b1 == b2
   WildcardPat == WildcardPat = True
   LitPat l1 == LitPat l2 = l1 == l2
@@ -72,11 +93,11 @@ instance (Eq con, Eq typ, Eq b) => Eq (Pat con typ b) where
   pat1 == PatLoc _ pat2 = pat1 == pat2
   _ == _ = False
 
-instance Applicative (Pat con typ) where
+instance Applicative (Pat con lit typ) where
   pure = return
   (<*>) = ap
 
-instance Monad (Pat con typ) where
+instance Monad (Pat con lit typ) where
   return = VarPat mempty
   pat >>= f = case pat of
     VarPat h b -> case f b of
@@ -89,10 +110,10 @@ instance Monad (Pat con typ) where
     ViewPat t p -> ViewPat t $ p >>= f
     PatLoc loc p -> PatLoc loc $ p >>= f
 
-instance Bifunctor (Pat con) where bimap = bimapDefault
-instance Bifoldable (Pat con) where bifoldMap = bifoldMapDefault
+instance Bifunctor (Pat con lit) where bimap = bimapDefault
+instance Bifoldable (Pat con lit) where bifoldMap = bifoldMapDefault
 
-instance Bitraversable (Pat con) where
+instance Bitraversable (Pat con lit) where
   bitraverse f g pat = case pat of
     VarPat h b -> VarPat h <$> g b
     WildcardPat -> pure WildcardPat
@@ -103,13 +124,13 @@ instance Bitraversable (Pat con) where
     PatLoc loc p -> PatLoc loc <$> bitraverse f g p
 
 prettyPattern
-  :: (Pretty con, Pretty typ)
+  :: (Pretty con, Pretty lit, Pretty typ)
   => Vector Name
-  -> Pat con typ b
+  -> Pat con lit typ b
   -> PrettyDoc
 prettyPattern names = prettyM . fmap ((names Vector.!) . fst) . indexed
 
-instance (Pretty con, Pretty typ, Pretty b) => Pretty (Pat con typ b) where
+instance (Pretty con, Pretty lit, Pretty typ, Pretty b) => Pretty (Pat con lit typ b) where
   prettyM pat = case pat of
     VarPat _ b -> prettyM b
     WildcardPat -> "_"

@@ -1,4 +1,6 @@
-{-# LANGUAGE PatternSynonyms, OverloadedStrings #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 module TypeRep where
 
 import Protolude hiding (TypeRep)
@@ -8,7 +10,7 @@ import Pretty
 
 newtype TypeRep = TypeRep
   { size :: Integer
-  } deriving (Eq, Ord, Show)
+  } deriving (Eq, Ord, Show, Hashable)
 
 product :: TypeRep -> TypeRep -> TypeRep
 product (TypeRep aSize) (TypeRep bSize) = TypeRep $ aSize + bSize

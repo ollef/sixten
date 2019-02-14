@@ -49,8 +49,9 @@ whenLoggingCategory c m = do
   p <- getLogCategories
   when (p c) m
 
-logPretty :: (MonadLog m, Pretty a) => Category -> Text -> a -> m ()
-logPretty c@(Category ct) s x = whenLoggingCategory c $
+logPretty :: (MonadLog m, Pretty a) => Category -> Text -> m a -> m ()
+logPretty c@(Category ct) s mx = whenLoggingCategory c $ do
+  x <- mx
   log $ "[" <> ct <> "] " <> s <> ": " <> Pretty.showWide (pretty x)
 
 logShow :: (MonadLog m, Show a) => Category -> Text -> a -> m ()
