@@ -94,7 +94,7 @@ checkClausesRho clauses rhoType = do
     let
       returnType = instantiateTele pure argVars returnTypeScope
     body <- matchClauses argVars clauses returnType checkRho
-    logPretty "tc.clause" "after match" $ pure ()
+    logCategory "tc.clause" "after match"
 
     logMeta "tc.clause" "checkClausesRho body res" $ zonk body
 
@@ -102,7 +102,7 @@ checkClausesRho clauses rhoType = do
       (\(f, v) e -> f <$> Core.lam v e)
       body
       (Vector.zip fs argVars)
-    logPretty "tc.clause" "after f" $ pure ()
+    logCategory "tc.clause" "after f"
 
     logMeta "tc.clause" "checkClausesRho res" $ zonk result
     return result
