@@ -19,7 +19,6 @@ import Effect
 import Pretty
 import Syntax
 import qualified Syntax.Pre.Literal as Literal
-import Syntax.Pre.Pattern
 import qualified Syntax.Pre.Scoped as Scoped
 import qualified Syntax.Pre.Unscoped as Unscoped
 import Util

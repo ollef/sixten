@@ -137,7 +137,7 @@ tcRho expr expected expectedAppResult = case expr of
     return $ f $ Core.Con qc
   Pre.Pi p pat bodyScope -> do
     let
-      h = Pre.patternHint pat
+      h = patternHint pat
     typ <- existsType h
     f <- instExpected expected Builtin.Type
     Context.freshExtend (binding h p typ) $ \v -> do
@@ -145,7 +145,7 @@ tcRho expr expected expectedAppResult = case expr of
       f <$> Core.pi_ v body
   Pre.Lam p pat bodyScope -> do
     let
-      h = Pre.patternHint pat
+      h = patternHint pat
     case expected of
       Infer {} -> do
         argType <- existsType h
@@ -238,7 +238,7 @@ tcLet ds scope expected expectedAppResult = do
 
 tcBranches
   :: PreM
-  -> [(Pre.Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr FreeVar) NameHint, PatternScope Pre.Expr FreeVar)]
+  -> [(Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr FreeVar) NameHint, PatternScope Pre.Expr FreeVar)]
   -> Expected Rhotype
   -> Maybe Rhotype
   -> Elaborate CoreM

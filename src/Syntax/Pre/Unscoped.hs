@@ -9,7 +9,6 @@ import Data.Vector(Vector)
 
 import Syntax hiding (Definition)
 import qualified Syntax.Pre.Literal as Pre
-import Syntax.Pre.Pattern
 
 data Expr
   = Var PreName

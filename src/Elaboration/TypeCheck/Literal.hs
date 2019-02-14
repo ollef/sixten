@@ -15,7 +15,6 @@ import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Literal as Core
 import qualified Syntax.Pre.Literal as Pre
-import qualified Syntax.Pre.Pattern as Pre
 import Util
 
 inferLit :: Pre.Literal -> (Core.Expr m v, Core.Expr m v)
@@ -28,8 +27,8 @@ inferCoreLit (Core.Natural _) = Builtin.Nat
 inferCoreLit (Core.Byte _) = Builtin.ByteType
 inferCoreLit (Core.TypeRep _) = Builtin.Type
 
-litPat :: Pre.Literal -> Pre.Pat (HashSet QConstr) Core.Literal typ v
-litPat (Pre.Integer i) = Pre.LitPat (Core.Integer i)
+litPat :: Pre.Literal -> Pat (HashSet QConstr) Core.Literal typ v
+litPat (Pre.Integer i) = LitPat (Core.Integer i)
 litPat (Pre.String s) = stringPat s
 
 string :: Text -> Core.Expr m v
@@ -38,9 +37,9 @@ string s
     (Core.Con Builtin.MkStringConstr)
     [(Explicit, byteArray $ Encoding.encodeUtf8 s)]
 
-stringPat :: Text -> Pre.Pat (HashSet QConstr) Core.Literal typ v
+stringPat :: Text -> Pat (HashSet QConstr) Core.Literal typ v
 stringPat s
-  = Pre.ConPat
+  = ConPat
     (HashSet.singleton Builtin.MkStringConstr)
     (toVector [(Explicit, byteArrayPat $ Encoding.encodeUtf8 s)])
 
@@ -71,16 +70,16 @@ byteArray bs
       , i + 1
       )
 
-byteArrayPat :: ByteString -> Pre.Pat (HashSet QConstr) Core.Literal typ v
+byteArrayPat :: ByteString -> Pat (HashSet QConstr) Core.Literal typ v
 byteArrayPat bs
-  = Pre.ConPat (HashSet.singleton Builtin.MkArrayConstr)
+  = ConPat (HashSet.singleton Builtin.MkArrayConstr)
   (toVector
     [ (Explicit, natPat len)
     , ( Explicit
-      , Pre.ConPat (HashSet.singleton Builtin.Ref)
+      , ConPat (HashSet.singleton Builtin.Ref)
         (toVector
           [ ( Explicit
-            , ByteString.foldr go (Pre.ConPat (HashSet.singleton Builtin.MkUnitConstr) mempty) bs
+            , ByteString.foldr go (ConPat (HashSet.singleton Builtin.MkUnitConstr) mempty) bs
             )
           ]
         )
@@ -90,9 +89,9 @@ byteArrayPat bs
   where
     len = fromIntegral $ ByteString.length bs
     go byte rest =
-      Pre.ConPat (HashSet.singleton Builtin.MkPairConstr)
+      ConPat (HashSet.singleton Builtin.MkPairConstr)
         (toVector
-          [ (Explicit, Pre.LitPat $ Core.Byte byte)
+          [ (Explicit, LitPat $ Core.Byte byte)
           , (Explicit, rest)
           ])
 
@@ -112,5 +111,5 @@ byteVectorType len = Core.apps
 nat :: Natural -> Core.Expr m v
 nat = Core.Lit . Core.Natural
 
-natPat :: Natural -> Pre.Pat c Core.Literal typ v'
-natPat = Pre.LitPat . Core.Natural
+natPat :: Natural -> Pat c Core.Literal typ v'
+natPat = LitPat . Core.Natural

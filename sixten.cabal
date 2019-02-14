@@ -124,7 +124,6 @@ library
                        Syntax.Pattern
                        Syntax.Pre.Definition
                        Syntax.Pre.Literal
-                       Syntax.Pre.Pattern
                        Syntax.Pre.Scoped
                        Syntax.Pre.Unscoped
                        Syntax.PreName

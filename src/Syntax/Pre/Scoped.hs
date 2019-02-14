@@ -3,7 +3,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Syntax.Pre.Scoped
   ( module Definition
-  , module Pattern
   , module Pre
   , Expr(..), Type
   , clause, pi_, telePis, lam, case_
@@ -23,7 +22,6 @@ import qualified Data.Vector as Vector
 import Syntax
 import Syntax.Pre.Definition as Definition
 import Syntax.Pre.Literal as Pre
-import Syntax.Pre.Pattern as Pattern
 import Util
 import Util.Tsil
 

@@ -62,7 +62,7 @@ matchClauses vars preClauses typ k = do
 matchBranches
   :: CoreM
   -> CoreM
-  -> [(Pre.Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr FreeVar) NameHint, PatternScope Pre.Expr FreeVar)]
+  -> [(Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr FreeVar) NameHint, PatternScope Pre.Expr FreeVar)]
   -> Polytype
   -> (Pre.Expr FreeVar -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
@@ -109,7 +109,7 @@ uninhabited typ = do
 
 matchSingle
   :: FreeVar
-  -> Pre.Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr FreeVar) NameHint
+  -> Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr FreeVar) NameHint
   -> PatternScope Pre.Expr FreeVar
   -> Polytype
   -> (Pre.Expr FreeVar -> Polytype -> Elaborate CoreM)
@@ -129,13 +129,13 @@ matchSingle v pat body typ k = do
     k
 
 desugarPatLits
-  :: Pre.Pat (HashSet QConstr) Pre.Literal typ v
-  -> Pre.Pat (HashSet QConstr) Core.Literal typ v
-desugarPatLits = Pre.bindPatLits litPat
+  :: Pat (HashSet QConstr) Pre.Literal typ v
+  -> Pat (HashSet QConstr) Core.Literal typ v
+desugarPatLits = bindPatLits litPat
 
 -------------------------------------------------------------------------------
 
-type PrePat = Pre.Pat (HashSet QConstr) Core.Literal (PatternScope Pre.Type FreeVar) PatternVar
+type PrePat = Pat (HashSet QConstr) Core.Literal (PatternScope Pre.Type FreeVar) PatternVar
 
 data Config = Config
   { _targetType :: CoreM
@@ -213,9 +213,9 @@ findConMatches matches
   = catMaybes
   $ foreach matches
   $ \case
-    Match (Core.Var x) (Pre.unPatLoc -> Pre.ConPat qc _) typ ->
+    Match (Core.Var x) (unPatLoc -> ConPat qc _) typ ->
       Just (x, Left qc, typ)
-    Match (Core.Var x) (Pre.unPatLoc -> Pre.LitPat l) typ ->
+    Match (Core.Var x) (unPatLoc -> LitPat l) typ ->
       Just (x, Right l, typ)
     Match {} ->
       Nothing
@@ -311,16 +311,16 @@ simplifyMatch :: CoveredLits -> Match -> MaybeT Elaborate [Match]
 simplifyMatch coveredLits m@(Match expr pat typ) = do
   ctx <- getContext
   case (expr, pat) of
-    (_, Pre.WildcardPat) -> return []
-    (Core.Lit l1, Pre.LitPat l2)
+    (_, WildcardPat) -> return []
+    (Core.Lit l1, LitPat l2)
       | l1 == l2 -> return []
       | otherwise -> fail "Literal mismatch"
-    (Core.Var v, Pre.LitPat lit)
+    (Core.Var v, LitPat lit)
       | HashSet.member (v, lit) coveredLits -> fail "Literal already covered"
     (Core.Var v, _)
       | Just expr' <- Context.lookupValue v ctx ->
         simplifyMatch coveredLits $ Match expr' pat typ
-    (Core.appsView -> (Core.Con qc, pes), Pre.ConPat qcs pats)
+    (Core.appsView -> (Core.Con qc, pes), ConPat qcs pats)
       | qc `HashSet.member` qcs -> do
         paramsTele <- lift $ fetchTypeParamsTele $ gname $ qconstrTypeName qc
         conType <- fetchQConstructor qc
@@ -337,10 +337,10 @@ simplifyMatch coveredLits m@(Match expr pat typ) = do
           matches = Vector.zipWith3 Match argExprs (snd <$> equalisedPats) argTypes
         concat <$> mapM (simplifyMatch coveredLits) matches
       | otherwise -> fail "Constructor mismatch"
-    (_, Pre.PatLoc loc pat') -> do
+    (_, PatLoc loc pat') -> do
       res <- located loc $ simplifyMatch coveredLits $ Match expr pat' typ
       return $ case res of
-        [Match expr'' pat'' typ''] -> [Match expr'' (Pre.PatLoc loc pat'') typ'']
+        [Match expr'' pat'' typ''] -> [Match expr'' (PatLoc loc pat'') typ'']
         _ -> res
     (Core.SourceLoc _ expr', _) -> simplifyMatch coveredLits $ Match expr' pat typ
     _ -> return [m]
@@ -352,7 +352,7 @@ expandAnnos
 expandAnnos _ [] = fail "expanded nothing"
 expandAnnos sub (c:cs) = case matchSubst c of
   Nothing -> case c of
-    Match expr (Pre.AnnoPat pat annoScope) typ -> do
+    Match expr (AnnoPat pat annoScope) typ -> do
       annoType' <- instantiateSubst sub annoScope $ \annoType ->
         lift $ checkPoly annoType Builtin.Type
       runUnify (unify [] annoType' typ) report
@@ -368,8 +368,8 @@ fetchTypeParamsTele n = do
     DataDefinition (DataDef paramsTele _) _ -> return paramsTele
 
 matchSubst :: Match -> Maybe PatSubst
-matchSubst (Match expr (Pre.VarPat pv) typ) = return $ HashMap.singleton pv (expr, typ)
-matchSubst (Match expr (Pre.PatLoc _ pat) typ) = matchSubst $ Match expr pat typ
+matchSubst (Match expr (VarPat pv) typ) = return $ HashMap.singleton pv (expr, typ)
+matchSubst (Match expr (PatLoc _ pat) typ) = matchSubst $ Match expr pat typ
 matchSubst _ = Nothing
 
 solved :: [Match] -> Maybe PatSubst
@@ -414,8 +414,8 @@ instantiateSubst sub scope k = do
 exactlyEqualisePats
   :: (Pretty c, Pretty l)
   => [Plicitness]
-  -> [(Plicitness, Pre.Pat c l e v)]
-  -> Elaborate [(Plicitness, Pre.Pat c l e v)]
+  -> [(Plicitness, Pat c l e v)]
+  -> Elaborate [(Plicitness, Pat c l e v)]
 exactlyEqualisePats [] [] = return []
 exactlyEqualisePats [] ((p, pat):_) = do
   reportLocated
@@ -432,9 +432,9 @@ exactlyEqualisePats (Implicit:ps) ((Implicit, pat):pats)
 exactlyEqualisePats (Explicit:ps) ((Explicit, pat):pats)
   = (:) (Explicit, pat) <$> exactlyEqualisePats ps pats
 exactlyEqualisePats (Constraint:ps) pats
-  = (:) (Constraint, Pre.WildcardPat) <$> exactlyEqualisePats ps pats
+  = (:) (Constraint, WildcardPat) <$> exactlyEqualisePats ps pats
 exactlyEqualisePats (Implicit:ps) pats
-  = (:) (Implicit, Pre.WildcardPat) <$> exactlyEqualisePats ps pats
+  = (:) (Implicit, WildcardPat) <$> exactlyEqualisePats ps pats
 exactlyEqualisePats (Explicit:ps) ((Constraint, pat):pats) = do
   reportExpectedExplicit pat
   exactlyEqualisePats (Explicit:ps) pats
@@ -448,13 +448,13 @@ exactlyEqualisePats (Explicit:ps) [] = do
       , "Found: no patterns."
       , bold "Expected:" PP.<+> "an explicit pattern."
       ]
-  exactlyEqualisePats (Explicit:ps) [(Explicit, Pre.WildcardPat)]
+  exactlyEqualisePats (Explicit:ps) [(Explicit, WildcardPat)]
 
 equalisePats
   :: (Pretty c, Pretty l)
   => [Plicitness]
-  -> [(Plicitness, Pre.Pat c l e v)]
-  -> Elaborate [(Plicitness, Pre.Pat c l e v)]
+  -> [(Plicitness, Pat c l e v)]
+  -> Elaborate [(Plicitness, Pat c l e v)]
 equalisePats _ [] = return []
 equalisePats [] pats = return pats
 equalisePats (Constraint:ps) ((Constraint, pat):pats)
@@ -464,9 +464,9 @@ equalisePats (Implicit:ps) ((Implicit, pat):pats)
 equalisePats (Explicit:ps) ((Explicit, pat):pats)
   = (:) (Explicit, pat) <$> equalisePats ps pats
 equalisePats (Constraint:ps) pats
-  = (:) (Constraint, Pre.WildcardPat) <$> equalisePats ps pats
+  = (:) (Constraint, WildcardPat) <$> equalisePats ps pats
 equalisePats (Implicit:ps) pats
-  = (:) (Implicit, Pre.WildcardPat) <$> equalisePats ps pats
+  = (:) (Implicit, WildcardPat) <$> equalisePats ps pats
 equalisePats (Explicit:ps) ((Implicit, pat):pats) = do
   reportExpectedExplicit pat
   equalisePats (Explicit:ps) pats
@@ -474,7 +474,7 @@ equalisePats (Explicit:ps) ((Constraint, pat):pats) = do
   reportExpectedExplicit pat
   equalisePats (Explicit:ps) pats
 
-reportExpectedExplicit :: (Pretty c, Pretty l) => Pre.Pat c l e v -> Elaborate ()
+reportExpectedExplicit :: (Pretty c, Pretty l) => Pat c l e v -> Elaborate ()
 reportExpectedExplicit pat
   = reportLocated
   $ PP.vcat
