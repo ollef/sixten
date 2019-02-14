@@ -14,6 +14,7 @@ import Data.Vector(Vector)
 import Syntax hiding (Definition(..))
 import qualified Syntax.Pre.Literal as Pre
 import Syntax.Pre.Pattern
+import Util
 
 data Definition expr v
   = ConstantDefinition (ConstantDef expr v)
@@ -23,7 +24,7 @@ data Definition expr v
   deriving (Foldable, Functor, Show, Traversable)
 
 data Clause expr v = Clause
-  { clausePatterns :: Vector (Plicitness, Pat (HashSet QConstr) Pre.Literal (Scope PatternVar expr v) ())
+  { clausePatterns :: Vector (Plicitness, Pat (HashSet QConstr) Pre.Literal (Scope PatternVar expr v) NameHint)
   , clauseScope :: Scope PatternVar expr v
   } deriving Show
 
@@ -127,7 +128,7 @@ instance GBound Clause where
 instance (Pretty (expr v), Monad expr, v ~ Doc)
   => PrettyNamed (Clause expr v) where
   prettyNamed name (Clause pats s)
-    = withNameHints (nameHints . snd =<< pats) $ \ns -> do
+    = withNameHints (toVector . snd =<< pats) $ \ns -> do
       let go (p, pat)
             = prettyAnnotation p
             $ prettyM $ first (instantiatePattern (pure . fromName) ns) pat

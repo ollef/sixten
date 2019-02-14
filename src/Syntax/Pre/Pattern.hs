@@ -18,7 +18,7 @@ import Syntax
 import Util
 
 data Pat con lit typ b
-  = VarPat !NameHint b
+  = VarPat b
   | WildcardPat
   | LitPat lit
   | ConPat con (Vector (Plicitness, Pat con lit typ b))
@@ -37,7 +37,7 @@ liftPatEq
   -> Pat con1 lit1 typ1 a
   -> Pat con2 lit2 typ2 b
   -> Bool
-liftPatEq _ _ _ g (VarPat _ a) (VarPat _ b) = g a b
+liftPatEq _ _ _ g (VarPat a) (VarPat b) = g a b
 liftPatEq _ _ _ _ WildcardPat WildcardPat = True
 liftPatEq _ l _ _ (LitPat l1) (LitPat l2) = l l1 l2
 liftPatEq e l f g (ConPat c1 as1) (ConPat c2 as2)
@@ -49,18 +49,8 @@ liftPatEq e l f g (PatLoc _ p1) p2 = liftPatEq e l f g p1 p2
 liftPatEq e l f g p1 (PatLoc _ p2) = liftPatEq e l f g p1 p2
 liftPatEq _ _ _ _ _ _ = False
 
-nameHints :: Pat con lit typ b -> Vector NameHint
-nameHints pat = case pat of
-  VarPat h _ -> pure h
-  WildcardPat -> mempty
-  LitPat _ -> mempty
-  ConPat _ ps -> ps >>= nameHints . snd
-  AnnoPat p _ -> nameHints p
-  ViewPat _ p -> nameHints p
-  PatLoc _ p -> nameHints p
-
-patternHint :: Pat con lit typ b -> NameHint
-patternHint (unPatLoc -> VarPat h _) = h
+patternHint :: Monoid b => Pat con lit typ b -> b
+patternHint (unPatLoc -> VarPat b) = b
 patternHint _ = mempty
 
 unPatLoc :: Pat con lit typ b -> Pat con lit typ b
@@ -72,7 +62,7 @@ bindPatLits
   -> Pat con lit typ b
   -> Pat con lit' typ b
 bindPatLits f pat = case pat of
-  VarPat h v -> VarPat h v
+  VarPat v -> VarPat v
   WildcardPat -> WildcardPat
   LitPat l -> f l
   ConPat c ps -> ConPat c (second (bindPatLits f) <$> ps)
@@ -83,7 +73,7 @@ bindPatLits f pat = case pat of
 -------------------------------------------------------------------------------
 -- Instances
 instance (Eq con, Eq lit, Eq typ, Eq b) => Eq (Pat con lit typ b) where
-  VarPat h1 b1 == VarPat h2 b2 = h1 == h2 && b1 == b2
+  VarPat b1 == VarPat b2 = b1 == b2
   WildcardPat == WildcardPat = True
   LitPat l1 == LitPat l2 = l1 == l2
   ConPat c1 as1 == ConPat c2 as2 = c1 == c2 && as1 == as2
@@ -98,11 +88,9 @@ instance Applicative (Pat con lit typ) where
   (<*>) = ap
 
 instance Monad (Pat con lit typ) where
-  return = VarPat mempty
+  return = VarPat
   pat >>= f = case pat of
-    VarPat h b -> case f b of
-      VarPat h' b' -> VarPat (h' <> h) b'
-      fb -> fb
+    VarPat b -> f b
     WildcardPat -> WildcardPat
     LitPat l -> LitPat l
     ConPat c pats -> ConPat c [(a, p >>= f) | (a, p) <- pats]
@@ -115,7 +103,7 @@ instance Bifoldable (Pat con lit) where bifoldMap = bifoldMapDefault
 
 instance Bitraversable (Pat con lit) where
   bitraverse f g pat = case pat of
-    VarPat h b -> VarPat h <$> g b
+    VarPat b -> VarPat <$> g b
     WildcardPat -> pure WildcardPat
     LitPat l -> pure $ LitPat l
     ConPat c pats -> ConPat c <$> traverse (traverse (bitraverse f g)) pats
@@ -132,7 +120,7 @@ prettyPattern names = prettyM . fmap ((names Vector.!) . fst) . indexed
 
 instance (Pretty con, Pretty lit, Pretty typ, Pretty b) => Pretty (Pat con lit typ b) where
   prettyM pat = case pat of
-    VarPat _ b -> prettyM b
+    VarPat b -> prettyM b
     WildcardPat -> "_"
     LitPat l -> prettyM l
     ConPat c args -> prettyApps (prettyM c) $ (\(p, arg) -> prettyAnnotation p $ prettyM arg) <$> args

@@ -120,8 +120,8 @@ equaliseClauses clauses
     (Pre.clauseScope <$> clauses)
   where
     go
-      :: NonEmpty [(Plicitness, Pre.Pat c l (Scope b expr v) ())]
-      -> NonEmpty ([(Plicitness, Pre.Pat c l (Scope b expr v) ())], [Plicitness])
+      :: NonEmpty [(Plicitness, Pre.Pat c l (Scope b expr v) NameHint)]
+      -> NonEmpty ([(Plicitness, Pre.Pat c l (Scope b expr v) NameHint)], [Plicitness])
     go clausePats
       | numEx == 0 && numIm == 0 = (, mempty) <$> clausePats
       | numEx == len = NonEmpty.zipWith (first . (:)) heads $ go tails
@@ -136,15 +136,15 @@ equaliseClauses clauses
         tails = drop 1 <$> clausePats
         len = length clausePats
     go'
-      :: NonEmpty ([(Plicitness, Pre.Pat c l (Scope b expr v) ())], [Plicitness])
-      -> NonEmpty ([(Plicitness, Pre.Pat c l (Scope b expr v) ())], [Plicitness])
+      :: NonEmpty ([(Plicitness, Pre.Pat c l (Scope b expr v) NameHint)], [Plicitness])
+      -> NonEmpty ([(Plicitness, Pre.Pat c l (Scope b expr v) NameHint)], [Plicitness])
     go' clausePats
       = NonEmpty.zipWith
         (\ps (pats, ps') -> (pats, ps ++ ps'))
         (snd <$> clausePats)
         (go $ fst <$> clausePats)
 
-    numExplicit, numImplicit :: NonEmpty [(Plicitness, Pre.Pat c l (Scope b expr v) ())] -> Int
+    numExplicit, numImplicit :: NonEmpty [(Plicitness, Pre.Pat c l (Scope b expr v) NameHint)] -> Int
     numExplicit = length . NonEmpty.filter (\case
       (Explicit, _):_ -> True
       _ -> False)
@@ -154,16 +154,16 @@ equaliseClauses clauses
       _ -> False)
 
     addImplicit, addExplicit
-      :: [(Plicitness, Pre.Pat c l (Scope b expr v) ())]
-      -> ([(Plicitness, Pre.Pat c l (Scope b expr v) ())], [Plicitness])
+      :: [(Plicitness, Pre.Pat c l (Scope b expr v) NameHint)]
+      -> ([(Plicitness, Pre.Pat c l (Scope b expr v) NameHint)], [Plicitness])
     addImplicit pats@((Implicit, _):_) = (pats, mempty)
     addImplicit pats = ((Implicit, Pre.WildcardPat) : pats, mempty)
 
     addExplicit pats@((Explicit, _):_) = (pats, mempty)
-    addExplicit pats = ((Explicit, Pre.VarPat mempty ()) : pats, pure Explicit)
+    addExplicit pats = ((Explicit, Pre.VarPat mempty) : pats, pure Explicit)
 
 etaClause
-  :: [(Plicitness, Pre.Pat (HashSet QConstr) Pre.Literal (Scope PatternVar Pre.Expr v) ())]
+  :: [(Plicitness, Pre.Pat (HashSet QConstr) Pre.Literal (Scope PatternVar Pre.Expr v) NameHint)]
   -> [Plicitness]
   -> Scope PatternVar Pre.Expr v
   -> Pre.Clause Pre.Expr v

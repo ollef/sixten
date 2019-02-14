@@ -101,8 +101,9 @@ checkAndGeneraliseDefs defs = do
     defBindings = foreach defs $ \(v, n, _, d, t) -> (v, binding (fromQName n) (defPlicitness d) t)
   Context.extends defBindings $ do
     -- Divide the definitions into ones with and without type signature.
+    ctx <- getContext
     let
-      (noSigDefs, sigDefs) = divide defs
+      (noSigDefs, sigDefs) = divide ctx defs
 
     -- Assume that the specified type signatures are correct.
     sigDefs' <- forM sigDefs $ \(var, name, loc, def, typ) -> do
@@ -150,12 +151,12 @@ checkAndGeneraliseDefs defs = do
   where
     -- Prevent metavariables to recursively refer to the bindings in this
     -- binding group unless we know we're going to generalise
-    divide = bimap Vector.fromList Vector.fromList . foldMap go
+    divide ctx = bimap Vector.fromList Vector.fromList . foldMap go
       where
         go (v, name, loc, def@(Pre.ConstantDefinition (Pre.ConstantDef _ _ (Just typ))), _) = ([], [(v, name, loc, def, typ)])
         go (v, name, loc, def@(Pre.ConstantDefinition (Pre.ConstantDef _ _ Nothing)), _) = ([(v, name, loc, def)], [])
-        go (v, name, loc, def@(Pre.DataDefinition (DataDef tele _)), _) = ([], [(v, name, loc, def, Pre.telePis tele $ Pre.Global Builtin.TypeName)])
-        go (v, name, loc, def@(Pre.ClassDefinition (ClassDef tele _)), _) = ([], [(v, name, loc, def, Pre.telePis tele $ Pre.Global Builtin.TypeName)])
+        go (v, name, loc, def@(Pre.DataDefinition (DataDef tele _)), _) = ([], [(v, name, loc, def, Pre.telePis (`Context.lookupHint` ctx) tele $ Pre.Global Builtin.TypeName)])
+        go (v, name, loc, def@(Pre.ClassDefinition (ClassDef tele _)), _) = ([], [(v, name, loc, def, Pre.telePis (`Context.lookupHint` ctx) tele $ Pre.Global Builtin.TypeName)])
         go (v, name, loc, def@(Pre.InstanceDefinition (Pre.InstanceDef typ _)), _) = ([], [(v, name, loc, def, typ)])
 
 checkDefs

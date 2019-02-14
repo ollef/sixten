@@ -62,7 +62,7 @@ matchClauses vars preClauses typ k = do
 matchBranches
   :: CoreM
   -> CoreM
-  -> [(Pre.Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr FreeVar) (), PatternScope Pre.Expr FreeVar)]
+  -> [(Pre.Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr FreeVar) NameHint, PatternScope Pre.Expr FreeVar)]
   -> Polytype
   -> (Pre.Expr FreeVar -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
@@ -109,7 +109,7 @@ uninhabited typ = do
 
 matchSingle
   :: FreeVar
-  -> Pre.Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr FreeVar) ()
+  -> Pre.Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr FreeVar) NameHint
   -> PatternScope Pre.Expr FreeVar
   -> Polytype
   -> (Pre.Expr FreeVar -> Polytype -> Elaborate CoreM)
@@ -368,7 +368,7 @@ fetchTypeParamsTele n = do
     DataDefinition (DataDef paramsTele _) _ -> return paramsTele
 
 matchSubst :: Match -> Maybe PatSubst
-matchSubst (Match expr (Pre.VarPat _ pv) typ) = return $ HashMap.singleton pv (expr, typ)
+matchSubst (Match expr (Pre.VarPat pv) typ) = return $ HashMap.singleton pv (expr, typ)
 matchSubst (Match expr (Pre.PatLoc _ pat) typ) = matchSubst $ Match expr pat typ
 matchSubst _ = Nothing
 

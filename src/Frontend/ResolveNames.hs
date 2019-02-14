@@ -240,7 +240,7 @@ resolveClause
   -> ResolveNames (Scoped.Clause Scoped.Expr PreName)
 resolveClause (Unscoped.Clause plicitPats e) = do
   plicitPats' <- traverse (traverse resolvePat) plicitPats
-  Scoped.clause plicitPats' <$> resolveExpr e
+  Scoped.clause fromPreName plicitPats' <$> resolveExpr e
 
 resolveExpr
   :: Unscoped.Expr
@@ -257,10 +257,10 @@ resolveExpr expr = case expr of
   Unscoped.Lit l -> return $ Scoped.Lit l
   Unscoped.Pi p pat e -> do
     pat' <- resolvePat pat
-    Scoped.pi_ p pat' <$> resolveExpr e
+    Scoped.pi_ fromPreName p pat' <$> resolveExpr e
   Unscoped.Lam p pat e -> do
     pat' <- resolvePat pat
-    Scoped.lam p pat' <$> resolveExpr e
+    Scoped.lam fromPreName p pat' <$> resolveExpr e
   Unscoped.App e1 p e2 -> Scoped.App
     <$> resolveExpr e1
     <*> pure p
@@ -281,7 +281,7 @@ resolveExpr expr = case expr of
             (abstract abstr e)
 
     return $ foldr go body' $ flattenSCC <$> sortedDefs
-  Unscoped.Case e pats -> Scoped.case_
+  Unscoped.Case e pats -> Scoped.case_ fromPreName
     <$> resolveExpr e
     <*> mapM (bitraverse resolvePat resolveExpr) pats
   Unscoped.ExternCode c -> Scoped.ExternCode <$> mapM resolveExpr c
@@ -299,10 +299,10 @@ resolvePat
   :: Pat PreName Scoped.Literal Unscoped.Expr PreName
   -> ResolveNames (Pat (HashSet QConstr) Scoped.Literal (Scoped.Expr PreName) PreName)
 resolvePat pat = case pat of
-  VarPat h v -> do
+  VarPat v -> do
     constrCandidates <- asks (($ v) . scopeConstrs)
     if HashSet.null constrCandidates then
-      return $ VarPat h v
+      return $ VarPat v
     else do
       modify $ mappend $ HashSet.map qconstrTypeName constrCandidates
       return $ ConPat constrCandidates mempty

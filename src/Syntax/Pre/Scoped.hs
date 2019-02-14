@@ -32,11 +32,11 @@ data Expr v
   | Global QName
   | Lit Pre.Literal
   | Con (HashSet QConstr)
-  | Pi !Plicitness (Pat (HashSet QConstr) Pre.Literal (PatternScope Type v) ()) (PatternScope Expr v)
-  | Lam !Plicitness (Pat (HashSet QConstr) Pre.Literal (PatternScope Type v) ()) (PatternScope Expr v)
+  | Pi !Plicitness (Pat (HashSet QConstr) Pre.Literal (PatternScope Type v) NameHint) (PatternScope Expr v)
+  | Lam !Plicitness (Pat (HashSet QConstr) Pre.Literal (PatternScope Type v) NameHint) (PatternScope Expr v)
   | App (Expr v) !Plicitness (Expr v)
   | Let (Vector (SourceLoc, NameHint, ConstantDef Expr (Var LetVar v))) (Scope LetVar Expr v)
-  | Case (Expr v) [(Pat (HashSet QConstr) Pre.Literal (PatternScope Type v) (), PatternScope Expr v)]
+  | Case (Expr v) [(Pat (HashSet QConstr) Pre.Literal (PatternScope Type v) NameHint, PatternScope Expr v)]
   | ExternCode (Extern (Expr v))
   | Wildcard
   | SourceLoc !SourceLoc (Expr v)
@@ -48,59 +48,66 @@ type Type = Expr
 -- Helpers
 clause
   :: (Monad expr, Hashable v, Eq v)
-  => Vector (Plicitness, Pat (HashSet QConstr) Pre.Literal (expr v) v)
+  => (v -> NameHint)
+  -> Vector (Plicitness, Pat (HashSet QConstr) Pre.Literal (expr v) v)
   -> expr v
   -> Clause expr v
-clause plicitPats e = do
+clause h plicitPats e = do
   let pats = snd <$> plicitPats
       vars = pats >>= toVector
-      typedPats = fmap void <$> abstractPatternsTypes vars plicitPats
+      typedPats = fmap (fmap h) <$> abstractPatternsTypes vars plicitPats
   Clause typedPats $ abstract (patternAbstraction vars) e
 
 pi_
   :: (Hashable v, Eq v)
-  => Plicitness
+  => (v -> NameHint)
+  -> Plicitness
   -> Pat (HashSet QConstr) Pre.Literal (Type v) v
   -> Expr v
   -> Expr v
-pi_ p pat = Pi p (void $ abstractPatternTypes vs pat) . abstract (patternAbstraction vs)
+pi_ h p pat = Pi p (h <$> abstractPatternTypes vs pat) . abstract (patternAbstraction vs)
     where
       vs = toVector pat
 
 pis
   :: (Hashable v, Eq v, Foldable t)
-  => t (Plicitness, Pat (HashSet QConstr) Pre.Literal (Type v) v)
+  => (v -> NameHint)
+  -> t (Plicitness, Pat (HashSet QConstr) Pre.Literal (Type v) v)
   -> Expr v
   -> Expr v
-pis pats e = foldr (uncurry pi_) e pats
+pis h pats e = foldr (uncurry $ pi_ h) e pats
 
 telePis
   :: (Hashable v, Eq v)
-  => Telescope Type v
+  => (v -> NameHint)
+  -> Telescope Type v
   -> Expr v
   -> Expr v
-telePis tele e = fmap (unvar (panic "telePis") identity) $ pis pats $ F <$> e
+telePis h tele e = fmap (unvar (panic "telePis") identity) $ pis h' pats $ F <$> e
   where
-    pats = iforTele tele $ \i h p s -> (p, AnnoPat (VarPat h $ B $ TeleVar i) $ fromScope s)
+    h' = unvar (\(TeleVar v) -> teleHints tele Vector.! v) h
+    pats = iforTele tele $ \i _ p s -> (p, AnnoPat (VarPat $ B $ TeleVar i) $ fromScope s)
 
 lam
   :: (Hashable v, Eq v)
-  => Plicitness
+  => (v -> NameHint)
+  -> Plicitness
   -> Pat (HashSet QConstr) Pre.Literal (Type v) v
   -> Expr v
   -> Expr v
-lam p pat = Lam p (void $ abstractPatternTypes vs pat) . abstract (patternAbstraction vs)
+lam h p pat = Lam p (h <$> abstractPatternTypes vs pat) . abstract (patternAbstraction vs)
     where
       vs = toVector pat
 
 case_
   :: (Hashable v, Eq v)
-  => Expr v
+  => (v -> NameHint)
+  -> Expr v
   -> [(Pat (HashSet QConstr) Pre.Literal (Type v) v, Expr v)]
   -> Expr v
-case_ expr pats = Case expr $ go <$> pats
+case_ h expr pats = Case expr $ go <$> pats
   where
-    go (pat, e) = (void $ abstractPatternTypes vs pat, abstract (patternAbstraction vs) e)
+    go (pat, e) = (h <$> abstractPatternTypes vs pat, abstract (patternAbstraction vs) e)
       where
         vs = toVector pat
 
@@ -203,12 +210,12 @@ instance v ~ Doc => Pretty (Expr v) where
       let inst = instantiatePattern (pure . fromName) mempty
       prettyAnnotation p (prettyM $ inst t) <+> "->" <+>
         associate arrPrec (prettyM $ inst s)
-    Pi p pat s -> withNameHints (nameHints pat) $ \ns -> do
+    Pi p pat s -> withNameHints (toVector pat) $ \ns -> do
       let inst = instantiatePattern (pure . fromName) ns
       parens `above` arrPrec $
         prettyAnnotation p (prettyPattern ns $ first inst pat) <+> "->" <+>
           associate arrPrec (prettyM $ inst s)
-    Lam p pat s -> withNameHints (nameHints pat) $ \ns -> do
+    Lam p pat s -> withNameHints (toVector pat) $ \ns -> do
       let inst = instantiatePattern (pure . fromName) ns
       parens `above` absPrec $
         "\\" <> prettyAnnotation p (prettyPattern ns $ first inst pat) <> "." <+>
@@ -227,6 +234,6 @@ instance v ~ Doc => Pretty (Expr v) where
     Wildcard -> "_"
     SourceLoc _ e -> prettyM e
     where
-      prettyBranch (pat, br) = withNameHints (nameHints pat) $ \ns -> do
+      prettyBranch (pat, br) = withNameHints (toVector pat) $ \ns -> do
         let inst = instantiatePattern (pure . fromName) ns
         prettyPattern ns (first inst pat) <+> "->" <+> prettyM (inst br)

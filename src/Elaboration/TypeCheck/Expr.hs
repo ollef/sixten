@@ -238,7 +238,7 @@ tcLet ds scope expected expectedAppResult = do
 
 tcBranches
   :: PreM
-  -> [(Pre.Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr FreeVar) (), PatternScope Pre.Expr FreeVar)]
+  -> [(Pre.Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr FreeVar) NameHint, PatternScope Pre.Expr FreeVar)]
   -> Expected Rhotype
   -> Maybe Rhotype
   -> Elaborate CoreM
