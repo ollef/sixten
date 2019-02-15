@@ -1,0 +1,3 @@
+type Maybe a = Nothing | Just a
+
+fromJust (Just a) = a
