@@ -15,7 +15,6 @@ import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
 import Elaboration.TypeCheck.Expr
-import Elaboration.TypeOf
 import Elaboration.Unify
 import Syntax
 import qualified Syntax.Core as Core
@@ -51,8 +50,6 @@ checkDataDef var (DataDef ps cs) typ =
         typeRep
           = productType (Core.MkType tagRep)
           $ foldl' sumType (Core.MkType TypeRep.UnitRep) sizes
-
-    flip runUnify report . unify [] Builtin.Type =<< typeOf constrRetType
 
     forM_ cs' $ \(ConstrDef qc e) ->
       logMeta "tc.data" ("checkDataDef res " ++ show qc) $ zonk e
