@@ -1,0 +1,31 @@
+type Fin (n : Nat) where
+  Zero : forall m. Fin (Succ m)
+  Succ : forall m. Ptr (Fin m) -> Fin (Succ m)
+
+f1 : Fin (Succ (Succ (Succ Zero)))
+f1 = Succ (Ref Zero)
+
+f2 : Fin (Succ (Succ (Succ Zero)))
+f2 = Succ (Ref (Succ (Ref Zero)))
+
+addNat : Nat -> Nat -> Nat
+addNat Zero n = n
+addNat (Succ m) n = Succ (addNat m n)
+
+succIndex : forall n. Ptr (Fin n) -> Ptr (Fin (Succ n))
+succIndex (Ref Zero) = Ref Zero
+succIndex (Ref (Succ x)) = Ref (Succ (succIndex x))
+
+addIndex : forall n. (m : Nat) -> Ptr (Fin n) -> Ptr (Fin (addNat m n))
+addIndex Zero x = x
+addIndex (Succ n) x = succIndex (addIndex n x)
+
+addFin : forall m n. Ptr (Fin m) -> Ptr (Fin n) -> Ptr (Fin (addNat m n))
+addFin @m (Ref Zero) y = addIndex m y
+addFin (Ref (Succ x)) y = Ref (Succ (addFin x y))
+
+toInt : forall n. Ptr (Fin n) -> Int
+toInt (Ref Zero) = 0
+toInt (Ref (Succ n)) = addInt 1 (toInt n)
+
+main = printInt (toInt (Ref f2))

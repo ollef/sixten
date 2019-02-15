@@ -1,0 +1,25 @@
+type Equals a b where
+  Refl : Equals a a
+
+lhs1 : forall a b. a -> Equals a b -> b
+lhs1 x Refl = x
+
+rhs1 : Equals Int ((\x. x) Int)
+rhs1 = Refl
+
+test = printInt (lhs1 123 rhs1)
+
+lhs2 : (a : Int) -> Equals a 610 -> Equals 610 a
+lhs2 a Refl = Refl
+
+rhs2 : Equals 610 610
+rhs2 = Refl
+
+reflexive : forall a. Equals a a
+reflexive = Refl
+
+symmetric : forall a b. Equals a b -> Equals b a
+symmetric Refl = Refl
+
+transitive : forall a b c. Equals a b -> Equals b c -> Equals a c
+transitive Refl Refl = Refl

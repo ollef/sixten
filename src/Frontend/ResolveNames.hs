@@ -1,7 +1,11 @@
-{-# LANGUAGE FlexibleContexts, MonadComprehensions, OverloadedStrings, ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MonadComprehensions #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 module Frontend.ResolveNames where
 
-import Protolude hiding (TypeError)
+import Protolude hiding (TypeError, moduleName)
 
 import Control.Monad.RWS
 import Data.Bitraversable
@@ -53,13 +57,14 @@ resolveModule modul defs = do
         $ localConstrAliases defs <> importedConstrAliases
 
   checkedDefDeps <- forM (HashMap.toList defs) $ \(n, (loc, def)) -> do
-    (def', deps) <- runResolveNames (resolveTopLevelDefinition def) env
+    (def', deps) <- runResolveNames (resolveTopLevelDefinition modul def) env
     return (n, loc, def', deps)
 
   let aliases = localAliases defs <> importedNameAliases
       lookupAlias preName
         | HashSet.size candidates == 1 = return $ pure $ fromMaybe (panic "resolveModule impossible") $ head $ HashSet.toList candidates
         | HashSet.size candidates == 0 = do
+          logCategory "resolve" "aaa"
           report
             $ TypeError ("Not in scope:" PP.<+> red (pretty preName)) (preNameSourceLoc preName) mempty
           let err = Scoped.App
@@ -68,6 +73,7 @@ resolveModule modul defs = do
                 (Scoped.Lit $ Literal.String "error\n")
           return err
         | otherwise = do
+          logCategory "resolve" "bbb"
           report
             $ TypeError ("Ambiguous occurrence:" PP.<+> red (pretty preName)) (preNameSourceLoc preName) $ PP.vcat
               [ "It could refer to" PP.<+> prettyHumanList "or" (dullBlue . pretty <$> toList candidates) <> "."
@@ -115,8 +121,8 @@ localConstrAliases contents = MultiHashMap.fromList $ concat
     , (fromModuleName (qnameModule n) <> "." <> k, QConstr n c)
     , (fromQName n <> "." <> k, QConstr n c)
     ]
-  | (n, (_, Unscoped.TopLevelDataDefinition _ _ d)) <- HashMap.toList contents
-  , c <- constrName <$> d
+  | (n, (_, Unscoped.TopLevelDataDefinition _ _ cs)) <- HashMap.toList contents
+  , c <- Unscoped.constrName <$> cs
   , let k = fromConstr c
   ]
 
@@ -194,19 +200,33 @@ importedAliases (Import modName asName exposed) = do
 
 -- | Distinguish variables from constructors, resolve scopes
 resolveTopLevelDefinition
-  :: Unscoped.TopLevelDefinition
+  :: ModuleHeader
+  -> Unscoped.TopLevelDefinition
   -> ResolveNames (Scoped.Definition Scoped.Expr PreName)
-resolveTopLevelDefinition (Unscoped.TopLevelDefinition d) =
+resolveTopLevelDefinition _ (Unscoped.TopLevelDefinition d) =
   Scoped.ConstantDefinition . snd <$> resolveDefinition d
-resolveTopLevelDefinition (Unscoped.TopLevelDataDefinition _name params cs) = do
+resolveTopLevelDefinition modul (Unscoped.TopLevelDataDefinition name params cs) = do
   (params', abstr) <- resolveParams params
-  cs' <- mapM (mapM (fmap abstr . resolveExpr)) cs
+  let
+    dataType
+      = Unscoped.apps
+        (Unscoped.Var $ fromQName $ QName (moduleName modul) name)
+        [(p, Unscoped.Var $ fromName n) | (p, n, _) <- params]
+  cs' <- forM cs $ \case
+    Unscoped.ADTConstrDef c types -> do
+      let
+        typ = Unscoped.pis
+          ((\e -> (Explicit, AnnoPat WildcardPat e)) <$> types)
+          dataType
+      ConstrDef c . abstr <$> resolveExpr typ
+    Unscoped.GADTConstrDef c typ ->
+      ConstrDef c . abstr <$> resolveExpr typ
   return $ Scoped.DataDefinition $ DataDef params' cs'
-resolveTopLevelDefinition (Unscoped.TopLevelClassDefinition _name params ms) = do
+resolveTopLevelDefinition _ (Unscoped.TopLevelClassDefinition _name params ms) = do
   (params', abstr) <- resolveParams params
   ms' <- mapM (mapM (fmap abstr . resolveExpr)) ms
   return $ Scoped.ClassDefinition $ ClassDef params' ms'
-resolveTopLevelDefinition (Unscoped.TopLevelInstanceDefinition typ ms) = do
+resolveTopLevelDefinition _ (Unscoped.TopLevelInstanceDefinition typ ms) = do
   typ' <- resolveExpr typ
   ms' <- mapM (\(loc, m) -> (,) loc <$> resolveDefinition m) ms
   return
@@ -348,7 +368,7 @@ moduleExports moduleHeader_ defs = do
     conNames = HashSet.fromList
       [ QConstr n c
       | (n, (_, Unscoped.TopLevelDataDefinition _ _ cs)) <- HashMap.toList defs
-      , c <- constrName <$> cs
+      , c <- Unscoped.constrName <$> cs
       , p $ qnameName n
       ]
     methods = HashSet.fromList

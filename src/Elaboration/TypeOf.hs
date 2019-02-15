@@ -16,7 +16,7 @@ import Syntax
 import Syntax.Core
 import Util
 
-type MonadTypeOf meta m = (Show meta, MonadIO m, MonadFetch Query m, MonadFresh m, MonadLog m, MonadContext (Expr meta FreeVar) m)
+type MonadTypeOf meta m = (Show meta, MonadIO m, MonadFetch Query m, MonadFresh m, MonadLog m, MonadContext (Expr meta FreeVar) m, MonadReport m)
 
 data Args meta m = Args
   { typeOfMeta :: !(meta -> Closed (Expr meta))

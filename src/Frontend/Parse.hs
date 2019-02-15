@@ -448,9 +448,8 @@ dataDef = TopLevelDataDefinition <$ reserved "type" <*>% name <*> manyTypedBindi
   where
     conDef = constrDefs <$> ((:) <$> constructor <*> manySI constructor)
       <*% symbol ":" <*>% expr
-    constrDefs cs t = [ConstrDef c t | c <- cs]
-    adtConDef = ConstrDef <$> constructor <*> (adtConType <$> manySI atomicExpr)
-    adtConType es = Unscoped.pis ((\e -> (Explicit, AnnoPat WildcardPat e)) <$> es) Wildcard
+    constrDefs cs t = [GADTConstrDef c t | c <- cs]
+    adtConDef = ADTConstrDef <$> constructor <*> manySI atomicExpr
 
 classDef :: Parser TopLevelDefinition
 classDef = TopLevelClassDefinition <$ reserved "class" <*>% name <*> manyTypedBindings
