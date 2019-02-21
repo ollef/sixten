@@ -11,7 +11,7 @@ import {-# SOURCE #-} Elaboration.MetaVar.Zonk
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect
-import Effect.Context as Context
+import qualified Effect.Context as Context
 import Effect.Log as Log
 import Elaboration.MetaVar
 import Elaboration.Monad
@@ -21,13 +21,13 @@ import TypeRep(TypeRep)
 import qualified TypeRep
 import Util
 
-type MonadNormalise meta m = (MonadIO m, MonadFetch Query m, MonadFresh m, MonadContext (Expr meta FreeVar) m, MonadLog m, MonadReport m)
+type MonadNormalise meta m = (MonadIO m, MonadFetch Query m, MonadFresh m, MonadContext (Expr meta Var) m, MonadLog m, MonadReport m)
 
 data Args meta m = Args
   { _expandTypeReps :: !Bool
     -- ^ Should types be reduced to type representations (i.e. forget what the
     -- type is and only remember its representation)?
-  , _prettyExpr :: !(Expr meta FreeVar -> m Doc)
+  , _prettyExpr :: !(Expr meta Var -> m Doc)
   , _handleMetaVar :: !(meta -> m (Maybe (Closed (Expr meta))))
     -- ^ Allows whnf to try to solve unsolved class constraints when they're
     -- encountered.
@@ -67,18 +67,18 @@ whnf expr = whnf' metaVarSolutionArgs expr mempty
 whnf'
   :: MonadNormalise meta m
   => Args meta m
-  -> Expr meta FreeVar -- ^ Expression to normalise
-  -> [(Plicitness, Expr meta FreeVar)] -- ^ Arguments to the expression
-  -> m (Expr meta FreeVar)
+  -> Expr meta Var -- ^ Expression to normalise
+  -> [(Plicitness, Expr meta Var)] -- ^ Arguments to the expression
+  -> m (Expr meta Var)
 whnf' args expr exprs = Log.indent $ do
-  logPretty "tc.whnf.context" "context" $ prettyContext $ _prettyExpr args
+  logPretty "tc.whnf.context" "context" $ Context.prettyContext $ _prettyExpr args
   logPretty "tc.whnf" "whnf e" $ _prettyExpr args $ apps expr exprs
   res <- normaliseBuiltins go expr exprs
   logPretty "tc.whnf" "whnf res" $ _prettyExpr args res
   return res
   where
     go e@(Var v) es = do
-      Binding _ _ _ maybeValue <- Context.lookup v
+      Context.Binding _ _ _ maybeValue <- Context.lookup v
       case maybeValue of
         Nothing -> return $ apps e es
         Just e' -> do
@@ -141,13 +141,13 @@ normalise e = normalise' metaVarSolutionArgs e mempty
 normalise'
   :: MonadNormalise meta m
   => Args meta m
-  -> Expr meta FreeVar -- ^ Expression to normalise
-  -> [(Plicitness, Expr meta FreeVar)] -- ^ Arguments to the expression
-  -> m (Expr meta FreeVar)
+  -> Expr meta Var -- ^ Expression to normalise
+  -> [(Plicitness, Expr meta Var)] -- ^ Arguments to the expression
+  -> m (Expr meta Var)
 normalise' args = normaliseBuiltins go
   where
     go e@(Var v) es = do
-      Binding _ _ _ maybeValue <- Context.lookup v
+      Context.Binding _ _ _ maybeValue <- Context.lookup v
       case maybeValue of
         Nothing -> irreducible e es
         Just e' -> do
@@ -324,10 +324,10 @@ chooseBranch _ _ = Nothing
 -- hopefully rarely the case in practice.
 normaliseDef
   :: MonadReport m
-  => (Expr meta FreeVar -> m (Expr meta FreeVar)) -- ^ How to normalise case scrutinees
-  -> Expr meta FreeVar -- ^ The definition
-  -> [(Plicitness, Expr meta FreeVar)] -- ^ Arguments
-  -> m (Maybe (Expr meta FreeVar, [(Plicitness, Expr meta FreeVar)]))
+  => (Expr meta Var -> m (Expr meta Var)) -- ^ How to normalise case scrutinees
+  -> Expr meta Var -- ^ The definition
+  -> [(Plicitness, Expr meta Var)] -- ^ Arguments
+  -> m (Maybe (Expr meta Var, [(Plicitness, Expr meta Var)]))
   -- ^ The definition body applied to some arguments and any arguments that are still left
 normaliseDef norm = lambdas
   where
@@ -346,11 +346,11 @@ normaliseDef norm = lambdas
     cases e = return $ Just e
 
 instantiateLetM
-  :: (MonadContext (Expr meta FreeVar) m, MonadFresh m)
-  => LetRec (Expr meta) FreeVar
-  -> Scope LetVar (Expr meta) FreeVar
-  -> (Expr meta FreeVar -> m (Expr meta FreeVar))
-  -> m (Expr meta FreeVar)
+  :: (MonadContext (Expr meta Var) m, MonadFresh m)
+  => LetRec (Expr meta) Var
+  -> Scope LetVar (Expr meta) Var
+  -> (Expr meta Var -> m (Expr meta Var))
+  -> m (Expr meta Var)
 instantiateLetM ds scope k =
   Context.freshExtends (forLet ds $
     \h _ _ t -> binding h Explicit t) $ \vs ->

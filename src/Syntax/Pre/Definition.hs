@@ -3,6 +3,7 @@ module Syntax.Pre.Definition where
 
 import Protolude
 
+import qualified Bound
 import Data.Bitraversable
 import Data.Deriving
 import Data.Functor.Classes
@@ -35,14 +36,14 @@ instantiateLetConstantDef
   :: Monad expr
   => (b -> expr v)
   -> Vector b
-  -> ConstantDef expr (Var LetVar v)
+  -> ConstantDef expr (Bound.Var LetVar v)
   -> ConstantDef expr v
 instantiateLetConstantDef f vs = instantiateConstantDef (f . (vs Vector.!) . unLetVar)
 
 instantiateConstantDef
   :: Monad expr
   => (b -> expr v)
-  -> ConstantDef expr (Var b v)
+  -> ConstantDef expr (Bound.Var b v)
   -> ConstantDef expr v
 instantiateConstantDef f (ConstantDef a cls mtyp)
   = ConstantDef a (instantiateClause f <$> cls) ((>>= unvar f pure) <$> mtyp)
@@ -51,7 +52,7 @@ abstractConstantDef
   :: Monad expr
   => (v -> Maybe b)
   -> ConstantDef expr v
-  -> ConstantDef expr (Var b v)
+  -> ConstantDef expr (Bound.Var b v)
 abstractConstantDef f (ConstantDef a cls mtyp)
   = ConstantDef a (abstractClause f <$> cls) (fmap go <$> mtyp)
   where
@@ -62,7 +63,7 @@ abstractConstantDef f (ConstantDef a cls mtyp)
 instantiateClause
   :: Monad expr
   => (b -> expr v)
-  -> Clause expr (Var b v)
+  -> Clause expr (Bound.Var b v)
   -> Clause expr v
 instantiateClause f (Clause pats s) = Clause (fmap (first go) <$> pats) (go s)
   where
@@ -72,7 +73,7 @@ abstractClause
   :: Monad expr
   => (v -> Maybe b)
   -> Clause expr v
-  -> Clause expr (Var b v)
+  -> Clause expr (Bound.Var b v)
 abstractClause f (Clause pats s) = Clause (fmap (first $ fmap go) <$> pats) (go <$> s)
   where
     go v = case f v of

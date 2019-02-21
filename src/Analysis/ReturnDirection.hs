@@ -12,7 +12,7 @@ import Data.Vector(Vector)
 
 import Driver.Query
 import Effect
-import Effect.Context as Context
+import Effect.Context as Context hiding (Var)
 import Syntax hiding (Definition)
 import Syntax.Sized.Anno
 import Syntax.Sized.Definition
@@ -98,8 +98,8 @@ data MetaData = MetaData
 type Infer = ReaderT (ContextEnvT MetaData VIX.Env) (Sequential (Task Query))
 
 infer
-  :: Expr FreeVar
-  -> Infer (Expr FreeVar, Location)
+  :: Expr Var
+  -> Infer (Expr Var, Location)
 infer expr = case expr of
   Var v -> do
     metaData <- Context.lookupType v
@@ -135,19 +135,19 @@ infer expr = case expr of
     c' <- mapM (fmap fst . inferAnno) c
     return (ExternCode c' retType', MOutParam)
 
-inferAnno :: Anno Expr FreeVar -> Infer (Anno Expr FreeVar, Location)
+inferAnno :: Anno Expr Var -> Infer (Anno Expr Var, Location)
 inferAnno (Anno e t) = do
   (e', loc) <- infer e
   (t', _) <- infer t
   return (Anno e' t', loc)
 
 inferCall
-  :: (Expr FreeVar -> Vector (Anno Expr FreeVar) -> Expr FreeVar)
+  :: (Expr Var -> Vector (Anno Expr Var) -> Expr Var)
   -> ReturnDirection MetaReturnIndirect
   -> Vector Direction
-  -> Expr FreeVar
-  -> Vector (Anno Expr FreeVar)
-  -> Infer (Expr FreeVar, MetaReturnIndirect)
+  -> Expr Var
+  -> Vector (Anno Expr Var)
+  -> Infer (Expr Var, MetaReturnIndirect)
 inferCall con (ReturnIndirect mretIndirect) argDirs f es = do
   (f', _) <- infer f
   locatedEs <- mapM inferAnno es
@@ -165,8 +165,8 @@ inferCall con _ _ f es = do
 
 inferBranches
   :: Location
-  -> Branches Expr FreeVar
-  -> Infer (Branches Expr FreeVar, Location)
+  -> Branches Expr Var
+  -> Infer (Branches Expr Var, Location)
 inferBranches loc (ConBranches cbrs) = do
   locatedCBrs <- forM cbrs $ \(ConBranch c tele brScope) ->
     teleMapExtendContext tele (pure . const (MetaData loc Nothing)) $ \vs -> do
@@ -191,8 +191,8 @@ inferBranches _loc (LitBranches lbrs def) = do
   return (LitBranches lbrs' def', loc)
 
 inferFunction
-  :: Expr FreeVar
-  -> Infer (Expr FreeVar, (RetDirM, Vector Direction))
+  :: Expr Var
+  -> Infer (Expr Var, (RetDirM, Vector Direction))
 inferFunction expr = case expr of
   Var v -> do
     metaData <- Context.lookupType v
@@ -210,8 +210,8 @@ inferFunction expr = case expr of
 
 inferDefinition
   :: Binding MetaData
-  -> Definition Expr FreeVar
-  -> Infer (Definition Expr FreeVar, Signature MetaReturnIndirect)
+  -> Definition Expr Var
+  -> Infer (Definition Expr Var, Signature MetaReturnIndirect)
 inferDefinition Binding {_type = MetaData {metaFunSig = Just (retDir, argDirs)}} (FunctionDef vis cl (Function args s)) =
   teleMapExtendContext args (pure . const (MetaData MProjection Nothing)) $ \vs -> do
     args' <- forMTele args $ \_ _ szScope -> do
@@ -235,8 +235,8 @@ inferDefinition _ (ConstantDef vis (Constant e)) = do
 inferDefinition _ _ = panic "ReturnDirection.inferDefinition"
 
 generaliseDefs
-  :: Vector (Definition Expr FreeVar, Signature MetaReturnIndirect)
-  -> Infer (Vector (Definition Expr FreeVar, Signature ReturnIndirect))
+  :: Vector (Definition Expr Var, Signature MetaReturnIndirect)
+  -> Infer (Vector (Definition Expr Var, Signature ReturnIndirect))
 generaliseDefs
   = traverse
   $ bitraverse pure (traverse $ toReturnIndirect Projection)
@@ -291,7 +291,7 @@ inferRecursiveDefs defs = withContextEnvT $ do
         Just index -> global
           $ fromMaybe (panic "inferRecursiveDefs 2")
           $ names Vector.!? index
-      vf :: FreeVar -> Infer b
+      vf :: Var -> Infer b
       vf v = panic $ "inferRecursiveDefs " <> shower v
 
     forM (Vector.zip names genDefs) $ \(name, (def ,sig)) -> do

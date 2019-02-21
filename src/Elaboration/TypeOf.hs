@@ -8,7 +8,7 @@ import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect
-import Effect.Context as Context
+import qualified Effect.Context as Context
 import Elaboration.MetaVar
 import Elaboration.Monad
 import qualified Elaboration.Normalise as Normalise
@@ -16,7 +16,7 @@ import Syntax
 import Syntax.Core
 import Util
 
-type MonadTypeOf meta m = (Show meta, MonadIO m, MonadFetch Query m, MonadFresh m, MonadLog m, MonadContext (Expr meta FreeVar) m, MonadReport m)
+type MonadTypeOf meta m = (Show meta, MonadIO m, MonadFetch Query m, MonadFresh m, MonadLog m, MonadContext (Expr meta Var) m, MonadReport m)
 
 data Args meta m = Args
   { typeOfMeta :: !(meta -> Closed (Expr meta))
@@ -35,8 +35,8 @@ typeOf = typeOf' metaVarArgs
 typeOf'
   :: MonadTypeOf meta m
   => Args meta m
-  -> Expr meta FreeVar
-  -> m (Expr meta FreeVar)
+  -> Expr meta Var
+  -> m (Expr meta Var)
 typeOf' args expr = case expr of
   Global v -> fetchType v
   Var v -> Context.lookupType v

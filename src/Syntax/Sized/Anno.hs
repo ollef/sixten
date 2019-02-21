@@ -9,7 +9,7 @@ module Syntax.Sized.Anno where
 
 import Protolude
 
-import Bound
+import qualified Bound
 import Bound.Scope
 import Data.Deriving
 import Data.Functor.Classes
@@ -27,9 +27,9 @@ typeAnno :: Anno e v -> e v
 typeAnno (Anno _ t) = t
 
 varAnno
-  :: (MonadContext (e FreeVar) m, Applicative e)
-  => FreeVar
-  -> m (Anno e FreeVar)
+  :: (MonadContext (e Var) m, Applicative e)
+  => Var
+  -> m (Anno e Var)
 varAnno v = do
   t <- Context.lookupType v
   return $ Anno (pure v) t
@@ -39,10 +39,10 @@ data AnnoScope b e a = AnnoScope (Scope b e a) (Scope b e a)
 
 type AnnoScope1 = AnnoScope ()
 
-toAnnoScope :: Monad e => Anno e (Var b a) -> AnnoScope b e a
+toAnnoScope :: Monad e => Anno e (Bound.Var b a) -> AnnoScope b e a
 toAnnoScope (Anno e t) = AnnoScope (toScope e) (toScope t)
 
-fromAnnoScope :: Monad e => AnnoScope b e a -> Anno e (Var b a)
+fromAnnoScope :: Monad e => AnnoScope b e a -> Anno e (Bound.Var b a)
 fromAnnoScope (AnnoScope se st) = Anno (fromScope se) (fromScope st)
 
 instantiateAnno :: Monad e => (b -> e a) -> AnnoScope b e a -> Anno e a

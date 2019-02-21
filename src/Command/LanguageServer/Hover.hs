@@ -31,7 +31,7 @@ inside row column (Span start end)
 
 data HoverEnv = HoverEnv
   { _freshEnv :: !FreshEnv
-  , _context :: !(Context (Expr Void FreeVar))
+  , _context :: !(Context (Expr Void Var))
   , _logEnv :: !LogEnv
   , _reportEnv :: !ReportEnv
   }
@@ -41,7 +41,7 @@ makeLenses ''HoverEnv
 instance HasFreshEnv HoverEnv where
   freshEnv = Command.LanguageServer.Hover.freshEnv
 
-instance HasContext (Expr Void FreeVar) HoverEnv where
+instance HasContext (Expr Void Var) HoverEnv where
   context = Command.LanguageServer.Hover.context
 
 instance HasLogEnv HoverEnv where
@@ -51,7 +51,7 @@ instance HasReportEnv HoverEnv where
   reportEnv = Command.LanguageServer.Hover.reportEnv
 
 newtype Hover a = Hover { unHover :: ListT (ReaderT HoverEnv (Task Query)) a }
-  deriving (Functor, Applicative, Alternative, Monad, MonadIO, Semigroup, Monoid, MonadContext (Expr Void FreeVar), MonadFresh, MonadLog, MonadReport, MonadFetch Query)
+  deriving (Functor, Applicative, Alternative, Monad, MonadIO, Semigroup, Monoid, MonadContext (Expr Void Var), MonadFresh, MonadLog, MonadReport, MonadFetch Query)
 
 instance MonadReader r m => MonadReader r (ListT m) where
   ask = ListT $ do
@@ -89,21 +89,21 @@ emitCons a as
 hoverDefs
   :: (Span -> Bool)
   -> [(GName, SourceLoc, ClosedDefinition Expr, Biclosed Expr)]
-  -> Hover (Span, Expr Void FreeVar)
+  -> Hover (Span, Expr Void Var)
 hoverDefs f defs = hoverClosedDef f =<< Hover (ListT.fromList defs)
 
 hoverClosedDef
   :: (Span -> Bool)
   -> (GName, SourceLoc, ClosedDefinition Expr, Biclosed Expr)
-  -> Hover (Span, Expr Void FreeVar)
+  -> Hover (Span, Expr Void Var)
 hoverClosedDef f (_, loc, ClosedDefinition def, Biclosed e) = do
   guard $ f $ sourceLocSpan loc
   hoverDef f def <> hoverExpr f e
 
 hoverDef
   :: (Span -> Bool)
-  -> Definition (Expr Void) FreeVar
-  -> Hover (Span, Expr Void FreeVar)
+  -> Definition (Expr Void) Var
+  -> Hover (Span, Expr Void Var)
 hoverDef f (ConstantDefinition _ e) = hoverExpr f e
 hoverDef f (DataDefinition (DataDef params cs) _rep) =
   teleExtendContext params $ \vs -> do
@@ -113,8 +113,8 @@ hoverDef f (DataDefinition (DataDef params cs) _rep) =
 
 hoverExpr
   :: (Span -> Bool)
-  -> Expr Void FreeVar
-  -> Hover (Span, Expr Void FreeVar)
+  -> Expr Void Var
+  -> Hover (Span, Expr Void Var)
 hoverExpr f expr = case expr of
   Var _ -> mempty
   Meta m _ -> absurd m
@@ -146,8 +146,8 @@ hoverExpr f expr = case expr of
 
 hoverBranches
   :: (Span -> Bool)
-  -> Branches (Expr Void) FreeVar
-  -> Hover (Span, Expr Void FreeVar)
+  -> Branches (Expr Void) Var
+  -> Hover (Span, Expr Void Var)
 hoverBranches f (LitBranches lbrs def) =
   foldMap (\(LitBranch _ e) -> hoverExpr f e) lbrs
   <> hoverExpr f def

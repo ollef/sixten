@@ -126,7 +126,7 @@ prettyMetaVar x = do
 
 prettyMeta
   :: (MonadContext e m, MonadLog m, MonadIO m, HasCallStack)
-  => Expr MetaVar FreeVar
+  => Expr MetaVar Var
   -> m Doc
 prettyMeta e = do
   e' <- bitraverse (\m -> WithVar m <$> prettyMetaVar m) prettyVar e
@@ -134,7 +134,7 @@ prettyMeta e = do
 
 prettyDefMeta
   :: (MonadContext e m, MonadLog m, MonadIO m)
-  => Definition (Expr MetaVar) FreeVar
+  => Definition (Expr MetaVar) Var
   -> m Doc
 prettyDefMeta e = do
   e' <- bitraverseDefinition (\m -> WithVar m <$> prettyMetaVar m) prettyVar e
@@ -144,7 +144,7 @@ logMeta
   :: (MonadContext e m, MonadLog m, MonadIO m, HasCallStack)
   => Category
   -> String
-  -> m (Expr MetaVar FreeVar)
+  -> m (Expr MetaVar Var)
   -> m ()
 logMeta c@(Category ct) s me = whenLoggingCategory c $ do
   e <- me
@@ -155,7 +155,7 @@ logDefMeta
   :: (MonadContext e m, MonadLog m, MonadIO m)
   => Category
   -> String
-  -> m (Definition (Expr MetaVar) FreeVar)
+  -> m (Definition (Expr MetaVar) Var)
   -> m ()
 logDefMeta c@(Category ct) s mdef = whenLoggingCategory c $ do
   def <- mdef
@@ -163,17 +163,17 @@ logDefMeta c@(Category ct) s mdef = whenLoggingCategory c $ do
   Effect.log $ "[" <> ct <> "] " <> fromString s <> ": " <> showWide d
 
 withInstantiatedMetaType
-  :: (MonadFresh m, MonadContext (Expr MetaVar FreeVar) m)
+  :: (MonadFresh m, MonadContext (Expr MetaVar Var) m)
   => MetaVar
-  -> (Vector FreeVar -> Expr MetaVar FreeVar -> m a)
+  -> (Vector Var -> Expr MetaVar Var -> m a)
   -> m a
 withInstantiatedMetaType m = withInstantiatedMetaType' (metaArity m) m
 
 withInstantiatedMetaType'
-  :: (MonadFresh m, MonadContext (Expr MetaVar FreeVar) m)
+  :: (MonadFresh m, MonadContext (Expr MetaVar Var) m)
   => Int
   -> MetaVar
-  -> (Vector FreeVar -> Expr MetaVar FreeVar -> m a)
+  -> (Vector Var -> Expr MetaVar Var -> m a)
   -> m a
 withInstantiatedMetaType' arity m = go mempty arity (open $ metaType m)
   where
@@ -183,32 +183,32 @@ withInstantiatedMetaType' arity m = go mempty arity (open $ metaType m)
         go (Tsil.Snoc vs v) (n - 1) (instantiate1 (pure v) s) k
     go _ _ _ _ = panic "instantiatedMetaType'"
 
-type MonadBindMetas meta' m = (MonadFresh m, MonadContext (Expr meta' FreeVar) m, MonadLog m, MonadIO m)
+type MonadBindMetas meta' m = (MonadFresh m, MonadContext (Expr meta' Var) m, MonadLog m, MonadIO m)
 
 -- TODO move?
 bindDefMetas
   :: MonadBindMetas meta' m
-  => (meta -> Vector (Plicitness, Expr meta FreeVar) -> m (Expr meta' FreeVar))
-  -> Definition (Expr meta) FreeVar
-  -> m (Definition (Expr meta') FreeVar)
+  => (meta -> Vector (Plicitness, Expr meta Var) -> m (Expr meta' Var))
+  -> Definition (Expr meta) Var
+  -> m (Definition (Expr meta') Var)
 bindDefMetas f def = case def of
   ConstantDefinition a e -> ConstantDefinition a <$> bindMetas f e
   DataDefinition d rep -> DataDefinition <$> bindDataDefMetas f d <*> bindMetas f rep
 
 bindDefMetas'
   :: MonadBindMetas meta' m
-  => (meta -> Vector (Plicitness, Expr meta' FreeVar) -> m (Expr meta' FreeVar))
-  -> Definition (Expr meta) FreeVar
-  -> m (Definition (Expr meta') FreeVar)
+  => (meta -> Vector (Plicitness, Expr meta' Var) -> m (Expr meta' Var))
+  -> Definition (Expr meta) Var
+  -> m (Definition (Expr meta') Var)
 bindDefMetas' f = bindDefMetas $ \m es -> do
   es' <- traverse (traverse $ bindMetas' f) es
   f m es'
 
 bindDataDefMetas
   :: MonadBindMetas meta' m
-  => (meta -> Vector (Plicitness, Expr meta FreeVar) -> m (Expr meta' FreeVar))
-  -> DataDef (Expr meta) FreeVar
-  -> m (DataDef (Expr meta') FreeVar)
+  => (meta -> Vector (Plicitness, Expr meta Var) -> m (Expr meta' Var))
+  -> DataDef (Expr meta) Var
+  -> m (DataDef (Expr meta') Var)
 bindDataDefMetas f (DataDef ps cs) =
   teleMapExtendContext ps (bindMetas f) $ \vs -> do
     cs' <- forM cs $ \(ConstrDef c s) -> do
@@ -219,9 +219,9 @@ bindDataDefMetas f (DataDef ps cs) =
 
 bindMetas
   :: MonadBindMetas meta' m
-  => (meta -> Vector (Plicitness, Expr meta FreeVar) -> m (Expr meta' FreeVar))
-  -> Expr meta FreeVar
-  -> m (Expr meta' FreeVar)
+  => (meta -> Vector (Plicitness, Expr meta Var) -> m (Expr meta' Var))
+  -> Expr meta Var
+  -> m (Expr meta' Var)
 bindMetas f expr = case expr of
   Var v -> return $ Var v
   Meta m es -> f m es
@@ -252,18 +252,18 @@ bindMetas f expr = case expr of
 
 bindMetas'
   :: MonadBindMetas meta' m
-  => (meta -> Vector (Plicitness, Expr meta' FreeVar) -> m (Expr meta' FreeVar))
-  -> Expr meta FreeVar
-  -> m (Expr meta' FreeVar)
+  => (meta -> Vector (Plicitness, Expr meta' Var) -> m (Expr meta' Var))
+  -> Expr meta Var
+  -> m (Expr meta' Var)
 bindMetas' f = bindMetas $ \m es -> do
   es' <- traverse (traverse $ bindMetas' f) es
   f m es'
 
 bindBranchMetas
   :: MonadBindMetas meta' m
-  => (meta -> Vector (Plicitness, Expr meta FreeVar) -> m (Expr meta' FreeVar))
-  -> Branches (Expr meta) FreeVar
-  -> m (Branches (Expr meta') FreeVar)
+  => (meta -> Vector (Plicitness, Expr meta Var) -> m (Expr meta' Var))
+  -> Branches (Expr meta) Var
+  -> m (Branches (Expr meta') Var)
 bindBranchMetas f brs = case brs of
   ConBranches cbrs -> ConBranches <$> do
     forM cbrs $ \(ConBranch c tele scope) ->

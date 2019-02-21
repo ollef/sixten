@@ -10,7 +10,7 @@ module Syntax.Let where
 
 import Protolude
 
-import Bound
+import Bound hiding (Var)
 import Bound.Scope
 import Control.Monad.Morph
 import Data.Bitraversable
@@ -143,9 +143,9 @@ transverseLetBinding
 transverseLetBinding f (LetBinding h loc s t) = LetBinding h loc <$> transverseScope f s <*> f t
 
 letExtendContext
-  :: (MonadFresh m, MonadContext (e FreeVar) m)
-  => LetRec e FreeVar
-  -> (Vector FreeVar -> m a)
+  :: (MonadFresh m, MonadContext (e Var) m)
+  => LetRec e Var
+  -> (Vector Var -> m a)
   -> m a
 letExtendContext ds k = do
   vs <- forMLet ds $ \h _ _ t -> do
@@ -155,9 +155,9 @@ letExtendContext ds k = do
 
 letMapExtendContext
   :: (MonadFresh m, MonadContext e' m)
-  => LetRec e FreeVar
-  -> (e FreeVar -> m e')
-  -> (Vector FreeVar -> m a)
+  => LetRec e Var
+  -> (e Var -> m e')
+  -> (Vector Var -> m a)
   -> m a
 letMapExtendContext tele f k = do
   vs <- forMLet tele $ \h _ _ t -> do

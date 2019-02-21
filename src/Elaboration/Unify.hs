@@ -221,7 +221,7 @@ prettyContext cxt = do
 
 prune
   :: (MonadElaborate m, MonadError Error m)
-  => HashSet FreeVar
+  => HashSet Var
   -> CoreM
   -> m CoreM
 prune allowed expr = Log.indent $ do

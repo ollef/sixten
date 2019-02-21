@@ -12,6 +12,7 @@ module Syntax.Pre.Scoped
 
 import Protolude hiding (Type)
 
+import qualified Bound
 import Data.Bitraversable
 import Data.Foldable as Foldable
 import Data.Functor.Classes
@@ -33,7 +34,7 @@ data Expr v
   | Pi !Plicitness (Pat (HashSet QConstr) Pre.Literal (PatternScope Type v) NameHint) (PatternScope Expr v)
   | Lam !Plicitness (Pat (HashSet QConstr) Pre.Literal (PatternScope Type v) NameHint) (PatternScope Expr v)
   | App (Expr v) !Plicitness (Expr v)
-  | Let (Vector (SourceLoc, NameHint, ConstantDef Expr (Var LetVar v))) (Scope LetVar Expr v)
+  | Let (Vector (SourceLoc, NameHint, ConstantDef Expr (Bound.Var LetVar v))) (Scope LetVar Expr v)
   | Case (Expr v) [(Pat (HashSet QConstr) Pre.Literal (PatternScope Type v) NameHint, PatternScope Expr v)]
   | ExternCode (Extern (Expr v))
   | Wildcard

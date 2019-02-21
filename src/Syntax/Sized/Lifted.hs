@@ -16,7 +16,8 @@ import Data.Deriving
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import Effect.Context as Context
+import Effect
+import qualified Effect.Context as Context
 import Syntax hiding (Definition)
 import Syntax.Sized.Anno
 import TypeRep(TypeRep)
@@ -42,21 +43,21 @@ type FunSignature = (Closed (Telescope Type), Closed (Scope TeleVar Type))
 -- Helpers
 
 let_
-  :: MonadContext (Expr FreeVar) m
-  => FreeVar
-  -> Expr FreeVar
-  -> Expr FreeVar
-  -> m (Expr FreeVar)
+  :: MonadContext (Expr Var) m
+  => Var
+  -> Expr Var
+  -> Expr Var
+  -> m (Expr Var)
 let_ v e e' = do
-  Binding h _ t _ <- Context.lookup v
+  Context.Binding h _ t _ <- Context.lookup v
   return $ Let h (Anno e t) $ abstract1 v e'
 
 letTyped
   :: MonadContext e m
-  => FreeVar
-  -> Anno Expr FreeVar
-  -> Expr FreeVar
-  -> m (Expr FreeVar)
+  => Var
+  -> Anno Expr Var
+  -> Expr Var
+  -> m (Expr Var)
 letTyped v e e' = do
   h <- Context.lookupHint v
   return $ Let h e $ abstract1 v e'
@@ -127,6 +128,6 @@ instance v ~ Doc => Pretty (Expr v) where
         prettyM (Util.instantiate1 (pure $ fromName n) s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+>
-      "of" <$$> indent 2 (prettyM brs)
+      "of" <$$> Syntax.indent 2 (prettyM brs)
     ExternCode c retType ->
       parens `above` annoPrec $ prettyM c <+> ":" <+> prettyM retType

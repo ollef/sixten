@@ -25,7 +25,7 @@ import qualified Syntax.Pre.Literal as Pre
 import qualified Syntax.Pre.Scoped as Pre
 
 checkConstantDef
-  :: Pre.ConstantDef Pre.Expr FreeVar
+  :: Pre.ConstantDef Pre.Expr Var
   -> CoreM
   -> Elaborate (Abstract, CoreM)
 checkConstantDef (Pre.ConstantDef a clauses _) typ = do
@@ -33,7 +33,7 @@ checkConstantDef (Pre.ConstantDef a clauses _) typ = do
   return (a, e')
 
 checkClauses
-  :: NonEmpty (Pre.Clause Pre.Expr FreeVar)
+  :: NonEmpty (Pre.Clause Pre.Expr Var)
   -> Polytype
   -> Elaborate CoreM
 checkClauses clauses polyType = Log.indent $ do
@@ -74,7 +74,7 @@ checkClauses clauses polyType = Log.indent $ do
     piPlicitnesses' _ = return mempty
 
 checkClausesRho
-  :: NonEmpty (Pre.Clause Pre.Expr FreeVar)
+  :: NonEmpty (Pre.Clause Pre.Expr Var)
   -> Rhotype
   -> Elaborate CoreM
 checkClausesRho clauses rhoType = do

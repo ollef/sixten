@@ -29,8 +29,8 @@ import Util
 import qualified Util.Tsil as Tsil
 import VIX
 
-type PreM = Pre.Expr FreeVar
-type CoreM = Core.Expr MetaVar FreeVar
+type PreM = Pre.Expr Var
+type CoreM = Core.Expr MetaVar Var
 
 type Polytype = CoreM
 type Rhotype = CoreM -- No top-level foralls

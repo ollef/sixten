@@ -1,8 +1,8 @@
 module Syntax (module X, Util.instantiate1) where
 
-import Bound as X hiding (instantiate1)
+import Bound as X hiding (Var, instantiate1)
 import Bound.Scope as X hiding (instantiate1)
-import Bound.Var as X
+import Bound.Var as X hiding (Var)
 import Control.Monad.Morph as X
 import qualified Util
 
@@ -26,4 +26,4 @@ import Syntax.Pattern as X
 import Syntax.PreName as X
 import Syntax.QName as X
 import Syntax.Telescope as X
-import Syntax.Context as X(Context, FreeVar)
+import Syntax.Context as X(Context, Var)

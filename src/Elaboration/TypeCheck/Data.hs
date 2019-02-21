@@ -27,10 +27,10 @@ import qualified TypeRep
 import Util
 
 checkDataDef
-  :: FreeVar
-  -> DataDef Pre.Expr FreeVar
+  :: Var
+  -> DataDef Pre.Expr Var
   -> CoreM
-  -> Elaborate (DataDef (Core.Expr MetaVar) FreeVar, CoreM)
+  -> Elaborate (DataDef (Core.Expr MetaVar) Var, CoreM)
 checkDataDef var (DataDef ps cs) typ =
   -- TODO: These vars are typechecked twice (in checkAndGeneraliseDefs as the
 -- expected type and here). Can we clean this up?

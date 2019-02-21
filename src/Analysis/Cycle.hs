@@ -27,7 +27,7 @@ import Util
 import Util.TopoSort
 import VIX
 
-type CycleCheck m = ReaderT (Context.ContextEnvT (Expr m FreeVar) VIX.Env) (Sequential (Task Query))
+type CycleCheck m = ReaderT (Context.ContextEnvT (Expr m Var) VIX.Env) (Sequential (Task Query))
 
 -- We need to detect possible cycles in top-level constants because if not,
 -- we'll accept e.g. the following program:
@@ -113,8 +113,8 @@ cycleCheck defs = withContextEnvT $ do
         )
 
 cycleCheckDef
-  :: Definition (Expr Void) FreeVar
-  -> CycleCheck m (Definition (Expr m) FreeVar)
+  :: Definition (Expr Void) Var
+  -> CycleCheck m (Definition (Expr m) Var)
 cycleCheckDef (ConstantDefinition a e)
   = ConstantDefinition a <$> cycleCheckExpr e
 cycleCheckDef (DataDefinition (DataDef params constrs) rep) =
@@ -127,8 +127,8 @@ cycleCheckDef (DataDefinition (DataDef params constrs) rep) =
     return $ DataDefinition dd rep'
 
 cycleCheckExpr
-  :: Expr Void FreeVar
-  -> CycleCheck m (Expr m FreeVar)
+  :: Expr Void Var
+  -> CycleCheck m (Expr m Var)
 cycleCheckExpr expr = case expr of
     Var v -> return $ Var v
     Meta m _ -> absurd m
@@ -171,8 +171,8 @@ cycleCheckExpr expr = case expr of
           c v e
 
 cycleCheckBranches
-  :: Branches (Expr Void) FreeVar
-  -> CycleCheck m (Branches (Expr m) FreeVar)
+  :: Branches (Expr Void) Var
+  -> CycleCheck m (Branches (Expr m) Var)
 cycleCheckBranches (ConBranches cbrs) = ConBranches <$> do
   forM cbrs $ \(ConBranch c tele brScope) ->
     teleMapExtendContext tele cycleCheckExpr $ \vs -> do
@@ -185,7 +185,7 @@ cycleCheckBranches (LitBranches lbrs d) = do
 
 cycleCheckTypeReps
   :: Pretty name
-  => Vector (FreeVar, name, SourceLoc, Definition (Expr m) FreeVar)
+  => Vector (Var, name, SourceLoc, Definition (Expr m) Var)
   -> CycleCheck m ()
 cycleCheckTypeReps defs = do
   let reps = flip Vector.mapMaybe defs $ \(v, _, _, def) -> case def of
@@ -213,8 +213,8 @@ cycleCheckTypeReps defs = do
 
 cycleCheckLets
   :: Pretty name
-  => Vector (FreeVar, name, SourceLoc, Definition (Expr m) FreeVar)
-  -> CycleCheck m (Vector (FreeVar, name, SourceLoc, Definition (Expr m) FreeVar))
+  => Vector (Var, name, SourceLoc, Definition (Expr m) Var)
+  -> CycleCheck m (Vector (Var, name, SourceLoc, Definition (Expr m) Var))
 cycleCheckLets defs = do
   (peeledDefExprs, locMap) <- peelLets
     $ flip Vector.mapMaybe defs $ \(v, name, loc, def) -> case def of
@@ -262,13 +262,13 @@ cycleCheckLets defs = do
 
 
 peelLets
-  :: Vector (name, SourceLoc, FreeVar, Expr m FreeVar)
-  -> CycleCheck m (Vector (FreeVar, Expr m FreeVar), HashMap FreeVar (name, SourceLoc))
+  :: Vector (name, SourceLoc, Var, Expr m Var)
+  -> CycleCheck m (Vector (Var, Expr m Var), HashMap Var (name, SourceLoc))
 peelLets = fmap fold . mapM go
   where
     go
-     :: (name, SourceLoc, FreeVar, Expr m FreeVar)
-     -> CycleCheck m (Vector (FreeVar, Expr m FreeVar), HashMap FreeVar (name, SourceLoc))
+     :: (name, SourceLoc, Var, Expr m Var)
+     -> CycleCheck m (Vector (Var, Expr m Var), HashMap Var (name, SourceLoc))
     go (name, loc, var, expr) = case unSourceLoc expr of
       Let ds scope ->
         letExtendContext ds $ \vs -> do

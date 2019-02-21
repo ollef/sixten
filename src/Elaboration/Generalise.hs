@@ -31,17 +31,17 @@ generaliseDefs
   :: (MetaVar -> Bool)
   -> GeneraliseDefsMode
   -> Vector
-    ( FreeVar
+    ( Var
     , GName
     , SourceLoc
-    , Definition (Expr MetaVar) FreeVar
+    , Definition (Expr MetaVar) Var
     )
   -> Elaborate
     ( Vector
-      ( FreeVar
+      ( Var
       , GName
       , SourceLoc
-      , Definition (Expr MetaVar) FreeVar
+      , Definition (Expr MetaVar) Var
       , CoreM
       )
     )
@@ -68,10 +68,10 @@ collectMetas
   :: (MetaVar -> Bool)
   -> GeneraliseDefsMode
   -> Vector
-    ( FreeVar
+    ( Var
     , GName
     , SourceLoc
-    , Definition (Expr MetaVar) FreeVar
+    , Definition (Expr MetaVar) Var
     )
   -> Elaborate (HashSet MetaVar)
 collectMetas mpred mode defs = do
@@ -103,7 +103,7 @@ collectMetas mpred mode defs = do
 
 generaliseMetas
   :: HashSet MetaVar
-  -> Elaborate (HashMap MetaVar (FreeVar, Binding CoreM))
+  -> Elaborate (HashMap MetaVar (Var, Binding CoreM))
 generaliseMetas metas = do
   logShow "tc.gen" "generaliseMetas metas" metas
   instMetas <- forM (toList metas) $ \m ->
@@ -138,19 +138,19 @@ generaliseMetas metas = do
     acyclic (CyclicSCC _) = panic "generaliseMetas"
 
 replaceMetas
-  :: HashMap MetaVar (FreeVar, Binding CoreM)
+  :: HashMap MetaVar (Var, Binding CoreM)
   -> Vector
-    ( FreeVar
+    ( Var
     , GName
     , SourceLoc
-    , Definition (Expr MetaVar) FreeVar
+    , Definition (Expr MetaVar) Var
     )
   -> Elaborate
     ( Vector
-      ( FreeVar
+      ( Var
       , GName
       , SourceLoc
-      , Definition (Expr MetaVar) FreeVar
+      , Definition (Expr MetaVar) Var
       , CoreM
       )
     )
@@ -188,21 +188,21 @@ replaceMetas varMap defs = forM defs $ \(v, name, loc, d) -> do
             $ "A " <> varKind <> " of type " <> red printedTyp <> " could not be resolved."
 
 collectDefDeps
-  :: HashMap FreeVar (Binding CoreM)
+  :: HashMap Var (Binding CoreM)
   -> Vector
-    ( FreeVar
+    ( Var
     , GName
     , SourceLoc
-    , Definition (Expr MetaVar) FreeVar
+    , Definition (Expr MetaVar) Var
     , CoreM
     )
   -> Vector
-    ( FreeVar
+    ( Var
     , ( GName
       , SourceLoc
-      , Definition (Expr MetaVar) FreeVar
+      , Definition (Expr MetaVar) Var
       , CoreM
-      , [FreeVar]
+      , [Var]
       )
     )
 collectDefDeps vars defs = do
@@ -224,20 +224,20 @@ collectDefDeps vars defs = do
 
 replaceDefs
   :: Vector
-    ( FreeVar
+    ( Var
     , ( GName
       , SourceLoc
-      , Definition (Expr MetaVar) FreeVar
+      , Definition (Expr MetaVar) Var
       , CoreM
-      , [FreeVar]
+      , [Var]
       )
     )
   -> Elaborate
     ( Vector
-      ( FreeVar
+      ( Var
       , GName
       , SourceLoc
-      , Definition (Expr MetaVar) FreeVar
+      , Definition (Expr MetaVar) Var
       , CoreM
       )
     )
@@ -264,10 +264,10 @@ replaceDefs defs = do
 
 abstractDefImplicits
   :: (Functor t, Foldable t)
-  => t FreeVar
-  -> Definition (Expr MetaVar) FreeVar
+  => t Var
+  -> Definition (Expr MetaVar) Var
   -> CoreM
-  -> Elaborate (Definition (Expr MetaVar) FreeVar, CoreM)
+  -> Elaborate (Definition (Expr MetaVar) Var, CoreM)
 abstractDefImplicits vs (ConstantDefinition a e) t = do
   ctx <- getContext
   let

@@ -105,10 +105,10 @@ convertDefinition _ (Closed (Sized.ConstantDef vis (Sized.Constant expr))) = do
     $ Sized.Constant expr'
 convertDefinition _ (Closed Sized.AliasDef) = return $ close identity Sized.AliasDef
 
-convertAnnoExpr :: Anno Expr FreeVar -> ClosureConvert (Anno Expr FreeVar)
+convertAnnoExpr :: Anno Expr Var -> ClosureConvert (Anno Expr Var)
 convertAnnoExpr (Anno expr typ) = Anno <$> convertExpr expr <*> convertExpr typ
 
-convertExpr :: Expr FreeVar -> ClosureConvert (Expr FreeVar)
+convertExpr :: Expr Var -> ClosureConvert (Expr Var)
 convertExpr expr = case expr of
   Var v -> return $ Var v
   Global g -> do
@@ -143,9 +143,9 @@ convertExpr expr = case expr of
   ExternCode c retType -> ExternCode <$> mapM convertAnnoExpr c <*> convertExpr retType
 
 unknownCall
-  :: Expr FreeVar
-  -> Vector (Anno Expr FreeVar)
-  -> ClosureConvert (Expr FreeVar)
+  :: Expr Var
+  -> Vector (Anno Expr Var)
+  -> ClosureConvert (Expr Var)
 unknownCall e es = do
   ptrRep <- MkType <$> fetchPtrRep
   intRep <- MkType <$> fetchIntRep
@@ -157,8 +157,8 @@ unknownCall e es = do
 knownCall
   :: GName
   -> FunSignature
-  -> Vector (Anno Expr FreeVar)
-  -> ClosureConvert (Expr FreeVar)
+  -> Vector (Anno Expr Var)
+  -> ClosureConvert (Expr Var)
 knownCall f (Closed tele, Closed returnTypeScope) args
   | numArgs < arity = do
     target <- fetch Target
@@ -238,8 +238,8 @@ liftClosureFun f (Closed tele, Closed returnTypeScope) numCaptured =
               $ Sized.FunctionDef Private Sized.IsClosure fun
 
 convertBranches
-  :: Branches Expr FreeVar
-  -> ClosureConvert (Branches Expr FreeVar)
+  :: Branches Expr Var
+  -> ClosureConvert (Branches Expr Var)
 convertBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(ConBranch qc tele brScope) ->
     teleMapExtendContext tele convertExpr $ \vs -> do

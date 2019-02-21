@@ -73,7 +73,7 @@ checkAndGeneraliseTopLevelDefs defs = do
       logMeta "tc.def" ("checkAndGeneraliseTopLevelDefs unexposedTyp " ++ show (pretty name)) $ Context.extends defBindings $ zonk unexposedTyp
       return (name, loc, closeDefinition noMeta noVar unexposedDef, biclose noMeta noVar unexposedTyp)
   where
-    noVar :: FreeVar -> b
+    noVar :: Var -> b
     noVar v = panic $ "checkAndGeneraliseTopLevelDefs " <> shower v
     noMeta :: MetaVar -> b
     noMeta v = panic
@@ -81,18 +81,18 @@ checkAndGeneraliseTopLevelDefs defs = do
 
 checkAndGeneraliseDefs
   :: Vector
-    ( FreeVar
+    ( Var
     , QName
     , SourceLoc
-    , Pre.Definition Pre.Expr FreeVar
+    , Pre.Definition Pre.Expr Var
     , CoreM
     )
   -> Elaborate
     (Vector
-      ( FreeVar
+      ( Var
       , GName
       , SourceLoc
-      , Definition (Core.Expr MetaVar) FreeVar
+      , Definition (Core.Expr MetaVar) Var
       , CoreM
       )
     )
@@ -161,14 +161,14 @@ checkAndGeneraliseDefs defs = do
 
 checkDefs
   :: Vector
-    ( FreeVar
+    ( Var
     , QName
     , SourceLoc
-    , Pre.Definition Pre.Expr FreeVar
+    , Pre.Definition Pre.Expr Var
     )
   -> Elaborate
-    ( Vector (FreeVar, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeVar)
-    , Vector (FreeVar, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeVar, CoreM)
+    ( Vector (Var, GName, SourceLoc, Definition (Core.Expr MetaVar) Var)
+    , Vector (Var, GName, SourceLoc, Definition (Core.Expr MetaVar) Var, CoreM)
     )
 checkDefs defs = Log.indent $ do
   results <- forM defs $ \(var, name, loc, def) -> do
@@ -178,14 +178,14 @@ checkDefs defs = Log.indent $ do
   return (defs', join generatedDefs)
 
 checkDef
-  :: FreeVar
+  :: Var
   -> QName
   -> SourceLoc
-  -> Pre.Definition Pre.Expr FreeVar
+  -> Pre.Definition Pre.Expr Var
   -> CoreM
   -> Elaborate
-    ( (FreeVar, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeVar)
-    , Vector (FreeVar, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeVar, CoreM)
+    ( (Var, GName, SourceLoc, Definition (Core.Expr MetaVar) Var)
+    , Vector (Var, GName, SourceLoc, Definition (Core.Expr MetaVar) Var, CoreM)
     )
 checkDef v name loc def typ = do
   logPretty "tc.def" "Checking definition" $ pure name

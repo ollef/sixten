@@ -3,7 +3,7 @@ module Syntax.Sized.Definition where
 
 import Protolude
 
-import Bound
+import Bound hiding (Var)
 import Control.Monad.Morph
 import Data.Vector(Vector)
 
@@ -38,18 +38,18 @@ data Definition expr v
 -- Helpers
 typedFunction
   :: (Monad expr, MonadContext expr' m)
-  => Vector (FreeVar, expr FreeVar)
-  -> Anno expr FreeVar
-  -> m (Function expr FreeVar)
+  => Vector (Var, expr Var)
+  -> Anno expr Var
+  -> m (Function expr Var)
 typedFunction vs e = do
   tele <- varTypeTelescope vs
   return $ Function tele $ abstractAnno (teleAbstraction $ fst <$> vs) e
 
 function
-  :: (Monad expr, MonadContext (expr FreeVar) m)
-  => Vector FreeVar
-  -> Anno expr FreeVar
-  -> m (Function expr FreeVar)
+  :: (Monad expr, MonadContext (expr Var) m)
+  => Vector Var
+  -> Anno expr Var
+  -> m (Function expr Var)
 function vs e = do
   tele <- varTelescope vs
   return $ Function tele $ abstractAnno (teleAbstraction vs) e

@@ -94,8 +94,8 @@ solveExprConstraints = bindMetas $ \m es -> do
     Just e -> solveExprConstraints $ betaApps (open e) es
 
 solveDefConstraints
-  :: Definition (Expr MetaVar) FreeVar
-  -> Elaborate (Definition (Expr MetaVar) FreeVar)
+  :: Definition (Expr MetaVar) Var
+  -> Elaborate (Definition (Expr MetaVar) Var)
 solveDefConstraints (ConstantDefinition a e)
   = ConstantDefinition a <$> solveExprConstraints e
 solveDefConstraints (DataDefinition (DataDef ps constrs) rep) =
@@ -110,8 +110,8 @@ solveDefConstraints (DataDefinition (DataDef ps constrs) rep) =
     return $ DataDefinition dd rep'
 
 solveRecursiveDefConstraints
-  :: Vector (FreeVar, name, loc, Definition (Expr MetaVar) FreeVar)
-  -> Elaborate (Vector (FreeVar, name, loc, Definition (Expr MetaVar) FreeVar))
+  :: Vector (Var, name, loc, Definition (Expr MetaVar) Var)
+  -> Elaborate (Vector (Var, name, loc, Definition (Expr MetaVar) Var))
 solveRecursiveDefConstraints defs = forM defs $ \(v, name, loc, def) -> do
   def' <- solveDefConstraints def
   typ <- Context.lookupType v

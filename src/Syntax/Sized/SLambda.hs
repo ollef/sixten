@@ -46,19 +46,19 @@ pattern MkType rep = Lit (TypeRep rep)
 
 lam
   :: MonadContext e m
-  => FreeVar
-  -> Type FreeVar
-  -> Anno Expr FreeVar
-  -> m (Expr FreeVar)
+  => Var
+  -> Type Var
+  -> Anno Expr Var
+  -> m (Expr Var)
 lam v t e = do
   h <- Context.lookupHint v
   return $ Lam h t $ abstract1Anno v e
 
 letRec
   :: MonadContext e m
-  => Vector (FreeVar, Anno Expr FreeVar)
-  -> Expr FreeVar
-  -> m (Expr FreeVar)
+  => Vector (Var, Anno Expr Var)
+  -> Expr Var
+  -> m (Expr Var)
 letRec ds expr = do
   context <- getContext
   let

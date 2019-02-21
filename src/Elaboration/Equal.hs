@@ -81,9 +81,9 @@ arguments es1 es2 = do
 
 abstraction
   :: MonadEqual m
-  => (FreeVar -> CoreM -> m b)
-  -> NameHint -> Plicitness -> CoreM -> Scope1 (Expr MetaVar) FreeVar
-  -> NameHint -> Plicitness -> CoreM -> Scope1 (Expr MetaVar) FreeVar
+  => (Var -> CoreM -> m b)
+  -> NameHint -> Plicitness -> CoreM -> Scope1 (Expr MetaVar) Var
+  -> NameHint -> Plicitness -> CoreM -> Scope1 (Expr MetaVar) Var
   -> m b
 abstraction c h1 p1 t1 s1 h2 p2 t2 s2 = do
   let h = h1 <> h2
@@ -95,9 +95,9 @@ abstraction c h1 p1 t1 s1 h2 p2 t2 s2 = do
 
 branches
   :: MonadEqual m
-  => Branches (Expr MetaVar) FreeVar
-  -> Branches (Expr MetaVar) FreeVar
-  -> m (Branches (Expr MetaVar) FreeVar)
+  => Branches (Expr MetaVar) Var
+  -> Branches (Expr MetaVar) Var
+  -> m (Branches (Expr MetaVar) Var)
 branches (ConBranches cbrs1) (ConBranches cbrs2) = do
   guard $ length cbrs1 == length cbrs2
   ConBranches <$> zipWithM conBranch cbrs1 cbrs2
@@ -108,9 +108,9 @@ branches _ _ = fail "not equal"
 
 conBranch
   :: MonadEqual m
-  => ConBranch (Expr MetaVar) FreeVar
-  -> ConBranch (Expr MetaVar) FreeVar
-  -> m (ConBranch (Expr MetaVar) FreeVar)
+  => ConBranch (Expr MetaVar) Var
+  -> ConBranch (Expr MetaVar) Var
+  -> m (ConBranch (Expr MetaVar) Var)
 conBranch (ConBranch c1 tele1 s1) (ConBranch c2 tele2 s2) = do
   c <- eq c1 c2
   guard $ teleLength tele1 == teleLength tele2
@@ -129,9 +129,9 @@ conBranch (ConBranch c1 tele1 s1) (ConBranch c2 tele2 s2) = do
 
 litBranch
   :: MonadEqual m
-  => LitBranch (Expr MetaVar) FreeVar
-  -> LitBranch (Expr MetaVar) FreeVar
-  -> m (LitBranch (Expr MetaVar) FreeVar)
+  => LitBranch (Expr MetaVar) Var
+  -> LitBranch (Expr MetaVar) Var
+  -> m (LitBranch (Expr MetaVar) Var)
 litBranch (LitBranch l1 e1) (LitBranch l2 e2)
   = LitBranch <$> eq l1 l2 <*> expr e1 e2
 

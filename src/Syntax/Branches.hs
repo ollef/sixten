@@ -3,7 +3,7 @@ module Syntax.Branches where
 
 import Protolude
 
-import Bound
+import Bound hiding (Var)
 import Bound.Scope
 import Control.Monad.Morph
 import Data.Bifoldable
@@ -36,11 +36,11 @@ data LitBranch expr v = LitBranch Literal (expr v)
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 conBranch
-  :: (Monad expr, MonadContext (expr FreeVar) m)
+  :: (Monad expr, MonadContext (expr Var) m)
   => QConstr
-  -> Vector FreeVar
-  -> expr FreeVar
-  -> m (ConBranch expr FreeVar)
+  -> Vector Var
+  -> expr Var
+  -> m (ConBranch expr Var)
 conBranch c vs br = do
   tele <- varTelescope vs
   return
@@ -52,9 +52,9 @@ conBranch c vs br = do
 typedConBranch
   :: (Monad expr, MonadContext expr' m)
   => QConstr
-  -> Vector (FreeVar, expr FreeVar)
-  -> expr FreeVar
-  -> m (ConBranch expr FreeVar)
+  -> Vector (Var, expr Var)
+  -> expr Var
+  -> m (ConBranch expr Var)
 typedConBranch c vs br = do
   tele <- varTypeTelescope vs
   return

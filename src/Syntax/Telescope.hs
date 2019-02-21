@@ -14,9 +14,9 @@ module Syntax.Telescope where
 
 import Protolude
 
-import Bound
+import Bound hiding (Var)
 import Bound.Scope
-import Bound.Var
+import qualified Bound.Var as Bound
 import Control.Monad.Morph
 import Data.Bifoldable
 import Data.Bitraversable
@@ -66,9 +66,9 @@ bindingTelescope vs
     abstr = teleAbstraction $ fst <$> vs
 
 varTelescope
-  :: (Monad e, MonadContext (e FreeVar) m)
-  => Vector FreeVar
-  -> m (Telescope e FreeVar)
+  :: (Monad e, MonadContext (e Var) m)
+  => Vector Var
+  -> m (Telescope e Var)
 varTelescope vs = do
   context <- getContext
   let
@@ -81,9 +81,9 @@ varTelescope vs = do
     abstr = teleAbstraction vs
 
 plicitVarTelescope
-  :: (Monad e, MonadContext (e FreeVar) m)
-  => Vector (Plicitness, FreeVar)
-  -> m (Telescope e FreeVar)
+  :: (Monad e, MonadContext (e Var) m)
+  => Vector (Plicitness, Var)
+  -> m (Telescope e Var)
 plicitVarTelescope pvs = do
   context <- getContext
   let
@@ -97,8 +97,8 @@ plicitVarTelescope pvs = do
 
 varTypeTelescope
   :: (Monad e, MonadContext e' m)
-  => Vector (FreeVar, e FreeVar)
-  -> m (Telescope e FreeVar)
+  => Vector (Var, e Var)
+  -> m (Telescope e Var)
 varTypeTelescope vs = do
   context <- getContext
   let
@@ -111,9 +111,9 @@ varTypeTelescope vs = do
     abstr = teleAbstraction (fst <$> vs)
 
 teleExtendContext
-  :: (MonadFresh m, MonadContext (e FreeVar) m, Monad e)
-  => Telescope e FreeVar
-  -> (Vector FreeVar -> m a)
+  :: (MonadFresh m, MonadContext (e Var) m, Monad e)
+  => Telescope e Var
+  -> (Vector Var -> m a)
   -> m a
 teleExtendContext tele k = do
   vs <- forTeleWithPrefixM tele $ \h p s vs -> do
@@ -124,9 +124,9 @@ teleExtendContext tele k = do
 
 teleMapExtendContext
   :: (MonadFresh m, MonadContext e' m, Monad e)
-  => Telescope e FreeVar
-  -> (e FreeVar -> m e')
-  -> (Vector FreeVar -> m a)
+  => Telescope e Var
+  -> (e Var -> m e')
+  -> (Vector Var -> m a)
   -> m a
 teleMapExtendContext tele f k = do
   vs <- forTeleWithPrefixM tele $ \h p s vs -> do
@@ -217,14 +217,14 @@ teleTypes (Telescope t) = (\(TeleArg _ _ x) -> x) <$> t
 quantify
   :: Monad expr
   => (NameHint -> Plicitness
-               -> expr (Var TeleVar v)
-               -> Scope1 expr (Var TeleVar v')
-               -> expr (Var TeleVar v'))
+               -> expr (Bound.Var TeleVar v)
+               -> Scope1 expr (Bound.Var TeleVar v')
+               -> expr (Bound.Var TeleVar v'))
   -> Telescope expr v
   -> Scope TeleVar expr v'
   -> expr v'
 quantify pifun (Telescope ps) s =
-   unvar err id <$> Vector.ifoldr
+   Bound.unvar err id <$> Vector.ifoldr
      (\i (TeleArg h p s') -> pifun h p (fromScope s') . abstract (abstr i))
      (fromScope s)
      ps

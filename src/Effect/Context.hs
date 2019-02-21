@@ -57,27 +57,27 @@ instance HasContext e env => MonadContext e ((->) env) where
   getContext = view context
   modifyContext = local . over context
 
-lookup :: (HasCallStack, MonadContext e m) => FreeVar -> m (Binding e)
+lookup :: (HasCallStack, MonadContext e m) => Var -> m (Binding e)
 lookup v = do
   Context _ m <- getContext
   return $ HashMap.lookupDefault (Prelude.error $ "lookup " <> show v) v m
 
-lookupHint :: (MonadContext e m, HasCallStack) => FreeVar -> m NameHint
+lookupHint :: (MonadContext e m, HasCallStack) => Var -> m NameHint
 lookupHint = fmap _hint . lookup
 
-lookupType :: MonadContext e m => FreeVar -> m e
+lookupType :: MonadContext e m => Var -> m e
 lookupType = fmap _type . lookup
 
-lookupPlicitness :: MonadContext e m => FreeVar -> m Plicitness
+lookupPlicitness :: MonadContext e m => Var -> m Plicitness
 lookupPlicitness = fmap _plicitness . lookup
 
-lookupValue :: MonadContext e m => FreeVar -> m (Maybe e)
+lookupValue :: MonadContext e m => Var -> m (Maybe e)
 lookupValue = fmap _value . lookup
 
 freshExtend
   :: (MonadContext e m, MonadFresh m)
   => Binding e
-  -> (FreeVar -> m a)
+  -> (Var -> m a)
   -> m a
 freshExtend b k = do
   v <- freeVar
@@ -86,7 +86,7 @@ freshExtend b k = do
 freshExtends
   :: (MonadContext e m, MonadFresh m, Traversable t)
   => t (Binding e)
-  -> (t FreeVar -> m a)
+  -> (t Var -> m a)
   -> m a
 freshExtends bs k = do
   vs <- traverse (\b -> (,b) <$> freeVar) bs
@@ -94,7 +94,7 @@ freshExtends bs k = do
 
 extend
   :: MonadContext e m
-  => FreeVar
+  => Var
   -> Binding e
   -> m a
   -> m a
@@ -102,16 +102,16 @@ extend v b = modifyContext (:> (v, b))
 
 extends
   :: (Foldable t, MonadContext e m)
-  => t (FreeVar, Binding e)
+  => t (Var, Binding e)
   -> m a
   -> m a
 extends vs = modifyContext $ \ctx -> foldl (:>) ctx vs
 
 prettyVar
   :: (MonadContext e m, HasCallStack)
-  => FreeVar
+  => Var
   -> m Doc
-prettyVar v@(FreeVar i) = do
+prettyVar v@(Var i) = do
   h <- lookupHint v
   return $ case () of
     ()
@@ -137,7 +137,7 @@ prettyContext f = do
 
 update
   :: MonadContext e m
-  => FreeVar
+  => Var
   -> (Binding e -> Binding e)
   -> m a
   -> m a
@@ -145,14 +145,14 @@ update v f = modifyContext $ \(Context vs m) -> Context vs $ HashMap.update (Jus
 
 updates
   :: (Foldable t, MonadContext e m)
-  => t (FreeVar, Binding e -> Binding e)
+  => t (Var, Binding e -> Binding e)
   -> m a
   -> m a
 updates vs k = foldr (uncurry update) k vs
 
 set
   :: MonadContext e m
-  => FreeVar
+  => Var
   -> e
   -> m a
   -> m a
@@ -165,7 +165,7 @@ set v e = modifyContext go
 
 sets
   :: (MonadContext e m, Foldable f)
-  => f (FreeVar, e)
+  => f (Var, e)
   -> m a
   -> m a
 sets xs = modifyContext go

@@ -17,7 +17,8 @@ import Data.HashMap.Lazy(HashMap)
 import Data.Text(Text)
 import Data.Vector(Vector)
 
-import Effect.Context as Context
+import Effect
+import qualified Effect.Context as Context
 import Syntax hiding (Definition)
 import Syntax.Sized.Anno
 import TypeRep(TypeRep)
@@ -55,13 +56,13 @@ emptySubmodule contents = (\() -> contents) <$> mempty
 -------------------------------------------------------------------------------
 -- Helpers
 let_
-  :: MonadContext (Expr FreeVar) m
-  => FreeVar
-  -> Expr FreeVar
-  -> Expr FreeVar
-  -> m (Expr FreeVar)
+  :: MonadContext (Expr Var) m
+  => Var
+  -> Expr Var
+  -> Expr Var
+  -> m (Expr Var)
 let_ v e e' = do
-  Binding h _ t _ <- Context.lookup v
+  Context.Binding h _ t _ <- Context.lookup v
   return $ Let h (Anno e t) $ abstract1 v e'
 
 pattern MkType :: TypeRep -> Expr v
@@ -121,7 +122,7 @@ instance v ~ Doc => Pretty (Expr v) where
         prettyM (Util.instantiate1 (pure $ fromName n) s)
     Case e brs -> parens `above` casePrec $
       "case" <+> inviolable (prettyM e) <+>
-      "of" <$$> indent 2 (prettyM brs)
+      "of" <$$> Syntax.indent 2 (prettyM brs)
 
 instance Semigroup innards => Semigroup (Submodule innards) where
   Submodule a1 b1 c1 d1 <> Submodule a2 b2 c2 d2

@@ -32,7 +32,7 @@ instance Semigroup a => Semigroup (Result a) where
 instance Monoid a => Monoid (Result a) where
   mempty = Success mempty
 
-type Subst = HashMap FreeVar CoreM
+type Subst = HashMap Var CoreM
 
 unify :: CoreM -> CoreM -> Elaborate (Result Subst)
 unify expr1 expr2 = do

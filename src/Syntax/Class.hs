@@ -3,7 +3,7 @@ module Syntax.Class where
 
 import Protolude
 
-import Bound
+import Bound hiding (Var)
 import Bound.Scope
 import Control.Monad.Morph
 import Data.Bitraversable
@@ -26,10 +26,10 @@ data ClassDef typ v = ClassDef
   } deriving (Foldable, Functor, Show, Traversable)
 
 classDef
-  :: (Monad typ, MonadContext (typ FreeVar) m)
-  => Vector FreeVar
-  -> [Method (typ FreeVar)]
-  -> m (ClassDef typ FreeVar)
+  :: (Monad typ, MonadContext (typ Var) m)
+  => Vector Var
+  -> [Method (typ Var)]
+  -> m (ClassDef typ Var)
 classDef vs ms = do
   tele <- varTelescope vs
   return $ ClassDef tele $ fmap abstr <$> ms

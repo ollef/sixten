@@ -34,8 +34,8 @@ data LiftState thing = LiftState
   }
 
 -- TODO do we need Sequential here?
-newtype Lift thing a = Lift (StateT (LiftState thing) (ReaderT (Context.ContextEnvT (Lifted.Expr FreeVar) VIX.Env) (Sequential (Task Query))) a)
-  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadFresh, MonadIO, MonadLog, MonadFetch Query, MonadContext (Lifted.Expr FreeVar))
+newtype Lift thing a = Lift (StateT (LiftState thing) (ReaderT (Context.ContextEnvT (Lifted.Expr Var) VIX.Env) (Sequential (Task Query))) a)
+  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadFresh, MonadIO, MonadLog, MonadFetch Query, MonadContext (Lifted.Expr Var))
 
 freshName :: Lift thing GName
 freshName = do
@@ -87,8 +87,8 @@ runLift gn postfix (Lift l)
 type LambdaLift = Lift (Closed (Sized.Function Lifted.Expr))
 
 liftExpr
-  :: SLambda.Expr FreeVar
-  -> LambdaLift (Lifted.Expr FreeVar)
+  :: SLambda.Expr Var
+  -> LambdaLift (Lifted.Expr Var)
 liftExpr expr = case expr of
   SLambda.Var v -> return $ Lifted.Var v
   SLambda.Global g -> return $ Lifted.Global g
@@ -102,14 +102,14 @@ liftExpr expr = case expr of
   SLambda.ExternCode c retType -> Lifted.ExternCode <$> mapM liftAnnoExpr c <*> liftExpr retType
 
 liftAnnoExpr
-  :: Anno SLambda.Expr FreeVar
-  -> LambdaLift (Anno Lifted.Expr FreeVar)
+  :: Anno SLambda.Expr Var
+  -> LambdaLift (Anno Lifted.Expr Var)
 liftAnnoExpr (Anno e t) = Anno <$> liftExpr e <*> liftExpr t
 
 liftLambda
-  :: Telescope SLambda.Expr FreeVar
-  -> AnnoScope TeleVar SLambda.Expr FreeVar
-  -> LambdaLift (Lifted.Expr FreeVar)
+  :: Telescope SLambda.Expr Var
+  -> AnnoScope TeleVar SLambda.Expr Var
+  -> LambdaLift (Lifted.Expr Var)
 liftLambda tele lamScope = do
   sortedFvs <- topoSortVars $ toHashSet tele <> toHashSet lamScope
 
@@ -128,10 +128,10 @@ liftLambda tele lamScope = do
     return $ addArgs $ global g
 
 closeLambda
-  :: Telescope SLambda.Expr FreeVar
-  -> AnnoScope TeleVar SLambda.Expr FreeVar
-  -> Vector FreeVar
-  -> (Vector FreeVar -> Anno Lifted.Expr FreeVar -> LambdaLift a)
+  :: Telescope SLambda.Expr Var
+  -> AnnoScope TeleVar SLambda.Expr Var
+  -> Vector Var
+  -> (Vector Var -> Anno Lifted.Expr Var -> LambdaLift a)
   -> LambdaLift a
 closeLambda tele lamScope sortedFvs k =
   teleMapExtendContext tele liftExpr $ \vs -> do
@@ -141,9 +141,9 @@ closeLambda tele lamScope sortedFvs k =
     k (sortedFvs <> vs) lamExpr'
 
 topoSortVars
-  :: (MonadContext (e FreeVar) m, Foldable e)
-  => HashSet FreeVar
-  -> m (Vector FreeVar)
+  :: (MonadContext (e Var) m, Foldable e)
+  => HashSet Var
+  -> m (Vector Var)
 topoSortVars vs = do
   context <- getContext
   return
@@ -156,9 +156,9 @@ topoSortVars vs = do
     acyclic (CyclicSCC _) = panic "topoSortVars"
 
 liftLet
-  :: LetRec SLambda.Expr FreeVar
-  -> Scope LetVar SLambda.Expr FreeVar
-  -> LambdaLift (Lifted.Expr FreeVar)
+  :: LetRec SLambda.Expr Var
+  -> Scope LetVar SLambda.Expr Var
+  -> LambdaLift (Lifted.Expr Var)
 liftLet ds scope =
   letMapExtendContext ds liftExpr $ \vs -> do
     context <- getContext
@@ -214,8 +214,8 @@ liftLet ds scope =
     lets sortedDs letBody
 
 liftBranches
-  :: Branches SLambda.Expr FreeVar
-  -> LambdaLift (Branches Lifted.Expr FreeVar)
+  :: Branches SLambda.Expr Var
+  -> LambdaLift (Branches Lifted.Expr Var)
 liftBranches (ConBranches cbrs) = fmap ConBranches $
   forM cbrs $ \(ConBranch qc tele brScope) ->
     teleMapExtendContext tele liftExpr $ \vs -> do
@@ -226,10 +226,10 @@ liftBranches (LitBranches lbrs def) = LitBranches
   <$> mapM (\(LitBranch l e) -> LitBranch l <$> liftExpr e) lbrs <*> liftExpr def
 
 lets
-  :: MonadContext (Lifted.Expr FreeVar) m
-  => [SCC (FreeVar, Lifted.Expr FreeVar)]
-  -> Lifted.Expr FreeVar
-  -> m (Lifted.Expr FreeVar)
+  :: MonadContext (Lifted.Expr Var) m
+  => [SCC (Var, Lifted.Expr Var)]
+  -> Lifted.Expr Var
+  -> m (Lifted.Expr Var)
 lets = flip $ foldrM go
   where
     go (AcyclicSCC (v, e)) = Lifted.let_ v e

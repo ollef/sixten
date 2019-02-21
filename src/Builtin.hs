@@ -85,8 +85,8 @@ deref e
 maxArity :: Num n => n
 maxArity = 8
 
-newtype Fresh a = Fresh (ReaderT (Context (Lifted.Expr FreeVar)) (State Int) a)
-  deriving (Functor, Applicative, Monad, MonadState Int, MonadContext (Lifted.Expr FreeVar))
+newtype Fresh a = Fresh (ReaderT (Context (Lifted.Expr Var)) (State Int) a)
+  deriving (Functor, Applicative, Monad, MonadState Int, MonadContext (Lifted.Expr Var))
 
 evalFresh :: Fresh a -> a
 evalFresh (Fresh m) = evalState (runReaderT m mempty) 0
@@ -121,7 +121,7 @@ apply target numArgs
           $ (\v -> (directType, varAnno v context)) <$> argTypes'
           <|> (\v -> (Indirect, varAnno v context)) <$> args'
 
-        br :: Int -> Lifted.Expr FreeVar
+        br :: Int -> Lifted.Expr Var
         br arity
           | numArgs < arity
             = Lifted.Con Ref

@@ -58,76 +58,76 @@ sourceLocView (SourceLoc loc (unSourceLoc -> e)) = (loc, e)
 sourceLocView e = (noSourceLoc "sourceLocView", e)
 
 lam
-  :: MonadContext (Expr meta FreeVar) m
-  => FreeVar
-  -> Expr meta FreeVar
-  -> m (Expr meta FreeVar)
+  :: MonadContext (Expr meta Var) m
+  => Var
+  -> Expr meta Var
+  -> m (Expr meta Var)
 lam v e = do
   Context.Binding h p t _ <- Context.lookup v
   return $ Lam h p t $ abstract1 v e
 
 plicitLam
-  :: MonadContext (Expr meta FreeVar) m
+  :: MonadContext (Expr meta Var) m
   => Plicitness
-  -> FreeVar
-  -> Expr meta FreeVar
-  -> m (Expr meta FreeVar)
+  -> Var
+  -> Expr meta Var
+  -> m (Expr meta Var)
 plicitLam p v e = do
   Context.Binding h _ t _ <- Context.lookup v
   return $ Lam h p t $ abstract1 v e
 
 pi_
-  :: MonadContext (Expr meta FreeVar) m
-  => FreeVar
-  -> Expr meta FreeVar
-  -> m (Expr meta FreeVar)
+  :: MonadContext (Expr meta Var) m
+  => Var
+  -> Expr meta Var
+  -> m (Expr meta Var)
 pi_ v e = do
   Context.Binding h p t _ <- Context.lookup v
   return $ Pi h p t $ abstract1 v e
 
 plicitPi
-  :: MonadContext (Expr meta FreeVar) m
+  :: MonadContext (Expr meta Var) m
   => Plicitness
-  -> FreeVar
-  -> Expr meta FreeVar
-  -> m (Expr meta FreeVar)
+  -> Var
+  -> Expr meta Var
+  -> m (Expr meta Var)
 plicitPi p v e = do
   Context.Binding h _ t _ <- Context.lookup v
   return $ Pi h p t $ abstract1 v e
 
 lams
-  :: (MonadContext (Expr meta FreeVar) m, Foldable t)
-  => t FreeVar
-  -> Expr meta FreeVar
-  -> m (Expr meta FreeVar)
+  :: (MonadContext (Expr meta Var) m, Foldable t)
+  => t Var
+  -> Expr meta Var
+  -> m (Expr meta Var)
 lams xs e = foldrM lam e xs
 
 plicitLams
-  :: (MonadContext (Expr meta FreeVar) m, Foldable t)
-  => t (Plicitness, FreeVar)
-  -> Expr meta FreeVar
-  -> m (Expr meta FreeVar)
+  :: (MonadContext (Expr meta Var) m, Foldable t)
+  => t (Plicitness, Var)
+  -> Expr meta Var
+  -> m (Expr meta Var)
 plicitLams xs e = foldrM (uncurry plicitLam) e xs
 
 pis
-  :: (MonadContext (Expr meta FreeVar) m, Foldable t)
-  => t FreeVar
-  -> Expr meta FreeVar
-  -> m (Expr meta FreeVar)
+  :: (MonadContext (Expr meta Var) m, Foldable t)
+  => t Var
+  -> Expr meta Var
+  -> m (Expr meta Var)
 pis xs e = foldrM pi_ e xs
 
 plicitPis
-  :: (MonadContext (Expr meta FreeVar) m, Foldable t)
-  => t (Plicitness, FreeVar)
-  -> Expr meta FreeVar
-  -> m (Expr meta FreeVar)
+  :: (MonadContext (Expr meta Var) m, Foldable t)
+  => t (Plicitness, Var)
+  -> Expr meta Var
+  -> m (Expr meta Var)
 plicitPis xs e = foldrM (uncurry plicitPi) e xs
 
 let_
-  :: MonadContext (Expr meta FreeVar) m
-  => Vector (FreeVar, SourceLoc, Expr meta FreeVar)
-  -> Expr meta FreeVar
-  -> m (Expr meta FreeVar)
+  :: MonadContext (Expr meta Var) m
+  => Vector (Var, SourceLoc, Expr meta Var)
+  -> Expr meta Var
+  -> m (Expr meta Var)
 let_ ds body = do
   context <- getContext
   let abstr = letAbstraction $ fst3 <$> ds

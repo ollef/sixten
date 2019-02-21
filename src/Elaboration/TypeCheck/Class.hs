@@ -31,9 +31,9 @@ import qualified TypeRep
 import Util
 
 checkClassDef
-  :: ClassDef Pre.Expr FreeVar
+  :: ClassDef Pre.Expr Var
   -> CoreM
-  -> Elaborate (ClassDef (Core.Expr MetaVar) FreeVar)
+  -> Elaborate (ClassDef (Core.Expr MetaVar) Var)
 checkClassDef (ClassDef params ms) typ = do
   -- TODO: These vars are typechecked twice (in checkAndGeneraliseDefs as the
   -- expected type and here). Can we clean this up?
@@ -61,13 +61,13 @@ checkClassDef (ClassDef params ms) typ = do
   f (MkC f') = f'
 -}
 desugarClassDef
-  :: FreeVar
+  :: Var
   -> QName
   -> SourceLoc
-  -> ClassDef (Core.Expr MetaVar) FreeVar
+  -> ClassDef (Core.Expr MetaVar) Var
   -> Elaborate
-    ( (FreeVar, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeVar)
-    , Vector (FreeVar, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeVar, CoreM)
+    ( (Var, GName, SourceLoc, Definition (Core.Expr MetaVar) Var)
+    , Vector (Var, GName, SourceLoc, Definition (Core.Expr MetaVar) Var, CoreM)
     )
 desugarClassDef classVar name loc (ClassDef params ms) =
   teleExtendContext params $ \paramVars -> do
@@ -133,14 +133,14 @@ desugarClassDef classVar name loc (ClassDef params ms) =
     MkC instanceName-f
 -}
 checkInstance
-  :: FreeVar
+  :: Var
   -> QName
   -> SourceLoc
-  -> Pre.InstanceDef Pre.Expr FreeVar
+  -> Pre.InstanceDef Pre.Expr Var
   -> CoreM
   -> Elaborate
-    ( (FreeVar, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeVar)
-    , Vector (FreeVar, GName, SourceLoc, Definition (Core.Expr MetaVar) FreeVar, CoreM)
+    ( (Var, GName, SourceLoc, Definition (Core.Expr MetaVar) Var)
+    , Vector (Var, GName, SourceLoc, Definition (Core.Expr MetaVar) Var, CoreM)
     )
 checkInstance ivar iname iloc (Pre.InstanceDef _instanceType methods) typ =
   deepSkolemiseInner typ mempty $ \skolemVars innerInstanceType skolemFun -> do

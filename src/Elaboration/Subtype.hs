@@ -50,8 +50,8 @@ deepSkolemise t1 k
 deepSkolemiseInner
   :: MonadElaborate m
   => Polytype
-  -> HashSet FreeVar
-  -> (Vector FreeVar -> Rhotype -> (CoreM -> CoreM) -> m a)
+  -> HashSet Var
+  -> (Vector Var -> Rhotype -> (CoreM -> CoreM) -> m a)
   -> m a
 deepSkolemiseInner typ argsToPass k = do
   typ' <- whnf typ
@@ -60,8 +60,8 @@ deepSkolemiseInner typ argsToPass k = do
 deepSkolemiseInner'
   :: MonadElaborate m
   => Polytype
-  -> HashSet FreeVar
-  -> (Vector FreeVar -> Rhotype -> (CoreM -> CoreM) -> m a)
+  -> HashSet Var
+  -> (Vector Var -> Rhotype -> (CoreM -> CoreM) -> m a)
   -> m a
 deepSkolemiseInner' typ@(Pi h p t resScope) argsToPass k = case p of
   Explicit ->
@@ -203,8 +203,8 @@ funSubtypes
   :: Rhotype
   -> Vector Plicitness
   -> Elaborate
-    ( Telescope (Expr MetaVar) FreeVar
-    , Scope TeleVar (Expr MetaVar) FreeVar
+    ( Telescope (Expr MetaVar) Var
+    , Scope TeleVar (Expr MetaVar) Var
     , Vector (CoreM -> CoreM)
     )
 funSubtypes startType plics = go plics startType mempty mempty
@@ -229,7 +229,7 @@ funSubtypes startType plics = go plics startType mempty mempty
 funSubtype
   :: Rhotype
   -> Plicitness
-  -> Elaborate (NameHint, Rhotype, Scope1 (Expr MetaVar) FreeVar, CoreM -> CoreM)
+  -> Elaborate (NameHint, Rhotype, Scope1 (Expr MetaVar) Var, CoreM -> CoreM)
 funSubtype typ p = do
   typ' <- whnf typ
   funSubtype' typ' p
@@ -237,7 +237,7 @@ funSubtype typ p = do
 funSubtype'
   :: Rhotype
   -> Plicitness
-  -> Elaborate (NameHint, Rhotype, Scope1 (Expr MetaVar) FreeVar, CoreM -> CoreM)
+  -> Elaborate (NameHint, Rhotype, Scope1 (Expr MetaVar) Var, CoreM -> CoreM)
 funSubtype' (Pi h p t s) p' | p == p' = return (h, t, s, identity)
 funSubtype' typ p = do
   (argType, resScope) <- existsPi
@@ -248,7 +248,7 @@ funSubtype' typ p = do
 subtypeFun
   :: Rhotype
   -> Plicitness
-  -> Elaborate (Rhotype, Scope1 (Expr MetaVar) FreeVar, CoreM -> CoreM)
+  -> Elaborate (Rhotype, Scope1 (Expr MetaVar) Var, CoreM -> CoreM)
 subtypeFun typ p = do
   typ' <- whnf typ
   subtypeFun' typ' p
@@ -256,14 +256,14 @@ subtypeFun typ p = do
 subtypeFun'
   :: Rhotype
   -> Plicitness
-  -> Elaborate (Rhotype, Scope1 (Expr MetaVar) FreeVar, CoreM -> CoreM)
+  -> Elaborate (Rhotype, Scope1 (Expr MetaVar) Var, CoreM -> CoreM)
 subtypeFun' (Pi _ p t s) p' | p == p' = return (t, s, identity)
 subtypeFun' typ p = do
   (argType, resScope) <- existsPi
   f <- subtype typ $ Pi mempty p argType resScope
   return (argType, resScope, f)
 
-existsPi :: Elaborate (CoreM, Scope1 (Expr MetaVar) FreeVar)
+existsPi :: Elaborate (CoreM, Scope1 (Expr MetaVar) Var)
 existsPi = do
   argType <- existsType mempty
   resType <- existsType mempty

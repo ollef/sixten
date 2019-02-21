@@ -40,10 +40,10 @@ import Util
 
 matchClauses
   :: Foldable t
-  => Vector FreeVar
-  -> t (Pre.Clause Pre.Expr FreeVar)
+  => Vector Var
+  -> t (Pre.Clause Pre.Expr Var)
   -> Polytype
-  -> (Pre.Expr FreeVar -> Polytype -> Elaborate CoreM)
+  -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
 matchClauses vars preClauses typ k = do
   ctx <- getContext
@@ -64,9 +64,9 @@ matchClauses vars preClauses typ k = do
 matchBranches
   :: CoreM
   -> CoreM
-  -> [(Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr FreeVar) NameHint, PatternScope Pre.Expr FreeVar)]
+  -> [(Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr Var) NameHint, PatternScope Pre.Expr Var)]
   -> Polytype
-  -> (Pre.Expr FreeVar -> Polytype -> Elaborate CoreM)
+  -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
 matchBranches expr exprType [] typ _ = do
   -- Instead of supporting impossible patterns, we treat branchless case
@@ -130,11 +130,11 @@ uninhabitedConstrType typ = do
     _ -> return False
 
 matchSingle
-  :: FreeVar
-  -> Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr FreeVar) NameHint
-  -> PatternScope Pre.Expr FreeVar
+  :: Var
+  -> Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr Var) NameHint
+  -> PatternScope Pre.Expr Var
   -> Polytype
-  -> (Pre.Expr FreeVar -> Polytype -> Elaborate CoreM)
+  -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
 matchSingle v pat body typ k = do
   varType <- Context.lookupType v
@@ -157,7 +157,7 @@ desugarPatLits = bindPatLits litPat
 
 -------------------------------------------------------------------------------
 
-type PrePat = Pat (HashSet QConstr) Core.Literal (PatternScope Pre.Type FreeVar) PatternVar
+type PrePat = Pat (HashSet QConstr) Core.Literal (PatternScope Pre.Type Var) PatternVar
 
 data Config = Config
   { _targetType :: CoreM
@@ -165,11 +165,11 @@ data Config = Config
   , _coveredLits :: !CoveredLits
   }
 
-type CoveredLits = HashSet (FreeVar, Core.Literal)
+type CoveredLits = HashSet (Var, Core.Literal)
 
 data Clause = Clause
   { _matches :: [Match]
-  , _rhs :: PatternScope Pre.Expr FreeVar
+  , _rhs :: PatternScope Pre.Expr Var
   }
 
 data Match = Match CoreM (Plicitness, PrePat) CoreM
@@ -195,7 +195,7 @@ prettyMatch (Match expr (p, pat) typ) = do
 
 match
   :: Config
-  -> (Pre.Expr FreeVar -> Polytype -> Elaborate CoreM)
+  -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
 match config k = Log.indent $ do
   logPretty "tc.match.context" "context" $ Context.prettyContext $ prettyMeta <=< zonk
@@ -239,7 +239,7 @@ match config k = Log.indent $ do
 
 findConMatches
   :: [Match]
-  -> [(FreeVar, Either (HashSet QConstr) Core.Literal, CoreM)]
+  -> [(Var, Either (HashSet QConstr) Core.Literal, CoreM)]
 findConMatches matches
   = catMaybes
   $ foreach matches
@@ -253,7 +253,7 @@ findConMatches matches
 
 findEqMatch
   :: [Match]
-  -> Elaborate (Indices.Result (FreeVar, CoreM, CoreM, CoreM, Indices.Subst))
+  -> Elaborate (Indices.Result (Var, CoreM, CoreM, CoreM, Indices.Subst))
 findEqMatch [] = return Indices.Dunno
 findEqMatch (Match (Core.Var x) (Constraint, unPatLoc -> WildcardPat) (Builtin.Equals typ e1 e2):rest) = do
   result <- Indices.unify e1 e2
@@ -265,10 +265,10 @@ findEqMatch (_:rest) = findEqMatch rest
 
 splitCon
   :: Config
-  -> FreeVar
+  -> Var
   -> HashSet QConstr
   -> CoreM
-  -> (Pre.Expr FreeVar -> Polytype -> Elaborate CoreM)
+  -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
 splitCon config x qcs typ k = do
   qc <- resolveConstr qcs $ Just typ
@@ -314,10 +314,10 @@ splitCon config x qcs typ k = do
 
 splitLit
   :: Config
-  -> FreeVar
+  -> Var
   -> Core.Literal
   -> CoreM
-  -> (Pre.Expr FreeVar -> Polytype -> Elaborate CoreM)
+  -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
 splitLit config x lit typ k = do
   let
@@ -334,12 +334,12 @@ splitLit config x lit typ k = do
 
 splitEq
   :: Config
-  -> FreeVar
+  -> Var
   -> CoreM
   -> CoreM
   -> CoreM
   -> Indices.Subst
-  -> (Pre.Expr FreeVar -> Polytype -> Elaborate CoreM)
+  -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
 splitEq config x typ lhs rhs sub k = do
   logMeta "tc.match" "splitEq typ" $ zonk typ
@@ -460,8 +460,8 @@ type PatSubst = HashMap PatternVar (CoreM, CoreM)
 instantiateSubst
   :: (Eq b, Hashable b, Monad e, MonadContext CoreM m, MonadFresh m)
   => HashMap b (CoreM, CoreM)
-  -> Scope b e FreeVar
-  -> (e FreeVar -> m CoreM)
+  -> Scope b e Var
+  -> (e Var -> m CoreM)
   -> m CoreM
 instantiateSubst sub scope k = do
   let

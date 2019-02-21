@@ -3,7 +3,7 @@ module Syntax.Data where
 
 import Protolude
 
-import Bound
+import Bound hiding (Var)
 import Bound.Scope
 import Control.Monad.Morph
 import Data.Bitraversable
@@ -24,10 +24,10 @@ data DataDef typ v = DataDef
   } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 dataDef
-  :: (Monad typ, MonadContext (typ FreeVar) m)
-  => Vector FreeVar
-  -> [ConstrDef (typ FreeVar)]
-  -> m (DataDef typ FreeVar)
+  :: (Monad typ, MonadContext (typ Var) m)
+  => Vector Var
+  -> [ConstrDef (typ Var)]
+  -> m (DataDef typ Var)
 dataDef vs cs = do
   tele <- varTelescope vs
   return $ DataDef tele $ fmap abstr <$> cs
@@ -35,10 +35,10 @@ dataDef vs cs = do
     abstr = abstract $ teleAbstraction vs
 
 plicitDataDef
-  :: (Monad typ, MonadContext (typ FreeVar) m)
-  => Vector (Plicitness, FreeVar)
-  -> [ConstrDef (typ FreeVar)]
-  -> m (DataDef typ FreeVar)
+  :: (Monad typ, MonadContext (typ Var) m)
+  => Vector (Plicitness, Var)
+  -> [ConstrDef (typ Var)]
+  -> m (DataDef typ Var)
 plicitDataDef pvs cs = do
   tele <- plicitVarTelescope pvs
   return $ DataDef tele $ fmap abstr <$> cs
