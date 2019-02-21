@@ -360,6 +360,9 @@ completion for the `sixten` command:
 ```shell
 source <(sixten --bash-completion-script `which sixten`)
 ```
+## Changelog
+
+[Here](CHANGELOG.md).
 
 ## Contributions
 
