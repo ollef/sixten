@@ -124,7 +124,7 @@ id x = x
 Implicit arguments are inferred by usage, so `a = Int` in `id 610`.  They
 can also be explicitly specified using `@`: `id @Int 610`.
 
-### Pi types
+### Dependent function types (pi types)
 
 The arguments in function types can be named and used in the return type:
 
