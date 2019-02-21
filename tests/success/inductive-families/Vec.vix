@@ -1,0 +1,30 @@
+type Vec (n : Nat) (a : Type) where
+  Nil : Vec Zero a
+  Cons : forall m. a -> Ptr (Vec m a) -> Vec (Succ m) a
+
+xs0 : Vec Zero Int
+xs0 = Nil
+
+xs1 : Vec (Succ Zero) Int
+xs1 = Cons 1 (Ref Nil)
+
+xs2 : Vec (Succ (Succ Zero)) Int
+xs2 = Cons 1 (Ref (Cons 2 (Ref Nil)))
+
+map : forall a b n. (a -> b) -> Ptr (Vec n a) -> Ptr (Vec n b)
+map f (Ref Nil) = Ref Nil
+map f (Ref (Cons x xs)) = Ref (Cons (f x) (map f xs))
+
+addNat : Nat -> Nat -> Nat
+addNat Zero n = n
+addNat (Succ m) n = Succ (addNat m n)
+
+append : forall a m n. Ptr (Vec m a) -> Ptr (Vec n a) -> Ptr (Vec (addNat m n) a)
+append (Ref Nil) ys = ys
+append (Ref (Cons x xs)) ys = Ref (Cons x (append xs ys))
+
+sum : forall n. Ptr (Vec n Int) -> Int
+sum (Ref Nil) = 0
+sum (Ref (Cons x xs)) = addInt x (sum xs)
+
+main = printInt (sum (Ref xs2))

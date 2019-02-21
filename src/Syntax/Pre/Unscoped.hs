@@ -1,3 +1,6 @@
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Syntax.Pre.Unscoped where
 
@@ -33,9 +36,18 @@ data Definition e
 definitionName :: Definition e -> Name
 definitionName (Definition n _ _ _) = n
 
+data ADTOrGADTConstrDef typ
+  = ADTConstrDef Constr [typ]
+  | GADTConstrDef Constr typ
+  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+
+constrName :: ADTOrGADTConstrDef typ -> Constr
+constrName (ADTConstrDef c _) = c
+constrName (GADTConstrDef c _) = c
+
 data TopLevelDefinition
   = TopLevelDefinition (Definition Expr)
-  | TopLevelDataDefinition Name [(Plicitness, Name, Type)] [ConstrDef Expr]
+  | TopLevelDataDefinition Name [(Plicitness, Name, Type)] [ADTOrGADTConstrDef Expr]
   | TopLevelClassDefinition Name [(Plicitness, Name, Type)] [Method Expr]
   | TopLevelInstanceDefinition Type [(SourceLoc, Definition Expr)]
   deriving (Show)

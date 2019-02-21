@@ -1,0 +1,13 @@
+type Equals a b where
+  Refl : Equals a a
+
+impossible : forall a. Equals 2 3 -> a
+impossible eq = case eq of
+
+type Maybe a = Nothing | Just a
+
+impossible2 : forall a. Equals Nothing (Just 3) -> a
+impossible2 eq = case eq of
+
+impossible3 : forall a. Equals (Just 2) (Just 3) -> a
+impossible3 eq = case eq of

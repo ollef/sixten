@@ -21,7 +21,7 @@ import TypeRep(TypeRep)
 import qualified TypeRep
 import Util
 
-type MonadNormalise meta m = (MonadIO m, MonadFetch Query m, MonadFresh m, MonadContext (Expr meta FreeVar) m, MonadLog m)
+type MonadNormalise meta m = (MonadIO m, MonadFetch Query m, MonadFresh m, MonadContext (Expr meta FreeVar) m, MonadLog m, MonadReport m)
 
 data Args meta m = Args
   { _expandTypeReps :: !Bool
@@ -323,7 +323,7 @@ chooseBranch _ _ = Nothing
 -- that it's possible to miss some definitional equalities, but this is
 -- hopefully rarely the case in practice.
 normaliseDef
-  :: Monad m
+  :: MonadReport m
   => (Expr meta FreeVar -> m (Expr meta FreeVar)) -- ^ How to normalise case scrutinees
   -> Expr meta FreeVar -- ^ The definition
   -> [(Plicitness, Expr meta FreeVar)] -- ^ Arguments
@@ -331,11 +331,13 @@ normaliseDef
   -- ^ The definition body applied to some arguments and any arguments that are still left
 normaliseDef norm = lambdas
   where
+    lambdas (SourceLoc loc e) es = located loc $ lambdas e es
     lambdas (Lam _ p2 _ s) ((p1, e):es) | p1 == p2 = lambdas (instantiate1 e s) es
     lambdas Lam {} [] = return Nothing
     lambdas e es = do
       mresult <- cases e
       return $ (, es) <$> mresult
+    cases (SourceLoc loc e) = located loc $ cases e
     cases (Case e brs _retType) = do
       e' <- norm e
       case chooseBranch e' brs of

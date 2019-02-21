@@ -20,6 +20,7 @@ import Elaboration.Monad
 import qualified Elaboration.Normalise as Normalise
 import Elaboration.Subtype
 import Elaboration.TypeOf
+import Elaboration.Unify
 import Syntax
 import Syntax.Core
 import Util
@@ -45,6 +46,12 @@ trySolveConstraint m = modifyContext (const mempty) $ do
     ctx <- getContext
     typ' <- whnf typ
     case typ' of
+      Builtin.Equals _typ expr1 expr2 -> do
+        runUnify (unify [] expr1 expr2) report
+        openSol <- lams vs $ Builtin.Refl typ expr1 expr2
+        let sol = close (panic "trySolveConstraint equals not closed") openSol
+        solve m sol
+        return $ Just sol
       (appsView -> (unSourceLoc -> Builtin.QGlobal className, _)) -> do
         -- Try subsumption on all instances of the class until a match is found
         mname <- view currentModule

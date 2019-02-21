@@ -106,16 +106,22 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
         Nothing -> do
           let vs = snd <$> pvs
           t' <- prune (toHashSet vs) t
-          lamt <- plicitLams pvs t'
+          -- TODO: Do less normalisation
+          normt' <- normalise t
+          lamt <- plicitLams pvs normt'
           normLamt <- normalise lamt
+          logPretty "tc.unify.context" "context" $ Context.prettyContext $ prettyMeta <=< zonk
           logShow "tc.unify" "vs" vs
           logMeta "tc.unify" ("solving t " <> show (metaId m)) $ zonk t
           logMeta "tc.unify" ("solving t' " <> show (metaId m)) $ zonk t'
+          logMeta "tc.unify" ("solving normt' " <> show (metaId m)) $ zonk normt'
           logMeta "tc.unify" ("solving lamt " <> show (metaId m)) $ zonk lamt
           logMeta "tc.unify" ("solving normlamt " <> show (metaId m)) $ zonk normLamt
           occurs cxt m normLamt
           case closed normLamt of
-            Nothing -> can'tUnify
+            Nothing -> do
+              logCategory "tc.unify" "solveVar not closed"
+              can'tUnify
             Just closedLamt -> do
               lamtType <- typeOf normLamt
               recurse cxt (open $ metaType m) lamtType
@@ -141,7 +147,9 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
           newMetaType' <- normalise newMetaType
 
           case closed newMetaType' of
-            Nothing -> can'tUnify
+            Nothing -> do
+              logCategory "tc.unify" "sameVar not closed"
+              can'tUnify
             Just newMetaType'' -> do
               m' <- explicitExists
                 (metaHint m)

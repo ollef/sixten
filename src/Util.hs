@@ -219,3 +219,12 @@ distinct es = HashSet.size (toHashSet es) == length es
 
 pattern Mempty :: (Eq m, Monoid m) => m
 pattern Mempty <- ((==) mempty -> True) where Mempty = mempty
+
+allM :: Monad m => (a -> m Bool) -> [a] -> m Bool
+allM _ [] = return True
+allM p (x:xs) = do
+  b <- p x
+  if b then
+    allM p xs
+  else
+    return False

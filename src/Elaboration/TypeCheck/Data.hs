@@ -1,9 +1,11 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 module Elaboration.TypeCheck.Data where
 
 import Protolude hiding (typeRep)
 
+import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
@@ -14,12 +16,15 @@ import Elaboration.Constraint as Constraint
 import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
+import Elaboration.TypeOf
 import Elaboration.TypeCheck.Expr
+import qualified Elaboration.Equal as Equal
 import Elaboration.Unify
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
 import qualified TypeRep
+import Util
 
 checkDataDef
   :: FreeVar
@@ -35,10 +40,9 @@ checkDataDef var (DataDef ps cs) typ =
 
     let
       pvs = Vector.zipWith (\p v -> (p, pure v)) (telePlics ps) vs
-      constrRetType = Core.apps (pure var) pvs
 
     (cs', sizes) <- fmap unzip $ forM cs $ \(ConstrDef c t) ->
-      checkConstrDef (ConstrDef c $ instantiateTele pure vs t) constrRetType
+      checkConstrDef (ConstrDef c $ instantiateTele pure vs t) (pure var) pvs
 
     intRep <- fetchIntRep
 
@@ -64,15 +68,16 @@ checkDataDef var (DataDef ps cs) typ =
 checkConstrDef
   :: ConstrDef PreM
   -> CoreM
+  -> Vector (Plicitness, CoreM)
   -> Elaborate (ConstrDef CoreM, CoreM)
-checkConstrDef (ConstrDef c ctype) retType = do
+checkConstrDef (ConstrDef c ctype) typeCon typeArgs = do
   logPretty "tc.def.constr" "checkConstrDef constr" $ pure c
   ctype' <- checkPoly ctype Builtin.Type
   logMeta "tc.def.constr" "checkConstrDef ctype" $ zonk ctype'
-  sizes <- go ctype'
+  (ctype'', sizes) <- go ctype'
   let size = foldl' productType (Core.MkType TypeRep.UnitRep) sizes
   logMeta "tc.def.constr" "checkConstrDef size" $ zonk size
-  return (ConstrDef c ctype', size)
+  return (ConstrDef c ctype'', size)
   where
     -- TODO: Check for escaping type variables and improve error message
     go t = do
@@ -81,11 +86,34 @@ checkConstrDef (ConstrDef c ctype) retType = do
     go' (Core.Pi h p t s) = do
       rep <- whnfExpandingTypeReps t
       Context.freshExtend (binding h p t) $ \v -> do
-        sizes <- go $ instantiate1 (pure v) s
-        return $ rep : sizes
-    go' ret = do
-      runUnify (unify [] retType ret) report
-      return []
+        (body, sizes) <- go $ instantiate1 (pure v) s
+        body' <- Core.pi_ v body
+        return (body', rep : sizes)
+    go' typ@(Core.appsView -> (typeHead, typeArgs'))
+      | Vector.length typeArgs == length typeArgs' = do
+        runUnify (unify [] typeHead typeCon) report
+        t <- constrainArgs (Core.apps typeCon typeArgs) (toList typeArgs) typeArgs'
+        return (t, [])
+      | otherwise = do
+        runUnify (unify [] (Core.apps typeCon typeArgs) typ) report
+        return (typ, [])
+
+    constrainArgs returnType [] [] = return returnType
+    constrainArgs returnType ((p1, arg1):args1) ((p2, arg2):args2)
+      | p1 == p2 = do
+        equal <- Equal.exec $ Equal.expr arg1 arg2
+        if equal then
+          constrainArgs returnType args1 args2
+        else do
+          typ <- typeOf arg1
+          let
+            returnType'
+              = Core.Pi mempty Constraint (Builtin.Equals typ arg1 arg2)
+              $ abstractNone returnType
+          constrainArgs returnType' args1 args2
+    constrainArgs _ _ _ =
+      panic "constrainArgs mismatched lengths"
+
 
 -------------------------------------------------------------------------------
 -- Type helpers

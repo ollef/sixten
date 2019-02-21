@@ -98,6 +98,7 @@ library
                        Elaboration.TypeCheck.Literal
                        Elaboration.TypeOf
                        Elaboration.Unify
+                       Elaboration.Unify.Indices
                        Error
                        Frontend.DupCheck
                        Frontend.Parse

@@ -1,0 +1,5 @@
+type Equals a b where
+  Refl : Equals a a
+
+f : forall a b. a -> Equals a b -> b
+f a _ = a
