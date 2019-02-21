@@ -132,6 +132,26 @@ The arguments in function types can be named and used in the return type:
 sum : (n : Nat) -> Vector n Int -> Int
 ```
 
+### Inductive families (GADTs)
+
+Constructors can constrain their type's parameters. For instance, we can define
+propositional equality as follows:
+
+```haskell
+type Equals a b where
+  Refl : Equals a a
+```
+
+Here, the `Refl` constructor can only be used when the two type parameters to
+`Equals` are equal. When given a value of type `Equals a b`, we can use pattern
+matching to reveal the constraint that `a` and `b` are equal. As an example,
+here's how to define transitivity:
+
+```haskell
+trans : forall a b c. Equals a b -> Equals b c -> Equals a c
+trans Refl Refl = Refl
+```
+
 ### Type inference
 
 Sixten's type inference is inspired by
@@ -177,7 +197,6 @@ garbage-collecting heap-allocated data.
 
 ## Planned features
 
-* Inductive families/indexed types
 * Editor integration (there's already Vim syntax highlighting though!!)
 * Records
 * Effects and IO
