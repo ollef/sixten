@@ -12,9 +12,6 @@ class Eq a => PrettyAnnotation a where
   prettyAnnotationParens :: a -> PrettyDoc -> PrettyDoc
   prettyAnnotationParens p = prettyAnnotation p . parens
 
-instance PrettyAnnotation () where
-  prettyAnnotation _ = identity
-
 data Plicitness = Constraint | Implicit | Explicit
   deriving (Eq, Ord, Generic)
 
