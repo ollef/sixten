@@ -142,7 +142,7 @@ type Equals a b where
   Refl : Equals a a
 ```
 
-Here, the `Refl` constructor can only be used when the two type parameters to
+Here, the `Refl` constructor can only be used when the two parameters to
 `Equals` are equal. When given a value of type `Equals a b`, we can use pattern
 matching to reveal the constraint that `a` and `b` are equal. As an example,
 here's how to define transitivity:
