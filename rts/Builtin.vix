@@ -15,8 +15,6 @@ Pi_ = _
 
 type Closure = MkClosure
 
-type __Equals__ @(t : Type) (a : t) (b : t) = __Refl__
-
 -------------------------------------------------------------------------------
 
 type Bool = False | True

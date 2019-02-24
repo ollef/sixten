@@ -66,20 +66,6 @@ pattern SumTypeRep e1 e2 = App (App (Global (GName SumTypeRepName Mempty)) Expli
 pattern SizeOfName :: QName
 pattern SizeOfName <- ((==) "Sixten.Builtin.sizeOf" -> True) where SizeOfName = "Sixten.Builtin.sizeOf"
 
-pattern EqualsName :: QName
-pattern EqualsName <- ((==) "Sixten.Builtin.__Equals__" -> True) where EqualsName = "Sixten.Builtin.__Equals__"
-pattern Equals :: Type m t -> Expr m t -> Expr m t -> Expr m t
-pattern Equals typ e1 e2 =
-  App (App (App (Global (GName EqualsName Mempty)) Implicit typ) Explicit e1) Explicit e2
-
-pattern ReflConstrName :: Constr
-pattern ReflConstrName <- ((==) "__Refl__" -> True) where ReflConstrName = "__Refl__"
-pattern ReflConstr :: QConstr
-pattern ReflConstr = QConstr EqualsName ReflConstrName
-pattern Refl :: Type m t -> Expr m t -> Expr m t -> Expr m t
-pattern Refl typ e1 e2 =
-  App (App (App (Con ReflConstr) Implicit typ) Implicit e1) Implicit e2
-
 pattern RefName :: Constr
 pattern RefName <- ((==) "Ref" -> True) where RefName = "Ref"
 pattern PtrName :: QName

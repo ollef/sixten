@@ -8,7 +8,6 @@ import Protolude
 
 import Control.Monad
 import Control.Monad.Trans.Maybe
-import Util.TopoSort
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
@@ -25,18 +24,19 @@ import qualified Effect.Context as Context
 import qualified Effect.Log as Log
 import Elaboration.Constraint
 import Elaboration.Constructor
-import qualified Elaboration.Unify.Indices as Indices
 import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
 import Elaboration.TypeCheck.Literal
 import Elaboration.Unify
+import qualified Elaboration.Unify.Indices as Indices
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Literal as Core
 import qualified Syntax.Pre.Literal as Pre
 import qualified Syntax.Pre.Scoped as Pre
 import Util
+import Util.TopoSort
 
 matchClauses
   :: Foldable t
@@ -57,6 +57,7 @@ matchClauses vars preClauses typ k = do
   match Config
     { _targetType = typ
     , _clauses = clauses
+    , _equalities = mempty
     , _coveredLits = mempty
     }
     k
@@ -90,6 +91,7 @@ matchBranches (Core.varView -> Just var) exprType brs typ k =
         }
       | (pat, rhs) <- brs
       ]
+    , _equalities = mempty
     , _coveredLits = mempty
     }
     k
@@ -102,22 +104,16 @@ uninhabited :: CoreM -> Elaborate Bool
 uninhabited typ = do
   typ' <- whnf typ
   case typ' of
-    Builtin.Equals _ e1 e2 -> do
-      res <- Indices.unify e1 e2
-      case res of
-        Indices.Nope -> return True
-        Indices.Dunno -> return False
-        Indices.Success _ -> return False
     (Core.appsView -> (Core.Global typeName, toVector -> args)) -> do
       def <- fetchDefinition typeName
       case def of
         ConstantDefinition {} -> return False
         DataDefinition (DataDef _ constrDefs) _ ->
-          allM (uninhabitedConstrType . instantiateTele snd args . constrType) constrDefs
-    _ -> return False
+          allM (uninhabitedConstrType typeName args . instantiateTele snd args . constrType) constrDefs
+    _ -> panic "uninhabited: non-global"
 
-uninhabitedConstrType :: CoreM -> Elaborate Bool
-uninhabitedConstrType typ = do
+uninhabitedConstrType :: GName -> Vector (Plicitness, CoreM) -> CoreM -> Elaborate Bool
+uninhabitedConstrType typeName args typ = do
   typ' <- whnf typ
   case typ' of
     Core.Pi h p t s -> do
@@ -126,7 +122,15 @@ uninhabitedConstrType typ = do
         return True
       else
         Context.freshExtend (binding h p t) $ \v ->
-          uninhabitedConstrType $ instantiate1 (pure v) s
+          uninhabitedConstrType typeName args $ instantiate1 (pure v) s
+    (Core.appsView -> (Core.Global typeName', toVector -> args')) -> do
+      unless (typeName == typeName') $ panic "uninhabitedConstrType mismatched type"
+      unless (fmap fst args == fmap fst args') $ panic "uninhabitedConstrType mismatched arg plicitnesses/lengths"
+      substs <- Vector.zipWithM (Indices.unify `on` snd) args args'
+      return $ case fold substs of
+        Indices.Nope -> True
+        Indices.Dunno -> False
+        Indices.Success _ -> False
     _ -> return False
 
 matchSingle
@@ -146,6 +150,7 @@ matchSingle v pat body typ k = do
         , _rhs = body
         }
       ]
+    , _equalities = mempty
     , _coveredLits = mempty
     }
     k
@@ -162,6 +167,7 @@ type PrePat = Pat (HashSet QConstr) Core.Literal (PatternScope Pre.Type Var) Pat
 data Config = Config
   { _targetType :: CoreM
   , _clauses :: [Clause]
+  , _equalities :: [Equality]
   , _coveredLits :: !CoveredLits
   }
 
@@ -173,6 +179,8 @@ data Clause = Clause
   }
 
 data Match = Match CoreM (Plicitness, PrePat) CoreM
+
+data Equality = Equals !Var CoreM CoreM
 
 prettyClause :: Clause -> Elaborate Doc
 prettyClause (Clause matches rhs) = do
@@ -201,26 +209,26 @@ match config k = Log.indent $ do
   logPretty "tc.match.context" "context" $ Context.prettyContext $ prettyMeta <=< zonk
   logMeta "tc.match" "targetType" $ zonk $ _targetType config
   logPretty "tc.match" "clauses" $ traverse prettyClause $ _clauses config
-  clauses <- catMaybes <$> mapM (simplifyClause $ _coveredLits config) (_clauses config)
-  logPretty "tc.match" "simplified clauses" $ traverse prettyClause clauses
-  case clauses of
-    [] -> do
-      logCategory "tc.match" "non-exhaustive"
-      reportLocated $ PP.vcat
-        [ "Non-exhaustive patterns"
-        ]
-      return $ Builtin.Fail $ _targetType config
-    firstClause:clauses' -> do
-      logPretty "tc.match" "firstClause" $ prettyClause firstClause
-      let
-        matches' = _matches firstClause
-        config' = config { _clauses = firstClause : clauses' }
-      eqMatch <- findEqMatch matches'
-      case eqMatch of
-        Indices.Nope -> panic "tc.match nope"
-        Indices.Success (v, typ, e1, e2, s) -> splitEq config' v typ e1 e2 s k
-        Indices.Dunno ->
-          case findConMatches matches' of
+  eqMatch <- findEqSubst $ _equalities config
+  case eqMatch of
+    Indices.Nope -> panic "tc.match nope"
+    Indices.Success (v, s, equalities') -> applyEqSubst config { _equalities = equalities' } v s k
+    Indices.Dunno -> do
+      clauses <- catMaybes <$> mapM (simplifyClause $ _coveredLits config) (_clauses config)
+      logPretty "tc.match" "simplified clauses" $ traverse prettyClause clauses
+      case clauses of
+        [] -> do
+          logCategory "tc.match" "non-exhaustive"
+          reportLocated $ PP.vcat
+            [ "Non-exhaustive patterns"
+            ]
+          return $ Builtin.Fail $ _targetType config
+        firstClause:clauses' -> do
+          logPretty "tc.match" "firstClause" $ prettyClause firstClause
+          let
+            matches = _matches firstClause
+            config' = config { _clauses = firstClause : clauses' }
+          case findConMatches matches of
             (x, Left qc, typ):_ -> do
               logPretty "tc.match" "found con" $ pure qc
               splitCon config' x qc typ k
@@ -229,7 +237,7 @@ match config k = Log.indent $ do
               splitLit config' x l typ k
             [] -> do
               logCategory "tc.match" "found no con"
-              case solved matches' of
+              case solved matches of
                 Just sub -> do
                   logCategory "tc.match" "solved"
                   instantiateSubst sub (_rhs firstClause) $ \e ->
@@ -251,17 +259,16 @@ findConMatches matches
     Match {} ->
       Nothing
 
-findEqMatch
-  :: [Match]
-  -> Elaborate (Indices.Result (Var, CoreM, CoreM, CoreM, Indices.Subst))
-findEqMatch [] = return Indices.Dunno
-findEqMatch (Match (Core.Var x) (Constraint, unPatLoc -> WildcardPat) (Builtin.Equals typ e1 e2):rest) = do
+findEqSubst
+  :: [Equality]
+  -> Elaborate (Indices.Result (Var, Indices.Subst, [Equality]))
+findEqSubst [] = return Indices.Dunno
+findEqSubst (equality@(Equals v e1 e2):equalities) = do
   result <- Indices.unify e1 e2
   case result of
-    Indices.Success s -> return $ Indices.Success (x, typ, e1, e2, s)
-    Indices.Dunno -> findEqMatch rest
+    Indices.Success s -> return $ Indices.Success (v, s, equalities)
+    Indices.Dunno -> fmap (second (equality :)) <$> findEqSubst equalities
     Indices.Nope -> return Indices.Nope
-findEqMatch (_:rest) = findEqMatch rest
 
 splitCon
   :: Config
@@ -291,7 +298,8 @@ splitCon config x qcs typ k = do
           branches <- forM constrDefs $ \(ConstrDef c constrScope) -> do
             let
               constrType_ = instantiateTele snd params constrScope
-            args <- forTeleWithPrefixM (Core.piTelescope constrType_) $ \h p s args -> do
+              (constrTele, constrRetTypeScope) = Core.pisView constrType_
+            args <- forTeleWithPrefixM constrTele $ \h p s args -> do
               let t = instantiateTele (pure . fst) args s
               v <- Context.freeVar
               return (v, binding h p t)
@@ -308,7 +316,16 @@ splitCon config x qcs typ k = do
                   <> Context.fromList [(x, b { Context._value = Just val })]
                   <> ctx2
             modifyContext (const ctx') $ do
-              branch <- match config k
+              let
+                constrRetType = instantiateTele (pure . fst) args constrRetTypeScope
+              constrRetType' <- whnf constrRetType
+              equalities <- case constrRetType' of
+                (Core.appsView -> (Core.Global typeName', toVector -> params')) -> do
+                  unless (gname typeName == typeName') $ panic "splitCon mismatched typeNames"
+                  unless (fmap fst params == fmap fst params') $ panic "splitCon mismatched plicitnesses/lengths"
+                  return $ Vector.zipWith (\(_, e1) (_, e2) -> Equals x e1 e2) params params'
+                _ -> panic "splitCon not a type"
+              branch <- match config { _equalities = toList equalities <> _equalities config } k
               conBranch (QConstr typeName c) (fst <$> args) branch
           return $ Core.Case (pure x) (ConBranches branches) $ _targetType config
 
@@ -332,39 +349,35 @@ splitLit config x lit typ k = do
     $ Core.Case (pure x) (LitBranches (pure $ LitBranch lit branch) defBranch)
     $ _targetType config
 
-splitEq
+applyEqSubst
   :: Config
   -> Var
-  -> CoreM
-  -> CoreM
-  -> CoreM
   -> Indices.Subst
   -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
-splitEq config x typ lhs rhs sub k = do
-  logMeta "tc.match" "splitEq typ" $ zonk typ
-  logMeta "tc.match" "splitEq lhs" $ zonk lhs
-  logMeta "tc.match" "splitEq rhs" $ zonk rhs
-  whenLoggingCategory "tc.match" $ forM_ (HashMap.toList sub) $ \(v, e) -> do
-    logPretty "tc.match" "splitEq sub v" $ prettyVar v
-    logMeta "tc.match" "splitEq sub e" $ zonk e
-  ctx <- getContext
-  case Context.splitAt x ctx of
-    Nothing -> panic "splitCon couldn't split context"
-    Just (ctx1, b, ctx2) -> do
-      let
-        subList = (x, Builtin.Refl typ lhs rhs) : HashMap.toList sub
-        f m (v, e) = HashMap.adjust (\(Context.Binding h p t _) -> Context.Binding h p t $ Just e) v m
-        ctx1' = foldl' f (Context._varMap (ctx1 Context.:> (x, b))) subList
-        ctx1''
-          = Context.fromList
-          $ acyclic <$> topoSortWith fst (foldMap toHashSet . snd) (HashMap.toList ctx1')
-        ctx' = ctx1'' <> ctx2
-      modifyContext (const ctx') $
-        match config k
-  where
-    acyclic (AcyclicSCC v) = v
-    acyclic (CyclicSCC _) = panic "match splitEq cyclic"
+applyEqSubst config x sub k
+  | HashMap.null sub = match config k
+  | otherwise = do
+    whenLoggingCategory "tc.match" $ forM_ (HashMap.toList sub) $ \(v, e) -> do
+      logPretty "tc.match" "splitEq sub v" $ prettyVar v
+      logMeta "tc.match" "splitEq sub e" $ zonk e
+    ctx <- getContext
+    case Context.splitAt x ctx of
+      Nothing -> panic "splitCon couldn't split context"
+      Just (ctx1, b, ctx2) -> do
+        let
+          subList = HashMap.toList sub
+          f m (v, e) = HashMap.adjust (\(Context.Binding h p t _) -> Context.Binding h p t $ Just e) v m
+          ctx1' = foldl' f (Context._varMap ctx1) subList
+          ctx1''
+            = Context.fromList
+            $ acyclic <$> topoSortWith fst (foldMap toHashSet . snd) (HashMap.toList ctx1')
+          ctx' = ctx1'' Context.:> (x, b) <> ctx2
+        modifyContext (const ctx') $
+          match config k
+    where
+      acyclic (AcyclicSCC v) = v
+      acyclic (CyclicSCC _) = panic "match splitEq cyclic"
 
 simplifyClause :: CoveredLits -> Clause -> Elaborate (Maybe Clause)
 simplifyClause coveredLits (Clause matches rhs) = Log.indent $ do
@@ -382,7 +395,6 @@ simplifyClause coveredLits (Clause matches rhs) = Log.indent $ do
       case maybeExpanded of
         Nothing -> return $ Just $ Clause matches' rhs
         Just expanded -> simplifyClause coveredLits $ Clause expanded rhs
-
 
 simplifyMatch :: CoveredLits -> Match -> MaybeT Elaborate [Match]
 simplifyMatch coveredLits m@(Match expr (plic, pat) typ) = do

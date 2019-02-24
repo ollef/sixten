@@ -197,7 +197,7 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
     def <- fetchDefinition $ gname typeName
     case def of
       DataDefinition ddef _ -> do
-        let qcs = Core.quantifiedConstrTypes ddef implicitise
+        let qcs = Core.quantifiedConstrTypes ddef
         case filter ((== c) . constrName) qcs of
           [] -> panic "fetch QConstructor []"
           cdef:_ -> return $ biclose identity identity $ constrType cdef

@@ -197,11 +197,10 @@ arrow p a b = Pi mempty p a $ abstractNone b
 
 quantifiedConstrTypes
   :: DataDef (Type m) v
-  -> (Plicitness -> Plicitness)
   -> [ConstrDef (Type m v)]
-quantifiedConstrTypes (DataDef ps cs) anno = map (fmap $ quantify Pi ps') cs
+quantifiedConstrTypes (DataDef ps cs) = map (fmap $ quantify Pi ps') cs
   where
-    ps' = mapPlics anno ps
+    ps' = mapPlics implicitise ps
 
 -------------------------------------------------------------------------------
 -- Instances
