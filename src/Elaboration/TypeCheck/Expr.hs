@@ -134,6 +134,7 @@ tcRho expr expected expectedAppResult = case expr of
   Pre.Con cons -> do
     qc <- resolveConstr cons expectedAppResult
     typ <- fetchQConstructor qc
+    constrainConstructorIndices typ
     f <- instExpected expected typ
     return $ f $ Core.Con qc
   Pre.Pi p pat bodyScope -> do
