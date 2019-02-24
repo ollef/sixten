@@ -57,7 +57,7 @@ data Query a where
 
   Type :: GName -> Query (Biclosed Core.Expr)
   Definition :: GName -> Query (ClosedDefinition Core.Expr)
-  QConstructor :: QConstr -> Query (Biclosed Core.Expr)
+  QConstructor :: QConstr -> Query (Int, Biclosed Core.Expr)
   -- TODO should perhaps be derived?
   ClassMethods :: QName -> Query (Maybe [(Name, SourceLoc)])
   Instances :: ModuleName -> Query (MultiHashMap QName QName)
@@ -97,8 +97,8 @@ fetchInstances className moduleName_ = do
   classInstances <- fetch $ Instances moduleName_
   return $ MultiHashMap.lookup className classInstances
 
-fetchQConstructor :: MonadFetch Query m => QConstr -> m (Core.Type meta v)
-fetchQConstructor qc = biopen <$> fetch (QConstructor qc)
+fetchQConstructor :: MonadFetch Query m => QConstr -> m (Int, Core.Type meta v)
+fetchQConstructor qc = second biopen <$> fetch (QConstructor qc)
 
 fetchIntRep :: MonadFetch Query m => m TypeRep
 fetchIntRep = TypeRep.intRep <$> fetch Driver.Query.Target

@@ -88,28 +88,23 @@ slam expr = do
         e <- slamAnno $ instantiate1 (pure v) s
         rep <- slam t'
         SLambda.lam v rep e
-    (Core.appsView -> (Core.unSourceLoc -> Core.Con qc@(QConstr typeName _), es)) -> do
-      def <- fetchDefinition $ gname typeName
-      case def of
-        ConstantDefinition {} -> panic "slam qc ConstantDefintion"
-        DataDefinition (DataDef params _) _ -> do
-          conType <- fetchQConstructor qc
-          let n = typeArity conType
-          case compare (length es) n of
-            GT -> panic $ "slam: too many args for constructor: " <> shower qc
-            EQ -> do
-              let numParams = teleLength params
-                  es' = drop numParams es
-              SLambda.Con qc <$> mapM slamAnno (Vector.fromList $ snd <$> es')
-            LT -> do
-              let Just appliedConType = Core.typeApps conType es
-                  tele = Core.piTelescope appliedConType
-              slam
-                $ quantify Core.Lam tele
-                $ Scope
-                $ Core.apps (Core.Con qc)
-                $ Vector.fromList (fmap (pure . pure) <$> es)
-                <> iforTele tele (\i _ a _ -> (a, pure $ B $ TeleVar i))
+    (Core.appsView -> (Core.unSourceLoc -> Core.Con qc, es)) -> do
+      (numParams, conType) <- fetchQConstructor qc
+      let n = typeArity conType
+      case compare (length es) n of
+        GT -> panic $ "slam: too many args for constructor: " <> shower qc
+        EQ -> do
+          let es' = drop numParams es
+          SLambda.Con qc <$> mapM slamAnno (Vector.fromList $ snd <$> es')
+        LT -> do
+          let Just appliedConType = Core.typeApps conType es
+              tele = Core.piTelescope appliedConType
+          slam
+            $ quantify Core.Lam tele
+            $ Scope
+            $ Core.apps (Core.Con qc)
+            $ Vector.fromList (fmap (pure . pure) <$> es)
+            <> iforTele tele (\i _ a _ -> (a, pure $ B $ TeleVar i))
     Core.Con _qc -> panic "slam impossible"
     Core.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamAnno e2
     Core.Case e brs _retType -> SLambda.Case <$> slamAnno e <*> slamBranches brs

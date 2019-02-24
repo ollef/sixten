@@ -196,11 +196,11 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
   QConstructor (QConstr typeName c) -> Task $ noError $ do
     def <- fetchDefinition $ gname typeName
     case def of
-      DataDefinition ddef _ -> do
+      DataDefinition ddef@(DataDef params _) _ -> do
         let qcs = Core.quantifiedConstrTypes ddef
         case filter ((== c) . constrName) qcs of
           [] -> panic "fetch QConstructor []"
-          cdef:_ -> return $ biclose identity identity $ constrType cdef
+          cdef:_ -> return (teleLength params, biclose identity identity $ constrType cdef)
       ConstantDefinition {} -> panic "fetch QConstructor ConstantDefinition"
 
   ClassMethods className -> Task $ noError $ do

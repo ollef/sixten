@@ -43,7 +43,7 @@ typeOf' args expr = case expr of
   Meta m es -> case typeApps (open $ typeOfMeta args m) es of
     Nothing -> panic "typeOf meta typeApps"
     Just t -> return t
-  Con qc -> fetchQConstructor qc
+  Con qc -> snd <$> fetchQConstructor qc
   Lit l -> return $ typeOfLiteral l
   Pi {} -> return Builtin.Type
   Lam h p t s ->
