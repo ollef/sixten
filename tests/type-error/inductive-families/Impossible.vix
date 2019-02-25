@@ -1,0 +1,4 @@
+type List a = Nil | Cons a (Ptr (List a))
+
+test : forall a b. List a -> b
+test xs = case xs of
