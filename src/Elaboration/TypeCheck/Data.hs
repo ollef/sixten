@@ -30,13 +30,13 @@ checkDataDef
   -> Elaborate (DataDef (Core.Expr MetaVar) Var, CoreM)
 checkDataDef var (DataDef ps cs) typ =
   -- TODO: These vars are typechecked twice (in checkAndGeneraliseDefs as the
--- expected type and here). Can we clean this up?
+  -- expected type and here). Can we clean this up?
   teleMapExtendContext ps (`checkPoly` Builtin.Type) $ \vs -> do
     typ' <- Core.pis vs Builtin.Type
     runUnify (unify [] typ' typ) report
 
     let
-      pvs = Vector.zipWith (\p v -> (p, pure v)) (telePlics ps) vs
+      pvs = Vector.zipWith (\p v -> (p, v)) (telePlics ps) vs
 
     (cs', sizes) <- fmap unzip $ forM cs $ \(ConstrDef c t) ->
       checkConstrDef (ConstrDef c $ instantiateTele pure vs t) (pure var) pvs
@@ -65,13 +65,13 @@ checkDataDef var (DataDef ps cs) typ =
 checkConstrDef
   :: ConstrDef PreM
   -> CoreM
-  -> Vector (Plicitness, CoreM)
-  -> Elaborate (ConstrDef CoreM, CoreM)
+  -> Vector (Plicitness, FreeVar)
+  -> Elaborate (Vector (Plicitness, FreeVar), ConstrDef CoreM, CoreM)
 checkConstrDef (ConstrDef c ctype) typeCon typeArgs = do
   logPretty "tc.def.constr" "checkConstrDef constr" $ pure c
   ctype' <- checkPoly ctype Builtin.Type
   logMeta "tc.def.constr" "checkConstrDef ctype" $ zonk ctype'
-  sizes <- go ctype'
+  (params, sizes) <- go ctype'
   let size = foldl' productType (Core.MkType TypeRep.UnitRep) sizes
   logMeta "tc.def.constr" "checkConstrDef size" $ zonk size
   return (ConstrDef c ctype', size)
@@ -83,15 +83,19 @@ checkConstrDef (ConstrDef c ctype) typeCon typeArgs = do
     go' (Core.Pi h p t s) = do
       rep <- whnfExpandingTypeReps t
       Context.freshExtend (binding h p t) $ \v -> do
-        sizes <- go $ instantiate1 (pure v) s
-        return (rep : sizes)
+        (params, sizes) <- go $ instantiate1 (pure v) s
+        return (params, rep : sizes)
     go' typ@(Core.appsView -> (typeHead, typeArgs'))
       | Vector.length typeArgs == length typeArgs' = do
         runUnify (unify [] typeHead typeCon) report
-        return []
+        params
+          <- fmap fst
+          $ Vector.filterM (\(_, arg) (_, arg') -> Equal.exec $ Equal.expr (pure arg) arg')
+          $ Vector.zip typeArgs typeArgs'
+        return (params, [])
       | otherwise = do
-        runUnify (unify [] (Core.apps typeCon typeArgs) typ) report
-        return []
+        runUnify (unify [] (Core.apps typeCon (second pure <$> typeArgs)) typ) report
+        return (params, [])
 
 -------------------------------------------------------------------------------
 -- Type helpers
