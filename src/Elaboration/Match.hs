@@ -102,12 +102,6 @@ uninhabited :: CoreM -> Elaborate Bool
 uninhabited typ = do
   typ' <- whnf typ
   case typ' of
-    Builtin.Equals _ e1 e2 -> do
-      res <- Indices.unify e1 e2
-      case res of
-        Indices.Nope -> return True
-        Indices.Dunno -> return False
-        Indices.Success _ -> return False
     (Core.appsView -> (Core.Global typeName, toVector -> args)) -> do
       def <- fetchDefinition typeName
       case def of
@@ -121,12 +115,19 @@ uninhabitedConstrType typ = do
   typ' <- whnf typ
   case typ' of
     Core.Pi h p t s -> do
-      uh <- uninhabited t
-      if uh then
-        return True
-      else
-        Context.freshExtend (binding h p t) $ \v ->
-          uninhabitedConstrType $ instantiate1 (pure v) s
+      let
+        continue =
+          Context.freshExtend (binding h p t) $ \v ->
+            uninhabitedConstrType $ instantiate1 (pure v) s
+      t' <- whnf t
+      case t' of
+        Builtin.Equals _ e1 e2 -> do
+          res <- Indices.unify e1 e2
+          case res of
+            Indices.Nope -> return True
+            Indices.Dunno -> continue
+            Indices.Success _ -> continue
+        _ -> continue
     _ -> return False
 
 matchSingle
