@@ -402,11 +402,9 @@ simplifyMatch coveredLits m@(Match expr (plic, pat) typ) = do
         simplifyMatch coveredLits $ Match expr' (plic, pat) typ
     (Core.appsView -> (Core.Con qc, pes), ConPat qcs pats)
       | qc `HashSet.member` qcs -> do
-        paramsTele <- lift $ fetchTypeParamsTele $ gname $ qconstrTypeName qc
-        conType <- fetchQConstructor qc
+        (numParams, conType) <- fetchQConstructor qc
         let
           tele = Core.piTelescope conType
-          numParams = teleLength paramsTele
           exprs = toVector $ snd <$> pes
           types = forTele tele $ \_ _ s -> instantiateTele identity exprs s
           argTypes = Vector.drop numParams types
@@ -440,13 +438,6 @@ expandAnnos sub (c:cs) = case matchSubst c of
       return $ Match expr (plic, pat) typ : cs
     _ -> fail "couldn't create subst for prefix"
   Just sub' -> (c:) <$> expandAnnos (sub' <> sub) cs
-
-fetchTypeParamsTele :: GName -> Elaborate (Telescope (Core.Expr m) v)
-fetchTypeParamsTele n = do
-  def <- fetchDefinition n
-  case def of
-    ConstantDefinition {} -> panic "typeParamsTele ConstantDefinition"
-    DataDefinition (DataDef paramsTele _) _ -> return paramsTele
 
 matchSubst :: Match -> Maybe PatSubst
 matchSubst (Match _ (_, WildcardPat) _) = return mempty
