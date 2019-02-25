@@ -78,8 +78,11 @@ matchBranches expr exprType [] typ _ = do
   u <- uninhabited exprType
   if u then
     return $ Core.Case expr (ConBranches []) typ
-  else
-    panic "TODO error message"
+  else do
+    reportLocated $ PP.vcat
+      [ "Non-exhaustive patterns"
+      ]
+    return $ Builtin.Fail typ
 matchBranches (Core.varView -> Just var) exprType brs typ k =
   match Config
     { _targetType = typ
