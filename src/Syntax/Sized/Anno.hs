@@ -85,7 +85,7 @@ annoBindingsView
   -> (Telescope expr v, AnnoScope TeleVar expr' v)
 annoBindingsView f expr = go 0 $ F <$> expr
   where
-    go x (Anno (f -> Just (n, p, e, s)) _) = (Telescope $ pure (TeleArg n p $ toScope e) <> ns, s')
+    go x (Anno (f -> Just (n, p, e, s)) _) = (Telescope $ pure (TeleBinding n p $ toScope e) <> ns, s')
       where
         (Telescope ns, s') = (go $! x + 1) $ instantiate1Anno (return $ B x) s
     go _ e = (Telescope mempty, toAnnoScope e)

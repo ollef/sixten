@@ -77,7 +77,7 @@ deref e
   $ pure
   $ ConBranch
     Ref
-    (Telescope $ pure $ TeleArg "dereferenced" Explicit $ Scope unknownSize)
+    (Telescope $ pure $ TeleBinding "dereferenced" Explicit $ Scope unknownSize)
     (toScope $ pure $ B 0)
   where
     unknownSize = global $ GName "Sixten.Builtin.deref" $ pure "unknownSize"
