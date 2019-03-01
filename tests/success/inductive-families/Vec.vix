@@ -28,3 +28,6 @@ sum (Ref Nil) = 0
 sum (Ref (Cons x xs)) = addInt x (sum xs)
 
 main = printInt (sum (Ref xs2))
+
+vecZero : forall a. Vec Zero a -> Unit
+vecZero Nil = MkUnit

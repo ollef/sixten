@@ -78,7 +78,7 @@ matchBranches (Core.varView -> Just var) exprType brs typ k =
     --
     -- when x is uninhabited.
     [] -> do
-      u <- uninhabited exprType
+      u <- uninhabitedType exprType
       if u then
         return $ Core.Case (pure var) (ConBranches []) typ
       else
@@ -104,10 +104,16 @@ matchBranches expr exprType brs typ k =
     result <- matchBranches (pure var) exprType brs typ k
     Core.let_ (pure (var, noSourceLoc "match", expr)) result
 
-uninhabited :: CoreM -> Elaborate Bool
-uninhabited typ = do
+uninhabitedType :: CoreM -> Elaborate Bool
+uninhabitedType typ = do
   typ' <- whnf typ
   case typ' of
+    Builtin.Equals _ e1 e2 -> do
+      res <- Indices.unify e1 e2
+      case res of
+        Indices.Nope -> return True
+        Indices.Dunno -> return False
+        Indices.Success _ -> return False
     (Core.appsView -> (Core.Global typeName, toVector -> args)) -> do
       def <- fetchDefinition typeName
       case def of
@@ -134,6 +140,21 @@ uninhabitedConstrType typ = do
             Indices.Dunno -> continue
             Indices.Success _ -> continue
         _ -> continue
+    _ -> return False
+
+uninhabitedScrutinee :: CoreM -> Elaborate Bool
+uninhabitedScrutinee expr = do
+  expr' <- whnf expr
+  logMeta "tc.match" "uninhabitedScrutinee expr'" $ zonk expr'
+  case expr' of
+    Core.Var v -> do
+      typ <- Context.lookupType v
+      uninhabitedType typ
+    (Core.appsView -> (Core.Con qc, es)) -> do
+      (numParams, _) <- fetchQConstructor qc
+      let
+        args = drop numParams es
+      anyM (uninhabitedScrutinee . snd) args
     _ -> return False
 
 matchSingle
@@ -214,19 +235,25 @@ match config k = Log.indent $ do
   logPretty "tc.match" "simplified clauses" $ traverse prettyClause clauses
   case clauses of
     [] -> do
-      logCategory "tc.match" "non-exhaustive"
-      loc <- getCurrentLocation
-      scrutinees <- mapM (runMaybeT . exprPattern) $ _scrutinees config
-      let
-        prettyScrutinees
-          = foreach (scrutinees :: Vector (Maybe (Pat QConstr Core.Literal Void Var)))
-          $ maybe "?" (prettyM . fmap (pure ("_" :: Doc)))
-      report $ TypeError "Non-exhaustive patterns" loc
-        $ PP.vcat
-        $ [ "Pattern not matched:"
+      ok <- anyM uninhabitedScrutinee $ toList $ _scrutinees config
+      if ok then do
+        logCategory "tc.match" "uninhabitedScrutinee"
+        return $ Builtin.Fail $ _targetType config
+      else do
+        logCategory "tc.match" "non-exhaustive"
+        loc <- getCurrentLocation
+        scrutinees <- mapM (runMaybeT . exprPattern) $ _scrutinees config
+        let
+          prettyScrutinees
+            = foreach (scrutinees :: Vector (Maybe (Pat QConstr Core.Literal Void Var)))
+            $ maybe "?" (prettyM . fmap (pure ("_" :: Doc)))
+        report
+          $ TypeError "Non-exhaustive patterns" loc
+          $ PP.vcat
+          [ "Patterns not matched:"
           , dullBlue $ pretty $ prettyApps "" prettyScrutinees
           ]
-      return $ Builtin.Fail $ _targetType config
+        return $ Builtin.Fail $ _targetType config
     firstClause:clauses' -> do
       logPretty "tc.match" "firstClause" $ prettyClause firstClause
       let
