@@ -70,37 +70,21 @@ matchBranches
   -> Polytype
   -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
-matchBranches (Core.varView -> Just var) exprType brs typ k =
-  case brs of
-    -- Instead of supporting impossible patterns, we treat branchless case
-    -- expressions a little specially so we can use
-    --
-    -- f x = case x of
-    --
-    -- when x is uninhabited.
-    [] -> do
-      u <- uninhabitedType 1 exprType
-      if u then
-        return $ Core.Case (pure var) (ConBranches []) typ
-      else
-        go
-    _ -> go
-  where
-    go = do
-      loc <- getCurrentLocation
-      match Config
-        { _targetType = typ
-        , _scrutinees = pure (pure var)
-        , _clauses =
-          [ Clause
-            { _matches = [Match (pure var) (Explicit, imap (\i _ -> PatternVar i) $ desugarPatLits pat) exprType loc]
-            , _rhs = rhs
-            }
-          | (pat, rhs) <- brs
-          ]
-        , _coveredLits = mempty
+matchBranches (Core.varView -> Just var) exprType brs typ k = do
+  loc <- getCurrentLocation
+  match Config
+    { _targetType = typ
+    , _scrutinees = pure (pure var)
+    , _clauses =
+      [ Clause
+        { _matches = [Match (pure var) (Explicit, imap (\i _ -> PatternVar i) $ desugarPatLits pat) exprType loc]
+        , _rhs = rhs
         }
-        k
+      | (pat, rhs) <- brs
+      ]
+    , _coveredLits = mempty
+    }
+    k
 matchBranches expr exprType brs typ k =
   Context.freshExtend (binding "matchvar" Explicit exprType) $ \var -> do
     result <- matchBranches (pure var) exprType brs typ k
