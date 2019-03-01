@@ -47,11 +47,12 @@ matchClauses
   -> Elaborate CoreM
 matchClauses vars preClauses typ k = do
   ctx <- getContext
+  loc <- getCurrentLocation
   let
     clauses = foreach (toList preClauses) $ \(Pre.Clause pats rhs) ->
       Clause
         { _matches =
-          toList $ Vector.zipWith (\v (p, pat) -> Match (pure v) (p, desugarPatLits pat) $ Context.lookupType v ctx) vars $ indexedPatterns pats
+          toList $ Vector.zipWith (\v (p, pat) -> Match (pure v) (p, desugarPatLits pat) (Context.lookupType v ctx) loc) vars $ indexedPatterns pats
         , _rhs = rhs
         }
   match Config
@@ -85,13 +86,14 @@ matchBranches (Core.varView -> Just var) exprType brs typ k =
         go
     _ -> go
   where
-    go =
+    go = do
+      loc <- getCurrentLocation
       match Config
         { _targetType = typ
         , _scrutinees = pure (pure var)
         , _clauses =
           [ Clause
-            { _matches = [Match (pure var) (Explicit, imap (\i _ -> PatternVar i) $ desugarPatLits pat) exprType]
+            { _matches = [Match (pure var) (Explicit, imap (\i _ -> PatternVar i) $ desugarPatLits pat) exprType loc]
             , _rhs = rhs
             }
           | (pat, rhs) <- brs
@@ -161,12 +163,13 @@ matchSingle
   -> Elaborate CoreM
 matchSingle v pat body typ k = do
   varType <- Context.lookupType v
+  loc <- getCurrentLocation
   match Config
     { _targetType = typ
     , _scrutinees = pure (pure v)
     , _clauses =
       [ Clause
-        { _matches = [Match (pure v) (Explicit, PatternVar . fst <$> indexed (desugarPatLits pat)) varType]
+        { _matches = [Match (pure v) (Explicit, PatternVar . fst <$> indexed (desugarPatLits pat)) varType loc]
         , _rhs = body
         }
       ]
@@ -197,7 +200,7 @@ data Clause = Clause
   , _rhs :: PatternScope Pre.Expr Var
   }
 
-data Match = Match CoreM (Plicitness, PrePat) CoreM
+data Match = Match CoreM (Plicitness, PrePat) CoreM !(Maybe SourceLoc)
 
 prettyClause :: Clause -> Elaborate Doc
 prettyClause (Clause matches rhs) = do
@@ -206,7 +209,7 @@ prettyClause (Clause matches rhs) = do
   return $ cs <> " ~> " <> e
 
 prettyMatch :: Match -> Elaborate Doc
-prettyMatch (Match expr (p, pat) typ) = do
+prettyMatch (Match expr (p, pat) typ _) = do
   pexpr <- prettyMeta =<< zonk expr
   let
     ppat = pretty
@@ -256,9 +259,8 @@ match config k = Log.indent $ do
         config' = config { _clauses = firstClause : clauses' }
       eqMatch <- findEqMatch matches'
       case eqMatch of
-        Indices.Nope -> panic "tc.match nope"
-        Indices.Success (v, typ, e1, e2, s) -> splitEq config' v typ e1 e2 s k
-        Indices.Dunno ->
+        Just (v, typ, e1, e2, s) -> splitEq config' v typ e1 e2 s k
+        Nothing ->
           case findConMatches matches' of
             (x, Left qc, typ):_ -> do
               logPretty "tc.match" "found con" $ pure qc
@@ -297,23 +299,36 @@ findConMatches matches
   = catMaybes
   $ foreach matches
   $ \case
-    Match (Core.Var x) (_, unPatLoc -> ConPat qc _) typ ->
+    Match (Core.Var x) (_, unPatLoc -> ConPat qc _) typ _ ->
       Just (x, Left qc, typ)
-    Match (Core.Var x) (_, unPatLoc -> LitPat l) typ ->
+    Match (Core.Var x) (_, unPatLoc -> LitPat l) typ _ ->
       Just (x, Right l, typ)
     Match {} ->
       Nothing
 
 findEqMatch
   :: [Match]
-  -> Elaborate (Indices.Result (Var, CoreM, CoreM, CoreM, Indices.Subst))
-findEqMatch [] = return Indices.Dunno
-findEqMatch (Match (Core.Var x) (Constraint, unPatLoc -> WildcardPat) (Builtin.Equals typ e1 e2):rest) = do
+  -> Elaborate (Maybe (Var, CoreM, CoreM, CoreM, Indices.Subst))
+findEqMatch [] = return Nothing
+findEqMatch (Match (Core.Var x) (Constraint, unPatLoc -> WildcardPat) (Builtin.Equals typ e1 e2) loc:rest) = do
   result <- Indices.unify e1 e2
   case result of
-    Indices.Success s -> return $ Indices.Success (x, typ, e1, e2, s)
+    Indices.Success s -> return $ Just (x, typ, e1, e2, s)
     Indices.Dunno -> findEqMatch rest
-    Indices.Nope -> return Indices.Nope
+    Indices.Nope -> do
+      e1' <- zonk e1
+      e2' <- zonk e2
+      pe1 <- prettyMeta e1'
+      pe2 <- prettyMeta e2'
+      let
+        err = "Unification failure" <> PP.line <> PP.vcat
+          [ red pe1
+          , "and"
+          , red pe2
+          , "cannot be unified."
+          ]
+      report $ TypeError err loc mempty
+      return Nothing
 findEqMatch (_:rest) = findEqMatch rest
 
 splitCon
@@ -438,7 +453,7 @@ simplifyClause coveredLits (Clause matches rhs) = Log.indent $ do
 
 
 simplifyMatch :: CoveredLits -> Match -> MaybeT Elaborate [Match]
-simplifyMatch coveredLits m@(Match expr (plic, pat) typ) = do
+simplifyMatch coveredLits m@(Match expr (plic, pat) typ loc) = do
   ctx <- getContext
   case (expr, pat) of
     (Core.Lit l1, LitPat l2)
@@ -448,7 +463,7 @@ simplifyMatch coveredLits m@(Match expr (plic, pat) typ) = do
       | HashSet.member (v, lit) coveredLits -> fail "Literal already covered"
     (Core.Var v, _)
       | Just expr' <- Context.lookupValue v ctx ->
-        simplifyMatch coveredLits $ Match expr' (plic, pat) typ
+        simplifyMatch coveredLits $ Match expr' (plic, pat) typ loc
     (Core.appsView -> (Core.Con qc, pes), ConPat qcs pats)
       | qc `HashSet.member` qcs -> do
         (numParams, conType) <- fetchQConstructor qc
@@ -461,16 +476,13 @@ simplifyMatch coveredLits m@(Match expr (plic, pat) typ) = do
           argPlics = Vector.drop numParams $ telePlics tele
         equalisedPats <- lift $ Vector.fromList <$> exactlyEqualisePats (toList argPlics) (toList pats)
         let
-          matches = Vector.zipWith3 Match argExprs equalisedPats argTypes
+          matches = Vector.zipWith3 (\e p t -> Match e p t loc) argExprs equalisedPats argTypes
         lift $ logPretty "tc.match" "simplify con matches" $ traverse prettyMatch matches
         concat <$> mapM (simplifyMatch coveredLits) matches
       | otherwise -> fail "Constructor mismatch"
-    (_, PatLoc loc pat') -> do
-      res <- located loc $ simplifyMatch coveredLits $ Match expr (plic, pat') typ
-      return $ case res of
-        [Match expr'' (plic'', pat'') typ''] -> [Match expr'' (plic'', PatLoc loc pat'') typ'']
-        _ -> res
-    (Core.SourceLoc _ expr', _) -> simplifyMatch coveredLits $ Match expr' (plic, pat) typ
+    (_, PatLoc loc' pat') -> do
+      located loc' $ simplifyMatch coveredLits $ Match expr (plic, pat') typ $ Just loc'
+    (Core.SourceLoc _ expr', _) -> simplifyMatch coveredLits $ Match expr' (plic, pat) typ loc
     _ -> return [m]
 
 expandAnnos
@@ -480,18 +492,18 @@ expandAnnos
 expandAnnos _ [] = fail "expanded nothing"
 expandAnnos sub (c:cs) = case matchSubst c of
   Nothing -> case c of
-    Match expr (plic, AnnoPat pat annoScope) typ -> do
+    Match expr (plic, AnnoPat pat annoScope) typ loc -> do
       annoType' <- instantiateSubst sub annoScope $ \annoType ->
         lift $ checkPoly annoType Builtin.Type
       runUnify (unify [] annoType' typ) report
-      return $ Match expr (plic, pat) typ : cs
+      return $ Match expr (plic, pat) typ loc : cs
     _ -> fail "couldn't create subst for prefix"
   Just sub' -> (c:) <$> expandAnnos (sub' <> sub) cs
 
 matchSubst :: Match -> Maybe PatSubst
-matchSubst (Match _ (_, WildcardPat) _) = return mempty
-matchSubst (Match expr (_, VarPat pv) typ) = return $ HashMap.singleton pv (expr, typ)
-matchSubst (Match expr (plic, PatLoc _ pat) typ) = matchSubst $ Match expr (plic, pat) typ
+matchSubst (Match _ (_, WildcardPat) _ _) = return mempty
+matchSubst (Match expr (_, VarPat pv) typ _) = return $ HashMap.singleton pv (expr, typ)
+matchSubst (Match expr (plic, PatLoc _ pat) typ loc) = matchSubst $ Match expr (plic, pat) typ loc
 matchSubst _ = Nothing
 
 solved :: [Match] -> Maybe PatSubst

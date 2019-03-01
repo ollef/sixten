@@ -1,0 +1,7 @@
+type Fin (n : Nat) where
+  Zero : forall m. Fin (Succ m)
+  Succ : forall m. Ptr (Fin m) -> Fin (Succ m)
+
+f : Fin (Succ Zero) -> Unit
+f Zero = MkUnit
+f (Succ (Ref Zero)) = MkUnit
