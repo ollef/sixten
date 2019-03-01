@@ -4,11 +4,10 @@
 {-# LANGUAGE ViewPatterns #-}
 module Elaboration.Match where
 
-import Protolude
+import Protolude hiding (TypeError)
 
 import Control.Monad
 import Control.Monad.Trans.Maybe
-import Util.TopoSort
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet(HashSet)
@@ -25,18 +24,19 @@ import qualified Effect.Context as Context
 import qualified Effect.Log as Log
 import Elaboration.Constraint
 import Elaboration.Constructor
-import qualified Elaboration.Unify.Indices as Indices
 import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
 import Elaboration.TypeCheck.Literal
 import Elaboration.Unify
+import qualified Elaboration.Unify.Indices as Indices
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Literal as Core
 import qualified Syntax.Pre.Literal as Pre
 import qualified Syntax.Pre.Scoped as Pre
 import Util
+import Util.TopoSort
 
 matchClauses
   :: Foldable t
@@ -56,6 +56,7 @@ matchClauses vars preClauses typ k = do
         }
   match Config
     { _targetType = typ
+    , _scrutinees = pure <$> vars
     , _clauses = clauses
     , _coveredLits = mempty
     }
@@ -68,34 +69,36 @@ matchBranches
   -> Polytype
   -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
-matchBranches expr exprType [] typ _ = do
-  -- Instead of supporting impossible patterns, we treat branchless case
-  -- expressions a little specially so we can use
-  --
-  -- f x = case x of
-  --
-  -- when x is uninhabited.
-  u <- uninhabited exprType
-  if u then
-    return $ Core.Case expr (ConBranches []) typ
-  else do
-    reportLocated $ PP.vcat
-      [ "Non-exhaustive patterns"
-      ]
-    return $ Builtin.Fail typ
 matchBranches (Core.varView -> Just var) exprType brs typ k =
-  match Config
-    { _targetType = typ
-    , _clauses =
-      [ Clause
-        { _matches = [Match (pure var) (Explicit, imap (\i _ -> PatternVar i) $ desugarPatLits pat) exprType]
-        , _rhs = rhs
+  case brs of
+    -- Instead of supporting impossible patterns, we treat branchless case
+    -- expressions a little specially so we can use
+    --
+    -- f x = case x of
+    --
+    -- when x is uninhabited.
+    [] -> do
+      u <- uninhabited exprType
+      if u then
+        return $ Core.Case (pure var) (ConBranches []) typ
+      else
+        go
+    _ -> go
+  where
+    go = do
+      match Config
+        { _targetType = typ
+        , _scrutinees = pure (pure var)
+        , _clauses =
+          [ Clause
+            { _matches = [Match (pure var) (Explicit, imap (\i _ -> PatternVar i) $ desugarPatLits pat) exprType]
+            , _rhs = rhs
+            }
+          | (pat, rhs) <- brs
+          ]
+        , _coveredLits = mempty
         }
-      | (pat, rhs) <- brs
-      ]
-    , _coveredLits = mempty
-    }
-    k
+        k
 matchBranches expr exprType brs typ k =
   Context.freshExtend (binding "matchvar" Explicit exprType) $ \var -> do
     result <- matchBranches (pure var) exprType brs typ k
@@ -144,6 +147,7 @@ matchSingle v pat body typ k = do
   varType <- Context.lookupType v
   match Config
     { _targetType = typ
+    , _scrutinees = pure (pure v)
     , _clauses =
       [ Clause
         { _matches = [Match (pure v) (Explicit, PatternVar . fst <$> indexed (desugarPatLits pat)) varType]
@@ -165,6 +169,7 @@ type PrePat = Pat (HashSet QConstr) Core.Literal (PatternScope Pre.Type Var) Pat
 
 data Config = Config
   { _targetType :: CoreM
+  , _scrutinees :: Vector CoreM
   , _clauses :: [Clause]
   , _coveredLits :: !CoveredLits
   }
@@ -210,9 +215,17 @@ match config k = Log.indent $ do
   case clauses of
     [] -> do
       logCategory "tc.match" "non-exhaustive"
-      reportLocated $ PP.vcat
-        [ "Non-exhaustive patterns"
-        ]
+      loc <- getCurrentLocation
+      scrutinees <- mapM (runMaybeT . exprPattern) $ _scrutinees config
+      let
+        prettyScrutinees
+          = foreach (scrutinees :: Vector (Maybe (Pat QConstr Core.Literal Void Var)))
+          $ maybe "?" (prettyM . fmap (pure ("_" :: Doc)))
+      report $ TypeError "Non-exhaustive patterns" loc
+        $ PP.vcat
+        $ [ "Pattern not matched:"
+          , dullBlue $ pretty $ prettyApps "" prettyScrutinees
+          ]
       return $ Builtin.Fail $ _targetType config
     firstClause:clauses' -> do
       logPretty "tc.match" "firstClause" $ prettyClause firstClause
@@ -240,6 +253,20 @@ match config k = Log.indent $ do
                     k e $ _targetType config
                 Nothing ->
                   panic "tc.match no solution"
+
+exprPattern
+  :: CoreM
+  -> MaybeT Elaborate (Pat QConstr Core.Literal void Var)
+exprPattern expr = do
+  expr' <- whnf expr
+  case expr' of
+    Core.Var v -> return $ VarPat v
+    (Core.appsView -> (Core.Con qc, es)) ->do
+      (numParams, _) <- fetchQConstructor qc
+      pats <- mapM (mapM exprPattern) $ drop numParams es
+      return $ ConPat qc $ toVector pats
+    Core.Lit l -> return $ LitPat l
+    _ -> fail "couldn't convert expression to pattern"
 
 findConMatches
   :: [Match]
