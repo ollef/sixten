@@ -257,9 +257,9 @@ resolveDefinition (Unscoped.ConstantDef name a clauses mtyp) = do
 resolveClause
   :: Unscoped.Clause Unscoped.Expr
   -> ResolveNames (Scoped.Clause Scoped.Expr PreName)
-resolveClause (Unscoped.Clause plicitPats e) = do
+resolveClause (Unscoped.Clause loc plicitPats e) = do
   plicitPats' <- traverse (traverse resolvePat) plicitPats
-  Scoped.clause fromPreName plicitPats' <$> resolveExpr e
+  Scoped.clause loc fromPreName plicitPats' <$> resolveExpr e
 
 resolveExpr
   :: Unscoped.Expr

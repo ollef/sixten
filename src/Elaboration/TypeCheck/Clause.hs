@@ -43,9 +43,9 @@ checkClauses clauses polyType = Log.indent $ do
   skolemise polyType (minimum $ instUntilClause <$> clauses) $ \rhoType f -> do
     ps <- piPlicitnesses rhoType
 
-    clauses' <- forM clauses $ \(Pre.Clause pats body) -> do
-      pats' <- equalisePats ps $ Vector.toList pats
-      return $ Pre.Clause (Vector.fromList pats') body
+    clauses' <- forM clauses $ \(Pre.Clause loc pats body) -> do
+      pats' <- located loc $ equalisePats ps $ Vector.toList pats
+      return $ Pre.Clause loc (Vector.fromList pats') body
 
     let equalisedClauses = equaliseClauses clauses'
 
@@ -58,7 +58,7 @@ checkClauses clauses polyType = Log.indent $ do
     return $ f res
   where
     instUntilClause :: Pre.Clause Pre.Expr v -> InstUntil
-    instUntilClause (Pre.Clause pats s)
+    instUntilClause (Pre.Clause _ pats s)
       | Vector.length pats > 0 = InstUntil $ fst $ Vector.head pats
       | otherwise = instUntilExpr $ fromScope s
 
@@ -84,7 +84,7 @@ checkClausesRho clauses rhoType = do
   let
     (ps, firstPats) = Vector.unzip ppats
       where
-        Pre.Clause ppats _ = NonEmpty.head clauses
+        Pre.Clause _ ppats _ = NonEmpty.head clauses
   (argTele, returnTypeScope, fs) <- funSubtypes rhoType ps
   logPretty "tc.clause" "argTele" $ bitraverseTelescope (\m -> WithVar m <$> prettyMetaVar m) prettyVar argTele
 
@@ -115,8 +115,10 @@ equaliseClauses
   -> NonEmpty (Pre.Clause Pre.Expr v)
 equaliseClauses clauses
   = NonEmpty.zipWith
-    (uncurry etaClause)
-    (go (Vector.toList . Pre.clausePatterns <$> clauses))
+    (\(loc, (p, pat)) s -> etaClause loc p pat s)
+    (NonEmpty.zip
+      (Pre.clauseLocation <$> clauses)
+      (go (Vector.toList . Pre.clausePatterns <$> clauses)))
     (Pre.clauseScope <$> clauses)
   where
     go
@@ -163,12 +165,14 @@ equaliseClauses clauses
     addExplicit pats = ((Explicit, VarPat mempty) : pats, pure Explicit)
 
 etaClause
-  :: [(Plicitness, Pat (HashSet QConstr) Pre.Literal (Scope PatternVar Pre.Expr v) NameHint)]
+  :: SourceLoc
+  -> [(Plicitness, Pat (HashSet QConstr) Pre.Literal (Scope PatternVar Pre.Expr v) NameHint)]
   -> [Plicitness]
   -> Scope PatternVar Pre.Expr v
   -> Pre.Clause Pre.Expr v
-etaClause pats extras (Scope scope)
+etaClause loc pats extras (Scope scope)
   = Pre.Clause
+    loc
     (Vector.fromList pats)
     $ Scope
     $ Pre.apps scope vs

@@ -20,7 +20,7 @@ data Expr
   | Lam !Plicitness (Pat PreName Pre.Literal Type PreName) Expr
   | App Expr !Plicitness Expr
   | Let (Vector (SourceLoc, ConstantDef Expr)) Expr
-  | Case Expr [(Pat PreName Pre.Literal Expr PreName, Expr)]
+  | Case Expr [(SourceLoc, Pat PreName Pre.Literal Expr PreName, Expr)]
   | ExternCode (Extern Expr)
   | Wildcard
   | SourceLoc !SourceLoc Type
@@ -53,7 +53,7 @@ data Definition
   deriving (Show)
 
 data Clause e
-  = Clause (Vector (Plicitness, Pat PreName Pre.Literal e PreName)) e
+  = Clause !SourceLoc !(Vector (Plicitness, Pat PreName Pre.Literal e PreName)) e
   deriving (Show)
 
 -------------------------------------------------------------------------------
@@ -92,7 +92,7 @@ instance Pretty Expr where
     Let ds e -> parens `above` letPrec $
       "let" <+> align (vcat ((\(_, d) -> prettyM d) <$> ds)) <$$> "in" <+> prettyM e
     Case e brs -> parens `above` casePrec $
-      "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (vcat [prettyM pat <+> "->" <+> prettyM br | (pat, br) <- brs])
+      "case" <+> inviolable (prettyM e) <+> "of" <$$> indent 2 (vcat [prettyM pat <+> "->" <+> prettyM br | (_, pat, br) <- brs])
     ExternCode c -> prettyM c
     Wildcard -> "_"
     SourceLoc _ e -> prettyM e
@@ -105,4 +105,4 @@ instance Pretty e => Pretty (ConstantDef e) where
     = prettyM a <$$> vcat (NonEmpty.cons (prettyM name <+> ":" <+> prettyM typ) (prettyNamed (prettyM name) <$> cls))
 
 instance (Pretty e) => PrettyNamed (Clause e) where
-  prettyNamed name (Clause pats body) = name <+> hcat ((\(p, pat) -> prettyAnnotation p (prettyM pat)) <$> pats) <+> "=" <+> prettyM body
+  prettyNamed name (Clause _ pats body) = name <+> hcat ((\(p, pat) -> prettyAnnotation p (prettyM pat)) <$> pats) <+> "=" <+> prettyM body

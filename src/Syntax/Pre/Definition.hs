@@ -24,7 +24,8 @@ data Definition expr v
   deriving (Foldable, Functor, Show, Traversable)
 
 data Clause expr v = Clause
-  { clausePatterns :: Vector (Plicitness, Pat (HashSet QConstr) Pre.Literal (Scope PatternVar expr v) NameHint)
+  { clauseLocation :: !SourceLoc
+  , clausePatterns :: Vector (Plicitness, Pat (HashSet QConstr) Pre.Literal (Scope PatternVar expr v) NameHint)
   , clauseScope :: Scope PatternVar expr v
   } deriving Show
 
@@ -65,7 +66,7 @@ instantiateClause
   => (b -> expr v)
   -> Clause expr (Bound.Var b v)
   -> Clause expr v
-instantiateClause f (Clause pats s) = Clause (fmap (first go) <$> pats) (go s)
+instantiateClause f (Clause loc pats s) = Clause loc (fmap (first go) <$> pats) (go s)
   where
     go = (>>>= unvar f pure)
 
@@ -74,7 +75,7 @@ abstractClause
   => (v -> Maybe b)
   -> Clause expr v
   -> Clause expr (Bound.Var b v)
-abstractClause f (Clause pats s) = Clause (fmap (first $ fmap go) <$> pats) (go <$> s)
+abstractClause f (Clause loc pats s) = Clause loc (fmap (first $ fmap go) <$> pats) (go <$> s)
   where
     go v = case f v of
       Nothing -> F v
@@ -92,7 +93,7 @@ instance Traversable expr => Functor (Clause expr) where
 instance Traversable expr => Foldable (Clause expr) where
   foldMap = foldMapDefault
 instance Traversable expr => Traversable (Clause expr) where
-  traverse f (Clause pats s) = Clause <$> traverse (traverse $ bitraverse (traverse f) pure) pats <*> traverse f s
+  traverse f (Clause loc pats s) = Clause loc <$> traverse (traverse $ bitraverse (traverse f) pure) pats <*> traverse f s
 
 instance Bound Definition where
   ConstantDefinition d >>>= f = ConstantDefinition $ d >>>= f
@@ -115,19 +116,19 @@ instance GBound ConstantDef where
 $(return mempty)
 
 instance (Eq1 expr, Monad expr) => Eq1 (Clause expr) where
-  liftEq f (Clause ps1 s1) (Clause ps2 s2)
+  liftEq f (Clause _ ps1 s1) (Clause _ ps2 s2)
     = liftEq (\(p1, pat1) (p2, pat2) -> p1 == p2 && liftPatEq (==) (==) (liftEq f) (==) pat1 pat2) ps1 ps2
     && liftEq f s1 s2
 
 instance Bound Clause where
-  Clause pats s >>>= f = Clause (fmap (first (>>>= f)) <$> pats) (s >>>= f)
+  Clause loc pats s >>>= f = Clause loc (fmap (first (>>>= f)) <$> pats) (s >>>= f)
 
 instance GBound Clause where
-  gbound f (Clause pats s) = Clause (fmap (first $ gbound f) <$> pats) (gbound f s)
+  gbound f (Clause loc pats s) = Clause loc (fmap (first $ gbound f) <$> pats) (gbound f s)
 
 instance (Pretty (expr v), Monad expr, v ~ Doc)
   => PrettyNamed (Clause expr v) where
-  prettyNamed name (Clause pats s)
+  prettyNamed name (Clause _ pats s)
     = withNameHints (toVector . snd =<< pats) $ \ns -> do
       let go (p, pat)
             = prettyAnnotation p

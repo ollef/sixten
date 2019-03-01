@@ -345,10 +345,11 @@ atomicExpr = locatedExpr
       where
         mkLet xs = Let $ Vector.fromList xs
 
-branches :: Parser [(Pat PreName Pre.Literal Type PreName, Expr)]
+branches :: Parser [(SourceLoc, Pat PreName Pre.Literal Type PreName, Expr)]
 branches = manyIndentedOrSameCol branch
   where
-    branch = (,) <$> pattern <*% symbol "->" <*>% expr
+    branch = fmap mkBranch $ located $ (,) <$> pattern <*% symbol "->" <*>% expr
+    mkBranch (loc, (pat, e)) = (loc, pat, e)
 
 expr :: Parser Expr
 expr = exprWithoutWhere <**>
@@ -439,7 +440,8 @@ constantDef = do
     return (Pre.ConstantDef n abstr (NonEmpty.fromList clauses) mtyp)
   where
     typeSig = symbol ":" *> exprWithRecoverySI
-    clause = Clause <$> (Vector.fromList <$> manyPlicitPatterns) <*% symbol "=" <*> exprWithRecoverySI
+    clause = fmap mkClause $ located $ (,) <$> (Vector.fromList <$> manyPlicitPatterns) <*% symbol "=" <*> exprWithRecoverySI
+    mkClause (loc, (pats, e)) = Clause loc pats e
 
 dataDef :: Parser Pre.Definition
 dataDef = Pre.DataDefinition <$ reserved "type" <*>% name <*> manyTypedBindings <*>%

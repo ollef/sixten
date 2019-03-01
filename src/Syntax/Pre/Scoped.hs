@@ -35,7 +35,7 @@ data Expr v
   | Lam !Plicitness (Pat (HashSet QConstr) Pre.Literal (PatternScope Type v) NameHint) (PatternScope Expr v)
   | App (Expr v) !Plicitness (Expr v)
   | Let (Vector (SourceLoc, NameHint, ConstantDef Expr (Bound.Var LetVar v))) (Scope LetVar Expr v)
-  | Case (Expr v) [(Pat (HashSet QConstr) Pre.Literal (PatternScope Type v) NameHint, PatternScope Expr v)]
+  | Case (Expr v) [(SourceLoc, Pat (HashSet QConstr) Pre.Literal (PatternScope Type v) NameHint, PatternScope Expr v)]
   | ExternCode (Extern (Expr v))
   | Wildcard
   | SourceLoc !SourceLoc (Expr v)
@@ -47,15 +47,16 @@ type Type = Expr
 -- Helpers
 clause
   :: (Monad expr, Hashable v, Eq v)
-  => (v -> NameHint)
+  => SourceLoc
+  -> (v -> NameHint)
   -> Vector (Plicitness, Pat (HashSet QConstr) Pre.Literal (expr v) v)
   -> expr v
   -> Clause expr v
-clause h plicitPats e = do
+clause loc h plicitPats e = do
   let pats = snd <$> plicitPats
       vars = pats >>= toVector
       typedPats = fmap (fmap h) <$> abstractPatternsTypes vars plicitPats
-  Clause typedPats $ abstract (patternAbstraction vars) e
+  Clause loc typedPats $ abstract (patternAbstraction vars) e
 
 pi_
   :: (Hashable v, Eq v)
@@ -102,11 +103,11 @@ case_
   :: (Hashable v, Eq v)
   => (v -> NameHint)
   -> Expr v
-  -> [(Pat (HashSet QConstr) Pre.Literal (Type v) v, Expr v)]
+  -> [(SourceLoc, Pat (HashSet QConstr) Pre.Literal (Type v) v, Expr v)]
   -> Expr v
 case_ h expr pats = Case expr $ go <$> pats
   where
-    go (pat, e) = (h <$> abstractPatternTypes vs pat, abstract (patternAbstraction vs) e)
+    go (loc, pat, e) = (loc, h <$> abstractPatternTypes vs pat, abstract (patternAbstraction vs) e)
       where
         vs = toVector pat
 
@@ -133,7 +134,7 @@ instance Eq1 Expr where
   liftEq f (Let defs1 s1) (Let defs2 s2) = liftEq (\(_, _, d1) (_, _, d2) -> liftEq (liftEq f) d1 d2) defs1 defs2 && liftEq f s1 s2
   liftEq f (Case e1 brs1) (Case e2 brs2)
     = liftEq f e1 e2
-    && liftEq (\(pat1, s1) (pat2, s2) -> liftPatEq (==) (==) (liftEq f) (==) pat1 pat2 && liftEq f s1 s2) brs1 brs2
+    && liftEq (\(_, pat1, s1) (_, pat2, s2) -> liftPatEq (==) (==) (liftEq f) (==) pat1 pat2 && liftEq f s1 s2) brs1 brs2
   liftEq f (ExternCode c) (ExternCode c') = liftEq (liftEq f) c c'
   liftEq _ Wildcard Wildcard = True
   liftEq f (SourceLoc _ e1) e2 = liftEq f e1 e2
@@ -233,6 +234,6 @@ instance v ~ Doc => Pretty (Expr v) where
     Wildcard -> "_"
     SourceLoc _ e -> prettyM e
     where
-      prettyBranch (pat, br) = withNameHints (toVector pat) $ \ns -> do
+      prettyBranch (_, pat, br) = withNameHints (toVector pat) $ \ns -> do
         let inst = instantiatePattern (pure . fromName) ns
         prettyPattern ns (first inst pat) <+> "->" <+> prettyM (inst br)

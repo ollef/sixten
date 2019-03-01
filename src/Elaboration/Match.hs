@@ -51,16 +51,15 @@ matchClauses
   -> Elaborate CoreM
 matchClauses vars preClauses typ k = do
   ctx <- getContext
-  loc <- getCurrentLocation
   let
-    clauses = foreach (toList preClauses) $ \(Pre.Clause pats rhs) ->
+    clauses = foreach (toList preClauses) $ \(Pre.Clause loc pats rhs) ->
       Clause
         { _matches =
-          toList $ Vector.zipWith (\v (p, pat) -> Match (pure v) (p, desugarPatLits pat) (Context.lookupType v ctx) loc) vars $ indexedPatterns pats
+          toList $ Vector.zipWith (\v (p, pat) -> Match (pure v) (p, desugarPatLits pat) (Context.lookupType v ctx) $ Just loc) vars $ indexedPatterns pats
         , _rhs = rhs
-        , _data = ()
+        , _data = loc
         }
-  matchWithCoverage Config
+  matchWithCoverage "clause" Config
     { _targetType = typ
     , _scrutinees = pure <$> vars
     , _clauses = clauses
@@ -71,22 +70,21 @@ matchClauses vars preClauses typ k = do
 matchBranches
   :: CoreM
   -> CoreM
-  -> [(Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr Var) NameHint, PatternScope Pre.Expr Var)]
+  -> [(SourceLoc, Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr Var) NameHint, PatternScope Pre.Expr Var)]
   -> Polytype
   -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
-matchBranches (Core.varView -> Just var) exprType brs typ k = do
-  loc <- getCurrentLocation
-  matchWithCoverage Config
+matchBranches (Core.varView -> Just var) exprType brs typ k =
+  matchWithCoverage "pattern" Config
     { _targetType = typ
     , _scrutinees = pure (pure var)
     , _clauses =
       [ Clause
-        { _matches = [Match (pure var) (Explicit, imap (\i _ -> PatternVar i) $ desugarPatLits pat) exprType loc]
+        { _matches = [Match (pure var) (Explicit, imap (\i _ -> PatternVar i) $ desugarPatLits pat) exprType $ Just loc]
         , _rhs = rhs
-        , _data = ()
+        , _data = loc
         }
-      | (pat, rhs) <- brs
+      | (loc, pat, rhs) <- brs
       ]
     , _coveredLits = mempty
     }
@@ -106,14 +104,14 @@ matchSingle
 matchSingle v pat body typ k = do
   varType <- Context.lookupType v
   loc <- getCurrentLocation
-  matchWithCoverage Config
+  matchWithCoverage "pattern" Config
     { _targetType = typ
     , _scrutinees = pure (pure v)
     , _clauses =
       [ Clause
         { _matches = [Match (pure v) (Explicit, PatternVar . fst <$> indexed (desugarPatLits pat)) varType loc]
         , _rhs = body
-        , _data = ()
+        , _data = fromMaybe (noSourceLoc "match") loc
         }
       ]
     , _coveredLits = mempty
@@ -166,22 +164,25 @@ prettyMatch (Match expr (p, pat) typ _) = do
 -------------------------------------------------------------------------------
 
 matchWithCoverage
-  :: Config unit
+  :: Doc
+  -> Config SourceLoc
   -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
-matchWithCoverage config k = do
+matchWithCoverage matchKind config k = do
   let
-    indexedConfig = fst <$> indexed config
-    indices = foldMap HashSet.singleton indexedConfig
+    indexedConfig = indexed config
+    indices = foldMap (uncurry HashMap.singleton) indexedConfig
   usedRef <- liftIO $ newIORef mempty
-  result <- match indexedConfig $ \index e t -> do
-    liftIO $ modifyIORef usedRef $ HashSet.insert index
+  result <- match indexedConfig $ \(index, loc) e t -> do
+    liftIO $ modifyIORef usedRef $ HashMap.insert index loc
     k e t
   used <- liftIO $ readIORef usedRef
   let
-    unused = HashSet.difference indices used
-  unless (HashSet.null unused) $
-    reportLocated "Overlapping patterns"
+    unused = HashMap.difference indices used
+  forM_ (HashMap.elems unused) $ \loc ->
+    report
+      $ TypeError ("Overlapping " <> matchKind <> "s") (Just loc)
+      $ "This " <> matchKind <> " is redundant."
   return result
 
 -------------------------------------------------------------------------------
