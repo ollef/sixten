@@ -29,3 +29,10 @@ toInt (Ref Zero) = 0
 toInt (Ref (Succ n)) = addInt 1 (toInt n)
 
 main = printInt (toInt (Ref f2))
+
+impossible : forall a. Fin Zero -> a
+impossible fz = case fz of
+
+onlyZero : Fin (Succ Zero) -> Unit
+onlyZero Zero = MkUnit
+onlyZero (Succ (Ref f)) = case f of
