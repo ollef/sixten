@@ -1,0 +1,4 @@
+type List a = Nil | Cons a (Ptr (List a))
+
+test : forall a. List a -> List a
+test (Cons x (Ref Nil)) = test Nil
