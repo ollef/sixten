@@ -27,5 +27,5 @@ test3sig : A -> A -> A -> A -> A
 test3sig A1 = \x y z. x
 test3sig a b c d = c
 
-test3p a b c d = c
 test3p A1 = \x y z. x
+test3p a b c d = c

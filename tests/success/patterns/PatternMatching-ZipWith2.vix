@@ -1,7 +1,6 @@
 type List A = Nil | Cons A (Ptr (List A))
 
 zipWith f (Ref Nil) (Ref Nil) = Ref Nil
-zipWith f (Ref Nil) (Ref Nil) = Ref Nil
 zipWith f (Ref (Cons _ _)) (Ref Nil) = Ref Nil
 zipWith f (Ref Nil) (Ref (Cons _ _)) = Ref Nil
 zipWith f (Ref (Cons x xs)) (Ref (Cons y ys)) = Ref (Cons (f x y) (zipWith f xs ys))

@@ -1,0 +1,3 @@
+f True = 1
+f False = 2
+f _ = 3

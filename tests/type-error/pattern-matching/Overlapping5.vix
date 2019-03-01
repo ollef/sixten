@@ -1,0 +1,6 @@
+type Maybe a = Nothing | Just a
+
+f (Just Nothing) = 1
+f (Just (Just _)) = 2
+f (Just _) = 3
+f _ = 4

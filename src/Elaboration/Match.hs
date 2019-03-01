@@ -1,3 +1,6 @@
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -15,6 +18,7 @@ import qualified Data.HashSet as HashSet
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
+import Data.IORef
 
 import {-# SOURCE #-} Elaboration.TypeCheck.Expr
 import qualified Builtin.Names as Builtin
@@ -54,8 +58,9 @@ matchClauses vars preClauses typ k = do
         { _matches =
           toList $ Vector.zipWith (\v (p, pat) -> Match (pure v) (p, desugarPatLits pat) (Context.lookupType v ctx) loc) vars $ indexedPatterns pats
         , _rhs = rhs
+        , _data = ()
         }
-  match Config
+  matchWithCoverage Config
     { _targetType = typ
     , _scrutinees = pure <$> vars
     , _clauses = clauses
@@ -72,13 +77,14 @@ matchBranches
   -> Elaborate CoreM
 matchBranches (Core.varView -> Just var) exprType brs typ k = do
   loc <- getCurrentLocation
-  match Config
+  matchWithCoverage Config
     { _targetType = typ
     , _scrutinees = pure (pure var)
     , _clauses =
       [ Clause
         { _matches = [Match (pure var) (Explicit, imap (\i _ -> PatternVar i) $ desugarPatLits pat) exprType loc]
         , _rhs = rhs
+        , _data = ()
         }
       | (pat, rhs) <- brs
       ]
@@ -90,54 +96,6 @@ matchBranches expr exprType brs typ k =
     result <- matchBranches (pure var) exprType brs typ k
     Core.let_ (pure (var, noSourceLoc "match", expr)) result
 
-uninhabitedType :: Int -> CoreM -> Elaborate Bool
-uninhabitedType fuel typ = do
-  typ' <- whnf typ
-  logMeta "tc.match" "uninhabitedType typ'" $ zonk typ'
-  case typ' of
-    Builtin.Equals _ e1 e2 -> do
-      res <- Indices.unify e1 e2
-      case res of
-        Indices.Nope -> return True
-        Indices.Dunno -> return False
-        Indices.Success _ -> return False
-    (Core.appsView -> (Core.Global typeName, toVector -> args)) -> do
-      def <- fetchDefinition typeName
-      case def of
-        ConstantDefinition {} -> return False
-        DataDefinition (DataDef _ constrDefs) _ ->
-          allM (uninhabitedConstrType fuel . instantiateTele snd args . constrType) constrDefs
-    _ -> return False
-
-uninhabitedConstrType :: Int -> CoreM -> Elaborate Bool
-uninhabitedConstrType 0 _ = return False
-uninhabitedConstrType fuel typ = do
-  typ' <- whnf typ
-  case typ' of
-    Core.Pi h p t s -> do
-      u <- uninhabitedType (fuel - 1) t
-      if u then
-        return True
-      else
-        Context.freshExtend (binding h p t) $ \v ->
-          uninhabitedConstrType fuel $ instantiate1 (pure v) s
-    _ -> return False
-
-uninhabitedScrutinee :: CoreM -> Elaborate Bool
-uninhabitedScrutinee expr = do
-  expr' <- whnf expr
-  logMeta "tc.match" "uninhabitedScrutinee expr'" $ zonk expr'
-  case expr' of
-    Core.Var v -> do
-      typ <- Context.lookupType v
-      uninhabitedType 1 typ
-    (Core.appsView -> (Core.Con qc, es)) -> do
-      (numParams, _) <- fetchQConstructor qc
-      let
-        args = drop numParams es
-      anyM (uninhabitedScrutinee . snd) args
-    _ -> return False
-
 matchSingle
   :: Var
   -> Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr Var) NameHint
@@ -148,13 +106,14 @@ matchSingle
 matchSingle v pat body typ k = do
   varType <- Context.lookupType v
   loc <- getCurrentLocation
-  match Config
+  matchWithCoverage Config
     { _targetType = typ
     , _scrutinees = pure (pure v)
     , _clauses =
       [ Clause
         { _matches = [Match (pure v) (Explicit, PatternVar . fst <$> indexed (desugarPatLits pat)) varType loc]
         , _rhs = body
+        , _data = ()
         }
       ]
     , _coveredLits = mempty
@@ -170,24 +129,25 @@ desugarPatLits = bindPatLits litPat
 
 type PrePat = Pat (HashSet QConstr) Core.Literal (PatternScope Pre.Type Var) PatternVar
 
-data Config = Config
+data Config a = Config
   { _targetType :: CoreM
   , _scrutinees :: Vector CoreM
-  , _clauses :: [Clause]
+  , _clauses :: [Clause a]
   , _coveredLits :: !CoveredLits
-  }
+  } deriving (Functor, Foldable, Traversable)
 
 type CoveredLits = HashSet (Var, Core.Literal)
 
-data Clause = Clause
+data Clause a = Clause
   { _matches :: [Match]
   , _rhs :: PatternScope Pre.Expr Var
-  }
+  , _data :: a
+  } deriving (Functor, Foldable, Traversable)
 
 data Match = Match CoreM (Plicitness, PrePat) CoreM !(Maybe SourceLoc)
 
-prettyClause :: Clause -> Elaborate Doc
-prettyClause (Clause matches rhs) = do
+prettyClause :: Clause a -> Elaborate Doc
+prettyClause (Clause matches rhs _) = do
   cs <- pretty <$> traverse prettyMatch matches
   e <- pretty . instantiate (pure . ("α" <>) . pretty . unPatternVar) <$> traverse prettyVar rhs
   return $ cs <> " ~> " <> e
@@ -205,9 +165,30 @@ prettyMatch (Match expr (p, pat) typ _) = do
 
 -------------------------------------------------------------------------------
 
-match
-  :: Config
+matchWithCoverage
+  :: Config unit
   -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
+  -> Elaborate CoreM
+matchWithCoverage config k = do
+  let
+    indexedConfig = fst <$> indexed config
+    indices = foldMap HashSet.singleton indexedConfig
+  usedRef <- liftIO $ newIORef mempty
+  result <- match indexedConfig $ \index e t -> do
+    liftIO $ modifyIORef usedRef $ HashSet.insert index
+    k e t
+  used <- liftIO $ readIORef usedRef
+  let
+    unused = HashSet.difference indices used
+  unless (HashSet.null unused) $
+    reportLocated "Overlapping patterns"
+  return result
+
+-------------------------------------------------------------------------------
+
+match
+  :: Config a
+  -> (a -> Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
 match config k = Log.indent $ do
   logPretty "tc.match.context" "context" $ Context.prettyContext $ prettyMeta <=< zonk
@@ -258,7 +239,7 @@ match config k = Log.indent $ do
                 Just sub -> do
                   logCategory "tc.match" "solved"
                   instantiateSubst sub (_rhs firstClause) $ \e ->
-                    k e $ _targetType config
+                    k (_data firstClause) e $ _targetType config
                 Nothing ->
                   panic "tc.match no solution"
 
@@ -306,7 +287,8 @@ findEqMatch (Match (Core.Var x) (Constraint, unPatLoc -> WildcardPat) (Builtin.E
       pe2 <- prettyMeta e2'
       let
         err = "Unification failure" <> PP.line <> PP.vcat
-          [ red pe1
+          [ "The indices"
+          , red pe1
           , "and"
           , red pe2
           , "cannot be unified."
@@ -316,11 +298,11 @@ findEqMatch (Match (Core.Var x) (Constraint, unPatLoc -> WildcardPat) (Builtin.E
 findEqMatch (_:rest) = findEqMatch rest
 
 splitCon
-  :: Config
+  :: Config a
   -> Var
   -> HashSet QConstr
   -> CoreM
-  -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
+  -> (a -> Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
 splitCon config x qcs typ k = do
   qc <- resolveConstr qcs $ Just typ
@@ -365,11 +347,11 @@ splitCon config x qcs typ k = do
           return $ Core.Case (pure x) (ConBranches branches) $ _targetType config
 
 splitLit
-  :: Config
+  :: Config a
   -> Var
   -> Core.Literal
   -> CoreM
-  -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
+  -> (a -> Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
 splitLit config x lit typ k = do
   let
@@ -385,13 +367,13 @@ splitLit config x lit typ k = do
     $ _targetType config
 
 splitEq
-  :: Config
+  :: Config a
   -> Var
   -> CoreM
   -> CoreM
   -> CoreM
   -> Indices.Subst
-  -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
+  -> (a -> Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
 splitEq config x typ lhs rhs sub k = do
   logMeta "tc.match" "splitEq typ" $ zonk typ
@@ -418,9 +400,9 @@ splitEq config x typ lhs rhs sub k = do
     acyclic (AcyclicSCC v) = v
     acyclic (CyclicSCC _) = panic "match splitEq cyclic"
 
-simplifyClause :: CoveredLits -> Clause -> Elaborate (Maybe Clause)
-simplifyClause coveredLits (Clause matches rhs) = Log.indent $ do
-  logPretty "tc.match.simplify" "clause" $ prettyClause $ Clause matches rhs
+simplifyClause :: CoveredLits -> Clause a -> Elaborate (Maybe (Clause a))
+simplifyClause coveredLits clause@(Clause matches rhs dat) = Log.indent $ do
+  logPretty "tc.match.simplify" "clause" $ prettyClause clause
   mmatches <- runMaybeT $
     concat <$> mapM (simplifyMatch coveredLits) matches
   case mmatches of
@@ -428,12 +410,12 @@ simplifyClause coveredLits (Clause matches rhs) = Log.indent $ do
       logCategory "tc.match.simplify" "Nothing"
       return Nothing
     Just matches' -> do
-      logPretty "tc.match.simplify" "clause'" $ prettyClause $ Clause matches' rhs
+      logPretty "tc.match.simplify" "clause'" $ prettyClause $ Clause matches' rhs dat
       maybeExpanded <- runMaybeT $
         expandAnnos mempty matches'
       case maybeExpanded of
-        Nothing -> return $ Just $ Clause matches' rhs
-        Just expanded -> simplifyClause coveredLits $ Clause expanded rhs
+        Nothing -> return $ Just $ Clause matches' rhs dat
+        Just expanded -> simplifyClause coveredLits $ Clause expanded rhs dat
 
 
 simplifyMatch :: CoveredLits -> Match -> MaybeT Elaborate [Match]
@@ -492,6 +474,56 @@ matchSubst _ = Nothing
 
 solved :: [Match] -> Maybe PatSubst
 solved = fmap mconcat . traverse matchSubst
+
+------------------------------------------------------------------------------
+
+uninhabitedType :: Int -> CoreM -> Elaborate Bool
+uninhabitedType fuel typ = do
+  typ' <- whnf typ
+  logMeta "tc.match" "uninhabitedType typ'" $ zonk typ'
+  case typ' of
+    Builtin.Equals _ e1 e2 -> do
+      res <- Indices.unify e1 e2
+      case res of
+        Indices.Nope -> return True
+        Indices.Dunno -> return False
+        Indices.Success _ -> return False
+    (Core.appsView -> (Core.Global typeName, toVector -> args)) -> do
+      def <- fetchDefinition typeName
+      case def of
+        ConstantDefinition {} -> return False
+        DataDefinition (DataDef _ constrDefs) _ ->
+          allM (uninhabitedConstrType fuel . instantiateTele snd args . constrType) constrDefs
+    _ -> return False
+
+uninhabitedConstrType :: Int -> CoreM -> Elaborate Bool
+uninhabitedConstrType 0 _ = return False
+uninhabitedConstrType fuel typ = do
+  typ' <- whnf typ
+  case typ' of
+    Core.Pi h p t s -> do
+      u <- uninhabitedType (fuel - 1) t
+      if u then
+        return True
+      else
+        Context.freshExtend (binding h p t) $ \v ->
+          uninhabitedConstrType fuel $ instantiate1 (pure v) s
+    _ -> return False
+
+uninhabitedScrutinee :: CoreM -> Elaborate Bool
+uninhabitedScrutinee expr = do
+  expr' <- whnf expr
+  logMeta "tc.match" "uninhabitedScrutinee expr'" $ zonk expr'
+  case expr' of
+    Core.Var v -> do
+      typ <- Context.lookupType v
+      uninhabitedType 1 typ
+    (Core.appsView -> (Core.Con qc, es)) -> do
+      (numParams, _) <- fetchQConstructor qc
+      let
+        args = drop numParams es
+      anyM (uninhabitedScrutinee . snd) args
+    _ -> return False
 
 -------------------------------------------------------------------------------
 
