@@ -23,7 +23,7 @@ import Text.Parsix(Position(Position, visualRow, visualColumn), (<?>))
 import Error
 import Syntax hiding (classDef, dataDef)
 import Syntax.Pre.Literal as Pre
-import Syntax.Pre.Unscoped as Unscoped
+import Syntax.Pre.Unscoped as Pre
 
 data ParseEnv = ParseEnv
   { parseEnvIndentAnchor :: !Position
@@ -327,8 +327,8 @@ atomicExpr = locatedExpr
   $ Lit <$> literal
   <|> Wildcard <$ wildcard
   <|> Var <$> qname
-  <|> Unscoped.pis <$ reserved "forall" <*>% (fmap ((,) Implicit) <$> somePatterns) <*% symbol "." <*>% exprWithoutWhere
-  <|> Unscoped.lams <$ symbol "\\" <*>% somePlicitPatterns <*% symbol "." <*>% exprWithoutWhere
+  <|> Pre.pis <$ reserved "forall" <*>% (fmap ((,) Implicit) <$> somePatterns) <*% symbol "." <*>% exprWithoutWhere
+  <|> Pre.lams <$ symbol "\\" <*>% somePlicitPatterns <*% symbol "." <*>% exprWithoutWhere
   <|> Case <$ reserved "case" <*>% expr <*% reserved "of" <*> branches
   <|> letExpr
   <|> ExternCode <$> externCExpr
@@ -337,7 +337,7 @@ atomicExpr = locatedExpr
   where
     letExpr
       = dropAnchor
-      $ mkLet <$ reserved "let" <*>% dropAnchor (someSameCol $ located def)
+      $ mkLet <$ reserved "let" <*>% dropAnchor (someSameCol $ located constantDef)
       <*>
         ((sameLineOrIndented <|> sameCol) *> reserved "in" *>% exprWithoutWhere
         <|> sameCol *> exprWithoutWhere
@@ -352,20 +352,20 @@ branches = manyIndentedOrSameCol branch
 
 expr :: Parser Expr
 expr = exprWithoutWhere <**>
-  (mkLet <$% reserved "where" <*>% dropAnchor (someSameCol $ located def)
+  (mkLet <$% reserved "where" <*>% dropAnchor (someSameCol $ located constantDef)
   <|> pure identity
   )
   where
     mkLet xs = Let $ Vector.fromList xs
 
 exprWithRecoverySI :: Parser Expr
-exprWithRecoverySI = Parsix.withRecovery (recover Unscoped.Error) (sameLineOrIndented >> expr)
+exprWithRecoverySI = Parsix.withRecovery (recover Pre.Error) (sameLineOrIndented >> expr)
 
 exprWithoutWhere :: Parser Expr
 exprWithoutWhere
   = locatedExpr
-  $ Unscoped.pis <$> Parsix.try (somePlicitPatternBindings <*% symbol "->") <*>% exprWithoutWhere
-  <|> Unscoped.apps <$> atomicExpr <*> manySI argument <**> arr
+  $ Pre.pis <$> Parsix.try (somePlicitPatternBindings <*% symbol "->") <*>% exprWithoutWhere
+  <|> Pre.apps <$> atomicExpr <*> manySI argument <**> arr
   <|> plicitPi Implicit <$ symbol "@" <*>% atomicExpr <*% symbol "->" <*>% exprWithoutWhere
   <?> "expression"
   where
@@ -414,15 +414,15 @@ literal
 -------------------------------------------------------------------------------
 -- * Definitions
 -- | A definition or type declaration on the top-level
-topLevel :: Parser (SourceLoc, TopLevelDefinition)
-topLevel = located
+def :: Parser (SourceLoc, Pre.Definition)
+def = located
   $ dataDef
   <|> classDef
   <|> instanceDef
-  <|> TopLevelDefinition <$> def
+  <|> Pre.ConstantDefinition <$> constantDef
 
-def :: Parser (Unscoped.Definition Unscoped.Expr)
-def = do
+constantDef :: Parser (Pre.ConstantDef Pre.Expr)
+constantDef = do
   abstr
     <- Abstract <$ reserved "abstract" <* sameCol
     <|> pure Concrete
@@ -432,17 +432,17 @@ def = do
     let namedClause
           = dropAnchor
           $ (wildcard <|> void (reserved $ fromName n))
-          *>% clause -- Parsix.withRecovery (recover $ Unscoped.Clause mempty . Unscoped.Error) clause
+          *>% clause -- Parsix.withRecovery (recover $ Pre.Clause mempty . Pre.Error) clause
     (mtyp, clauses)
       <- (,) . Just <$> typeSig <*> someSameCol namedClause
       <|> (,) Nothing <$> ((:) <$> clause <*> manySameCol namedClause)
-    return (Unscoped.Definition n abstr (NonEmpty.fromList clauses) mtyp)
+    return (Pre.ConstantDef n abstr (NonEmpty.fromList clauses) mtyp)
   where
     typeSig = symbol ":" *> exprWithRecoverySI
     clause = Clause <$> (Vector.fromList <$> manyPlicitPatterns) <*% symbol "=" <*> exprWithRecoverySI
 
-dataDef :: Parser TopLevelDefinition
-dataDef = TopLevelDataDefinition <$ reserved "type" <*>% name <*> manyTypedBindings <*>%
+dataDef :: Parser Pre.Definition
+dataDef = Pre.DataDefinition <$ reserved "type" <*>% name <*> manyTypedBindings <*>%
   (concat <$% reserved "where" <*> manyIndentedOrSameCol conDef
   <|> identity <$% symbol "=" <*>% sepBySI adtConDef (symbol "|"))
   where
@@ -451,22 +451,22 @@ dataDef = TopLevelDataDefinition <$ reserved "type" <*>% name <*> manyTypedBindi
     constrDefs cs t = [GADTConstrDef c t | c <- cs]
     adtConDef = ADTConstrDef <$> constructor <*> manySI atomicExpr
 
-classDef :: Parser TopLevelDefinition
-classDef = TopLevelClassDefinition <$ reserved "class" <*>% name <*> manyTypedBindings
+classDef :: Parser Pre.Definition
+classDef = ClassDefinition <$ reserved "class" <*>% name <*> manyTypedBindings
   <*% reserved "where" <*> manyIndentedOrSameCol (mkMethodDef <$> located ((,) <$> name <*% symbol ":" <*>% expr))
   where
     mkMethodDef (loc, (n, e)) = Method n loc e
 
 
-instanceDef :: Parser TopLevelDefinition
-instanceDef = TopLevelInstanceDefinition <$ reserved "instance" <*>% exprWithoutWhere
-  <*% reserved "where" <*> manyIndentedOrSameCol (located def)
+instanceDef :: Parser Pre.Definition
+instanceDef = InstanceDefinition <$ reserved "instance" <*>% exprWithoutWhere
+  <*% reserved "where" <*> manyIndentedOrSameCol (located constantDef)
 
 -------------------------------------------------------------------------------
 -- * Module
-modul :: Parser (ModuleHeader, [(SourceLoc, Unscoped.TopLevelDefinition)])
+modul :: Parser (ModuleHeader, [(SourceLoc, Pre.Definition)])
 modul = Parsix.whiteSpace >> dropAnchor
-  ((,) <$> moduleHeader <*> manySameCol (dropAnchor topLevel))
+  ((,) <$> moduleHeader <*> manySameCol (dropAnchor def))
 
 moduleHeader :: Parser ModuleHeader
 moduleHeader = moduleExposing <*> manySameCol (dropAnchor impor)

@@ -19,7 +19,7 @@ data Expr
   | Pi !Plicitness (Pat PreName Pre.Literal Type PreName) Expr
   | Lam !Plicitness (Pat PreName Pre.Literal Type PreName) Expr
   | App Expr !Plicitness Expr
-  | Let (Vector (SourceLoc, Definition Expr)) Expr
+  | Let (Vector (SourceLoc, ConstantDef Expr)) Expr
   | Case Expr [(Pat PreName Pre.Literal Expr PreName, Expr)]
   | ExternCode (Extern Expr)
   | Wildcard
@@ -29,12 +29,12 @@ data Expr
 
 type Type = Expr
 
-data Definition e
-  = Definition Name Abstract (NonEmpty (Clause e)) (Maybe e)
+data ConstantDef e
+  = ConstantDef Name Abstract (NonEmpty (Clause e)) (Maybe e)
   deriving (Show)
 
-definitionName :: Definition e -> Name
-definitionName (Definition n _ _ _) = n
+definitionName :: ConstantDef e -> Name
+definitionName (ConstantDef n _ _ _) = n
 
 data ADTOrGADTConstrDef typ
   = ADTConstrDef Constr [typ]
@@ -45,11 +45,11 @@ constrName :: ADTOrGADTConstrDef typ -> Constr
 constrName (ADTConstrDef c _) = c
 constrName (GADTConstrDef c _) = c
 
-data TopLevelDefinition
-  = TopLevelDefinition (Definition Expr)
-  | TopLevelDataDefinition Name [(Plicitness, Name, Type)] [ADTOrGADTConstrDef Expr]
-  | TopLevelClassDefinition Name [(Plicitness, Name, Type)] [Method Expr]
-  | TopLevelInstanceDefinition Type [(SourceLoc, Definition Expr)]
+data Definition
+  = ConstantDefinition (ConstantDef Expr)
+  | DataDefinition Name [(Plicitness, Name, Type)] [ADTOrGADTConstrDef Expr]
+  | ClassDefinition Name [(Plicitness, Name, Type)] [Method Expr]
+  | InstanceDefinition Type [(SourceLoc, ConstantDef Expr)]
   deriving (Show)
 
 data Clause e
@@ -98,10 +98,10 @@ instance Pretty Expr where
     SourceLoc _ e -> prettyM e
     Syntax.Pre.Unscoped.Error e -> prettyM e
 
-instance Pretty e => Pretty (Definition e) where
-  prettyM (Definition name a cls Nothing)
+instance Pretty e => Pretty (ConstantDef e) where
+  prettyM (ConstantDef name a cls Nothing)
     = prettyM a <$$> vcat (prettyNamed (prettyM name) <$> cls)
-  prettyM (Definition name a cls (Just typ))
+  prettyM (ConstantDef name a cls (Just typ))
     = prettyM a <$$> vcat (NonEmpty.cons (prettyM name <+> ":" <+> prettyM typ) (prettyNamed (prettyM name) <$> cls))
 
 instance (Pretty e) => PrettyNamed (Clause e) where

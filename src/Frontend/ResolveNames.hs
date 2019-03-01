@@ -44,7 +44,7 @@ runResolveNames m env = do
 
 resolveModule
   :: ModuleHeader
-  -> HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
+  -> HashMap QName (SourceLoc, Unscoped.Definition)
   -> VIX [[(QName, SourceLoc, Closed (Scoped.Definition Scoped.Expr))]]
 resolveModule modul defs = do
   let imports
@@ -113,7 +113,7 @@ resolveModule modul defs = do
   return [[(n, loc, close identity def) | (n, (loc, def), _) <- defs'] | defs' <- sortedDefGroups]
 
 localConstrAliases
-  :: HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
+  :: HashMap QName (SourceLoc, Unscoped.Definition)
   -> MultiHashMap PreName QConstr
 localConstrAliases contents = MultiHashMap.fromList $ concat
   [ [ (k, QConstr n c)
@@ -121,13 +121,13 @@ localConstrAliases contents = MultiHashMap.fromList $ concat
     , (fromModuleName (qnameModule n) <> "." <> k, QConstr n c)
     , (fromQName n <> "." <> k, QConstr n c)
     ]
-  | (n, (_, Unscoped.TopLevelDataDefinition _ _ cs)) <- HashMap.toList contents
+  | (n, (_, Unscoped.DataDefinition _ _ cs)) <- HashMap.toList contents
   , c <- Unscoped.constrName <$> cs
   , let k = fromConstr c
   ]
 
 localAliases
-  :: HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
+  :: HashMap QName (SourceLoc, Unscoped.Definition)
   -> MultiHashMap PreName QName
 localAliases contents = MultiHashMap.fromList $ concat
   [ [ (fromName $ qnameName qn, qn)
@@ -141,17 +141,17 @@ localAliases contents = MultiHashMap.fromList $ concat
       [ [ (fromName m, qn)
         , (fromQName qn, qn)
         ]
-      | (n, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList contents
+      | (n, (_, Unscoped.ClassDefinition _ _ ms)) <- HashMap.toList contents
       , m <- methodName <$> ms
       , let qn = QName (qnameModule n) m
       ]
 
 methodClasses
-  :: HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
+  :: HashMap QName (SourceLoc, Unscoped.Definition)
   -> HashMap QName QName
 methodClasses contents = HashMap.fromList
   [ (QName (qnameModule n) m, n)
-  | (n, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList contents
+  | (n, (_, Unscoped.ClassDefinition _ _ ms)) <- HashMap.toList contents
   , m <- methodName <$> ms
   ]
 
@@ -201,11 +201,11 @@ importedAliases (Import modName asName exposed) = do
 -- | Distinguish variables from constructors, resolve scopes
 resolveTopLevelDefinition
   :: ModuleHeader
-  -> Unscoped.TopLevelDefinition
+  -> Unscoped.Definition
   -> ResolveNames (Scoped.Definition Scoped.Expr PreName)
-resolveTopLevelDefinition _ (Unscoped.TopLevelDefinition d) =
+resolveTopLevelDefinition _ (Unscoped.ConstantDefinition d) =
   Scoped.ConstantDefinition . snd <$> resolveDefinition d
-resolveTopLevelDefinition modul (Unscoped.TopLevelDataDefinition name params cs) = do
+resolveTopLevelDefinition modul (Unscoped.DataDefinition name params cs) = do
   (params', abstr) <- resolveParams params
   let
     dataType
@@ -222,11 +222,11 @@ resolveTopLevelDefinition modul (Unscoped.TopLevelDataDefinition name params cs)
     Unscoped.GADTConstrDef c typ ->
       ConstrDef c . abstr <$> resolveExpr typ
   return $ Scoped.DataDefinition $ DataDef params' cs'
-resolveTopLevelDefinition _ (Unscoped.TopLevelClassDefinition _name params ms) = do
+resolveTopLevelDefinition _ (Unscoped.ClassDefinition _name params ms) = do
   (params', abstr) <- resolveParams params
   ms' <- mapM (mapM (fmap abstr . resolveExpr)) ms
   return $ Scoped.ClassDefinition $ ClassDef params' ms'
-resolveTopLevelDefinition _ (Unscoped.TopLevelInstanceDefinition typ ms) = do
+resolveTopLevelDefinition _ (Unscoped.InstanceDefinition typ ms) = do
   typ' <- resolveExpr typ
   ms' <- mapM (\(loc, m) -> (,) loc <$> resolveDefinition m) ms
   return
@@ -248,9 +248,9 @@ resolveParams params = do
   return (bindingTelescope params', abstr)
 
 resolveDefinition
-  :: Unscoped.Definition Unscoped.Expr
+  :: Unscoped.ConstantDef Unscoped.Expr
   -> ResolveNames (Name, Scoped.ConstantDef Scoped.Expr PreName)
-resolveDefinition (Unscoped.Definition name a clauses mtyp) = do
+resolveDefinition (Unscoped.ConstantDef name a clauses mtyp) = do
   res <- Scoped.ConstantDef a <$> mapM resolveClause clauses <*> mapM resolveExpr mtyp
   return (name, res)
 
@@ -356,7 +356,7 @@ reportInvalidInstance
 
 moduleExports
   :: ModuleHeader
-  -> HashMap QName (a, Unscoped.TopLevelDefinition)
+  -> HashMap QName (a, Unscoped.Definition)
   -> (HashSet QName, HashSet QConstr)
 moduleExports moduleHeader_ defs = do
   let
@@ -367,13 +367,13 @@ moduleExports moduleHeader_ defs = do
     defNames = HashSet.filter (p . qnameName) $ HashSet.fromMap $ void defs
     conNames = HashSet.fromList
       [ QConstr n c
-      | (n, (_, Unscoped.TopLevelDataDefinition _ _ cs)) <- HashMap.toList defs
+      | (n, (_, Unscoped.DataDefinition _ _ cs)) <- HashMap.toList defs
       , c <- Unscoped.constrName <$> cs
       , p $ qnameName n
       ]
     methods = HashSet.fromList
       [ QName n m
-      | (QName n _, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList defs
+      | (QName n _, (_, Unscoped.ClassDefinition _ _ ms)) <- HashMap.toList defs
       , m <- methodName <$> ms
       , p m
       ]

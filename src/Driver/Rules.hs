@@ -207,7 +207,7 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
     dupChecked <- fetch $ DupCheckedModule $ qnameModule className
     let (_loc, def) = HashMap.lookupDefault (panic "fetch ClassMethods") className dupChecked
     case def of
-      Unscoped.TopLevelClassDefinition _ _ methods ->
+      Unscoped.ClassDefinition _ _ methods ->
         return $ Just $ (\(Method name loc _) -> (name, loc)) <$> methods
       _ -> return Nothing
 

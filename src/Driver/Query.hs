@@ -31,7 +31,7 @@ import qualified Syntax.Sized.Lifted as Lifted
 import TypeRep
 
 type BindingGroup = HashSet QName
-type ModuleDefinitions = HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
+type ModuleDefinitions = HashMap QName (SourceLoc, Unscoped.Definition)
 type ResolvedModule = [ResolvedBindingGroup]
 type ResolvedBindingGroup = [(QName, SourceLoc, Closed (Pre.Definition Pre.Expr))]
 type ElaboratedDef = (SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)
@@ -42,11 +42,11 @@ data Query a where
   File :: FilePath -> Query Text
   Target :: Query Target
   Builtins :: Query (HashMap QName ElaboratedDef)
-  ParsedModule :: FilePath -> Query (ModuleHeader, [(SourceLoc, Unscoped.TopLevelDefinition)])
+  ParsedModule :: FilePath -> Query (ModuleHeader, [(SourceLoc, Unscoped.Definition)])
   ModuleHeaders :: Query (HashMap FilePath ModuleHeader)
   ModuleFiles :: Query (HashMap ModuleName FilePath)
   ModuleFile :: ModuleName -> Query (Maybe FilePath)
-  DupCheckedModule :: ModuleName -> Query (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
+  DupCheckedModule :: ModuleName -> Query (HashMap QName (SourceLoc, Unscoped.Definition))
   ModuleExports :: ModuleName -> Query (HashSet QName, HashSet QConstr)
   ResolvedModule :: ModuleName -> Query ResolvedModule
   ResolvedBindingGroups :: ModuleName -> Query (HashMap BindingGroup ResolvedBindingGroup)

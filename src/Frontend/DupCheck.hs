@@ -12,7 +12,7 @@ import qualified Data.Text as Text
 import qualified Data.Text.Prettyprint.Doc as PP
 
 import Syntax
-import qualified Syntax.Pre.Unscoped as Unscoped
+import qualified Syntax.Pre.Unscoped as Pre
 import Util
 
 data DupState = DupState
@@ -22,16 +22,16 @@ data DupState = DupState
 
 dupCheck
   :: ModuleName
-  -> [(SourceLoc, Unscoped.TopLevelDefinition)]
-  -> (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition), [Error])
+  -> [(SourceLoc, Pre.Definition)]
+  -> (HashMap QName (SourceLoc, Pre.Definition), [Error])
 dupCheck mname = second errors . flip runState (DupState 0 []) . foldM go mempty
   where
     go defs (loc, def) = do
       name <- case def of
-        Unscoped.TopLevelDefinition d -> return $ Unscoped.definitionName d
-        Unscoped.TopLevelDataDefinition n _ _ -> return n
-        Unscoped.TopLevelClassDefinition n _ _ -> return n
-        Unscoped.TopLevelInstanceDefinition typ _ -> do
+        Pre.ConstantDefinition d -> return $ Pre.definitionName d
+        Pre.DataDefinition n _ _ -> return n
+        Pre.ClassDefinition n _ _ -> return n
+        Pre.InstanceDefinition typ _ -> do
           i <- gets instanceNumber
           modify' $ \s -> s { instanceNumber = instanceNumber s + 1 }
           return $ "instance-" <> shower i <> instanceNameEnding (shower $ pretty typ)
