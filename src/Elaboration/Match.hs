@@ -78,14 +78,14 @@ matchBranches (Core.varView -> Just var) exprType brs typ k =
     --
     -- when x is uninhabited.
     [] -> do
-      u <- uninhabitedType exprType
+      u <- uninhabitedType 1 exprType
       if u then
         return $ Core.Case (pure var) (ConBranches []) typ
       else
         go
     _ -> go
   where
-    go = do
+    go =
       match Config
         { _targetType = typ
         , _scrutinees = pure (pure var)
@@ -104,9 +104,10 @@ matchBranches expr exprType brs typ k =
     result <- matchBranches (pure var) exprType brs typ k
     Core.let_ (pure (var, noSourceLoc "match", expr)) result
 
-uninhabitedType :: CoreM -> Elaborate Bool
-uninhabitedType typ = do
+uninhabitedType :: Int -> CoreM -> Elaborate Bool
+uninhabitedType fuel typ = do
   typ' <- whnf typ
+  logMeta "tc.match" "uninhabitedType typ'" $ zonk typ'
   case typ' of
     Builtin.Equals _ e1 e2 -> do
       res <- Indices.unify e1 e2
@@ -119,27 +120,21 @@ uninhabitedType typ = do
       case def of
         ConstantDefinition {} -> return False
         DataDefinition (DataDef _ constrDefs) _ ->
-          allM (uninhabitedConstrType . instantiateTele snd args . constrType) constrDefs
+          allM (uninhabitedConstrType fuel . instantiateTele snd args . constrType) constrDefs
     _ -> return False
 
-uninhabitedConstrType :: CoreM -> Elaborate Bool
-uninhabitedConstrType typ = do
+uninhabitedConstrType :: Int -> CoreM -> Elaborate Bool
+uninhabitedConstrType 0 _ = return False
+uninhabitedConstrType fuel typ = do
   typ' <- whnf typ
   case typ' of
     Core.Pi h p t s -> do
-      let
-        continue =
-          Context.freshExtend (binding h p t) $ \v ->
-            uninhabitedConstrType $ instantiate1 (pure v) s
-      t' <- whnf t
-      case t' of
-        Builtin.Equals _ e1 e2 -> do
-          res <- Indices.unify e1 e2
-          case res of
-            Indices.Nope -> return True
-            Indices.Dunno -> continue
-            Indices.Success _ -> continue
-        _ -> continue
+      u <- uninhabitedType (fuel - 1) t
+      if u then
+        return True
+      else
+        Context.freshExtend (binding h p t) $ \v ->
+          uninhabitedConstrType fuel $ instantiate1 (pure v) s
     _ -> return False
 
 uninhabitedScrutinee :: CoreM -> Elaborate Bool
@@ -149,7 +144,7 @@ uninhabitedScrutinee expr = do
   case expr' of
     Core.Var v -> do
       typ <- Context.lookupType v
-      uninhabitedType typ
+      uninhabitedType 1 typ
     (Core.appsView -> (Core.Con qc, es)) -> do
       (numParams, _) <- fetchQConstructor qc
       let
