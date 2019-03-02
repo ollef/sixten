@@ -2,6 +2,9 @@
 
 ## 2019
 
+### March
+- Added pattern exhaustiveness and redundancy checks.
+
 ### February
 - Added preliminary support for inductive families (#133).
 - Refactored the compiler to use explicit contexts and to properly elaborate pattern matching during type checking (#132).
