@@ -53,10 +53,12 @@ clause
   -> expr v
   -> Clause expr v
 clause loc h plicitPats e = do
-  let pats = snd <$> plicitPats
-      vars = pats >>= toVector
-      typedPats = fmap (fmap h) <$> abstractPatternsTypes vars plicitPats
-  Clause loc typedPats $ abstract (patternAbstraction vars) e
+  let
+    pats = snd <$> plicitPats
+    vars = pats >>= toVector
+    typedPats = fmap (fmap h . first abstr) <$> plicitPats
+    abstr = abstract $ patternAbstraction vars
+  Clause loc typedPats $ abstr e
 
 pi_
   :: (Hashable v, Eq v)
@@ -65,8 +67,9 @@ pi_
   -> Pat (HashSet QConstr) Pre.Literal (Type v) v
   -> Expr v
   -> Expr v
-pi_ h p pat = Pi p (h <$> abstractPatternTypes vs pat) . abstract (patternAbstraction vs)
+pi_ h p pat = Pi p (h <$> first abstr pat) . abstr
     where
+      abstr = abstract $ patternAbstraction vs
       vs = toVector pat
 
 pis
@@ -95,8 +98,9 @@ lam
   -> Pat (HashSet QConstr) Pre.Literal (Type v) v
   -> Expr v
   -> Expr v
-lam h p pat = Lam p (h <$> abstractPatternTypes vs pat) . abstract (patternAbstraction vs)
+lam h p pat = Lam p (h <$> first abstr pat) . abstr
     where
+      abstr = abstract $ patternAbstraction vs
       vs = toVector pat
 
 case_
@@ -107,8 +111,9 @@ case_
   -> Expr v
 case_ h expr pats = Case expr $ go <$> pats
   where
-    go (loc, pat, e) = (loc, h <$> abstractPatternTypes vs pat, abstract (patternAbstraction vs) e)
+    go (loc, pat, e) = (loc, h <$> first abstr pat, abstr e)
       where
+        abstr = abstract $ patternAbstraction vs
         vs = toVector pat
 
 apps :: Foldable t => Expr v -> t (Plicitness, Expr v) -> Expr v

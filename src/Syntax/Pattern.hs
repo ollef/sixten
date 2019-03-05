@@ -90,43 +90,6 @@ patternAbstraction
   -> Maybe PatternVar
 patternAbstraction vs = fmap PatternVar . hashedElemIndex vs
 
-abstractPatternsTypes
-  :: (Bitraversable pat, Eq v, Hashable v, Monad typ, Traversable t)
-  => Vector v
-  -> t (p, pat (typ v) b)
-  -> t (p, pat (PatternScope typ v) b)
-abstractPatternsTypes vars
-  = flip evalState 0 . traverse (bitraverse pure (bitraverse (abstractType vars) inc))
-  where
-    abstractType
-      :: (Eq v, Hashable v, Monad typ)
-      => Vector v
-      -> typ v
-      -> State Int (Scope PatternVar typ v)
-    abstractType vs typ = do
-      prefix <- get
-      let abstr v = case hashedElemIndex vs v of
-            Just i | i < prefix -> Just $ PatternVar i
-            _ -> Nothing
-      return $ abstract abstr typ
-
-    inc b = do
-      n <- get
-      put $! n + 1
-      pure b
-
-abstractPatternTypes
-  :: (Bitraversable pat, Eq v, Hashable v, Monad typ)
-  => Vector v
-  -> pat (typ v) b
-  -> pat (PatternScope typ v) b
-abstractPatternTypes vars
-  = snd
-  . runIdentity
-  . abstractPatternsTypes vars
-  . Identity
-  . (,) ()
-
 indexedPatterns
   :: (Traversable f, Traversable pat)
   => f (p, pat b)
