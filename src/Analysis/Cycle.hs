@@ -27,7 +27,7 @@ import Util
 import Util.TopoSort
 import VIX
 
-type CycleCheck m = ReaderT (Context.ContextEnvT (Expr m Var) VIX.Env) (Sequential (Task Query))
+type CycleCheck m = ReaderT (Context.ContextEnvT (Expr m Var) VIX.Env) (Task Query)
 
 -- We need to detect possible cycles in top-level constants because if not,
 -- we'll accept e.g. the following program:

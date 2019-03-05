@@ -65,7 +65,7 @@ data ExtractState = ExtractState
   , extractedSignatures :: !(HashMap GName (Signature ReturnIndirect))
   }
 
-newtype Extract a = Extract { unExtract :: StateT ExtractState (ReaderT (Context.ContextEnvT (Extracted.Expr Var) VIX.Env) (Sequential (Task Query))) a }
+newtype Extract a = Extract { unExtract :: StateT ExtractState (ReaderT (Context.ContextEnvT (Extracted.Expr Var) VIX.Env) (Task Query)) a }
   deriving (Functor, Applicative, Monad, MonadState ExtractState, MonadFresh, MonadIO, MonadFetch Query, MonadContext (Extracted.Expr Var), MonadLog)
 
 runExtract :: [GName] -> Extract a -> VIX ([(GName, Closed (Sized.Function Extracted.Expr))], Extracted.Submodule a)

@@ -33,8 +33,7 @@ data LiftState thing = LiftState
   , liftedThings :: [(GName, thing)]
   }
 
--- TODO do we need Sequential here?
-newtype Lift thing a = Lift (StateT (LiftState thing) (ReaderT (Context.ContextEnvT (Lifted.Expr Var) VIX.Env) (Sequential (Task Query))) a)
+newtype Lift thing a = Lift (StateT (LiftState thing) (ReaderT (Context.ContextEnvT (Lifted.Expr Var) VIX.Env) (Task Query)) a)
   deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadFresh, MonadIO, MonadLog, MonadFetch Query, MonadContext (Lifted.Expr Var))
 
 freshName :: Lift thing GName

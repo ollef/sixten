@@ -50,7 +50,7 @@ instance HasFreshEnv SLamEnv where
 instance Context.HasContext (Core.Expr Void Var) SLamEnv where
   context = Backend.SLam.context
 
-newtype SLam a = SLam (ReaderT SLamEnv (Sequential (Task Query)) a)
+newtype SLam a = SLam (ReaderT SLamEnv (Task Query) a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadFresh, MonadContext (Core.Expr Void Var), MonadReport, MonadLog, MonadFetch Query)
 
 runSLam :: SLam a -> VIX a

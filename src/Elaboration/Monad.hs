@@ -68,12 +68,12 @@ instance HasContext CoreM ElabEnv where
 type Elaborate = ReaderT ElabEnv (Sequential (Task Query))
 
 runElaborate :: ModuleName -> Elaborate a -> VIX a
-runElaborate mname = withReaderT $ \env -> ElabEnv
+runElaborate mname = hoist runSequential . withReaderT (\env -> ElabEnv
   { _context = mempty
   , _elabTouchables = const True
   , _currentModule = mname
   , _vixEnv = env
-  }
+  })
 
 type MonadElaborate m = (MonadContext CoreM m, MonadLog m, MonadIO m, MonadReport m, MonadFresh m, MonadFetch Query m, MonadReader ElabEnv m)
 

@@ -26,12 +26,12 @@ data Env = Env
 
 makeLenses ''Env
 
-type VIX = ReaderT Env (Sequential (Task Query))
+type VIX = ReaderT Env (Task Query)
 
 runVIX :: LogEnv -> ReportEnv -> VIX a -> Task Query a
 runVIX logEnv_ reportEnv_ vix = do
   freshEnv_ <- liftIO emptyFreshEnv
-  runSequential $ runReaderT vix Env
+  runReaderT vix Env
     { _logEnv = logEnv_
     , _reportEnv = reportEnv_
     , _freshEnv = freshEnv_

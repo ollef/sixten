@@ -95,7 +95,7 @@ data MetaData = MetaData
   , metaFunSig :: Maybe (RetDirM, Vector Direction)
   } deriving Show
 
-type Infer = ReaderT (ContextEnvT MetaData VIX.Env) (Sequential (Task Query))
+type Infer = ReaderT (ContextEnvT MetaData VIX.Env) (Task Query)
 
 infer
   :: Expr Var
