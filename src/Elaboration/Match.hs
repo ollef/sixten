@@ -239,6 +239,7 @@ match config k = Log.indent $ do
               case solved matches' of
                 Just sub -> do
                   logCategory "tc.match" "solved"
+                  mapM_ (checkForcedPat sub) matches'
                   instantiateSubst sub (_rhs firstClause) $ \e ->
                     k (_data firstClause) e $ _targetType config
                 Nothing ->
@@ -418,7 +419,6 @@ simplifyClause coveredLits clause@(Clause matches rhs dat) = Log.indent $ do
         Nothing -> return $ Just $ Clause matches' rhs dat
         Just expanded -> simplifyClause coveredLits $ Clause expanded rhs dat
 
-
 simplifyMatch :: CoveredLits -> Match -> MaybeT Elaborate [Match]
 simplifyMatch coveredLits m@(Match expr (plic, pat) typ loc) = do
   ctx <- getContext
@@ -447,7 +447,7 @@ simplifyMatch coveredLits m@(Match expr (plic, pat) typ loc) = do
         lift $ logPretty "tc.match" "simplify con matches" $ traverse prettyMatch matches
         concat <$> mapM (simplifyMatch coveredLits) matches
       | otherwise -> fail "Constructor mismatch"
-    (_, PatLoc loc' pat') -> do
+    (_, PatLoc loc' pat') ->
       located loc' $ simplifyMatch coveredLits $ Match expr (plic, pat') typ $ Just loc'
     (Core.SourceLoc _ expr', _) -> simplifyMatch coveredLits $ Match expr' (plic, pat) typ loc
     _ -> return [m]
@@ -471,10 +471,20 @@ matchSubst :: Match -> Maybe PatSubst
 matchSubst (Match _ (_, WildcardPat) _ _) = return mempty
 matchSubst (Match expr (_, VarPat pv) typ _) = return $ HashMap.singleton pv (expr, typ)
 matchSubst (Match expr (plic, PatLoc _ pat) typ loc) = matchSubst $ Match expr (plic, pat) typ loc
+matchSubst (Match _ (_, ForcedPat _) _ _) = return mempty
 matchSubst _ = Nothing
 
 solved :: [Match] -> Maybe PatSubst
 solved = fmap mconcat . traverse matchSubst
+
+checkForcedPat :: PatSubst -> Match -> Elaborate ()
+checkForcedPat sub (Match expr1 (_, ForcedPat expr2Scope) typ loc) =
+  maybe identity located loc $
+  void $ instantiateSubst sub expr2Scope $ \expr2 -> do
+    expr2' <- checkPoly expr2 typ
+    runUnify (unify [] expr1 expr2') report
+    return expr2'
+checkForcedPat _ _ = return ()
 
 ------------------------------------------------------------------------------
 

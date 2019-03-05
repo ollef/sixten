@@ -260,6 +260,7 @@ plicitPattern = (,) Implicit <$ symbol "@" <*>% atomicPattern
 atomicPattern :: Parser (Pat PreName Pre.Literal Type PreName)
 atomicPattern = locatedPat
   $ symbol "(" *>% pattern <*% symbol ")"
+  <|> ForcedPat <$ symbol "~" <*>% atomicExpr
   <|> VarPat <$> qname
   <|> WildcardPat <$ wildcard
   <|> LitPat <$> literal

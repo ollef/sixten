@@ -29,6 +29,7 @@ data Pat con lit typ b
   | ConPat con (Vector (Plicitness, Pat con lit typ b))
   | AnnoPat (Pat con lit typ b) typ
   | ViewPat typ (Pat con lit typ b)
+  | ForcedPat typ
   | PatLoc !SourceLoc (Pat con lit typ b)
   deriving (Foldable, Functor, Show, Traversable)
 
@@ -58,6 +59,7 @@ liftPatEq e l f g (ConPat c1 as1) (ConPat c2 as2)
   && liftEq (\(p1, pat1) (p2, pat2) -> p1 == p2 && liftPatEq e l f g pat1 pat2) as1 as2
 liftPatEq e l f g (AnnoPat p1 t1) (AnnoPat p2 t2) = liftPatEq e l f g p1 p2 && f t1 t2
 liftPatEq e l f g (ViewPat t1 p1) (ViewPat t2 p2) = f t1 t2 && liftPatEq e l f g p1 p2
+liftPatEq _ _ f _ (ForcedPat f1) (ForcedPat f2) = f f1 f2
 liftPatEq e l f g (PatLoc _ p1) p2 = liftPatEq e l f g p1 p2
 liftPatEq e l f g p1 (PatLoc _ p2) = liftPatEq e l f g p1 p2
 liftPatEq _ _ _ _ _ _ = False
@@ -81,6 +83,7 @@ bindPatLits f pat = case pat of
   ConPat c ps -> ConPat c (second (bindPatLits f) <$> ps)
   AnnoPat p t -> AnnoPat (bindPatLits f p) t
   ViewPat e p -> ViewPat e (bindPatLits f p)
+  ForcedPat t -> ForcedPat t
   PatLoc loc p -> PatLoc loc (bindPatLits f p)
 
 patternAbstraction
@@ -89,43 +92,6 @@ patternAbstraction
   -> b
   -> Maybe PatternVar
 patternAbstraction vs = fmap PatternVar . hashedElemIndex vs
-
-abstractPatternsTypes
-  :: (Bitraversable pat, Eq v, Hashable v, Monad typ, Traversable t)
-  => Vector v
-  -> t (p, pat (typ v) b)
-  -> t (p, pat (PatternScope typ v) b)
-abstractPatternsTypes vars
-  = flip evalState 0 . traverse (bitraverse pure (bitraverse (abstractType vars) inc))
-  where
-    abstractType
-      :: (Eq v, Hashable v, Monad typ)
-      => Vector v
-      -> typ v
-      -> State Int (Scope PatternVar typ v)
-    abstractType vs typ = do
-      prefix <- get
-      let abstr v = case hashedElemIndex vs v of
-            Just i | i < prefix -> Just $ PatternVar i
-            _ -> Nothing
-      return $ abstract abstr typ
-
-    inc b = do
-      n <- get
-      put $! n + 1
-      pure b
-
-abstractPatternTypes
-  :: (Bitraversable pat, Eq v, Hashable v, Monad typ)
-  => Vector v
-  -> pat (typ v) b
-  -> pat (PatternScope typ v) b
-abstractPatternTypes vars
-  = snd
-  . runIdentity
-  . abstractPatternsTypes vars
-  . Identity
-  . (,) ()
 
 indexedPatterns
   :: (Traversable f, Traversable pat)
@@ -181,6 +147,7 @@ instance Monad (Pat con lit typ) where
     ConPat c pats -> ConPat c [(a, p >>= f) | (a, p) <- pats]
     AnnoPat p t -> AnnoPat (p >>= f) t
     ViewPat t p -> ViewPat t $ p >>= f
+    ForcedPat t -> ForcedPat t
     PatLoc loc p -> PatLoc loc $ p >>= f
 
 instance Bifunctor (Pat con lit) where bimap = bimapDefault
@@ -194,6 +161,7 @@ instance Bitraversable (Pat con lit) where
     ConPat c pats -> ConPat c <$> traverse (traverse (bitraverse f g)) pats
     AnnoPat p t -> AnnoPat <$> bitraverse f g p <*> f t
     ViewPat t p -> ViewPat <$> f t <*> bitraverse f g p
+    ForcedPat t -> ForcedPat <$> f t
     PatLoc loc p -> PatLoc loc <$> bitraverse f g p
 
 prettyPattern
@@ -213,4 +181,5 @@ instance (Pretty con, Pretty lit, Pretty typ, Pretty b) => Pretty (Pat con lit t
       prettyM p <+> ":" <+> prettyM t
     ViewPat t p -> parens `above` arrPrec $
       prettyM t <+> "->" <+> prettyM p
+    ForcedPat t -> prettyTightApp "~" $ prettyM t
     PatLoc _ p -> prettyM p
