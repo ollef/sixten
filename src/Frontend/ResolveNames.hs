@@ -333,6 +333,7 @@ resolvePat pat = case pat of
     ConPat cons <$> mapM (\(p, pat') -> (,) p <$> resolvePat pat') ps
   AnnoPat p t -> AnnoPat <$> resolvePat p <*> resolveExpr t
   ViewPat t p -> ViewPat <$> resolveExpr t <*> resolvePat p
+  ForcedPat t -> ForcedPat <$> resolveExpr t
   PatLoc loc p -> PatLoc loc <$> resolvePat p
 
 getClass

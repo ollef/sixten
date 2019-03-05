@@ -1,0 +1,5 @@
+type Equals a b where
+  Refl : Equals a a
+
+wrongForced : (a : Int) -> Equals a 610 -> Equals 610 a
+wrongForced ~611 Refl = Refl

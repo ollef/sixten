@@ -1,0 +1,16 @@
+type Equals a b where
+  Refl : Equals a a
+
+forced1 : (a b : Type) -> Equals a b -> Equals b a
+forced1 ~a a Refl = Refl
+
+forced2 : (a b : Type) -> Equals a b -> Equals b a
+forced2 a ~a Refl = Refl
+
+forced3 : (a : Int) -> Equals a 610 -> Equals 610 a
+forced3 ~610 Refl = Refl
+
+type List a = Nil | Cons a (Ptr (List a))
+
+forced4 : (a : List Int) -> Equals (Cons 610 (Ref Nil)) a -> Unit
+forced4 ~(Cons _ _) Refl = MkUnit
