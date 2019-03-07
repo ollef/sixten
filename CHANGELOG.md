@@ -4,6 +4,7 @@
 
 ### March
 - Added pattern exhaustiveness and redundancy checks.
+- Added support for forced patterns (sometimes called dot patterns) (#137).
 
 ### February
 - Added preliminary support for inductive families (#133).
