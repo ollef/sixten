@@ -46,14 +46,8 @@ that the code refers to.
 
 Traditional compiler pipelines are quite familiar to me and probably many
 others, but how query-based compilers should be architected might not be as
-well-known. I will describe one way to do it, by thinking of the compiler as a
-build system.
-
-## Build systems for compilers
-
-TODO
-
-[Build systems à la carte](https://www.microsoft.com/en-us/research/publication/build-systems-la-carte/)
+well-known. I will describe one way to do it, by constructing the compiler
+around a build system.
 
 ## Going from pipeline to queries
 
@@ -79,7 +73,7 @@ We first find out what file the name comes from (that might be `Data/List.hs`
 for `Data.List`), then read the contents of the file, parse it, perhaps we do
 name resolution to find out what the names in the code refer to given what is
 imported, and lastly we look up the name-resolved definition and type check it,
-returning its type.e
+returning its type.
 
 All this for just for getting the type of an identifier? It's obviously quite
 ridiculous because looking up the type of a name is something we'll do loads of
@@ -94,7 +88,7 @@ fetchParsedModule moduleName = do
   sourceCode <- readFile fileName
   parseModule moduleName
 
-fetchResolvedModule :: ModuleName -> ParsedModule
+fetchResolvedModule :: ModuleName -> ResolvedModule
 fetchResolvedModule moduleName = do
   parsedModule <- fetchParsedModule moduleName
   resolveNames parsedModule
@@ -106,18 +100,96 @@ fetchType (QName moduleName name) = do
   inferDefinitionType definition
 ```
 
-Note that each of the functions do almost everything from scratch on their own.
+Note that each of the functions do everything from scratch on their own,
+i.e. they're each doing a (longer and longer) prefix of the work you'd do
+in a pipeline.
 
-Next, we'll 
+One way to make this work efficiently would be to add a memoisation layer
+around each function. That way, we do some expensive work the first time we
+invoke a function with a specific argument, but subsequent calls are cheap as
+they can return the cached result.
 
-## The Rock library
+This is essentially what we'll do, but we will not do it per function, but
+instead have a central cache, indexed by the query. This functionality is
+packaged up in [Rock](https://github.com/ollef/rock), a library that packages
+up some of what we need to create a query-based compiler.
+
+## The [Rock](https://github.com/ollef/rock) library
+
+Rock is a library heavily inspired by
+[Shake](https://github.com/ndmitchell/shake) and the [Build systems à la
+carte](https://www.microsoft.com/en-us/research/publication/build-systems-la-carte/)
+paper. So it's a build system framework, like `make`. On top of that, it
+borrows ideas for semi-automatic parallelisation and dependent queries from
+[Haxl](https://github.com/facebook/Haxl).
+
+TODO mention that Rock experimental and undocumented
+
+Build systems have a lot in common with modern compilers, since we want them to
+be incremental, i.e. to take advantage of previous build results when building
+anew with few changes. There's also a difference: Most build systems don't care
+about types since they work at the level of files and filesystems.
+
+_Build systems à la carte_ is closer to what we want. The user writes a bunch
+of computations, _tasks_, choosing a suitable type for keys and a type for
+values. The tasks are formulated assuming they're run in an environment where
+there is a function `fetch` of type `Key -> f Value` (for some suitable effect
+`f`) that can be used to fetch the value of a dependency with a specific key.
+In our above example, the key type might look like this:
+
+```haskell
+data Key
+  = ParsedModuleKey ModuleName
+  | ResolvedModuleKey ModuleName
+  | TypeKey QName
+```
+
+_Build systems à la carte_ explores what kind of build systems you get when you
+vary what `f` is. In Rock, we're not exploring _that_, so we choose `f = IO`
+and move on.
+
+A problem that pops up now, however, is that there's no satisfactory type for
+`Value`.  We want `fetch (ParsedModuleKey "Data.List")` to return a
+`ParsedModule`, while `fetch (TypeKey "Data.List.map")` should return
+something of type `Type`.
 
 ### Dependent queries
 
+What Rock does here is more in line with Haxl. It allows you to index the
+key type by the return type of the query. The `Key` type in our running example
+becomes the following [GADT](https://en.wikipedia.org/wiki/Generalized_algebraic_data_type):
+
+```haskell
+data Key a where
+  ParsedModuleKey :: ModuleName -> Key ParsedModule
+  ResolvedModuleKey :: ModuleName -> Key ResolvedModule
+  TypeKey :: QName -> Key Type
+```
+
+The `fetch` function then has type `foralla . Key a -> IO a`, so we can get a
+`ParsedModule` when we run `fetch (ParsedModuleKey "Data.List")`, like we
+wanted, because the return type depends on the key we use.
+
 ### Haxl-like semi-automatic parallelisation
+
+Another trick borrowed from Haxl is parallelisation of fetches when they're
+done in an applicative context.
 
 ### Caching
 
+Rock caches the result of each task by storing the key-value pairs of already
+performed fetches in a [dependent map](https://hackage.haskell.org/package/dependent-map).
+
 ### Incremental builds by reusing state
 
-#
+The last piece of the puzzle is incrementalism. Like Shake, Rock keeps a
+fine-grained table over what dependencies a task used when it was executed,
+i.e.  what keys it fetched and what the values were, such that it's able to
+determine when it's safe to reuse the cache from an old build even though
+there might be changes in other parts of the dependency graph.
+
+This fine-grained dependency tracking also allows 
+
+## Closing thoughts
+
+Get involved!
