@@ -43,10 +43,10 @@ data Declaration = Declaration
   , declArgDirs :: Vector Direction
   } deriving (Eq, Ord, Show)
 
-data Submodule = Submodule
-  { submoduleExternDecls :: [Declaration]
-  , submoduleExterns :: [(Language, Text)]
-  , submoduleSignatures :: HashMap GName (Signature ReturnIndirect)
+data Extracted = Extracted
+  { extractedExternDecls :: [Declaration]
+  , extractedExterns :: [(Language, Text)]
+  , extractedSignatures :: HashMap GName (Signature ReturnIndirect)
   } deriving (Eq, Ord, Show)
 
 -------------------------------------------------------------------------------
@@ -120,9 +120,9 @@ instance v ~ Doc => Pretty (Expr v) where
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> Syntax.indent 2 (prettyM brs)
 
-instance Semigroup Submodule where
-  Submodule a1 b1 c1 <> Submodule a2 b2 c2
-    = Submodule (a1 <> a2) (b1 <> b2) (c1 <> c2)
+instance Semigroup Extracted where
+  Extracted a1 b1 c1 <> Extracted a2 b2 c2
+    = Extracted (a1 <> a2) (b1 <> b2) (c1 <> c2)
 
-instance Monoid Submodule where
-  mempty = Submodule mempty mempty mempty
+instance Monoid Extracted where
+  mempty = Extracted mempty mempty mempty

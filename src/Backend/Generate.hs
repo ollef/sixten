@@ -777,10 +777,10 @@ declareConstant dir name = do
 
 generateSubmodule
   :: GName
-  -> Extracted.Submodule
+  -> Extracted.Extracted
   -> Closed (Definition Expr)
   -> VIX Generate.Submodule
-generateSubmodule name modul def = do
+generateSubmodule name extracted def = do
   let followAliases g = do
         msig <- fetch $ DirectionSignature g
         case msig of
@@ -803,14 +803,14 @@ generateSubmodule name modul def = do
     return (g, decls)
 
   (i, defs) <- runModuleBuilderT emptyModuleBuilder $ do
-    mapM_ generateDeclaration $ submoduleExternDecls modul
+    mapM_ generateDeclaration $ extractedExternDecls extracted
     generateDefinition name def'
 
   return Generate.Submodule
     { declarations = HashMap.fromList decls
     , definitions = defs
     , initCode = i
-    , externs = submoduleExterns modul
+    , externs = extractedExterns extracted
     }
 
 generateModule

@@ -21,6 +21,7 @@ import qualified Effect.Context as Context
 import Syntax
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
+import Syntax.Sized.Extracted (Extracted)
 import qualified Syntax.Sized.Extracted as Extracted
 import qualified Syntax.Sized.Lifted as Lifted
 import qualified TypeRep
@@ -68,14 +69,14 @@ data ExtractState = ExtractState
 newtype Extract a = Extract { unExtract :: StateT ExtractState (ReaderT (Context.ContextEnvT (Extracted.Expr Var) VIX.Env) (Task Query)) a }
   deriving (Functor, Applicative, Monad, MonadState ExtractState, MonadFresh, MonadIO, MonadFetch Query, MonadContext (Extracted.Expr Var), MonadLog)
 
-runExtract :: [GName] -> Extract a -> VIX ([(GName, Closed (Sized.Function Extracted.Expr))], Extracted.Submodule, a)
+runExtract :: [GName] -> Extract a -> VIX ([(GName, Closed (Sized.Function Extracted.Expr))], Extracted, a)
 runExtract names (Extract m) = do
   (a, s) <- withContextEnvT $ runStateT m $ ExtractState names mempty mempty mempty mempty
   let decls = toList $ extractedDecls s
       defs = (,) C <$> toList (extractedCode s)
       cbs = toList $ extractedCallbacks s
       sigs = extractedSignatures s
-  return (cbs, Extracted.Submodule decls defs sigs, a)
+  return (cbs, Extracted.Extracted decls defs sigs, a)
 
 freshName :: Extract GName
 freshName = do
@@ -266,7 +267,7 @@ extractBranches (LitBranches lbrs def) = LitBranches <$> sequence
 extractDef
   :: GName
   -> Closed (Sized.Definition Lifted.Expr)
-  -> VIX [(GName, Extracted.Submodule, Closed (Sized.Definition Extracted.Expr))]
+  -> VIX [(GName, Extracted, Closed (Sized.Definition Extracted.Expr))]
 extractDef name def = fmap flatten $ runExtract names $ case open def of
   Sized.FunctionDef vis cl (Sized.Function tele scope) ->
     fmap (close noFV . Sized.FunctionDef vis cl) $ do

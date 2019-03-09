@@ -308,14 +308,14 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
     case HashMap.lookup name sigs of
       Just (_, sig) -> return $ Just sig
       Nothing -> do
-        extracted <- fetch $ ExtractedSubmodules bindingGroup
+        extracted <- fetch $ Extracted bindingGroup
         return
           $ listToMaybe
           $ mapMaybe
-            (HashMap.lookup name . Extracted.submoduleSignatures . snd3)
+            (HashMap.lookup name . Extracted.extractedSignatures . snd3)
             extracted
 
-  ExtractedSubmodules bindingGroup -> Task $ do
+  Extracted bindingGroup -> Task $ do
     defs <- fetch $ DirectionSignatures bindingGroup
     withReportEnv $ \reportEnv_ ->
       runVIX logEnv_ reportEnv_ $
@@ -323,7 +323,7 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
           ExtractExtern.extractDef name def
 
   GeneratedSubmodules bindingGroup -> Task $ do
-    extracted <- fetch $ ExtractedSubmodules bindingGroup
+    extracted <- fetch $ Extracted bindingGroup
     withReportEnv $ \reportEnv_ ->
       runVIX logEnv_ reportEnv_ $
         for extracted $ uncurry3 Generate.generateSubmodule
