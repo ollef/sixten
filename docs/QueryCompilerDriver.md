@@ -59,7 +59,7 @@ updated some piece of state, we do it almost as if it was done from scratch.
 As a first iteration, we do it completely from scratch. It might look a little bit like this:
 
 ```haskell
-fetchType :: QName -> Type
+fetchType :: QName -> IO Type
 fetchType (QName moduleName name) = do
   fileName <- moduleFileName moduleName
   sourceCode <- readFile fileName
@@ -82,18 +82,18 @@ times during the type checking of a module. We're not done yet though.
 Let's first refactor the code into smaller functions:
 
 ```haskell
-fetchParsedModule :: ModuleName -> ParsedModule
+fetchParsedModule :: ModuleName -> IO ParsedModule
 fetchParsedModule moduleName = do
   fileName <- moduleFileName moduleName
   sourceCode <- readFile fileName
   parseModule moduleName
 
-fetchResolvedModule :: ModuleName -> ResolvedModule
+fetchResolvedModule :: ModuleName -> IO ResolvedModule
 fetchResolvedModule moduleName = do
   parsedModule <- fetchParsedModule moduleName
   resolveNames parsedModule
 
-fetchType :: QName -> Type
+fetchType :: QName -> IO Type
 fetchType (QName moduleName name) = do
   resolvedModule <- fetchResolvedModule moduleName
   let definition = lookup name resolvedModule
@@ -109,10 +109,10 @@ around each function. That way, we do some expensive work the first time we
 invoke a function with a specific argument, but subsequent calls are cheap as
 they can return the cached result.
 
-This is essentially what we'll do, but we will not do it per function, but
-instead have a central cache, indexed by the query. This functionality is
-packaged up in [Rock](https://github.com/ollef/rock), a library that packages
-up some of what we need to create a query-based compiler.
+This is essentially what we'll do, but we will not use a separate cache per
+function, but instead have a central cache, indexed by the query. This
+functionality is in [Rock](https://github.com/ollef/rock), a library that
+packages up some of what we need to create a query-based compiler.
 
 ## The [Rock](https://github.com/ollef/rock) library
 
@@ -128,7 +128,8 @@ TODO mention that Rock experimental and undocumented
 Build systems have a lot in common with modern compilers, since we want them to
 be incremental, i.e. to take advantage of previous build results when building
 anew with few changes. There's also a difference: Most build systems don't care
-about types since they work at the level of files and filesystems.
+about the types of their queries since they work at the level of files and
+filesystems.
 
 _Build systems à la carte_ is closer to what we want. The user writes a bunch
 of computations, _tasks_, choosing a suitable type for keys and a type for
@@ -155,9 +156,10 @@ something of type `Type`.
 
 ### Dependent queries
 
-What Rock does here is more in line with Haxl. It allows you to index the
-key type by the return type of the query. The `Key` type in our running example
-becomes the following [GADT](https://en.wikipedia.org/wiki/Generalized_algebraic_data_type):
+What Rock does here is in line with Haxl. It allows you to index the key type
+by the return type of the query. The `Key` type in our running example becomes
+the following
+[GADT](https://en.wikipedia.org/wiki/Generalized_algebraic_data_type):
 
 ```haskell
 data Key a where
@@ -166,7 +168,7 @@ data Key a where
   TypeKey :: QName -> Key Type
 ```
 
-The `fetch` function then has type `foralla . Key a -> IO a`, so we can get a
+The `fetch` function then has type `forall a. Key a -> IO a`, so we can get a
 `ParsedModule` when we run `fetch (ParsedModuleKey "Data.List")`, like we
 wanted, because the return type depends on the key we use.
 
@@ -188,7 +190,10 @@ i.e.  what keys it fetched and what the values were, such that it's able to
 determine when it's safe to reuse the cache from an old build even though
 there might be changes in other parts of the dependency graph.
 
-This fine-grained dependency tracking also allows 
+This fine-grained dependency tracking also allows reusing the cache when a
+dependency of a task changes in a way that has no effect. For example,
+whitespace changes might only trigger a re-parse, but since the AST is the
+same, the cache can be reused from there on.
 
 ## Closing thoughts
 
