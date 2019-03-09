@@ -312,7 +312,7 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
         return
           $ listToMaybe
           $ mapMaybe
-            (HashMap.lookup name . Extracted.submoduleSignatures . snd)
+            (HashMap.lookup name . Extracted.submoduleSignatures . snd3)
             extracted
 
   ExtractedSubmodules bindingGroup -> Task $ do
@@ -326,7 +326,7 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
     extracted <- fetch $ ExtractedSubmodules bindingGroup
     withReportEnv $ \reportEnv_ ->
       runVIX logEnv_ reportEnv_ $
-        for extracted $ uncurry Generate.generateSubmodule
+        for extracted $ uncurry3 Generate.generateSubmodule
 
   CheckAll -> Task $ noError $ do
     modules <- fetchModules

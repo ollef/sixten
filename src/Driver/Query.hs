@@ -71,7 +71,7 @@ data Query a where
   Converted :: BindingGroup -> Query [(GName, Closed (Sized.Definition Lifted.Expr))]
   DirectionSignatures :: BindingGroup -> Query (HashMap GName (Closed (Sized.Definition Lifted.Expr), Signature ReturnIndirect))
   DirectionSignature :: GName -> Query (Maybe (Signature ReturnIndirect))
-  ExtractedSubmodules :: BindingGroup -> Query [(GName, Extracted.Submodule (Closed (Sized.Definition Extracted.Expr)))]
+  ExtractedSubmodules :: BindingGroup -> Query [(GName, Extracted.Submodule, Closed (Sized.Definition Extracted.Expr))]
   GeneratedSubmodules :: BindingGroup -> Query [Generate.Submodule]
 
   CheckAll :: Query [ElaboratedGroup]

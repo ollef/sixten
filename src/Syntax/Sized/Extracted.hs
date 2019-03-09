@@ -43,15 +43,11 @@ data Declaration = Declaration
   , declArgDirs :: Vector Direction
   } deriving (Eq, Ord, Show)
 
-data Submodule contents = Submodule
+data Submodule = Submodule
   { submoduleExternDecls :: [Declaration]
   , submoduleExterns :: [(Language, Text)]
   , submoduleSignatures :: HashMap GName (Signature ReturnIndirect)
-  , submoduleContents :: contents
-  } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
-
-emptySubmodule :: contents -> Submodule contents
-emptySubmodule contents = (\() -> contents) <$> mempty
+  } deriving (Eq, Ord, Show)
 
 -------------------------------------------------------------------------------
 -- Helpers
@@ -124,11 +120,9 @@ instance v ~ Doc => Pretty (Expr v) where
       "case" <+> inviolable (prettyM e) <+>
       "of" <$$> Syntax.indent 2 (prettyM brs)
 
-instance Semigroup innards => Semigroup (Submodule innards) where
-  Submodule a1 b1 c1 d1 <> Submodule a2 b2 c2 d2
-    = Submodule (a1 <> a2) (b1 <> b2) (c1 <> c2) (d1 <> d2)
+instance Semigroup Submodule where
+  Submodule a1 b1 c1 <> Submodule a2 b2 c2
+    = Submodule (a1 <> a2) (b1 <> b2) (c1 <> c2)
 
--- TODO remove Semigroup constraint when ghc has been updated
-instance (Monoid innards, Semigroup innards) => Monoid (Submodule innards) where
-  mempty = Submodule mempty mempty mempty mempty
-  mappend = (<>)
+instance Monoid Submodule where
+  mempty = Submodule mempty mempty mempty

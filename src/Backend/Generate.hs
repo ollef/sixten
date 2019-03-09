@@ -777,16 +777,17 @@ declareConstant dir name = do
 
 generateSubmodule
   :: GName
-  -> Extracted.Submodule (Closed (Definition Expr))
+  -> Extracted.Submodule
+  -> Closed (Definition Expr)
   -> VIX Generate.Submodule
-generateSubmodule name modul = do
+generateSubmodule name modul def = do
   let followAliases g = do
         msig <- fetch $ DirectionSignature g
         case msig of
           Just (AliasSig g') -> followAliases g'
           _ -> return g
 
-  def <- traverseGlobals followAliases $ open $ submoduleContents modul
+  def' <- traverseGlobals followAliases $ open def
 
   let globalDeps
         = HashSet.toList
@@ -795,7 +796,7 @@ generateSubmodule name modul = do
         -- dependencies of most code
         $ HashSet.insert (gname Builtin.SizeOfName)
         $ HashSet.insert (gname Builtin.ProductTypeRepName)
-        $ boundGlobals def
+        $ boundGlobals def'
 
   decls <- forM globalDeps $ \g -> do
     decls <- execModuleBuilderT emptyModuleBuilder $ declareGlobal g
@@ -803,7 +804,7 @@ generateSubmodule name modul = do
 
   (i, defs) <- runModuleBuilderT emptyModuleBuilder $ do
     mapM_ generateDeclaration $ submoduleExternDecls modul
-    generateDefinition name def
+    generateDefinition name def'
 
   return Generate.Submodule
     { declarations = HashMap.fromList decls

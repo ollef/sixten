@@ -1,6 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
 module Util where
@@ -112,6 +111,9 @@ snd3 (_, b, _) = b
 
 thd3 :: (a, b, c) -> c
 thd3 (_, _, c) = c
+
+uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
+uncurry3 f (a, b, c) = f a b c
 
 mapWithPrefix
   :: (v -> Vector v' -> v')
