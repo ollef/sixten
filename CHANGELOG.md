@@ -5,6 +5,7 @@
 ### March
 - Added pattern exhaustiveness and redundancy checks.
 - Added support for forced patterns (sometimes called dot patterns) (#137).
+- Started printing spans instead of just the start position of error locations.
 
 ### February
 - Added preliminary support for inductive families (#133).
