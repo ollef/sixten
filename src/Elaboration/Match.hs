@@ -228,12 +228,12 @@ match config k = Log.indent $ do
         Just (v, typ, e1, e2, s) -> splitEq config' v typ e1 e2 s k
         Nothing ->
           case findConMatches matches' of
-            (x, Left qc, typ):_ -> do
+            (x, Left qc, typ, loc):_ -> do
               logPretty "tc.match" "found con" $ pure qc
-              splitCon config' x qc typ k
-            (x, Right l, typ):_ -> do
+              splitCon config' x qc typ loc k
+            (x, Right l, typ, loc):_ -> do
               logPretty "tc.match" "found lit" $ pure l
-              splitLit config' x l typ k
+              splitLit config' x l typ loc k
             [] -> do
               logCategory "tc.match" "found no con"
               case solved matches' of
@@ -261,15 +261,15 @@ exprPattern expr = do
 
 findConMatches
   :: [Match]
-  -> [(Var, Either (HashSet QConstr) Core.Literal, CoreM)]
+  -> [(Var, Either (HashSet QConstr) Core.Literal, CoreM, Maybe SourceLoc)]
 findConMatches matches
   = catMaybes
   $ foreach matches
   $ \case
-    Match (Core.Var x) (_, unPatLoc -> ConPat qc _) typ _ ->
-      Just (x, Left qc, typ)
-    Match (Core.Var x) (_, unPatLoc -> LitPat l) typ _ ->
-      Just (x, Right l, typ)
+    Match (Core.Var x) (_, unPatLoc -> ConPat qc _) typ loc ->
+      Just (x, Left qc, typ, loc)
+    Match (Core.Var x) (_, unPatLoc -> LitPat l) typ loc ->
+      Just (x, Right l, typ, loc)
     Match {} ->
       Nothing
 
@@ -304,10 +304,13 @@ splitCon
   -> Var
   -> HashSet QConstr
   -> CoreM
+  -> Maybe SourceLoc
   -> (a -> Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
-splitCon config x qcs typ k = do
-  qc <- resolveConstr qcs $ Just typ
+splitCon config x qcs typ loc k = do
+  let
+    withLoc = maybe identity located loc
+  qc <- withLoc $ resolveConstr qcs $ Just typ
   logPretty "tc.match" "splitCon" $ pure qc
   let
     typeName = qconstrTypeName qc
@@ -320,10 +323,12 @@ splitCon config x qcs typ k = do
       case Context.splitAt x ctx of
         Nothing -> panic "splitCon couldn't split context"
         Just (ctx1, b, ctx2) -> do
-          params <- modifyContext (const ctx1) $ forTeleWithPrefixM paramsTele $ \h p s params -> do
+
+          params <- withLoc $ modifyContext (const ctx1) $ forTeleWithPrefixM paramsTele $ \h p s params -> do
             v <- exists h p $ instantiateTele snd params s
             return (p, v)
-          runUnify (unify [] (Core.apps (global $ gname typeName) params) typ) report
+          withLoc $ runUnify (unify [] (Core.apps (global $ gname typeName) params) typ) report
+
           branches <- forM constrDefs $ \(ConstrDef c constrScope) -> do
             let
               constrType_ = instantiateTele snd params constrScope
@@ -343,6 +348,7 @@ splitCon config x qcs typ k = do
                   <> Context.fromList (toList args)
                   <> Context.fromList [(x, b { Context._value = Just val })]
                   <> ctx2
+
             modifyContext (const ctx') $ do
               branch <- match config k
               conBranch (QConstr typeName c) (fst <$> args) branch
@@ -353,12 +359,13 @@ splitLit
   -> Var
   -> Core.Literal
   -> CoreM
+  -> Maybe SourceLoc
   -> (a -> Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
-splitLit config x lit typ k = do
+splitLit config x lit typ loc k = do
   let
     litType = inferCoreLit lit
-  runUnify (unify [] litType typ) report
+  maybe identity located loc $ runUnify (unify [] litType typ) report
   branch <- Context.set x (Core.Lit lit) $ match config k
   defBranch <- match config
     { _coveredLits = _coveredLits config <> HashSet.singleton (x, lit)
