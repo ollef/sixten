@@ -23,7 +23,7 @@ import qualified TypeRep
 import Util
 
 builtinSourceLoc :: SourceLoc
-builtinSourceLoc = noSourceLoc "(compiler builtin)"
+builtinSourceLoc = noSourceLoc "compiler builtin"
 
 environment :: Target -> HashMap QName (SourceLoc, ClosedDefinition Expr, Biclosed Type)
 environment target = HashMap.fromList
