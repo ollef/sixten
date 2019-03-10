@@ -32,10 +32,19 @@ noSourceLoc fp = SourceLocation
 instance Pretty SourceLoc where
   pretty src
     = pretty (sourceLocFile src)
-    <> ":" <> shower (visualRow loc + 1)
-    <> ":" <> shower (visualColumn loc + 1)
+    <> ":" <>
+    if spanStart span == spanEnd span then
+      shower startRow <> ":" <> shower startCol
+    else if startRow == endRow then
+      shower startRow <> ":" <> shower startCol <> "-" <> shower endCol
+    else
+      shower startRow <> ":" <> shower startCol <> "-" <> shower endRow <> ":" <> shower endCol
     where
-      loc = spanStart $ sourceLocSpan src
+      span = sourceLocSpan src
+      startRow = visualRow (spanStart span) + 1
+      endRow = visualRow (spanEnd span) + 1
+      startCol = visualColumn (spanStart span) + 1
+      endCol = visualColumn (spanEnd span) + 1
 
 -- TODO handle spans and not just the start position
 locationRendering :: SourceLoc -> Doc
