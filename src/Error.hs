@@ -46,7 +46,6 @@ instance Pretty SourceLoc where
       startCol = visualColumn (spanStart span) + 1
       endCol = visualColumn (spanEnd span) + 1
 
--- TODO handle spans and not just the start position
 locationRendering :: SourceLoc -> Doc
 locationRendering src = prettySpan
   defaultStyle
