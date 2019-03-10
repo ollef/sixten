@@ -48,9 +48,9 @@ instance Pretty SourceLoc where
 
 -- TODO handle spans and not just the start position
 locationRendering :: SourceLoc -> Doc
-locationRendering src = prettyPosition
+locationRendering src = prettySpan
   defaultStyle
-  (spanStart $ sourceLocSpan src)
+  (sourceLocSpan src)
   (sourceLocSource src)
   (sourceLocHighlights src)
 
