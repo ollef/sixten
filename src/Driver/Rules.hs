@@ -357,11 +357,8 @@ noError = fmap (, mempty)
 withReportEnv :: MonadIO m => (ReportEnv -> m a) -> m (a, [Error])
 withReportEnv f = do
   errVar <- liftIO $ newMVar []
-  a <- f ReportEnv
-    { _currentLocation = Nothing
-    , _reportAction = \err ->
-      modifyMVar_ errVar $ \errs -> pure $ err:errs
-    }
+  a <- f $ emptyReportEnv $ \err ->
+    modifyMVar_ errVar $ \errs -> pure $ err:errs
   errs <- liftIO $ readMVar errVar
   return (a, errs)
 
