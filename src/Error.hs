@@ -99,8 +99,3 @@ instance Pretty Error where
 
 printError :: Error -> IO ()
 printError = putDoc . pretty
-
-data ErrorException = ErrorException
-  deriving Show
-
-instance Exception ErrorException where
