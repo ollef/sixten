@@ -15,8 +15,8 @@ byteBits = 8
 
 data Target = Target
   { architecture :: String
-  , ptrBytes :: Word32 -- ^ The number of bytes in a pointer.
-  , ptrAlign :: Word32 -- ^ The alignment of a pointer.
+  , ptrBytes :: !Word32 -- ^ The number of bytes in a pointer.
+  , ptrAlign :: !Word32 -- ^ The alignment of a pointer.
   } deriving (Eq, Ord, Show)
 
 x86 :: Target
