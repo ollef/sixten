@@ -363,11 +363,11 @@ withReportEnv f = do
   return (a, errs)
 
 logCoreTerms
-    :: MonadIO m
-    => LogEnv
-    -> Category
-    -> m (ElaboratedGroup, errs)
-    -> m (ElaboratedGroup, errs)
+  :: MonadIO m
+  => LogEnv
+  -> Category
+  -> m (ElaboratedGroup, errs)
+  -> m (ElaboratedGroup, errs)
 logCoreTerms logEnv_ c@(Category ct) m = do
   result@(defs, _) <- m
   flip runReaderT logEnv_ $
