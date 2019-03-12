@@ -79,7 +79,6 @@ bifoldMapScope f g (Scope s) = bifoldMap f (unvar mempty $ bifoldMap f g) s
 fromText :: IsString a => Text -> a
 fromText = fromString . Text.unpack
 
--- TODO remove
 shower :: (Show a, IsString b) => a -> b
 shower = fromString . show
 
