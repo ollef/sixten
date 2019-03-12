@@ -38,7 +38,7 @@ A traditional compiler pipeline might look a bit like this:
 There are many variations, and often more steps and intermediate
 representations than in the illustration, but the idea stays the same:
 
-We push source text, down a pipeline, running a fixed set of transformations
+We push source text down a pipeline and run a fixed set of transformations
 until we finally output assembly code or some other target language. Along the
 way we often need to read and update some state. For example, we might update a
 type table during type checking so we can later look up the type of entities
@@ -46,8 +46,7 @@ that the code refers to.
 
 Traditional compiler pipelines are quite familiar to me and probably many
 others, but how query-based compilers should be architected might not be as
-well-known. I will describe one way to do it, by constructing the compiler
-around a build system.
+well-known. Here I will describe one way to do it.
 
 ## Going from pipeline to queries
 
@@ -56,7 +55,8 @@ In a pipeline-based architecture we would just look it up in the type table.
 With queries, we have to think a bit differently. Instead of relying on having
 updated some piece of state, we do it almost as if it was done from scratch.
 
-As a first iteration, we do it completely from scratch. It might look a little bit like this:
+As a first iteration, we do it _completely_ from scratch. It might look a
+little bit like this:
 
 ```haskell
 fetchType :: QName -> IO Type
