@@ -48,3 +48,10 @@ data Abstract = Abstract | Concrete
 instance Pretty Abstract where
   prettyM Abstract = "abstract"
   prettyM Concrete = "concrete"
+
+data Boxiness = Boxed | Unboxed
+  deriving (Eq, Ord, Show)
+
+instance Pretty Boxiness where
+  prettyM Boxed = "boxed"
+  prettyM Unboxed = "unboxed"

@@ -36,7 +36,7 @@ syn region sixtenString start=+"+ skip=+\\\\\|\\"+ end=+"+
   \ contains=@Spell
 syn keyword sixtenModuleKeyword import module as exposing
 syn keyword sixtenClassKeyword instance class
-syn keyword sixtenModifierKeyword abstract
+syn keyword sixtenModifierKeyword abstract boxed
 syn keyword sixtenTypeKeyword type where
 syn keyword sixtenCaseKeyword case of
 syn keyword sixtenLetKeyword let in

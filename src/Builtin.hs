@@ -28,12 +28,6 @@ builtinSourceLoc = noSourceLoc "compiler builtin"
 environment :: Target -> HashMap QName (SourceLoc, ClosedDefinition Expr, Biclosed Type)
 environment target = HashMap.fromList
   [ (TypeName, dataType typeRep Type [])
-  , (PtrName, dataType
-      (Lam mempty Explicit Type $ Scope ptrRep)
-      (arrow Explicit Type Type)
-      [ ConstrDef RefName $ toScope $ fmap B $ arrow Explicit (pure 0)
-        $ Core.App (Global $ GName PtrName mempty) Explicit (pure 0)
-      ])
   , (IntName, opaqueData intRep Type)
   , (NatName, dataType intRep Type
       [ ConstrDef ZeroName $ Scope Nat
@@ -45,7 +39,7 @@ environment target = HashMap.fromList
     cl = fromMaybe (panic "Builtin not closed") . closed
     -- TODO: Should be made nonmatchable
     opaqueData rep t = dataType rep t mempty
-    dataType rep typ xs = (builtinSourceLoc, closeDefinition identity identity $ DataDefinition (DataDef (piTelescope cltyp) xs) rep, biclose identity identity cltyp)
+    dataType rep typ xs = (builtinSourceLoc, closeDefinition identity identity $ DataDefinition (DataDef Unboxed (piTelescope cltyp) xs) rep, biclose identity identity cltyp)
       where
         cltyp = cl typ
 
@@ -69,18 +63,6 @@ convertedSignatures target
       Sized.FunctionDef _ _ (Sized.Function tele (AnnoScope _ s)) -> Just (close identity tele, close identity s)
       Sized.ConstantDef _ _ -> Nothing
       Sized.AliasDef -> Nothing
-
-deref :: Lifted.Expr v -> Lifted.Expr v
-deref e
-  = Lifted.Case (Anno e unknownSize)
-  $ ConBranches
-  $ pure
-  $ ConBranch
-    Ref
-    (Telescope $ pure $ TeleBinding "dereferenced" Explicit $ Scope unknownSize)
-    (toScope $ pure $ B 0)
-  where
-    unknownSize = global $ GName "Sixten.Builtin.deref" $ pure "unknownSize"
 
 maxArity :: Num n => n
 maxArity = 8
@@ -124,9 +106,7 @@ apply target numArgs
         br :: Int -> Lifted.Expr Var
         br arity
           | numArgs < arity
-            = Lifted.Con Ref
-            $ pure
-            $ sizedCon target (Lifted.MkType TypeRep.UnitRep) Closure
+            = Lifted.Con Closure
             $ Vector.cons (Anno (global $ gname $ papName (arity - numArgs) numArgs) piRep)
             $ Vector.cons (Anno (Lifted.Lit $ Integer $ fromIntegral $ arity - numArgs) intRep)
             $ (`varAnno` context) <$> pure this <> argTypes <> args
@@ -148,7 +128,7 @@ apply target numArgs
 
       fun <- Sized.function funArgs
         $ flip Anno unknownSize
-        $ Lifted.Case (Anno (deref $ pure this) unknownSize)
+        $ Lifted.Case (Anno (pure this) unknownSize)
         $ ConBranches $ pure cbr
 
       return
@@ -196,7 +176,7 @@ pap target k m
 
         fun <- Sized.function funArgs
           $ flip Anno unknownSize
-          $ Lifted.Case (Anno (deref $ pure this) unknownSize)
+          $ Lifted.Case (Anno (pure this) unknownSize)
           $ ConBranches $ pure br
 
         return

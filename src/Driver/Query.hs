@@ -1,9 +1,10 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeOperators #-}
 module Driver.Query (module Rock, module Driver.Query) where
 
 import Protolude hiding (TypeRep)
@@ -99,6 +100,13 @@ fetchInstances className moduleName_ = do
 
 fetchQConstructor :: MonadFetch Query m => QConstr -> m (Int, Core.Type meta v)
 fetchQConstructor qc = second biopen <$> fetch (QConstructor qc)
+
+fetchBoxiness :: MonadFetch Query m => QConstr -> m Boxiness
+fetchBoxiness qc = do
+  def <- fetchDefinition (gname $ qconstrTypeName qc)
+  return $ case def of
+    DataDefinition (DataDef b _ _) _ -> b
+    _ -> panic "fetchBoxiness non-data"
 
 fetchIntRep :: MonadFetch Query m => m TypeRep
 fetchIntRep = TypeRep.intRep <$> fetch Driver.Query.Target

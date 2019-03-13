@@ -121,7 +121,7 @@ localConstrAliases contents = MultiHashMap.fromList $ concat
     , (fromModuleName (qnameModule n) <> "." <> k, QConstr n c)
     , (fromQName n <> "." <> k, QConstr n c)
     ]
-  | (n, (_, Unscoped.DataDefinition _ _ cs)) <- HashMap.toList contents
+  | (n, (_, Unscoped.DataDefinition _ _ _ cs)) <- HashMap.toList contents
   , c <- Unscoped.constrName <$> cs
   , let k = fromConstr c
   ]
@@ -205,7 +205,7 @@ resolveTopLevelDefinition
   -> ResolveNames (Scoped.Definition Scoped.Expr PreName)
 resolveTopLevelDefinition _ (Unscoped.ConstantDefinition d) =
   Scoped.ConstantDefinition . snd <$> resolveDefinition d
-resolveTopLevelDefinition modul (Unscoped.DataDefinition name params cs) = do
+resolveTopLevelDefinition modul (Unscoped.DataDefinition boxiness name params cs) = do
   (params', abstr) <- resolveParams params
   let
     dataType
@@ -221,7 +221,7 @@ resolveTopLevelDefinition modul (Unscoped.DataDefinition name params cs) = do
       ConstrDef c . abstr <$> resolveExpr typ
     Unscoped.GADTConstrDef c typ ->
       ConstrDef c . abstr <$> resolveExpr typ
-  return $ Scoped.DataDefinition $ DataDef params' cs'
+  return $ Scoped.DataDefinition $ DataDef boxiness params' cs'
 resolveTopLevelDefinition _ (Unscoped.ClassDefinition _name params ms) = do
   (params', abstr) <- resolveParams params
   ms' <- mapM (mapM (fmap abstr . resolveExpr)) ms
@@ -368,7 +368,7 @@ moduleExports moduleHeader_ defs = do
     defNames = HashSet.filter (p . qnameName) $ HashSet.fromMap $ void defs
     conNames = HashSet.fromList
       [ QConstr n c
-      | (n, (_, Unscoped.DataDefinition _ _ cs)) <- HashMap.toList defs
+      | (n, (_, Unscoped.DataDefinition _ _ _ cs)) <- HashMap.toList defs
       , c <- Unscoped.constrName <$> cs
       , p $ qnameName n
       ]

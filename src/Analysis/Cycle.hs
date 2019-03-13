@@ -117,13 +117,13 @@ cycleCheckDef
   -> CycleCheck m (Definition (Expr m) Var)
 cycleCheckDef (ConstantDefinition a e)
   = ConstantDefinition a <$> cycleCheckExpr e
-cycleCheckDef (DataDefinition (DataDef params constrs) rep) =
+cycleCheckDef (DataDefinition (DataDef b params constrs) rep) =
   teleMapExtendContext params cycleCheckExpr $ \vs -> do
     constrs' <- forM constrs $ \cdef ->
       forM cdef $ \s ->
         cycleCheckExpr $ instantiateTele pure vs s
     rep' <- cycleCheckExpr rep
-    dd <- dataDef vs constrs'
+    dd <- dataDef b vs constrs'
     return $ DataDefinition dd rep'
 
 cycleCheckExpr

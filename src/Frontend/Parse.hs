@@ -445,9 +445,13 @@ constantDef = do
     mkClause (loc, (pats, e)) = Clause loc pats e
 
 dataDef :: Parser Pre.Definition
-dataDef = Pre.DataDefinition <$ reserved "type" <*>% name <*> manyTypedBindings <*>%
-  (concat <$% reserved "where" <*> manyIndentedOrSameCol conDef
-  <|> identity <$% symbol "=" <*>% sepBySI adtConDef (symbol "|"))
+dataDef = do
+  boxed
+    <- Boxed <$ reserved "boxed" <* sameCol
+    <|> pure Unboxed
+  Pre.DataDefinition boxed <$ reserved "type" <*>% name <*> manyTypedBindings <*>%
+    (concat <$% reserved "where" <*> manyIndentedOrSameCol conDef
+    <|> identity <$% symbol "=" <*>% sepBySI adtConDef (symbol "|"))
   where
     conDef = constrDefs <$> ((:) <$> constructor <*> manySI constructor)
       <*% symbol ":" <*>% expr

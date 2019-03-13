@@ -155,7 +155,7 @@ checkAndGeneraliseDefs defs = do
       where
         go (v, name, loc, def@(Pre.ConstantDefinition (Pre.ConstantDef _ _ (Just typ))), _) = ([], [(v, name, loc, def, typ)])
         go (v, name, loc, def@(Pre.ConstantDefinition (Pre.ConstantDef _ _ Nothing)), _) = ([(v, name, loc, def)], [])
-        go (v, name, loc, def@(Pre.DataDefinition (DataDef tele _)), _) = ([], [(v, name, loc, def, Pre.telePis (`Context.lookupHint` ctx) tele $ Pre.Global Builtin.TypeName)])
+        go (v, name, loc, def@(Pre.DataDefinition (DataDef _ tele _)), _) = ([], [(v, name, loc, def, Pre.telePis (`Context.lookupHint` ctx) tele $ Pre.Global Builtin.TypeName)])
         go (v, name, loc, def@(Pre.ClassDefinition (ClassDef tele _)), _) = ([], [(v, name, loc, def, Pre.telePis (`Context.lookupHint` ctx) tele $ Pre.Global Builtin.TypeName)])
         go (v, name, loc, def@(Pre.InstanceDefinition (Pre.InstanceDef typ _)), _) = ([], [(v, name, loc, def, typ)])
 

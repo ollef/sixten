@@ -5,19 +5,21 @@ module Sixten.Builtin exposing (..)
 
 Type = _
 
-type Ptr a = Ref a
-
 Int = _
 
 type Nat = Zero | Succ Nat
 
 Pi_ = _
 
+boxed
 type Closure = MkClosure
 
 type __Equals__ @(t : Type) (a : t) (b : t) = __Refl__
 
 -------------------------------------------------------------------------------
+
+boxed
+type Ptr a = Ref a
 
 type Bool = False | True
 
@@ -81,8 +83,9 @@ Vector : Nat -> Type -> Type
 Vector Zero _ = Unit
 Vector (Succ n) A = Pair A (Vector n A)
 
+boxed
 type Array A where
-  MkArray : (n : Nat) -> Ptr (Vector n A) -> Array A
+  MkArray : (n : Nat) -> (Vector n A) -> Array A
 
 Byte : Type
 Byte = MkType 1

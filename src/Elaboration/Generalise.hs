@@ -275,7 +275,7 @@ abstractDefImplicits vs (ConstantDefinition a e) t = do
   ge <- plicitLams pvs e
   gt <- plicitPis pvs t
   return (ConstantDefinition a ge, gt)
-abstractDefImplicits vs (DataDefinition (DataDef ps cs) rep) typ =
+abstractDefImplicits vs (DataDefinition (DataDef b ps cs) rep) typ =
   teleExtendContext ps $ \vs' -> do
     ctx <- getContext
     let
@@ -285,5 +285,5 @@ abstractDefImplicits vs (DataDefinition (DataDef ps cs) rep) typ =
 
     grep <- plicitLams pvs rep
     gtyp <- plicitPis pvs typ
-    dd <- plicitDataDef (toVector pvs <> pvs') cs'
+    dd <- plicitDataDef b (toVector pvs <> pvs') cs'
     return (DataDefinition dd grep, gtyp)

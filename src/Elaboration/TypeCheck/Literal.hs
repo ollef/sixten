@@ -49,12 +49,7 @@ byteArray bs
   [ (Implicit, Builtin.ByteType)
   , (Explicit, lenExpr)
   , ( Explicit
-    , Core.apps (Core.Con Builtin.Ref)
-      [ (Implicit, byteVectorType lenExpr)
-      , ( Explicit
-        , fst $ ByteString.foldr go (Core.Con Builtin.MkUnitConstr, 0) bs
-        )
-      ]
+    , fst $ ByteString.foldr go (Core.Con Builtin.MkUnitConstr, 0) bs
     )
   ]
   where
@@ -76,13 +71,7 @@ byteArrayPat bs
   (toVector
     [ (Explicit, natPat len)
     , ( Explicit
-      , ConPat (HashSet.singleton Builtin.Ref)
-        (toVector
-          [ ( Explicit
-            , ByteString.foldr go (ConPat (HashSet.singleton Builtin.MkUnitConstr) mempty) bs
-            )
-          ]
-        )
+      , ByteString.foldr go (ConPat (HashSet.singleton Builtin.MkUnitConstr) mempty) bs
       )
     ]
   )
@@ -97,9 +86,6 @@ byteArrayPat bs
 
 byteArrayType :: Core.Expr m v
 byteArrayType = Core.App (global $ GName Builtin.ArrayName mempty) Explicit Builtin.ByteType
-
-ptrType :: Core.Expr m v -> Core.Expr m v
-ptrType = Core.App (global $ GName Builtin.PtrName mempty) Explicit
 
 byteVectorType :: Core.Expr m v -> Core.Expr m v
 byteVectorType len = Core.apps

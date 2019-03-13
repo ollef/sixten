@@ -318,7 +318,7 @@ splitCon config x qcs typ loc k = do
   def <- fetchDefinition $ gname typeName
   case def of
     ConstantDefinition {} -> panic "splitCon ConstantDefinition"
-    DataDefinition (DataDef paramsTele constrDefs) _ -> do
+    DataDefinition (DataDef _ paramsTele constrDefs) _ -> do
       ctx <- getContext
       case Context.splitAt x ctx of
         Nothing -> panic "splitCon couldn't split context"
@@ -510,7 +510,7 @@ uninhabitedType fuel typ = do
       def <- fetchDefinition typeName
       case def of
         ConstantDefinition {} -> return False
-        DataDefinition (DataDef _ constrDefs) _ ->
+        DataDefinition (DataDef _ _ constrDefs) _ ->
           allM (uninhabitedConstrType fuel . instantiateTele snd args . constrType) constrDefs
     _ -> return False
 

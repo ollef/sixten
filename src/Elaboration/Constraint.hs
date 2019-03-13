@@ -98,7 +98,7 @@ solveDefConstraints
   -> Elaborate (Definition (Expr MetaVar) Var)
 solveDefConstraints (ConstantDefinition a e)
   = ConstantDefinition a <$> solveExprConstraints e
-solveDefConstraints (DataDefinition (DataDef ps constrs) rep) =
+solveDefConstraints (DataDefinition (DataDef b ps constrs) rep) =
   teleExtendContext ps $ \vs -> do
     constrs' <- forM constrs $ \(ConstrDef c s) -> do
       let e = instantiateTele pure vs s
@@ -106,7 +106,7 @@ solveDefConstraints (DataDefinition (DataDef ps constrs) rep) =
       return $ ConstrDef c e'
 
     rep' <- solveExprConstraints rep
-    dd <- dataDef vs constrs'
+    dd <- dataDef b vs constrs'
     return $ DataDefinition dd rep'
 
 solveRecursiveDefConstraints

@@ -31,7 +31,7 @@ checkDataDef
   -> DataDef Pre.Expr Var
   -> CoreM
   -> Elaborate (DataDef (Core.Expr MetaVar) Var, CoreM)
-checkDataDef var (DataDef ps cs) typ =
+checkDataDef var (DataDef b ps cs) typ =
   -- TODO: These vars are typechecked twice (in checkAndGeneraliseDefs as the
 -- expected type and here). Can we clean this up?
   teleMapExtendContext ps (`checkPoly` Builtin.Type) $ \vs -> do
@@ -44,15 +44,18 @@ checkDataDef var (DataDef ps cs) typ =
     (cs', sizes) <- fmap unzip $ forM cs $ \(ConstrDef c t) ->
       checkConstrDef (ConstrDef c $ instantiateTele pure vs t) (pure var) pvs
 
-    intRep <- fetchIntRep
+    typeRep <- case b of
+      Boxed -> Core.MkType <$> fetchPtrRep
+      Unboxed -> do
+        intRep <- fetchIntRep
 
-    let tagRep = case cs of
-          [] -> TypeRep.UnitRep
-          [_] -> TypeRep.UnitRep
-          _ -> intRep
+        let tagRep = case cs of
+              [] -> TypeRep.UnitRep
+              [_] -> TypeRep.UnitRep
+              _ -> intRep
 
-        typeRep
-          = productType (Core.MkType tagRep)
+        return
+          $ productType (Core.MkType tagRep)
           $ foldl' sumType (Core.MkType TypeRep.UnitRep) sizes
 
     forM_ cs' $ \(ConstrDef qc e) ->
@@ -61,7 +64,7 @@ checkDataDef var (DataDef ps cs) typ =
     typeRep' <- whnfExpandingTypeReps typeRep
     logMeta "tc.data" "checkDataDef typeRep" $ zonk typeRep'
 
-    result <- dataDef vs cs'
+    result <- dataDef b vs cs'
     paramTypeRep <- Core.lams vs typeRep'
     return (result, paramTypeRep)
 

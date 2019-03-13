@@ -61,7 +61,7 @@ type Array a where
   MkArray : (n : Nat) -> Ptr (Vector n a) -> Array a
 ```
 
-Another example where `Ptr` is used is in the type of linked lists:
+Another example where `Ptr` can be used is to define a type of linked lists:
 
 ```haskell
 type List a = Nil | Cons a (Ptr (List a))
@@ -194,6 +194,27 @@ LLVM link-time optimisation is used to minimise function-call overheads.
 
 This currently uses the Boehm–Demers–Weiser garbage collector for
 garbage-collecting heap-allocated data.
+
+### Boxed types
+
+Sometimes we do want boxed types, e.g. to define linked lists without having to
+explicitly wrap and unwrap values in `Ptr`s. This can be done with the `boxed`
+keyword:
+
+```haskell
+boxed
+type List a = Nil | Cons a (List a)
+```
+
+This means that all values of type `List t` are indirected through a pointer,
+as if using `Ptr (List t)`.
+
+The `Ptr` type from the `Builtin` module is defined using `boxed`:
+
+```haskell
+boxed
+type Ptr = Ref a
+```
 
 ## Planned features
 
