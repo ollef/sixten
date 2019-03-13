@@ -47,7 +47,7 @@ constrName (GADTConstrDef c _) = c
 
 data Definition
   = ConstantDefinition (ConstantDef Expr)
-  | DataDefinition Name [(Plicitness, Name, Type)] [ADTOrGADTConstrDef Expr]
+  | DataDefinition !Boxiness Name [(Plicitness, Name, Type)] [ADTOrGADTConstrDef Expr]
   | ClassDefinition Name [(Plicitness, Name, Type)] [Method Expr]
   | InstanceDefinition Type [(SourceLoc, ConstantDef Expr)]
   deriving (Show)

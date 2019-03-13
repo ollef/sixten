@@ -1,0 +1,8 @@
+boxed
+type List a = Nil | Cons a (List a)
+
+map : forall a b. (a -> b) -> List a -> List b
+map f Nil = Nil
+map f (Cons a as) = Cons (f a) (map f as)
+
+main = map printInt (Cons 1 (Cons 2 (Cons 3 Nil)))

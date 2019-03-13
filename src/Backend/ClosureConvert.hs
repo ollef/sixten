@@ -11,7 +11,6 @@ import qualified Data.Vector as Vector
 import Rock
 
 import Backend.Lift(runLift, liftThing, Lift)
-import qualified Builtin
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect
@@ -20,7 +19,6 @@ import Syntax
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
 import Syntax.Sized.Lifted
-import qualified TypeRep
 import Util
 import VIX
 
@@ -161,14 +159,11 @@ knownCall
   -> ClosureConvert (Expr Var)
 knownCall f (Closed tele, Closed returnTypeScope) args
   | numArgs < arity = do
-    target <- fetch Target
     piRep <- Lit . TypeRep <$> fetchPiRep
     intRep <- Lit . TypeRep <$> fetchIntRep
     fNumArgs <- liftClosureFun f (close identity tele, close identity returnTypeScope) numArgs
     return
-      $ Con Builtin.Ref
-      $ pure
-      $ Builtin.sizedCon target (MkType TypeRep.UnitRep) Builtin.Closure
+      $ Con Builtin.Closure
       $ Vector.cons (Anno (global fNumArgs) piRep)
       $ Vector.cons (Anno (Lit $ Integer $ fromIntegral $ arity - numArgs) intRep) args
   | numArgs == arity
@@ -220,7 +215,7 @@ liftClosureFun f (Closed tele, Closed returnTypeScope) numCaptured =
             fReturnType <-
               if any (`HashSet.member` returnTypeVars) capturedArgs then do
                 br <- conBranch Builtin.Closure clArgs returnType
-                return $ Case (Anno (Builtin.deref $ pure this) (Global $ gname "ClosureConvert.knownCall.unknownSize"))
+                return $ Case (Anno (pure this) (Global $ gname "ClosureConvert.knownCall.unknownSize"))
                   $ ConBranches $ pure br
               else
                 return returnType
@@ -230,7 +225,7 @@ liftClosureFun f (Closed tele, Closed returnTypeScope) numCaptured =
             fun <- Sized.typedFunction
               funParams
               $ Anno
-                (Case (Anno (Builtin.deref $ pure this) (Global $ gname "ClosureConvert.knownCall.unknownSize"))
+                (Case (Anno (pure this) (Global $ gname "ClosureConvert.knownCall.unknownSize"))
                   $ ConBranches $ pure br)
                 fReturnType
             liftThing

@@ -92,7 +92,7 @@ desugarClassDef classVar name loc (ClassDef params ms) =
     typeRep' <- whnfExpandingTypeReps typeRep
     parameterisedTypeRep <- Core.lams paramVars typeRep'
 
-    dd <- dataDef paramVars [ConstrDef (qconstrConstr qcon) classConstrType]
+    dd <- dataDef Unboxed paramVars [ConstrDef (qconstrConstr qcon) classConstrType]
 
     let
       classDataDef = DataDefinition dd parameterisedTypeRep
@@ -227,7 +227,7 @@ getClassDef name = do
       def <- fetchDefinition $ gname name
       case def of
         ConstantDefinition {} -> panic "getClassDef constant"
-        DataDefinition (DataDef params [ConstrDef _constr scope]) _rep -> do
+        DataDefinition (DataDef _ params [ConstrDef _constr scope]) _rep -> do
           let types = methodTypes $ fromScope scope
           return $ Just $ ClassDef params $ zipWith (\(n, loc) typ -> Method n loc $ toScope typ) (toList mnames) types
         DataDefinition DataDef {} _ -> panic "getClassDef datadef"

@@ -105,7 +105,7 @@ hoverDef
   -> Definition (Expr Void) Var
   -> Hover (Span, Expr Void Var)
 hoverDef f (ConstantDefinition _ e) = hoverExpr f e
-hoverDef f (DataDefinition (DataDef params cs) _rep) =
+hoverDef f (DataDefinition (DataDef _ params cs) _rep) =
   teleExtendContext params $ \vs -> do
     ctx <- getContext
     foldMap (hoverExpr f . (`Context.lookupType` ctx)) vs

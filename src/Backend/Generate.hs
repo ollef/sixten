@@ -319,42 +319,64 @@ productOffsets' xs = do
   return $ Foldable.toList snocResults
 
 generateCon :: QConstr -> Vector (Anno Expr Var) -> Expr Var -> InstrGen Var
-generateCon Builtin.Ref es _ = do
-  reps <- mapM (generateTypeExpr . typeAnno) es
+generateCon _ _ (MkType TypeRep.UnitRep) = return VoidVar
+generateCon qc es typ = do
+  boxiness <- fetchBoxiness qc
+  case boxiness of
+    Unboxed -> do
+      sz <- generateTypeSize typ
+      out <- allocaBytes sz `named` "cons-cell"
+      storeUnboxedCon qc es out
+      return $ IndirectVar out
+    Boxed -> generateBoxedCon qc es
+
+storeCon :: QConstr -> Vector (Anno Expr Var) -> LLVM.Operand -> InstrGen ()
+storeCon qc es out = do
+  boxiness <- fetchBoxiness qc
+  case boxiness of
+    Unboxed -> storeUnboxedCon qc es out
+    Boxed -> do
+      ptrRep <- fetchPtrRep
+      v <- generateBoxedCon qc es
+      i <- loadVar ptrRep v
+      storeDirect ptrRep i out
+
+generateBoxedCon :: QConstr -> Vector (Anno Expr Var) -> InstrGen Var
+generateBoxedCon qc es = do
+  es' <- addConstrTagField qc es
+  reps <- mapM (generateTypeExpr . typeAnno) es'
   (is, fullRep) <- productOffsets reps
   fullSize <- generateSizeOf fullRep
   ref <- gcAlloc fullSize
   typeRep <- fetchTypeRep
-  Foldable.forM_ (zip (Vector.toList reps) $ zip is $ Vector.toList es) $ \(rep, (i, Anno e _)) -> do
+  Foldable.forM_ (zip (Vector.toList reps) $ zip is $ Vector.toList es') $ \(rep, (i, Anno e _)) -> do
     index <- gep ref [i] `named` "index"
     storeExpr e (pure $ DirectVar typeRep rep) index
   intType <- integerType
   refInt <- ptrtoint ref intType `named` "ref-int"
   ptrRep <- fetchPtrRep
   return $ DirectVar ptrRep refInt
-generateCon _ _ (MkType TypeRep.UnitRep) = return VoidVar
-generateCon qc es typ = do
-  sz <- generateTypeSize typ
-  out <- allocaBytes sz `named` "cons-cell"
-  storeCon qc es out
-  return $ IndirectVar out
 
-storeCon :: QConstr -> Vector (Anno Expr Var) -> LLVM.Operand -> InstrGen ()
-storeCon Builtin.Ref es out = do
-  ptrRep <- fetchPtrRep
-  v <- generateCon Builtin.Ref es $ Lit $ TypeRep ptrRep
-  i <- loadVar ptrRep v
-  storeDirect ptrRep i out
-storeCon qc es out = do
-  intRep <- fetchIntRep
-  typeRep <- fetchTypeRep
-  mqcIndex <- fetch $ ConstrIndex qc
-  let es' = maybe identity (Vector.cons . flip Anno (Lit $ TypeRep intRep) . Lit . Integer) mqcIndex es
+storeUnboxedCon :: QConstr -> Vector (Anno Expr Var) -> LLVM.Operand -> InstrGen ()
+storeUnboxedCon qc es out = do
+  es' <- addConstrTagField qc es
   reps <- mapM (generateTypeExpr . typeAnno) es'
   is <- productOffsets' reps
+  typeRep <- fetchTypeRep
   Foldable.forM_ (zip (Vector.toList reps) $ zip is $ Vector.toList es') $ \(rep, (i, Anno e _)) -> do
     index <- gep out [i] `named` "index"
     storeExpr e (pure $ DirectVar typeRep rep) index
+
+addConstrTagField :: QConstr -> Vector (Anno Expr Var) -> InstrGen (Vector (Anno Expr Var))
+addConstrTagField qc es = do
+  intRep <- fetchIntRep
+  mqcIndex <- fetch $ ConstrIndex qc
+  return $
+    maybe
+      identity
+      (Vector.cons . flip Anno (Lit $ TypeRep intRep) . Lit . Integer)
+      mqcIndex
+      es
 
 generateFunOp :: Maybe Language -> Expr Var -> RetDir -> Vector Direction -> InstrGen LLVM.Operand
 generateFunOp lang (Global g) retDir argDirs = do
@@ -416,55 +438,21 @@ generateBranches (Anno caseExpr caseExprType) branches brCont = do
       void $ generateExpr caseExpr caseExprType
       unreachable
       return []
-    ConBranches [ConBranch Builtin.Ref tele brScope] -> do
-      genExpr <- generateExpr caseExpr caseExprType
-      exprInt <- loadVar intRep genExpr `named` "case-expr-int"
-      expr <- inttoptr exprInt indirectType `named` "case-expr"
-
-      branchBlock <- freshName $ fromQConstr Builtin.Ref
-      br branchBlock
-      emitBlockStart branchBlock
-
-      typeRepBits <- fetchTypeRepBits
-
-      argsReps <- forTeleWithPrefixM tele $ \h _ s argsReps -> do
-        let args = fst <$> argsReps
-            reps = snd <$> argsReps
-            fullRep
-              | Vector.null reps = LLVM.ConstantOperand $ LLVM.Int typeRepBits 0
-              | otherwise = Vector.last reps
-        index <- generateIntExpr
-          $ Call (Global $ gname Builtin.SizeOfName)
-          $ pure $ Anno (pure $ DirectVar typeRep fullRep) (Lit $ TypeRep typeRep)
-        ptr <- gep expr [index] `hinted` h
-        fullRep' <- if Vector.length argsReps == teleLength tele - 1
-          then return fullRep
-          else do
-            rep <- generateTypeExpr $ instantiateTele pure args s
-            generateTypeExpr
-              $ Call (Global $ gname Builtin.ProductTypeRepName)
-              $ Vector.fromList
-                [ Anno (pure $ DirectVar typeRep fullRep) (Lit $ TypeRep typeRep)
-                , Anno (pure $ DirectVar typeRep rep) (Lit $ TypeRep typeRep)
-                ]
-        return (IndirectVar ptr, fullRep')
-
-      let args = fst <$> argsReps
-
-      contResult <- brCont $ instantiateTele pure args brScope
-      afterBranchBlock <- currentBlock
-      postBlock <- freshName "after-branches"
-      br postBlock
-      emitBlockStart postBlock
-      return [(contResult, afterBranchBlock)]
 
     ConBranches cbrs -> do
       let hasTag = case cbrs of
             [_] -> False
             _ -> True
+      boxiness <- case cbrs of
+        ConBranch qc _ _ : _ -> fetchBoxiness qc
+        _ -> return Unboxed
 
       exprGen <- generateExpr caseExpr caseExprType
-      expr <- indirect exprGen `named` "case-expr"
+      expr <- case boxiness of
+        Unboxed -> indirect exprGen `named` "case-expr"
+        Boxed -> do
+          exprInt <- loadVar intRep exprGen `named` "case-expr-int"
+          inttoptr exprInt indirectType `named` "case-expr"
 
       failBlock <- freshName "pattern-match-failed"
       branchBlocks <- forM cbrs $ \(ConBranch qc _ _) -> freshName $ fromQConstr qc

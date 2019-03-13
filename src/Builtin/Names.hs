@@ -80,13 +80,6 @@ pattern Refl :: Type m t -> Expr m t -> Expr m t -> Expr m t
 pattern Refl typ e1 e2 =
   App (App (App (Con ReflConstr) Implicit typ) Implicit e1) Implicit e2
 
-pattern RefName :: Constr
-pattern RefName <- ((==) "Ref" -> True) where RefName = "Ref"
-pattern PtrName :: QName
-pattern PtrName <- ((==) "Sixten.Builtin.Ptr" -> True) where PtrName = "Sixten.Builtin.Ptr"
-pattern Ref :: QConstr
-pattern Ref = QConstr PtrName RefName
-
 pattern UnitName :: QName
 pattern UnitName <- ((==) "Sixten.Builtin.Unit" -> True) where UnitName = "Sixten.Builtin.Unit"
 pattern UnitType :: Expr m t

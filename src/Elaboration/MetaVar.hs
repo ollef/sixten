@@ -209,13 +209,12 @@ bindDataDefMetas
   => (meta -> Vector (Plicitness, Expr meta Var) -> m (Expr meta' Var))
   -> DataDef (Expr meta) Var
   -> m (DataDef (Expr meta') Var)
-bindDataDefMetas f (DataDef ps cs) =
+bindDataDefMetas f (DataDef b ps cs) =
   teleMapExtendContext ps (bindMetas f) $ \vs -> do
     cs' <- forM cs $ \(ConstrDef c s) -> do
       e <- bindMetas f $ instantiateTele pure vs s
       return $ ConstrDef c e
-
-    dataDef vs cs'
+    dataDef b vs cs'
 
 bindMetas
   :: MonadBindMetas meta' m

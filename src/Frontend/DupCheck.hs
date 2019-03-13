@@ -29,7 +29,7 @@ dupCheck mname = second errors . flip runState (DupState 0 []) . foldM go mempty
     go defs (loc, def) = do
       name <- case def of
         Pre.ConstantDefinition d -> return $ Pre.definitionName d
-        Pre.DataDefinition n _ _ -> return n
+        Pre.DataDefinition _ n _ _ -> return n
         Pre.ClassDefinition n _ _ -> return n
         Pre.InstanceDefinition typ _ -> do
           i <- gets instanceNumber

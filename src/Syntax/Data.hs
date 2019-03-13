@@ -19,40 +19,43 @@ import Syntax.Telescope
 import Util
 
 data DataDef typ v = DataDef
-  { dataParams :: Telescope typ v
+  { dataBoxiness :: !Boxiness
+  , dataParams :: Telescope typ v
   , dataConstructors :: [ConstrDef (Scope TeleVar typ v)]
   } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 dataDef
   :: (Monad typ, MonadContext (typ Var) m)
-  => Vector Var
+  => Boxiness
+  -> Vector Var
   -> [ConstrDef (typ Var)]
   -> m (DataDef typ Var)
-dataDef vs cs = do
+dataDef b vs cs = do
   tele <- varTelescope vs
-  return $ DataDef tele $ fmap abstr <$> cs
+  return $ DataDef b tele $ fmap abstr <$> cs
   where
     abstr = abstract $ teleAbstraction vs
 
 plicitDataDef
   :: (Monad typ, MonadContext (typ Var) m)
-  => Vector (Plicitness, Var)
+  => Boxiness
+  -> Vector (Plicitness, Var)
   -> [ConstrDef (typ Var)]
   -> m (DataDef typ Var)
-plicitDataDef pvs cs = do
+plicitDataDef b pvs cs = do
   tele <- plicitVarTelescope pvs
-  return $ DataDef tele $ fmap abstr <$> cs
+  return $ DataDef b tele $ fmap abstr <$> cs
   where
     abstr = abstract $ teleAbstraction $ snd <$> pvs
 
 instance Bound DataDef where
-  DataDef ps cs >>>= f = DataDef (ps >>>= f) $ fmap (>>>= f) <$> cs
+  DataDef b ps cs >>>= f = DataDef b (ps >>>= f) $ fmap (>>>= f) <$> cs
 
 instance GBound DataDef where
-  gbound f (DataDef ps cs) = DataDef (gbound f ps) $ fmap (gbound f) <$> cs
+  gbound f (DataDef b ps cs) = DataDef b (gbound f ps) $ fmap (gbound f) <$> cs
 
 instance MFunctor DataDef where
-  hoist f (DataDef ps cs) = DataDef (hoist f ps) $ fmap (hoistScope f) <$> cs
+  hoist f (DataDef b ps cs) = DataDef b (hoist f ps) $ fmap (hoistScope f) <$> cs
 
 bimapDataDef
   :: Bifunctor typ
@@ -60,7 +63,7 @@ bimapDataDef
   -> (b -> b')
   -> DataDef (typ a) b
   -> DataDef (typ a') b'
-bimapDataDef f g (DataDef ps cs) = DataDef (bimapTelescope f g ps) $ fmap (bimapScope f g) <$> cs
+bimapDataDef f g (DataDef b ps cs) = DataDef b (bimapTelescope f g ps) $ fmap (bimapScope f g) <$> cs
 
 bitraverseDataDef
   :: (Bitraversable typ, Applicative f)
@@ -68,14 +71,14 @@ bitraverseDataDef
   -> (b -> f b')
   -> DataDef (typ a) b
   -> f (DataDef (typ a') b')
-bitraverseDataDef f g (DataDef ps cs) = DataDef <$> bitraverseTelescope f g ps <*> traverse (traverse $ bitraverseScope f g) cs
+bitraverseDataDef f g (DataDef b ps cs) = DataDef b <$> bitraverseTelescope f g ps <*> traverse (traverse $ bitraverseScope f g) cs
 
 transverseDataDef
   :: (Traversable typ, Monad f)
   => (forall r. typ r -> f (typ' r))
   -> DataDef typ a
   -> f (DataDef typ' a)
-transverseDataDef f (DataDef ps cs) = DataDef <$> transverseTelescope f ps <*> traverse (traverse $ transverseScope f) cs
+transverseDataDef f (DataDef b ps cs) = DataDef b <$> transverseTelescope f ps <*> traverse (traverse $ transverseScope f) cs
 
 constrNames :: DataDef typ v -> [Constr]
 constrNames = map constrName . dataConstructors
@@ -86,9 +89,9 @@ data ConstrDef typ = ConstrDef
   } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 instance (v ~ Doc, Pretty (typ v), Monad typ, Eq1 typ) => PrettyNamed (DataDef typ v) where
-  prettyNamed name (DataDef ps cs) = withTeleHints ps $ \ns -> do
+  prettyNamed name (DataDef b ps cs) = withTeleHints ps $ \ns -> do
     let inst = instantiateTele (pure . fromName) ns
-    "type" <+> name <+> prettyTeleVarTypes ns ps <+> "where" <$$>
+    prettyM b <+> "type" <+> name <+> prettyTeleVarTypes ns ps <+> "where" <$$>
       indent 2 (vcat $ map (prettyM . fmap inst) cs)
 
 instance Pretty typ => Pretty (ConstrDef typ) where
