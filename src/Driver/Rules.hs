@@ -238,7 +238,7 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
             Just i -> return $ Just $ fromIntegral i
       ConstantDefinition {} -> panic "fetch ConstrIndex ConstantDefinition"
 
-  LambdaLifted bindingGroup -> Task $ do
+  LambdaLifted bindingGroup -> Task $ logTerms logEnv_ "lifted" fst snd $ do
     coreDefs <- fetch $ SimplifiedGroup bindingGroup
     withReportEnv $ \reportEnv_ ->
       fmap concat $ for (HashMap.toList coreDefs) $ \(name, (_, ClosedDefinition def, _)) ->
@@ -264,7 +264,7 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
     target_ <- fetch Driver.Query.Target
     return $ Builtin.convertedEnvironment target_
 
-  Converted bindingGroup -> Task $
+  Converted bindingGroup -> Task $ logTerms logEnv_ "converted" fst snd $
     case qnameModule <$> toList bindingGroup of
       Builtin.RuntimeModuleName:_ -> do
         runtimeDefs <- fetch RuntimeDefinitions
@@ -313,7 +313,7 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
             (HashMap.lookup name . Extracted.extractedSignatures . snd3)
             extracted
 
-  Extracted bindingGroup -> Task $ do
+  Extracted bindingGroup -> Task $ logTerms logEnv_ "extracted" fst3 thd3 $ do
     defs <- fetch $ DirectionSignatures bindingGroup
     withReportEnv $ \reportEnv_ ->
       runVIX logEnv_ reportEnv_ $
@@ -380,6 +380,27 @@ logCoreTerms logEnv_ c@(Category ct) m = do
           $ showWide
           $ pretty
           $ prettyNamed (prettyM n) (d :: Definition (Core.Expr Void) Doc)
+        Effect.log ""
+  return result
+
+logTerms
+  :: (MonadIO m, Pretty name, Pretty term)
+  => LogEnv
+  -> Category
+  -> (def -> name)
+  -> (def -> term)
+  -> m ([def], errs)
+  -> m ([def], errs)
+logTerms logEnv_ c@(Category ct) name term m = do
+  result@(defs, _) <- m
+  flip runReaderT logEnv_ $
+    whenLoggingCategory c $ do
+      Effect.log $ "----- [" <> ct <> "] -----"
+      forM_ defs $ \def -> do
+        Effect.log
+          $ showWide
+          $ pretty
+          $ prettyM (name def) <+> "=" <+> prettyM (term def)
         Effect.log ""
   return result
 
