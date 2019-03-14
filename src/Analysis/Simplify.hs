@@ -4,7 +4,6 @@ module Analysis.Simplify where
 import Protolude hiding (Type)
 
 import Bound
-import Data.Foldable as Foldable
 import Data.Maybe
 import qualified Data.MultiSet as MultiSet
 import qualified Data.Set as Set
@@ -13,7 +12,7 @@ import qualified Data.Vector as Vector
 import qualified Builtin.Names as Builtin
 import Elaboration.Normalise
 import Syntax
-import Syntax.Core hiding (let_)
+import Syntax.Core
 import Util
 
 simplifyExpr
@@ -40,7 +39,7 @@ simplifyExpr glob !applied expr = case expr of
       $ hoist (simplifyExpr glob $ max 0 $ applied - teleLength tele) s
   Lam {} -> panic "simplifyExpr Lam"
   App e1 p e2 ->
-    betaApp
+    App
       (simplifyExpr glob (applied + 1) e1)
       p
       (simplifyExpr glob 0 e2)
@@ -83,20 +82,6 @@ letRec glob ds scope
     ds' = snd <$> oldVarsNewDs
     scope' = rebind rebinding scope
 
-let_
-  :: (GName -> Bool)
-  -> NameHint
-  -> SourceLoc
-  -> Expr meta v
-  -> Type meta v
-  -> Scope1 (Expr meta) v
-  -> Expr meta v
-let_ glob h loc e t s
-  = letRec
-    glob
-    (LetRec $ pure $ LetBinding h loc (abstractNone e) t)
-    (mapBound (\() -> 0) s)
-
 simplifyDef
   :: (GName -> Bool)
   -> Definition (Expr meta) v
@@ -128,17 +113,6 @@ etaLams glob applied tele scope = case go 0 $ fromScope scope of
       || terminates glob e -- Use glob for termination to e.g. avoid making `loop = loop` out of `loop x = loop x`
     len = teleLength tele
     ps = telePlics tele
-
-betaApp ::  Expr meta v -> Plicitness -> Expr meta v -> Expr meta v
-betaApp (sourceLocView -> (loc, Lam h p1 t s)) p2 e2 | p1 == p2 = let_ (const True) h loc e2 t s
-betaApp e1 p e2 = App e1 p e2
-
-betaApps
-  :: Foldable t
-  => Expr meta v
-  -> t (Plicitness, Expr meta v)
-  -> Expr meta v
-betaApps = Foldable.foldl (uncurry . betaApp)
 
 -- | Is it cost-free to duplicate this expression?
 duplicable :: Expr meta v -> Bool

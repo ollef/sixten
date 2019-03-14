@@ -144,6 +144,17 @@ pattern MkType rep = Lit (TypeRep rep)
 apps :: Foldable t => Expr m v -> t (Plicitness, Expr m v) -> Expr m v
 apps = Foldable.foldl' (uncurry . App)
 
+betaApp ::  Expr meta v -> Plicitness -> Expr meta v -> Expr meta v
+betaApp (unSourceLoc -> Lam _ p1 _ s) p2 e2 | p1 == p2 = instantiate1 e2 s
+betaApp e1 p e2 = App e1 p e2
+
+betaApps
+  :: Foldable t
+  => Expr meta v
+  -> t (Plicitness, Expr meta v)
+  -> Expr meta v
+betaApps = Foldable.foldl (uncurry . betaApp)
+
 appsView :: Expr m v -> (Expr m v, [(Plicitness, Expr m v)])
 appsView = second toList . go
   where

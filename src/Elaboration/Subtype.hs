@@ -12,7 +12,6 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import {-# SOURCE #-} Elaboration.Constraint
-import Analysis.Simplify
 import qualified Builtin.Names as Builtin
 import Effect
 import qualified Effect.Context as Context
@@ -72,7 +71,7 @@ deepSkolemiseInner' typ@(Pi h p t resScope) argsToPass k = case p of
         k
           vs
           (pi_ y resType' ctx)
-          (\x -> lam y (f $ lams vs (betaApp (betaApps x $ (\v -> (Context.lookupPlicitness v ctx, pure v)) <$> vs) p $ pure y) ctx) ctx)
+          (\x -> lam y (f $ lams vs (App (apps x $ (\v -> (Context.lookupPlicitness v ctx, pure v)) <$> vs) p $ pure y) ctx) ctx)
   Implicit -> implicitCase
   Constraint -> implicitCase
   where
@@ -89,7 +88,7 @@ deepSkolemiseInner' typ@(Pi h p t resScope) argsToPass k = case p of
             k
               (Vector.cons y vs)
               resType'
-              (\x -> lam y (f $ betaApp x p $ pure y) ctx)
+              (\x -> lam y (f $ App x p $ pure y) ctx)
 deepSkolemiseInner' typ _ k = k mempty typ identity
 
 --------------------------------------------------------------------------------

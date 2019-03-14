@@ -9,7 +9,6 @@ import qualified Data.HashSet as HashSet
 import qualified Data.Map as Map
 import Data.Vector(Vector)
 
-import Analysis.Simplify
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect

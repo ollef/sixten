@@ -12,7 +12,6 @@ import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 
 import {-# SOURCE #-} Elaboration.Constraint
-import Analysis.Simplify
 import Effect
 import qualified Effect.Context as Context
 import Effect.Log as Log

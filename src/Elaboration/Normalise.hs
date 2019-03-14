@@ -7,7 +7,7 @@ import qualified Data.HashSet as HashSet
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Vector as Vector
 
-import {-# SOURCE #-} Elaboration.MetaVar.Zonk
+import Elaboration.MetaVar.Zonk
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect

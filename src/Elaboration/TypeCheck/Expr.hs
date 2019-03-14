@@ -9,7 +9,6 @@ import Data.IORef
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import Analysis.Simplify
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect
@@ -81,7 +80,7 @@ instantiateForalls' (Core.Pi h p t s) instUntil
     v <- exists h p t
     let typ = Util.instantiate1 v s
     (result, f) <- instantiateForalls typ instUntil
-    return (result, \x -> f $ betaApp x p v)
+    return (result, \x -> f $ Core.App x p v)
 instantiateForalls' typ _ = return (typ, identity)
 
 --------------------------------------------------------------------------------

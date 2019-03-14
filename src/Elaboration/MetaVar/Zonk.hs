@@ -6,7 +6,6 @@ import Protolude
 import qualified Data.HashSet as HashSet
 import Data.HashSet(HashSet)
 
-import Analysis.Simplify
 import Elaboration.MetaVar
 import Syntax
 import Syntax.Core

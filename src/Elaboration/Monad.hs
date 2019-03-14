@@ -16,7 +16,7 @@ import Control.Monad.Reader
 import qualified Data.Vector as Vector
 import Rock
 
-import {-# SOURCE #-} Elaboration.MetaVar.Zonk
+import Elaboration.MetaVar.Zonk
 import qualified Builtin.Names as Builtin
 import Driver.Query
 import Effect

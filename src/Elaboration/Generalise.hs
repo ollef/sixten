@@ -9,7 +9,6 @@ import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Vector(Vector)
 
-import Analysis.Simplify
 import qualified Builtin.Names as Builtin
 import Effect
 import Effect.Context as Context
