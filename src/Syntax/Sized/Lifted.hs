@@ -18,7 +18,7 @@ import qualified Data.Vector as Vector
 
 import Effect
 import qualified Effect.Context as Context
-import Syntax hiding (Definition)
+import Syntax
 import Syntax.Sized.Anno
 import TypeRep(TypeRep)
 import Util
