@@ -202,7 +202,6 @@ inferFunction expr = case expr of
     case sig of
       Just (FunctionSig _ retDir argDirs) -> return (Global g, (fromReturnIndirect <$> retDir, argDirs))
       Just (ConstantSig _) -> def
-      Just (AliasSig aliasee) -> inferFunction $ Global aliasee
       Nothing -> panic $ "ReturnDirection.inferFunction no sig " <> shower g
   _ -> return def
   where
@@ -227,8 +226,6 @@ inferDefinition Binding {_type = MetaData {metaFunSig = Just (retDir, argDirs)}}
       ReturnDirect _ -> return ()
     fun <- typedFunction (Vector.zip vs args') e'
     return (FunctionDef vis cl fun, FunctionSig SixtenCompatible retDir argDirs)
-inferDefinition _ (ConstantDef _ (Constant (Anno (Global glob) _))) =
-  return (AliasDef, AliasSig glob)
 inferDefinition _ (ConstantDef vis (Constant e)) = do
   (e', _loc) <- inferAnno e
   return (ConstantDef vis $ Constant e', ConstantSig $ typeDir $ typeAnno e)
@@ -262,7 +259,6 @@ inferRecursiveDefs defs = withContextEnvT $ do
               (NonClosure, Anno _ t) -> toReturnDirection Nothing $ typeDir t
               _ -> ReturnIndirect (Just MOutParam)
         ConstantDef {} -> Nothing
-        AliasDef -> Nothing
     funSig' <- traverse (bitraverse (traverse $ maybe existsMetaReturnIndirect pure) pure) funSig
     return $ binding h Explicit $ MetaData MProjection funSig'
 

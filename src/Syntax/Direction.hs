@@ -8,7 +8,6 @@ import Data.Vector(Vector)
 import Pretty
 import Syntax.Annotation
 import Syntax.Extern
-import Syntax.QName
 import TypeRep
 
 data Direction = Direct TypeRep | Indirect
@@ -63,5 +62,4 @@ data Compatibility
 data Signature a
   = FunctionSig Compatibility (ReturnDirection a) (Vector Direction)
   | ConstantSig Direction
-  | AliasSig GName
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)

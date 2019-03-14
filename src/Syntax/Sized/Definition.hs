@@ -31,7 +31,6 @@ data IsClosure
 data Definition expr v
   = FunctionDef Visibility IsClosure (Function expr v)
   | ConstantDef Visibility (Constant expr v)
-  | AliasDef
   deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 -------------------------------------------------------------------------------
@@ -65,7 +64,6 @@ instance MFunctor Function where
 instance MFunctor Definition where
   hoist f (FunctionDef vis cl fdef) = FunctionDef vis cl $ hoist f fdef
   hoist f (ConstantDef vis cdef) = ConstantDef vis $ hoist f cdef
-  hoist _ AliasDef = AliasDef
 
 instance Bound Constant where
   Constant expr >>>= f = Constant $ expr >>>= f
@@ -82,12 +80,10 @@ instance GBound Function where
 instance Bound Definition where
   FunctionDef vis cl fdef >>>= f = FunctionDef vis cl $ fdef >>>= f
   ConstantDef vis cdef >>>= f = ConstantDef vis $ cdef >>>= f
-  AliasDef >>>= _ = AliasDef
 
 instance GBound Definition where
   gbound f (FunctionDef vis cl fdef) = FunctionDef vis cl $ gbound f fdef
   gbound f (ConstantDef vis cdef) = ConstantDef vis $ gbound f cdef
-  gbound _ AliasDef = AliasDef
 
 instance (v ~ Doc, Pretty (expr v), Monad expr) => Pretty (Function expr v) where
   prettyM (Function vs s) = parens `above` absPrec $
@@ -105,4 +101,3 @@ instance (v ~ Doc, Pretty (expr v)) => Pretty (Constant expr v) where
 instance (v ~ Doc, Pretty (expr v), Monad expr) => Pretty (Definition expr v) where
   prettyM (ConstantDef v c) = prettyM v <+> prettyM c
   prettyM (FunctionDef v cl f) = prettyM v <+> prettyAnnotation cl (prettyM f)
-  prettyM AliasDef = "alias"

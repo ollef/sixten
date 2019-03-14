@@ -420,7 +420,6 @@ generateGlobal g = do
       $ LLVM.Constant.PtrToInt
         (LLVM.Constant.BitCast glob indirectType)
         (directType ptrRep)
-    Just (AliasSig _) -> panic "generateGlobal alias"
     Nothing -> return $ IndirectVar globOperand
 
 generateBranches
@@ -717,7 +716,6 @@ generateDefinition name def = case def of
   FunctionDef v _ f -> do
     generateFunction v name f
     return Nothing
-  AliasDef -> return Nothing
 
 generateDeclaration :: Declaration -> ModuleGen ()
 generateDeclaration decl
@@ -729,7 +727,6 @@ declareGlobal g = do
   case msig of
     Just (FunctionSig _ retDir argDirs) -> declareFun retDir (fromGName g) argDirs
     Just (ConstantSig dir) -> declareConstant dir $ fromGName g
-    Just (AliasSig _) -> panic "declareGlobal alias"
     Nothing -> return ()
 
 declareFun
@@ -769,22 +766,17 @@ generateSubmodule
   -> Closed (Definition Expr)
   -> VIX Generate.Submodule
 generateSubmodule name extracted def = do
-  let followAliases g = do
-        msig <- fetch $ DirectionSignature g
-        case msig of
-          Just (AliasSig g') -> followAliases g'
-          _ -> return g
+  let
+    def' = open def
 
-  def' <- traverseGlobals followAliases $ open def
-
-  let globalDeps
-        = HashSet.toList
-        $ HashSet.filter ((/= gnameModule name) . gnameModule)
-        -- These may be emitted by the code generator, so are implicit
-        -- dependencies of most code
-        $ HashSet.insert (gname Builtin.SizeOfName)
-        $ HashSet.insert (gname Builtin.ProductTypeRepName)
-        $ boundGlobals def'
+    globalDeps
+      = HashSet.toList
+      $ HashSet.filter ((/= gnameModule name) . gnameModule)
+      -- These may be emitted by the code generator, so are implicit
+      -- dependencies of most code
+      $ HashSet.insert (gname Builtin.SizeOfName)
+      $ HashSet.insert (gname Builtin.ProductTypeRepName)
+      $ boundGlobals def'
 
   decls <- forM globalDeps $ \g -> do
     decls <- execModuleBuilderT emptyModuleBuilder $ declareGlobal g

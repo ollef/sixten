@@ -62,7 +62,6 @@ convertedSignatures target
     case open def of
       Sized.FunctionDef _ _ (Sized.Function tele (AnnoScope _ s)) -> Just (close identity tele, close identity s)
       Sized.ConstantDef _ _ -> Nothing
-      Sized.AliasDef -> Nothing
 
 maxArity :: Num n => n
 maxArity = 8

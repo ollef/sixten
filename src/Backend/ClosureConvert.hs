@@ -53,8 +53,6 @@ convertSignature def = case open def of
         closedTele' = close (panic "convertDefinitions") tele'
         typeScope = close (panic "convertDefinitions") $ abstract (teleAbstraction vs) convertedType
       return $ Just (closedTele', typeScope)
-  Sized.ConstantDef _ (Sized.Constant (Anno (Global glob) _)) ->
-    fetch $ ConvertedSignature glob
   _ -> return Nothing
 
 convertDefinition
@@ -84,24 +82,12 @@ convertDefinition name (Closed (Sized.FunctionDef vis cl (Sized.Function tele sc
         return
           $ close (panic "convertDefinition Function")
           $ Sized.FunctionDef vis cl fun
-convertDefinition _ (Closed (Sized.ConstantDef vis (Sized.Constant expr@(Anno (Global glob) sz)))) = do
-  msig <- fetch $ ConvertedSignature glob
-  expr' <- case msig of
-    Nothing -> convertAnnoExpr expr
-    Just _ -> do
-      sz' <- convertExpr sz
-      return $ Anno (Global glob) sz'
-  return
-    $ close (panic "convertDefinition Constant")
-    $ Sized.ConstantDef vis
-    $ Sized.Constant expr'
 convertDefinition _ (Closed (Sized.ConstantDef vis (Sized.Constant expr))) = do
   expr' <- convertAnnoExpr expr
   return
     $ close (panic "convertDefinition Constant")
     $ Sized.ConstantDef vis
     $ Sized.Constant expr'
-convertDefinition _ (Closed Sized.AliasDef) = return $ close identity Sized.AliasDef
 
 convertAnnoExpr :: Anno Expr Var -> ClosureConvert (Anno Expr Var)
 convertAnnoExpr (Anno expr typ) = Anno <$> convertExpr expr <*> convertExpr typ

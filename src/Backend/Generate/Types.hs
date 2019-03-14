@@ -136,7 +136,6 @@ signatureType (ConstantSig (Direct TypeRep.UnitRep)) = LLVM.void
 signatureType (ConstantSig (Direct rep)) = directType rep
 signatureType (ConstantSig Indirect) = indirectType
 signatureType (FunctionSig _ retDir args) = functionType retDir args
-signatureType (AliasSig _) = panic "signatureType alias"
 
 functionType
   :: RetDir

@@ -279,7 +279,6 @@ extractDef name def = fmap flatten $ runExtract names $ case open def of
     -> close noFV
     . Sized.ConstantDef vis
     . Sized.Constant <$> extractAnnoExpr e
-  Sized.AliasDef -> return $ close identity Sized.AliasDef
   where
     flatten (cbs, m, def')
       = (name, m, def')
