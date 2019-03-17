@@ -19,6 +19,7 @@ import Data.Bifoldable
 import Data.Bitraversable
 import Data.Deriving
 import Data.Foldable as Foldable
+import qualified Data.Vector as Vector
 import Data.Vector(Vector)
 
 import Effect
@@ -53,9 +54,9 @@ unSourceLoc :: Expr m v -> Expr m v
 unSourceLoc (SourceLoc _ e) = unSourceLoc e
 unSourceLoc e = e
 
-sourceLocView :: Expr m v -> (SourceLoc, Expr m v)
-sourceLocView (SourceLoc loc (unSourceLoc -> e)) = (loc, e)
-sourceLocView e = (noSourceLoc "sourceLocView", e)
+sourceLocView :: Expr m v -> (Maybe SourceLoc, Expr m v)
+sourceLocView (SourceLoc loc (sourceLocView -> (_, e))) = (Just loc, e)
+sourceLocView e = (Nothing, e)
 
 lam
   :: MonadContext (Expr meta Var) m
@@ -128,6 +129,7 @@ let_
   => Vector (Var, SourceLoc, Expr meta Var)
   -> Expr meta Var
   -> m (Expr meta Var)
+let_ ds body | Vector.null ds = return body
 let_ ds body = do
   context <- getContext
   let abstr = letAbstraction $ fst3 <$> ds

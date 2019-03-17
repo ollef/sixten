@@ -165,13 +165,18 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
           let resultMap = toHashMap $ (\(n, l, d, t) -> (n, (l, d, t))) <$> result
           return (resultMap, errs)
 
-  SimplifiedGroup names -> Task $ logCoreTerms logEnv_ "simplified" $ noError $ do
+  SimplifiedGroup names -> Task $ logCoreTerms logEnv_ "simplified" $ do
     defs <- fetch $ ElaboratedGroup names
-    return $ flip HashMap.map defs $ \(loc, ClosedDefinition def, Biclosed typ) ->
-      ( loc
-      , ClosedDefinition $ simplifyDef globTerm def
-      , Biclosed $ simplifyExpr globTerm 0 typ
-      )
+    withReportEnv $ \reportEnv_ ->
+      runVIX logEnv_ reportEnv_ $ withContextEnvT $
+        forM defs $ \(loc, ClosedDefinition def, Biclosed typ) -> do
+          def' <- simplifyDef globTerm def
+          typ' <- simplifyExpr globTerm typ
+          return
+            ( loc
+            , closeDefinition identity (panic "fetch SimplifiedGroup") def'
+            , biclose identity (panic "fetch SimplifiedGroup") typ'
+            )
     where
       globTerm x = not $ HashSet.member (gnameBaseName x) names
 
