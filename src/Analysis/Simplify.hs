@@ -11,6 +11,7 @@ import qualified Data.HashSet as HashSet
 import qualified Data.MultiSet as MultiSet
 import qualified Data.Vector as Vector
 
+import Analysis.Termination
 import qualified Builtin.Names as Builtin
 import Effect
 import qualified Effect.Context as Context
@@ -181,49 +182,3 @@ simplifyBranches glob (LitBranches lbrs def) =
   LitBranches
     <$> mapM (\(LitBranch l e) -> LitBranch l <$> simplifyExpr glob e) lbrs
     <*> simplifyExpr glob def
-
--- | Is it cost-free to duplicate this expression?
-duplicable :: Expr meta v -> Bool
-duplicable expr = case expr of
-  Var _ -> True
-  Meta _ _ -> False
-  Global _ -> True
-  Con _ -> True
-  Lit _ -> True
-  Pi {} -> True
-  Lam {} -> False
-  App {} -> False
-  Case {} -> False
-  Let {} -> False
-  ExternCode {} -> False
-  SourceLoc _ e -> duplicable e
-
-terminates :: (GName -> Bool) -> Expr meta v -> Bool
-terminates glob expr = case expr of
-  Var _ -> True
-  Meta _ _ -> False
-  Global n -> glob n
-  Con _ -> True
-  Lit _ -> True
-  Pi {} -> True
-  Lam {} -> True
-  App e1 _ e2 -> terminatesWhenCalled glob e1 && terminates glob e2
-  Case {} -> False
-  Let ds s -> all (terminates glob) (fromScope <$> letBodies ds) && terminates glob (fromScope s)
-  ExternCode {} -> False
-  SourceLoc _ e -> terminates glob e
-
-terminatesWhenCalled :: (GName -> Bool) -> Expr meta v -> Bool
-terminatesWhenCalled glob expr = case expr of
-  Var _ -> False
-  Meta _ _ -> False
-  Global _ -> False
-  Con _ -> True
-  Lit _ -> True
-  Pi {} -> True
-  Lam {} -> False
-  App {} -> False
-  Case {} -> False
-  Let ds s -> all (terminates glob) (fromScope <$> letBodies ds) && terminatesWhenCalled glob (fromScope s)
-  ExternCode {} -> False
-  SourceLoc _ e -> terminatesWhenCalled glob e

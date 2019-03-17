@@ -52,6 +52,7 @@ library
                        Analysis.Denat
                        Analysis.ReturnDirection
                        Analysis.Simplify
+                       Analysis.Termination
                        Backend.ClosureConvert
                        Backend.Compile
                        Backend.ExtractExtern
