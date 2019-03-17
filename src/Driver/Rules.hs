@@ -16,6 +16,7 @@ import Analysis.Cycle
 import Analysis.Denat
 import qualified Analysis.ReturnDirection as ReturnDirection
 import Analysis.Simplify
+import Analysis.Termination
 import Backend.ClosureConvert
 import qualified Backend.Compile
 import qualified Backend.ExtractExtern as ExtractExtern
@@ -230,6 +231,14 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
             ResolveNames.instances
               $ (\(n, loc, Closed def) -> (n, loc, def)) <$> flatModule
         return $ res <> mconcat dependencyInstances
+
+  InlinedDefinition name -> Task $ noError $ do
+    def <- fetchDefinition name
+    return $ case def of
+      ConstantDefinition Concrete e
+        | duplicable e -> Just $ biclose identity identity e
+      ConstantDefinition {} -> Nothing
+      DataDefinition _ _ -> Nothing
 
   ConstrIndex (QConstr typeName c) -> Task $ noError $ do
     def <- fetchDefinition $ gname typeName

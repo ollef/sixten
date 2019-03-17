@@ -63,6 +63,8 @@ data Query a where
   ClassMethods :: QName -> Query (Maybe [(Name, SourceLoc)])
   Instances :: ModuleName -> Query (MultiHashMap QName QName)
 
+  InlinedDefinition :: GName -> Query (Maybe (Biclosed Core.Expr))
+
   ConstrIndex :: QConstr -> Query (Maybe Integer)
 
   LambdaLifted :: BindingGroup -> Query [(GName, Closed (Sized.Definition Lifted.Expr))]

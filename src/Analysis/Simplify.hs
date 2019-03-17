@@ -13,6 +13,7 @@ import qualified Data.Vector as Vector
 
 import Analysis.Termination
 import qualified Builtin.Names as Builtin
+import Driver.Query
 import Effect
 import qualified Effect.Context as Context
 import Elaboration.Normalise
@@ -22,7 +23,7 @@ import Util
 import Util.Tsil(Tsil)
 import qualified Util.Tsil as Tsil
 
-type MonadSimplify m = (MonadFresh m, MonadContext (Expr Void Var) m)
+type MonadSimplify m = (MonadFetch Query m, MonadFresh m, MonadContext (Expr Void Var) m)
 
 simplifyDef
   :: MonadSimplify m
@@ -54,7 +55,13 @@ simplifyExpr glob expr = go Nothing expr mempty
       -> m (Expr Void Var)
     go mloc e@(Var _) es = done mloc e es
     go _ (Meta m _) _ = absurd m
-    go mloc e@(Global _) es = done mloc e es
+    go mloc e@(Global n) es
+      | glob n = do
+        me' <- fetch $ InlinedDefinition n
+        case me' of
+          Nothing -> done mloc e es
+          Just (Biclosed e') -> go mloc e' es
+      | otherwise = done mloc e es
     go mloc Builtin.Zero es = done mloc (Lit $ Natural 0) es
     go _ (Con Builtin.SuccConstr) ((mloc, Explicit, Lit (Natural n)):es) = done mloc (Lit $ Natural $ n + 1) es
     go mloc e@(Con _) es = done mloc e es
