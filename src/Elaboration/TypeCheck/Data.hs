@@ -79,7 +79,6 @@ checkConstrDef (ConstrDef c ctype) typeCon typeArgs = do
   logMeta "tc.def.constr" "checkConstrDef ctype" $ zonk ctype'
   (ctype'', sizes) <- go ctype'
   let size = foldl' productType (Core.MkType TypeRep.UnitRep) sizes
-  logMeta "tc.def.constr" "checkConstrDef size" $ zonk size
   return (ConstrDef c ctype'', size)
   where
     -- TODO: Check for escaping type variables and improve error message
