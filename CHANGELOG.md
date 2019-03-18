@@ -8,6 +8,7 @@
 - Started printing spans instead of just the start position of error locations.
 - Added support for boxed types (#138).
 - Started doing inlining of simple definitions during simplification.
+- Improved the generated case trees when pattern matching on literals.
 
 ### February
 - Added preliminary support for inductive families (#133).
