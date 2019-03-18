@@ -13,6 +13,7 @@ import Control.Monad
 import Control.Monad.Trans.Maybe
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.Text.Prettyprint.Doc as PP
@@ -362,17 +363,35 @@ splitLit
   -> Maybe SourceLoc
   -> (a -> Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
-splitLit config x lit typ loc k = do
+splitLit config x literal typ loc k = do
+
   let
-    litType = inferCoreLit lit
-  maybe identity located loc $ runUnify (unify [] litType typ) report
-  branch <- Context.set x (Core.Lit lit) $ match config k
+    findXMatch = listToMaybe . mapMaybe (\case
+      (x', Right lit, _, _) | x == x' -> Just lit
+      _ -> Nothing)
+    litsSet
+      = HashSet.fromList
+      $ (literal :)
+      $ catMaybes
+      $ takeWhile isJust
+      $ map (findXMatch . findConMatches . _matches)
+      $ drop 1
+      $ _clauses config
+    lits = toList litsSet
+
+  branches <- forM lits $ \lit -> do
+    let
+      litType = inferCoreLit lit
+    maybe identity located loc $ runUnify (unify [] litType typ) report
+    branch <- Context.set x (Core.Lit lit) $ match config k
+    return $ LitBranch lit branch
+
   defBranch <- match config
-    { _coveredLits = _coveredLits config <> HashSet.singleton (x, lit)
+    { _coveredLits = _coveredLits config <> toHashSet (HashSet.map ((,) x) litsSet)
     }
     k
   return
-    $ Core.Case (pure x) (LitBranches (pure $ LitBranch lit branch) defBranch)
+    $ Core.Case (pure x) (LitBranches (NonEmpty.fromList branches) defBranch)
     $ _targetType config
 
 splitEq
