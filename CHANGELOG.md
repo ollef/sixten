@@ -6,6 +6,8 @@
 - Added pattern exhaustiveness and redundancy checks.
 - Added support for forced patterns (sometimes called dot patterns) (#137).
 - Started printing spans instead of just the start position of error locations.
+- Added support for boxed types (#138).
+- Started doing inlining of simple definitions during simplification.
 
 ### February
 - Added preliminary support for inductive families (#133).
