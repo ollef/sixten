@@ -213,7 +213,7 @@ The `Ptr` type from the `Builtin` module is defined using `boxed`:
 
 ```haskell
 boxed
-type Ptr = Ref a
+type Ptr a = Ref a
 ```
 
 ## Planned features
