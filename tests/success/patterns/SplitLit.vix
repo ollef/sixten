@@ -1,0 +1,17 @@
+
+f : Int -> Bool -> Int
+f 0 True = 0
+f 1 True = 1
+f 2 True = 2
+f 3 True = 3
+f n True = n
+f 4 False = 4
+f 5 False = 5
+f 6 False = 6
+f n False = n
+
+g : Int -> Bool -> Int
+g 0 True = 0
+g 1 True = 1
+g 0 False = 2
+g 1 False = 3
