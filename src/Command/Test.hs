@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Command.Test where
 
@@ -46,23 +47,21 @@ optionsParser = uncurry Options
     )
 
 test :: Options -> IO ()
-test opts = Compile.compile (checkOptions opts) (compileOptions opts) True $ \mfp errs ->
-  case (mfp, errs) of
-    (Just fp, []) -> onCompileSuccess fp
-    _ -> onCompileError errs
+test opts = Compile.compile (checkOptions opts) (compileOptions opts) onCompileError $ \case
+  Just fp -> onCompileSuccess fp
+  Nothing -> failed "No unknown error" $ return ()
   where
-    onCompileError errs = case errs of
-      SyntaxError {}:_
+    onCompileError err = case err of
+      SyntaxError {}
         | expectSyntaxError opts -> success
-        | otherwise -> failed "No syntax error" $ mapM_ printError errs
-      TypeError {}:_
+        | otherwise -> failed "No syntax error" $ printError err
+      TypeError {}
         | expectTypeError opts -> success
-        | otherwise -> failed "No type error" $ mapM_ printError errs
-      CommandLineError {}:_
-        -> failed "No command-line error" $ mapM_ printError errs
-      InternalError {}:_
-        -> failed "No internal error" $ mapM_ printError errs
-      [] -> failed "No unknown error" (return ())
+        | otherwise -> failed "No type error" $ printError err
+      CommandLineError {}
+        -> failed "No command-line error" $ printError err
+      InternalError {}
+        -> failed "No internal error" $ printError err
     onCompileSuccess f
       | expectSyntaxError opts = failed "Syntax error" $ putText "Successful compilation"
       | expectTypeError opts = failed "Type error" $ putText "Successful compilation"

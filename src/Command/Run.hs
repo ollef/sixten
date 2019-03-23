@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 module Command.Run where
 
 import Prelude(String, words)
@@ -33,9 +34,14 @@ optionsParser = uncurry Options
     )
 
 run :: Options -> IO ()
-run opts = Compile.compile (checkOptions opts) (compileOptions opts) False $ \mfp errs -> do
-  mapM_ printError errs
-  case mfp of
+run opts = do
+  anyErrorsVar <- newMVar False
+  let
+    onError err =
+      modifyMVar_ anyErrorsVar $ \_ -> do
+        printError err
+        return True
+  Compile.compile (checkOptions opts) (compileOptions opts) onError $ \case
     Nothing -> exitFailure
     Just fp -> callProcess fp $ maybe [] words $ commandLineArguments opts
 

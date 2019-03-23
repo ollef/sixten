@@ -4,7 +4,6 @@ module Driver where
 
 import Protolude
 
-import qualified Data.Dependent.Map as DMap
 import qualified Data.Text.IO as Text
 import Rock
 import System.Directory
@@ -25,13 +24,12 @@ data Arguments = Arguments
   , target :: !Target
   , logHandle :: !Handle
   , logCategories :: !(Category -> Bool)
-  , silentErrors :: !Bool
+  , onError :: !(Error -> IO ())
   }
 
-execute :: Arguments -> Task Query a -> IO (a, [Error])
+execute :: Arguments -> Task Query a -> IO a
 execute args task = do
   startedVar <- newMVar mempty
-  errorsVar <- newMVar mempty
   printVar <- newMVar 0
   let
     logEnv_ = LogEnv
@@ -50,39 +48,32 @@ execute args task = do
             return $ n - 1)
         else
           identity
-    writeErrors _ [] = return ()
-    writeErrors key errs =
-      modifyMVar_ errorsVar $ pure . DMap.insert key (Const errs)
+    writeErrors _ errs =
+      forM_ errs $ onError args
     tasks
       = traceFetch_
       $ memoise startedVar
       $ writer writeErrors
       $ rules logEnv_ (sourceFiles args) (readSourceFile args) (target args)
-  res <- runTask sequentially tasks task
-  errorsMap <- readMVar errorsVar
-  let
-    errors = concat [errs | _ DMap.:=> Const errs <- DMap.toList errorsMap]
-  return (res, errors)
+  runTask sequentially tasks task
 
 checkFiles
   :: Arguments
-  -> IO [Error]
-checkFiles args = do
-  (_, errors) <- execute args $ fetch CheckAll
-  return errors
+  -> IO ()
+checkFiles args = void $ execute args $ fetch CheckAll
 
 executeVirtualFile
   :: FilePath
   -> Text
   -> Task Query a
-  -> IO (a, [Error])
+  -> IO a
 executeVirtualFile file text = execute Arguments
   { sourceFiles = pure file
   , readSourceFile = \file' -> if file == file' then return text else readFile file'
   , target = Target.defaultTarget
   , logHandle = stdout
   , Driver.logCategories = const False
-  , silentErrors = True
+  , onError = \_ -> return ()
   }
 
 data CompileResult = CompileResult
@@ -93,12 +84,12 @@ data CompileResult = CompileResult
 compileFiles
   :: Compile.Options
   -> Arguments
-  -> (FilePath -> [Error] -> IO a)
+  -> (FilePath -> IO a)
   -> IO a
 compileFiles opts args k =
   withOutputFile (Compile.maybeOutputFile opts) $ \outputFile -> do
-    ((), errors) <- execute args $ fetch $ CompileAll outputFile opts
-    k outputFile errors
+    execute args $ fetch $ CompileAll outputFile opts
+    k outputFile
   where
     withOutputFile Nothing k'
       = withTempFile "." "temp.exe" $ \outputFile outputFileHandle -> do

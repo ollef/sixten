@@ -1,4 +1,5 @@
-{-# LANGUAGE CPP, FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Command.Compile where
 
 import Protolude hiding ((<.>))
@@ -70,12 +71,14 @@ optionsParser = (,)
 compile
   :: Check.Options
   -> Options
-  -> Bool
-  -> (Maybe FilePath -> [Error] -> IO k)
+  -> (Error -> IO ())
+  -> (Maybe FilePath -> IO k)
   -> IO k
-compile checkOpts opts silent onResult
+compile checkOpts opts onError onResult
   = case maybe (Right Target.defaultTarget) Target.findTarget $ target opts of
-    Left err -> onResult Nothing $ pure err
+    Left err -> do
+      onError err
+      onResult Nothing
     Right tgt ->
       withLogHandle (Check.logFile checkOpts) $ \logHandle -> do
         sourceFiles <- Check.flattenDirectories $ Check.inputFiles checkOpts
@@ -86,9 +89,9 @@ compile checkOpts opts silent onResult
           , Driver.logHandle = logHandle
           , Driver.logCategories = \(Category c) ->
             any (`Text.isPrefixOf` c) (Check.logPrefixes checkOpts)
-          , Driver.silentErrors = silent
+          , Driver.onError = onError
           }
-          $ \result errs -> onResult (Just result) errs
+          $ onResult . Just
   where
     withLogHandle Nothing k = k stdout
     withLogHandle (Just file) k = Util.withFile file WriteMode k
@@ -96,8 +99,15 @@ compile checkOpts opts silent onResult
 command :: ParserInfo (IO ())
 command = go <$> optionsParserInfo
   where
-    go (checkOpts, opts) = compile checkOpts opts False $ \mfp errs -> do
-      mapM_ printError errs
-      case mfp of
-        Nothing -> exitFailure
-        Just _ -> exitSuccess
+    go (checkOpts, opts) = do
+      anyErrorsVar <- newMVar False
+      let
+        onError err =
+          modifyMVar_ anyErrorsVar $ \_ -> do
+            printError err
+            return True
+      compile checkOpts opts onError $ \mfp -> do
+        anyErrors <- readMVar anyErrorsVar
+        case (anyErrors, mfp) of
+          (False, Just _) -> exitSuccess
+          _ -> exitFailure

@@ -99,23 +99,26 @@ checkSimple
   -> IO (IO ())
 checkSimple opts = withLogHandle (logFile opts) $ \logHandle -> do
   sourceFiles <- flattenDirectories $ inputFiles opts
-  errors <- Driver.checkFiles Driver.Arguments
+  anyErrorsVar <- newMVar False
+  Driver.checkFiles Driver.Arguments
     { Driver.sourceFiles = sourceFiles
     , Driver.readSourceFile = readFile
     , Driver.target = Target.defaultTarget
     , Driver.logHandle = logHandle
     , Driver.logCategories = \(Category c) ->
       any (`Text.isPrefixOf` c) (logPrefixes opts)
-    , Driver.silentErrors = False
+    , Driver.onError = \err ->
+      modifyMVar_ anyErrorsVar $ \_ -> do
+        printError err
+        return True
     }
-  case errors of
-    [] -> do
-      putText "Type checking completed successfully"
-      pure exitSuccess
-    _ -> do
-      mapM_ printError errors
-      putText "Type checking failed"
-      pure exitFailure
+  anyErrors <- readMVar anyErrorsVar
+  if anyErrors then do
+    putText "Type checking failed"
+    pure exitFailure
+  else do
+    putText "Type checking completed successfully"
+    pure exitSuccess
   where
     withLogHandle Nothing k = k stdout
     withLogHandle (Just file) k = Util.withFile file WriteMode k

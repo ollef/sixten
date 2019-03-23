@@ -52,7 +52,7 @@ hover lf (LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) p@(LSP
   sendNotification lf "fileContents"
   let LSP.Uri uri_text = uri
   let uri_str = Text.unpack uri_text
-  ((types, typeOfErrs), errs) <- Driver.executeVirtualFile uri_str contents $ do
+  (types, typeOfErrs) <- Driver.executeVirtualFile uri_str contents $ do
     defs <- fetch CheckAll
     runHover $ do
       (span, expr) <- hoverDefs (inside line char)
@@ -62,7 +62,7 @@ hover lf (LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) p@(LSP
       typ <- typeOf' voidArgs expr
       ctx <- Context.getContext
       return (span, ctx, expr, typ)
-  sendNotification lf ("result " <> shower (typeOfErrs <> errs))
+  sendNotification lf ("result " <> shower typeOfErrs)
   return $ case types of
     [] -> Nothing
     _ -> do
