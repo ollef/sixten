@@ -124,7 +124,7 @@ optionsParserInfo :: ParserInfo ()
 optionsParserInfo = info (pure ())
   $ fullDesc
   <> progDesc "Start a language server"
-  <> header "sixten lsp"
+  <> header "sixten language-server"
 
 command :: ParserInfo (IO ())
 command = (\() -> server) <$> optionsParserInfo
