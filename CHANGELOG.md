@@ -9,6 +9,7 @@
 - Added support for boxed types (#138).
 - Started doing inlining of simple definitions during simplification.
 - Improved the generated case trees when pattern matching on literals.
+- Started reporting errors on the fly instead of at the end of type checking.
 
 ### February
 - Added preliminary support for inductive families (#133).
