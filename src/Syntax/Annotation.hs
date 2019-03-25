@@ -1,4 +1,9 @@
-{-# LANGUAGE DeriveGeneric, PatternSynonyms, PolyKinds, TypeFamilies, OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DeriveAnyClass #-}
 module Syntax.Annotation where
 
 import qualified Prelude(show)
@@ -13,14 +18,12 @@ class Eq a => PrettyAnnotation a where
   prettyAnnotationParens p = prettyAnnotation p . parens
 
 data Plicitness = Constraint | Implicit | Explicit
-  deriving (Eq, Ord, Generic)
+  deriving (Eq, Ord, Generic, Hashable)
 
 implicitise :: Plicitness -> Plicitness
 implicitise Constraint = Constraint
 implicitise Implicit = Implicit
 implicitise Explicit = Implicit
-
-instance Hashable Plicitness where
 
 instance Show Plicitness where
   show Constraint = "Co"
@@ -36,21 +39,21 @@ instance PrettyAnnotation Plicitness where
   prettyAnnotationParens Explicit = parens
 
 data Visibility = Private | Public
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 instance Pretty Visibility where
   prettyM Private = "private"
   prettyM Public = "public"
 
 data Abstract = Abstract | Concrete
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 instance Pretty Abstract where
   prettyM Abstract = "abstract"
   prettyM Concrete = "concrete"
 
 data Boxiness = Boxed | Unboxed
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 instance Pretty Boxiness where
   prettyM Boxed = "boxed"

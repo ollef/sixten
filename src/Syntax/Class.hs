@@ -1,4 +1,11 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, GADTs, OverloadedStrings, RankNTypes #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 module Syntax.Class where
 
 import Protolude
@@ -23,7 +30,7 @@ import Util
 data ClassDef typ v = ClassDef
   { classParams :: Telescope typ v
   , classMethods :: [Method (Scope TeleVar typ v)]
-  } deriving (Foldable, Functor, Show, Traversable)
+  } deriving (Foldable, Functor, Show, Traversable, Generic, Hashable)
 
 classDef
   :: (Monad typ, MonadContext (typ Var) m)
@@ -75,7 +82,7 @@ data Method expr = Method
   { methodName :: !Name
   , methodLoc :: !SourceLoc
   , methodExpr :: expr
-  } deriving (Foldable, Functor, Show, Traversable)
+  } deriving (Foldable, Functor, Show, Traversable, Generic, Hashable)
 
 instance (Eq1 typ, Monad typ, Pretty (typ v), v ~ Doc) => PrettyNamed (ClassDef typ v) where
   prettyNamed name (ClassDef ps ms) = "class" <+> name <+> withTeleHints ps (\ns ->

@@ -71,21 +71,21 @@ matchClauses vars preClauses typ k = do
 matchBranches
   :: CoreM
   -> CoreM
-  -> [(SourceLoc, Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr Var) NameHint, PatternScope Pre.Expr Var)]
+  -> Pre.Branches Pre.Expr Var
   -> Polytype
   -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
   -> Elaborate CoreM
-matchBranches (Core.varView -> Just var) exprType brs typ k =
+matchBranches (Core.varView -> Just var) exprType (Pre.Branches brs) typ k =
   matchWithCoverage "pattern" Config
     { _targetType = typ
     , _scrutinees = pure (pure var)
     , _clauses =
       [ Clause
-        { _matches = [Match (pure var) (Explicit, imap (\i _ -> PatternVar i) $ desugarPatLits pat) exprType $ Just loc]
+        { _matches = [Match (pure var) (Explicit, ifirst (\i _ -> PatternVar i) $ desugarPatLits pat) exprType $ Just loc]
         , _rhs = rhs
         , _data = loc
         }
-      | (loc, pat, rhs) <- brs
+      | Pre.Branch loc pat rhs <- brs
       ]
     , _coveredLits = mempty
     }
@@ -97,7 +97,7 @@ matchBranches expr exprType brs typ k =
 
 matchSingle
   :: Var
-  -> Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr Var) NameHint
+  -> Pat (HashSet QConstr) Pre.Literal NameHint (PatternScope Pre.Expr Var)
   -> PatternScope Pre.Expr Var
   -> Polytype
   -> (Pre.Expr Var -> Polytype -> Elaborate CoreM)
@@ -110,7 +110,7 @@ matchSingle v pat body typ k = do
     , _scrutinees = pure (pure v)
     , _clauses =
       [ Clause
-        { _matches = [Match (pure v) (Explicit, PatternVar . fst <$> indexed (desugarPatLits pat)) varType loc]
+        { _matches = [Match (pure v) (Explicit, ifirst (\i _ -> PatternVar i) (desugarPatLits pat)) varType loc]
         , _rhs = body
         , _data = fromMaybe (noSourceLoc "match") loc
         }
@@ -120,13 +120,13 @@ matchSingle v pat body typ k = do
     k
 
 desugarPatLits
-  :: Pat (HashSet QConstr) Pre.Literal typ v
-  -> Pat (HashSet QConstr) Core.Literal typ v
+  :: Pat (HashSet QConstr) Pre.Literal v typ
+  -> Pat (HashSet QConstr) Core.Literal v typ
 desugarPatLits = bindPatLits litPat
 
 -------------------------------------------------------------------------------
 
-type PrePat = Pat (HashSet QConstr) Core.Literal (PatternScope Pre.Type Var) PatternVar
+type PrePat = Pat (HashSet QConstr) Core.Literal PatternVar (PatternScope Pre.Type Var)
 
 data Config a = Config
   { _targetType :: CoreM
@@ -158,7 +158,7 @@ prettyMatch (Match expr (p, pat) typ _) = do
     ppat = pretty
       $ prettyAnnotation p
       $ prettyM
-      $ bimap (const ()) (\(PatternVar i) -> "α" <> pretty i) pat
+      $ bimap (\(PatternVar i) -> "α" <> pretty i) (const ()) pat
   ptype <- prettyMeta =<< zonk typ
   return $ pexpr <> " / " <> ppat <> " : " <> ptype
 
@@ -210,8 +210,8 @@ match config k = Log.indent $ do
         scrutinees <- mapM (runMaybeT . exprPattern) $ _scrutinees config
         let
           prettyScrutinees
-            = foreach (scrutinees :: Vector (Maybe (Pat QConstr Core.Literal Void Var)))
-            $ maybe "?" (prettyM . fmap (pure ("_" :: Doc)))
+            = foreach (scrutinees :: Vector (Maybe (Pat QConstr Core.Literal Var Void)))
+            $ maybe "?" (prettyM . first (pure ("_" :: Doc)))
         report
           $ TypeError "Non-exhaustive patterns" loc
           $ PP.vcat
@@ -248,7 +248,7 @@ match config k = Log.indent $ do
 
 exprPattern
   :: CoreM
-  -> MaybeT Elaborate (Pat QConstr Core.Literal void Var)
+  -> MaybeT Elaborate (Pat QConstr Core.Literal Var void)
 exprPattern expr = do
   expr' <- whnf expr
   case expr' of

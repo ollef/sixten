@@ -1,10 +1,18 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, OverloadedStrings #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Syntax.Sized.Definition where
 
 import Protolude
 
 import Bound hiding (Var)
 import Control.Monad.Morph
+import Data.Hashable.Lifted
 import Data.Vector(Vector)
 
 import Effect.Context as Context
@@ -17,21 +25,21 @@ import Syntax.Telescope
 
 data Function expr v
   = Function (Telescope expr v) (AnnoScope TeleVar expr v)
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  deriving (Eq, Foldable, Functor, Ord, Show, Traversable, Generic, Generic1, Hashable, Hashable1)
 
 newtype Constant expr v
   = Constant (Anno expr v)
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  deriving (Eq, Foldable, Functor, Ord, Show, Traversable, Generic, Generic1, Hashable, Hashable1)
 
 data IsClosure
   = NonClosure
   | IsClosure
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 data Definition expr v
   = FunctionDef Visibility IsClosure (Function expr v)
   | ConstantDef Visibility (Constant expr v)
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  deriving (Eq, Foldable, Functor, Ord, Show, Traversable, Generic, Generic1, Hashable, Hashable1)
 
 -------------------------------------------------------------------------------
 -- Helpers

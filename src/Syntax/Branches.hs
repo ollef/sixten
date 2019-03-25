@@ -1,4 +1,14 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, MonadComprehensions, Rank2Types, OverloadedStrings, TemplateHaskell #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE MonadComprehensions #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Syntax.Branches where
 
 import Protolude
@@ -10,6 +20,7 @@ import Data.Bifoldable
 import Data.Bitraversable
 import Data.Deriving
 import Data.Functor.Classes
+import Data.Hashable.Lifted
 import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Monoid as Monoid
@@ -28,12 +39,12 @@ import Util
 data Branches expr v
   = ConBranches [ConBranch expr v]
   | LitBranches (NonEmpty (LitBranch expr v)) (expr v)
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  deriving (Eq, Foldable, Functor, Ord, Show, Traversable, Generic, Hashable, Generic1, Hashable1)
 
 data ConBranch expr v = ConBranch QConstr (Telescope expr v) (Scope TeleVar expr v)
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  deriving (Eq, Foldable, Functor, Ord, Show, Traversable, Generic, Hashable, Generic1, Hashable1)
 data LitBranch expr v = LitBranch Literal (expr v)
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  deriving (Eq, Foldable, Functor, Ord, Show, Traversable, Generic, Hashable, Generic1, Hashable1)
 
 conBranch
   :: (Monad expr, MonadContext (expr Var) m)

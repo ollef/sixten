@@ -1,5 +1,7 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
@@ -13,6 +15,7 @@ import qualified Bound
 import Bound.Scope
 import Data.Deriving
 import Data.Functor.Classes
+import Data.Hashable.Lifted
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
@@ -21,7 +24,7 @@ import Syntax
 import Util
 
 data Anno e v = Anno (e v) (e v)
-  deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
+  deriving (Eq, Ord, Show, Functor, Foldable, Traversable, Generic, Generic1, Hashable, Hashable1)
 
 typeAnno :: Anno e v -> e v
 typeAnno (Anno _ t) = t
@@ -35,7 +38,7 @@ varAnno v = do
   return $ Anno (pure v) t
 
 data AnnoScope b e a = AnnoScope (Scope b e a) (Scope b e a)
-  deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
+  deriving (Eq, Ord, Show, Functor, Foldable, Traversable, Generic, Generic1, Hashable, Hashable1)
 
 type AnnoScope1 = AnnoScope ()
 

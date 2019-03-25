@@ -1,6 +1,9 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -16,6 +19,7 @@ import Control.Monad.Morph
 import Data.Bitraversable
 import Data.Deriving
 import Data.Functor.Classes
+import Data.Hashable.Lifted
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
@@ -30,19 +34,22 @@ import Syntax.NameHint
 import Util
 
 newtype LetVar = LetVar Int
-  deriving (Eq, Enum, Hashable, Ord, Show, Num)
+  deriving (Eq, Enum, Ord, Show, Generic)
+  deriving newtype (Num)
+  deriving anyclass (Hashable)
 
 unLetVar :: LetVar -> Int
 unLetVar (LetVar i) = i
 
 newtype LetRec expr v = LetRec (Vector (LetBinding expr v))
-  deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
+  deriving (Eq, Ord, Show, Foldable, Functor, Traversable, Generic, Generic1)
+  deriving anyclass (Hashable, Hashable1)
 
 unLetRec :: LetRec expr v -> Vector (LetBinding expr v)
 unLetRec (LetRec xs) = xs
 
 data LetBinding expr v = LetBinding !NameHint !SourceLoc !(Scope LetVar expr v) (expr v)
-  deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
+  deriving (Eq, Ord, Show, Foldable, Functor, Traversable, Generic, Hashable, Generic1, Hashable1)
 
 forLet
   :: LetRec expr v

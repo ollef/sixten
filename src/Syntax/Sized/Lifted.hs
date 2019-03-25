@@ -1,5 +1,7 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -13,6 +15,7 @@ module Syntax.Sized.Lifted where
 import Protolude hiding (Type, TypeRep)
 
 import Data.Deriving
+import Data.Hashable.Lifted
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
@@ -33,7 +36,7 @@ data Expr v
   | Let NameHint (Anno Expr v) (Scope1 Expr v)
   | Case (Anno Expr v) (Branches Expr v)
   | ExternCode (Extern (Anno Expr v)) (Type v)
-  deriving (Foldable, Functor, Traversable)
+  deriving (Foldable, Functor, Traversable, Generic, Generic1, Hashable, Hashable1)
 
 type Type = Expr
 
@@ -78,13 +81,6 @@ callsView _ = Nothing
 
 -------------------------------------------------------------------------------
 -- Instances
-deriveEq1 ''Expr
-deriveEq ''Expr
-deriveOrd1 ''Expr
-deriveOrd ''Expr
-deriveShow1 ''Expr
-deriveShow ''Expr
-
 instance Applicative Expr where
   pure = Var
   (<*>) = ap
@@ -131,3 +127,10 @@ instance v ~ Doc => Pretty (Expr v) where
       "of" <$$> Syntax.indent 2 (prettyM brs)
     ExternCode c retType ->
       parens `above` annoPrec $ prettyM c <+> ":" <+> prettyM retType
+
+deriveEq1 ''Expr
+deriveEq ''Expr
+deriveOrd1 ''Expr
+deriveOrd ''Expr
+deriveShow1 ''Expr
+deriveShow ''Expr

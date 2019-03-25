@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 module Backend.Generate.Submodule where
 
 import Protolude
@@ -13,5 +15,4 @@ data Submodule = Submodule
   , definitions :: [LLVM.Definition]
   , initCode :: Maybe LLVM.Operand
   , externs :: [(Language, Text)]
-  }
-
+  } deriving (Generic, Hashable)

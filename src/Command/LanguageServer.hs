@@ -33,11 +33,44 @@ sendNotification lf s = LSP.sendFunc lf
   $ LSP.NotificationMessage "2.0" LSP.WindowLogMessage
   $ LSP.LogMessageParams LSP.MtInfo s
 
+sendError :: LSP.LspFuncs () -> LSP.Uri -> Error -> IO ()
+sendError lf uri e =
+  LSP.sendFunc lf
+  $ LSP.NotPublishDiagnostics
+  $ LSP.NotificationMessage "2.0" LSP.TextDocumentPublishDiagnostics
+  $ LSP.PublishDiagnosticsParams uri
+  $ LSP.List [errorToDiagnostic e]
+
+errorToDiagnostic :: Error -> LSP.Diagnostic
+errorToDiagnostic err = LSP.Diagnostic
+  { _range = maybe
+    (LSP.Range (LSP.Position 0 0) (LSP.Position 0 0))
+    (spanToRange . sourceLocSpan)
+    (errorLocation err)
+  , _severity = Just LSP.DsError
+  , _code = Nothing
+  , _source = Just "Sixten"
+  , _message = showWide $ errorSummary err <> "\n" <> errorFootnote err
+  , _relatedInformation = Nothing
+  }
+
+spanToRange :: Span -> LSP.Range
+spanToRange span = LSP.Range
+  { _start = positionToPosition $ spanStart span
+  , _end = positionToPosition $ spanEnd span
+  }
+
+positionToPosition :: Position -> LSP.Position
+positionToPosition pos = LSP.Position
+  { _line = visualRow pos
+  , _character = visualColumn pos
+  }
+
 fileContents :: LSP.LspFuncs () -> LSP.Uri -> IO Text
 fileContents lf uri = do
   mvf <- LSP.getVirtualFileFunc lf uri
   case mvf of
-    Just (LSP.VirtualFile _ rope) -> return (Yi.toText rope)
+    Just (LSP.VirtualFile _ rope) -> return $ Yi.toText rope
     Nothing ->
       case LSP.uriToFilePath uri of
         Just fp -> Text.readFile fp
@@ -50,9 +83,11 @@ hover lf (LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) p@(LSP
   sendNotification lf (shower p)
   contents <- fileContents lf uri
   sendNotification lf "fileContents"
-  let LSP.Uri uri_text = uri
-  let uri_str = Text.unpack uri_text
-  (types, typeOfErrs) <- Driver.executeVirtualFile uri_str contents $ do
+  let
+    LSP.Uri uriText = uri
+    uriStr = Text.unpack uriText
+    onError_ = sendError lf uri
+  (types, typeOfErrs) <- Driver.executeVirtualFile uriStr contents onError_ $ do
     defs <- fetch CheckAll
     runHover $ do
       (span, expr) <- hoverDefs (inside line char)

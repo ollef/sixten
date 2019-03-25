@@ -1,4 +1,15 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, Rank2Types, OverloadedStrings #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE UndecidableInstances #-}
 module Syntax.Definition where
 
 import Protolude
@@ -6,7 +17,9 @@ import Protolude
 import Bound
 import Control.Monad.Morph
 import Data.Bitraversable
+import Data.Deriving
 import Data.Functor.Classes
+import Data.Hashable.Lifted
 
 import Pretty
 import Syntax.Annotation
@@ -16,9 +29,17 @@ import Syntax.GlobalBind
 data Definition expr v
   = ConstantDefinition Abstract (expr v)
   | DataDefinition (DataDef expr v) (expr v)
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  deriving (Eq, Ord, Show, Foldable, Functor, Traversable, Generic, Hashable, Generic1, Hashable1)
 
 newtype ClosedDefinition expr = ClosedDefinition { openDefinition :: forall a b. Definition (expr a) b }
+
+instance (Hashable1 (expr Void), Monad (expr Void)) => Hashable (ClosedDefinition expr) where
+  hashWithSalt s (ClosedDefinition d) =
+    hashWithSalt1 s (d :: Definition (expr Void) Void)
+
+instance (Eq1 (expr Void), Monad (expr Void)) => Eq (ClosedDefinition expr) where
+  ClosedDefinition d1 == ClosedDefinition d2 =
+    liftEq (==) (d1 :: Definition (expr Void) Void) d2
 
 closeDefinition
   :: Bifunctor expr
@@ -72,3 +93,12 @@ instance (Monad expr, Pretty (expr v), v ~ Doc, Eq1 expr) => PrettyNamed (Defini
 
 instance (Monad expr, Pretty (expr v), v ~ Doc, Eq1 expr) => Pretty (Definition expr v) where
   prettyM = prettyNamed "_"
+
+return []
+
+instance (Eq1 typ, Monad typ) => Eq1 (Definition typ) where
+  liftEq = $(makeLiftEq ''Definition)
+instance (Ord1 typ, Monad typ) => Ord1 (Definition typ) where
+  liftCompare = $(makeLiftCompare ''Definition)
+instance (Show1 typ, Monad typ) => Show1 (Definition typ) where
+  liftShowsPrec = $(makeLiftShowsPrec ''Definition)

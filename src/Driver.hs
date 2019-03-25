@@ -65,15 +65,16 @@ checkFiles args = void $ execute args $ fetch CheckAll
 executeVirtualFile
   :: FilePath
   -> Text
+  -> (Error -> IO ())
   -> Task Query a
   -> IO a
-executeVirtualFile file text = execute Arguments
+executeVirtualFile file text onError_ = execute Arguments
   { sourceFiles = pure file
   , readSourceFile = \file' -> if file == file' then return text else readFile file'
   , target = Target.defaultTarget
   , logHandle = stdout
   , Driver.logCategories = const False
-  , onError = \_ -> return ()
+  , onError = onError_
   }
 
 data CompileResult = CompileResult

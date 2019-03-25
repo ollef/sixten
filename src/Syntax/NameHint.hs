@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 module Syntax.NameHint where
 
 import Protolude
@@ -9,7 +11,7 @@ import Syntax.Name
 data NameHint
   = NoHint
   | NameHint !Name
-  deriving Show
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 instance Semigroup NameHint where
   m@NameHint {} <> _ = m
@@ -19,12 +21,6 @@ instance Semigroup NameHint where
 instance Monoid NameHint where
   mempty = NoHint
   mappend = (<>)
-
-instance Eq NameHint where
-  _ == _ = True
-
-instance Ord NameHint where
-  compare _ _ = EQ
 
 instance IsString NameHint where
   fromString = NameHint . fromString

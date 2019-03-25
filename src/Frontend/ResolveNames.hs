@@ -296,7 +296,7 @@ resolveExpr expr = case expr of
           let ds' = Vector.fromList ds
               abstr = letAbstraction $ fromName . fst . snd <$> ds'
           Scoped.Let
-            ((\(loc, (name, def)) -> (loc, fromName name, Scoped.abstractConstantDef abstr def)) <$> ds')
+            (Scoped.LetRec $ (\(loc, (name, def)) -> Scoped.LetBinding loc (fromName name) $ Scoped.abstractConstantDef abstr def) <$> ds')
             (abstract abstr e)
 
     return $ foldr go body' $ flattenSCC <$> sortedDefs
@@ -315,8 +315,8 @@ resolveExpr expr = case expr of
         (Scoped.Lit $ Literal.String $ shower $ pretty e)
 
 resolvePat
-  :: Pat PreName Scoped.Literal Unscoped.Expr PreName
-  -> ResolveNames (Pat (HashSet QConstr) Scoped.Literal (Scoped.Expr PreName) PreName)
+  :: Pat PreName Scoped.Literal PreName Unscoped.Expr
+  -> ResolveNames (Pat (HashSet QConstr) Scoped.Literal PreName (Scoped.Expr PreName))
 resolvePat pat = case pat of
   VarPat v -> do
     constrCandidates <- asks (($ v) . scopeConstrs)

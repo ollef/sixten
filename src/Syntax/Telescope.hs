@@ -1,15 +1,17 @@
-{-# LANGUAGE
-  DeriveFoldable,
-  DeriveFunctor,
-  DeriveTraversable,
-  FlexibleContexts,
-  GADTs,
-  GeneralizedNewtypeDeriving,
-  OverloadedStrings,
-  Rank2Types,
-  TemplateHaskell,
-  ViewPatterns
- #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
 module Syntax.Telescope where
 
 import Protolude
@@ -24,6 +26,7 @@ import Data.Deriving
 import qualified Data.Foldable as Foldable
 import Data.Function
 import Data.Functor.Classes
+import Data.Hashable.Lifted
 import Data.List(groupBy)
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
@@ -40,19 +43,21 @@ import Syntax.NameHint
 import Util
 
 newtype TeleVar = TeleVar Int
-  deriving (Eq, Enum, Hashable, Ord, Show, Num)
+  deriving stock (Eq, Ord, Show)
+  deriving newtype (Enum, Num, Hashable)
 
 unTeleVar :: TeleVar -> Int
 unTeleVar (TeleVar i) = i
 
 newtype Telescope expr v = Telescope (Vector (TeleBinding expr v))
-  deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
+  deriving (Eq, Ord, Show, Foldable, Functor, Traversable, Generic, Generic1)
+  deriving anyclass (Hashable, Hashable1)
 
 unTelescope :: Telescope expr v -> Vector (TeleBinding expr v)
 unTelescope (Telescope xs) = xs
 
 data TeleBinding expr v = TeleBinding !NameHint !Plicitness !(Scope TeleVar expr v)
-  deriving (Eq, Ord, Show, Foldable, Functor, Traversable)
+  deriving (Eq, Ord, Show, Foldable, Functor, Traversable, Generic, Hashable, Generic1, Hashable1)
 
 bindingTelescope
   :: (Monad e, Eq v, Hashable v)

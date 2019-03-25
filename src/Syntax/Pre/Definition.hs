@@ -1,12 +1,22 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, FlexibleInstances, GADTs, OverloadedStrings, TemplateHaskell #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Syntax.Pre.Definition where
 
 import Protolude
 
 import qualified Bound
-import Data.Bitraversable
+import Data.Bifoldable
 import Data.Deriving
 import Data.Functor.Classes
+import Data.Hashable.Lifted
 import Data.HashSet(HashSet)
 import Data.List.NonEmpty(NonEmpty)
 import qualified Data.Vector as Vector
@@ -14,24 +24,23 @@ import Data.Vector(Vector)
 
 import Syntax hiding (Definition(..))
 import qualified Syntax.Pre.Literal as Pre
-import Util
 
 data Definition expr v
   = ConstantDefinition (ConstantDef expr v)
   | DataDefinition (DataDef expr v)
   | ClassDefinition (ClassDef expr v)
   | InstanceDefinition (InstanceDef expr v)
-  deriving (Foldable, Functor, Show, Traversable)
+  deriving (Foldable, Functor, Show, Traversable, Generic, Hashable)
 
 data Clause expr v = Clause
   { clauseLocation :: !SourceLoc
-  , clausePatterns :: Vector (Plicitness, Pat (HashSet QConstr) Pre.Literal (Scope PatternVar expr v) NameHint)
+  , clausePatterns :: Vector (Plicitness, Pat (HashSet QConstr) Pre.Literal NameHint (Scope PatternVar expr v))
   , clauseScope :: Scope PatternVar expr v
-  } deriving Show
+  } deriving (Show, Generic, Hashable, Generic1, Hashable1, Eq)
 
 data ConstantDef expr v
   = ConstantDef Abstract (NonEmpty (Clause expr v)) (Maybe (expr v))
-  deriving (Foldable, Functor, Show, Traversable)
+  deriving (Foldable, Functor, Show, Traversable, Generic, Hashable, Generic1, Hashable1, Eq)
 
 instantiateLetConstantDef
   :: Monad expr
@@ -66,7 +75,7 @@ instantiateClause
   => (b -> expr v)
   -> Clause expr (Bound.Var b v)
   -> Clause expr v
-instantiateClause f (Clause loc pats s) = Clause loc (fmap (first go) <$> pats) (go s)
+instantiateClause f (Clause loc pats s) = Clause loc (fmap (second go) <$> pats) (go s)
   where
     go = (>>>= unvar f pure)
 
@@ -75,7 +84,7 @@ abstractClause
   => (v -> Maybe b)
   -> Clause expr v
   -> Clause expr (Bound.Var b v)
-abstractClause f (Clause loc pats s) = Clause loc (fmap (first $ fmap go) <$> pats) (go <$> s)
+abstractClause f (Clause loc pats s) = Clause loc (fmap (second $ fmap go) <$> pats) (go <$> s)
   where
     go v = case f v of
       Nothing -> F v
@@ -84,7 +93,7 @@ abstractClause f (Clause loc pats s) = Clause loc (fmap (first $ fmap go) <$> pa
 data InstanceDef expr v = InstanceDef
   { instanceType :: expr v
   , instanceMethods :: [Method (ConstantDef expr v)]
-  } deriving (Foldable, Functor, Show, Traversable)
+  } deriving (Foldable, Functor, Show, Traversable, Generic, Hashable)
 
 -------------------------------------------------------------------------------
 -- Instances
@@ -93,7 +102,7 @@ instance Traversable expr => Functor (Clause expr) where
 instance Traversable expr => Foldable (Clause expr) where
   foldMap = foldMapDefault
 instance Traversable expr => Traversable (Clause expr) where
-  traverse f (Clause loc pats s) = Clause loc <$> traverse (traverse $ bitraverse (traverse f) pure) pats <*> traverse f s
+  traverse f (Clause loc pats s) = Clause loc <$> traverse (traverse $ traverse $ traverse f) pats <*> traverse f s
 
 instance Bound Definition where
   ConstantDefinition d >>>= f = ConstantDefinition $ d >>>= f
@@ -116,23 +125,24 @@ instance GBound ConstantDef where
 $(return mempty)
 
 instance (Eq1 expr, Monad expr) => Eq1 (Clause expr) where
-  liftEq f (Clause _ ps1 s1) (Clause _ ps2 s2)
-    = liftEq (\(p1, pat1) (p2, pat2) -> p1 == p2 && liftPatEq (==) (==) (liftEq f) (==) pat1 pat2) ps1 ps2
-    && liftEq f s1 s2
+  liftEq = $(makeLiftEq ''Clause)
+
+instance (Show1 expr, Monad expr) => Show1 (Clause expr) where
+  liftShowsPrec = $(makeLiftShowsPrec ''Clause)
 
 instance Bound Clause where
-  Clause loc pats s >>>= f = Clause loc (fmap (first (>>>= f)) <$> pats) (s >>>= f)
+  Clause loc pats s >>>= f = Clause loc (fmap (fmap (>>>= f)) <$> pats) (s >>>= f)
 
 instance GBound Clause where
-  gbound f (Clause loc pats s) = Clause loc (fmap (first $ gbound f) <$> pats) (gbound f s)
+  gbound f (Clause loc pats s) = Clause loc (fmap (fmap $ gbound f) <$> pats) (gbound f s)
 
 instance (Pretty (expr v), Monad expr, v ~ Doc)
   => PrettyNamed (Clause expr v) where
   prettyNamed name (Clause _ pats s)
-    = withNameHints (toVector . snd =<< pats) $ \ns -> do
+    = withNameHints (bifoldMap pure mempty . snd =<< pats) $ \ns -> do
       let go (p, pat)
             = prettyAnnotation p
-            $ prettyM $ first (instantiatePattern (pure . fromName) ns) pat
+            $ prettyM $ fmap (instantiatePattern (pure . fromName) ns) pat
       prettyApps name (go <$> renamePatterns ns pats)
         <+> "=" <+> prettyM (instantiatePattern (pure . fromName) ns s)
 
@@ -156,6 +166,9 @@ instance (Pretty (expr v), Monad expr, v ~ Doc)  => PrettyNamed (ConstantDef exp
 
 instance (Eq1 expr, Monad expr) => Eq1 (ConstantDef expr) where
   liftEq = $(makeLiftEq ''ConstantDef)
+
+instance (Show1 expr, Monad expr) => Show1 (ConstantDef expr) where
+  liftShowsPrec = $(makeLiftShowsPrec ''ConstantDef)
 
 instance Bound InstanceDef where
   InstanceDef typ ms >>>= f = InstanceDef (typ >>= f) $ fmap (>>>= f) <$> ms

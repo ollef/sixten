@@ -1,5 +1,7 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -8,6 +10,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -18,6 +21,7 @@ import Protolude hiding (Type, TypeRep)
 import Data.Bifoldable
 import Data.Bitraversable
 import Data.Deriving
+import Data.Hashable.Lifted
 import Data.Foldable as Foldable
 import qualified Data.Vector as Vector
 import Data.Vector(Vector)
@@ -224,6 +228,11 @@ deriveOrd1 ''Expr
 deriveOrd ''Expr
 deriveShow1 ''Expr
 deriveShow ''Expr
+
+deriving instance Generic (Expr m v)
+deriving instance (Hashable m, Hashable v) => Hashable (Expr m v)
+deriving instance Generic1 (Expr m)
+deriving instance Hashable m => Hashable1 (Expr m)
 
 instance Applicative (Expr m) where
   pure = return

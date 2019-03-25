@@ -1,29 +1,36 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, OverloadedStrings, TemplateHaskell #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Syntax.Extern where
 
 import Protolude
 
-import Data.Text(Text)
 import Data.Deriving
+import Data.Hashable.Lifted
+import Data.Text(Text)
 
 import Pretty
 
 data Language = C
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 data Extern a = Extern Language [ExternPart a]
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  deriving (Eq, Foldable, Functor, Ord, Show, Traversable, Generic, Hashable, Generic1, Hashable1)
 
 data TargetMacro
   = PointerAlignment
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 data ExternPart a
   = ExternPart Text
   | ExprMacroPart a
   | TypeMacroPart a
   | TargetMacroPart TargetMacro
-  deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  deriving (Eq, Foldable, Functor, Ord, Show, Traversable, Generic, Hashable, Generic1, Hashable1)
 
 deriveEq1 ''ExternPart
 deriveOrd1 ''ExternPart

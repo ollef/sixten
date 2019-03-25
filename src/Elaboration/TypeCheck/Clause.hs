@@ -3,7 +3,7 @@ module Elaboration.TypeCheck.Clause where
 
 import Protolude hiding (tails)
 
-import Data.Foldable as Foldable
+import Data.Bifoldable
 import Data.HashSet(HashSet)
 import Data.List.NonEmpty(NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
@@ -118,12 +118,12 @@ equaliseClauses clauses
     (\(loc, (p, pat)) s -> etaClause loc p pat s)
     (NonEmpty.zip
       (Pre.clauseLocation <$> clauses)
-      (go (Vector.toList . Pre.clausePatterns <$> clauses)))
+      (go (toList . Pre.clausePatterns <$> clauses)))
     (Pre.clauseScope <$> clauses)
   where
     go
-      :: NonEmpty [(Plicitness, Pat c l (Scope b expr v) NameHint)]
-      -> NonEmpty ([(Plicitness, Pat c l (Scope b expr v) NameHint)], [Plicitness])
+      :: NonEmpty [(Plicitness, Pat c l NameHint (Scope b expr v))]
+      -> NonEmpty ([(Plicitness, Pat c l NameHint (Scope b expr v))], [Plicitness])
     go clausePats
       | numEx == 0 && numIm == 0 = (, mempty) <$> clausePats
       | numEx == len = NonEmpty.zipWith (first . (:)) heads $ go tails
@@ -138,15 +138,15 @@ equaliseClauses clauses
         tails = drop 1 <$> clausePats
         len = length clausePats
     go'
-      :: NonEmpty ([(Plicitness, Pat c l (Scope b expr v) NameHint)], [Plicitness])
-      -> NonEmpty ([(Plicitness, Pat c l (Scope b expr v) NameHint)], [Plicitness])
+      :: NonEmpty ([(Plicitness, Pat c l NameHint (Scope b expr v))], [Plicitness])
+      -> NonEmpty ([(Plicitness, Pat c l NameHint (Scope b expr v))], [Plicitness])
     go' clausePats
       = NonEmpty.zipWith
         (\ps (pats, ps') -> (pats, ps ++ ps'))
         (snd <$> clausePats)
         (go $ fst <$> clausePats)
 
-    numExplicit, numImplicit :: NonEmpty [(Plicitness, Pat c l (Scope b expr v) NameHint)] -> Int
+    numExplicit, numImplicit :: NonEmpty [(Plicitness, Pat c l NameHint (Scope b expr v))] -> Int
     numExplicit = length . NonEmpty.filter (\case
       (Explicit, _):_ -> True
       _ -> False)
@@ -156,8 +156,8 @@ equaliseClauses clauses
       _ -> False)
 
     addImplicit, addExplicit
-      :: [(Plicitness, Pat c l (Scope b expr v) NameHint)]
-      -> ([(Plicitness, Pat c l (Scope b expr v) NameHint)], [Plicitness])
+      :: [(Plicitness, Pat c l NameHint (Scope b expr v))]
+      -> ([(Plicitness, Pat c l NameHint (Scope b expr v))], [Plicitness])
     addImplicit pats@((Implicit, _):_) = (pats, mempty)
     addImplicit pats = ((Implicit, WildcardPat) : pats, mempty)
 
@@ -166,7 +166,7 @@ equaliseClauses clauses
 
 etaClause
   :: SourceLoc
-  -> [(Plicitness, Pat (HashSet QConstr) Pre.Literal (Scope PatternVar Pre.Expr v) NameHint)]
+  -> [(Plicitness, Pat (HashSet QConstr) Pre.Literal NameHint (Scope PatternVar Pre.Expr v))]
   -> [Plicitness]
   -> Scope PatternVar Pre.Expr v
   -> Pre.Clause Pre.Expr v
@@ -177,6 +177,6 @@ etaClause loc pats extras (Scope scope)
     $ Scope
     $ Pre.apps scope vs
   where
-    numBindings = length $ concat $ Foldable.toList . snd <$> pats
+    numBindings = length $ concat $ bifoldMap pure mempty . snd <$> pats
     numExtras = length extras
     vs = zip extras $ pure . B . PatternVar <$> [numBindings - numExtras ..]

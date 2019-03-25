@@ -1,4 +1,13 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, FlexibleContexts, GADTs, OverloadedStrings, RankNTypes #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Syntax.Data where
 
 import Protolude
@@ -7,7 +16,9 @@ import Bound hiding (Var)
 import Bound.Scope
 import Control.Monad.Morph
 import Data.Bitraversable
+import Data.Deriving
 import Data.Functor.Classes
+import Data.Hashable.Lifted
 import Data.Vector(Vector)
 
 import Effect.Context as Context
@@ -22,7 +33,7 @@ data DataDef typ v = DataDef
   { dataBoxiness :: !Boxiness
   , dataParams :: Telescope typ v
   , dataConstructors :: [ConstrDef (Scope TeleVar typ v)]
-  } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  } deriving (Eq, Ord, Show, Foldable, Functor, Traversable, Generic, Hashable, Generic1, Hashable1)
 
 dataDef
   :: (Monad typ, MonadContext (typ Var) m)
@@ -86,7 +97,7 @@ constrNames = map constrName . dataConstructors
 data ConstrDef typ = ConstrDef
   { constrName :: Constr
   , constrType :: typ
-  } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
+  } deriving (Eq, Foldable, Functor, Ord, Show, Traversable, Generic, Hashable, Generic1, Hashable1)
 
 instance (v ~ Doc, Pretty (typ v), Monad typ, Eq1 typ) => PrettyNamed (DataDef typ v) where
   prettyNamed name (DataDef b ps cs) = withTeleHints ps $ \ns -> do
@@ -96,3 +107,13 @@ instance (v ~ Doc, Pretty (typ v), Monad typ, Eq1 typ) => PrettyNamed (DataDef t
 
 instance Pretty typ => Pretty (ConstrDef typ) where
   prettyM (ConstrDef n t) = prettyM n <+> ":" <+> prettyM t
+
+deriveEq1 ''ConstrDef
+deriveOrd1 ''ConstrDef
+deriveShow1 ''ConstrDef
+instance (Eq1 typ, Monad typ) => Eq1 (DataDef typ) where
+  liftEq = $(makeLiftEq ''DataDef)
+instance (Ord1 typ, Monad typ) => Ord1 (DataDef typ) where
+  liftCompare = $(makeLiftCompare ''DataDef)
+instance (Show1 typ, Monad typ) => Show1 (DataDef typ) where
+  liftShowsPrec = $(makeLiftShowsPrec ''DataDef)

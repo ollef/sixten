@@ -8,6 +8,7 @@ import Protolude
 
 import Bound
 import Bound.Var
+import Data.Bitraversable
 import Control.Monad.Trans.Control
 import Data.Bifoldable
 import Data.HashMap.Lazy(HashMap)
@@ -27,6 +28,8 @@ import qualified Data.Vector.Generic as GVector
 import qualified Data.Vector.Generic.Base as BVector
 import qualified Data.Vector.Generic.Mutable as MVector
 import System.IO
+
+import Util.Orphans()
 
 type Scope1 = Scope ()
 
@@ -90,6 +93,14 @@ indexed x = evalState (traverse go x) 0
       put $! i + 1
       return (i, a)
 
+firstIndexed :: Bitraversable f => f a b -> f (Int, a) b
+firstIndexed x = evalState (bitraverse go pure x) 0
+  where
+    go a = do
+      i <- get
+      put $! i + 1
+      return (i, a)
+
 itraverse :: (Applicative m, Traversable t) => (Int -> a -> m b) -> t a -> m (t b)
 itraverse f = traverse (uncurry f) . indexed
 
@@ -98,6 +109,9 @@ iforM = flip itraverse
 
 imap :: Traversable t => (Int -> a -> b) -> t a -> t b
 imap f = fmap (uncurry f) . indexed
+
+ifirst :: Bitraversable t => (Int -> a -> a') -> t a b -> t a' b
+ifirst f = first (uncurry f) . firstIndexed
 
 ifor :: Traversable t => t a -> (Int -> a -> b) -> t b
 ifor = flip imap

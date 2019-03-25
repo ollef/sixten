@@ -1,5 +1,7 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -13,6 +15,7 @@ module Syntax.Sized.Extracted where
 import Protolude hiding (Type, TypeRep)
 
 import Data.Deriving
+import Data.Hashable.Lifted
 import Data.HashMap.Lazy(HashMap)
 import Data.Text(Text)
 import Data.Vector(Vector)
@@ -33,7 +36,7 @@ data Expr v
   | PrimCall (Maybe Language) RetDir (Expr v) (Vector (Direction, Anno Expr v))
   | Let NameHint (Anno Expr v) (Scope1 Expr v)
   | Case (Anno Expr v) (Branches Expr v)
-  deriving (Foldable, Functor, Traversable)
+  deriving (Foldable, Functor, Traversable, Generic, Generic1, Hashable, Hashable1)
 
 type Type = Expr
 
@@ -41,13 +44,13 @@ data Declaration = Declaration
   { declName :: Name
   , declRetDir :: RetDir
   , declArgDirs :: Vector Direction
-  } deriving (Eq, Ord, Show)
+  } deriving (Eq, Ord, Show, Generic, Hashable)
 
 data Extracted = Extracted
   { extractedExternDecls :: [Declaration]
   , extractedExterns :: [(Language, Text)]
   , extractedSignatures :: HashMap GName (Signature ReturnIndirect)
-  } deriving (Eq, Ord, Show)
+  } deriving (Eq, Ord, Show, Generic, Hashable)
 
 -------------------------------------------------------------------------------
 -- Helpers
@@ -70,13 +73,6 @@ typeDir _ = Indirect
 
 -------------------------------------------------------------------------------
 -- Instances
-deriveEq1 ''Expr
-deriveEq ''Expr
-deriveOrd1 ''Expr
-deriveOrd ''Expr
-deriveShow1 ''Expr
-deriveShow ''Expr
-
 instance Applicative Expr where
   pure = Var
   (<*>) = ap
@@ -126,3 +122,10 @@ instance Semigroup Extracted where
 
 instance Monoid Extracted where
   mempty = Extracted mempty mempty mempty
+
+deriveEq1 ''Expr
+deriveEq ''Expr
+deriveOrd1 ''Expr
+deriveOrd ''Expr
+deriveShow1 ''Expr
+deriveShow ''Expr

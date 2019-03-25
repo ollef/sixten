@@ -1,3 +1,4 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Util.MultiHashMap where
 
 import Protolude
@@ -9,7 +10,7 @@ import qualified Data.HashSet as HashSet
 import qualified Data.Maybe as Maybe
 
 newtype MultiHashMap k v = MultiHashMap { toMap :: HashMap k (HashSet v) }
-  deriving (Eq, Show)
+  deriving (Eq, Hashable, Show)
 
 instance (Eq k, Hashable k, Eq v, Hashable v) => Semigroup (MultiHashMap k v) where
   (<>) = union
@@ -42,18 +43,6 @@ lookup
   -> MultiHashMap k v
   -> HashSet v
 lookup k (MultiHashMap m) = HashMap.lookupDefault mempty k m
-
-lookupDefault
-  :: (Eq k, Hashable k)
-  => HashSet v
-  -> k
-  -> MultiHashMap k v
-  -> HashSet v
-lookupDefault d k (MultiHashMap m) = case HashMap.lookup k m of
-  Nothing -> d
-  Just s
-    | HashSet.null s -> d
-    | otherwise -> s
 
 union
   :: (Eq k, Hashable k, Eq v, Hashable v)

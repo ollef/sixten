@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 module Syntax.ModuleHeader where
 
 import Protolude hiding (moduleName)
@@ -12,12 +14,12 @@ data ModuleHeader = ModuleHeader
   { moduleName :: !ModuleName
   , moduleExposedNames :: ExposedNames
   , moduleImports :: [Import]
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic, Hashable)
 
 data ExposedNames
   = Exposed (HashSet Name) -- TODO allow qualified names
   | AllExposed
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Hashable)
 
 noneExposed :: ExposedNames
 noneExposed = Exposed mempty
@@ -26,7 +28,7 @@ data Import = Import
   { importModule :: !ModuleName
   , importAlias :: !ModuleName
   , importExposedNames :: !ExposedNames
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic, Hashable)
 
 moduleDependencyOrder
   :: Foldable t

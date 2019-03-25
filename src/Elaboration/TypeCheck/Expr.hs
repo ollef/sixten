@@ -3,10 +3,7 @@ module Elaboration.TypeCheck.Expr where
 
 import Protolude
 
-import qualified Bound
-import Data.HashSet(HashSet)
 import Data.IORef
-import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
@@ -26,7 +23,6 @@ import Elaboration.TypeCheck.Literal
 import Elaboration.Unify
 import Syntax
 import qualified Syntax.Core as Core
-import qualified Syntax.Pre.Literal as Pre
 import qualified Syntax.Pre.Scoped as Pre
 import Util
 
@@ -201,13 +197,13 @@ tcRho expr expected expectedAppResult = case expr of
     <$> tcRho e expected expectedAppResult
 
 tcLet
-  :: Vector (SourceLoc, NameHint, Pre.ConstantDef Pre.Expr (Bound.Var LetVar Var))
+  :: Pre.LetRec Pre.Expr Var
   -> Scope LetVar Pre.Expr Var
   -> Expected Rhotype
   -> Maybe Rhotype
   -> Elaborate CoreM
-tcLet ds scope expected expectedAppResult = do
-  bindingDefs <- forM ds $ \(loc, h, def) -> do
+tcLet (Pre.LetRec ds) scope expected expectedAppResult = do
+  bindingDefs <- forM ds $ \(Pre.LetBinding loc h def) -> do
     typ <- existsType h
     return (binding h Explicit typ, loc, def)
 
@@ -238,7 +234,7 @@ tcLet ds scope expected expectedAppResult = do
 
 tcBranches
   :: PreM
-  -> [(SourceLoc, Pat (HashSet QConstr) Pre.Literal (PatternScope Pre.Expr Var) NameHint, PatternScope Pre.Expr Var)]
+  -> Pre.Branches Pre.Expr Var
   -> Expected Rhotype
   -> Maybe Rhotype
   -> Elaborate CoreM

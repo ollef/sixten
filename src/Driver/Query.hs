@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneDeriving #-}
@@ -84,6 +85,43 @@ deriving instance Show (Query a)
 
 deriveGEq ''Query
 deriveGCompare ''Query
+
+instance HashTag Query where
+  hashTagged query = case query of
+    Files {} -> hash
+    File {} -> hash
+    Driver.Query.Target {} -> hash
+    Builtins {} -> hash
+    ParsedModule {} -> hash
+    ModuleHeaders {} -> hash
+    ModuleFiles {} -> hash
+    ModuleFile {} -> hash
+    DupCheckedModule {} -> hash
+    ModuleExports {} -> hash
+    ResolvedModule {} -> hash
+    ResolvedBindingGroups {} -> hash
+    BindingGroupMap {} -> hash
+    BindingGroup {} -> hash
+    ElaboratedGroup {} -> hash
+    SimplifiedGroup {} -> hash
+    Type {} -> hash
+    Definition {} -> hash
+    QConstructor {} -> hash
+    ClassMethods {} -> hash
+    Instances {} -> hash
+    InlinedDefinition {} -> hash
+    ConstrIndex {} -> hash
+    LambdaLifted {} -> hash
+    RuntimeDefinitions {} -> hash
+    ConvertedSignatures {} -> hash
+    ConvertedSignature {} -> hash
+    Converted {} -> hash
+    DirectionSignatures {} -> hash
+    DirectionSignature {} -> hash
+    Extracted {} -> hash
+    GeneratedSubmodules {} -> hash
+    CheckAll {} -> hash
+    CompileAll {} -> hash
 
 -- Derived queries
 fetchModuleHeader :: MonadFetch Query m => FilePath -> m ModuleHeader

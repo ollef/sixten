@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Backend.Target where
 
@@ -17,7 +19,7 @@ data Target = Target
   { architecture :: String
   , ptrBytes :: !Word32 -- ^ The number of bytes in a pointer.
   , ptrAlign :: !Word32 -- ^ The alignment of a pointer.
-  } deriving (Eq, Ord, Show)
+  } deriving (Eq, Ord, Show, Generic, Hashable)
 
 x86 :: Target
 x86 = Target

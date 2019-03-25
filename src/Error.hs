@@ -1,4 +1,8 @@
-{-# LANGUAGE GADTs, OverloadedStrings, PatternSynonyms #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 module Error where
 
 import Protolude hiding (TypeError)
@@ -19,6 +23,9 @@ data SourceLoc = SourceLocation
   , sourceLocSource :: Text
   , sourceLocHighlights :: Highlights
   } deriving (Eq, Ord, Show)
+
+instance Hashable SourceLoc where
+  hashWithSalt salt (SourceLocation f s _ _) = salt `hashWithSalt` f `hashWithSalt` s
 
 noSourceLoc :: FilePath -> SourceLoc
 noSourceLoc fp = SourceLocation
@@ -58,7 +65,7 @@ data ErrorKind
   | TypeErrorKind
   | CommandLineErrorKind
   | InternalErrorKind
-  deriving Show
+  deriving (Eq, Show, Generic, Hashable)
 
 instance Pretty ErrorKind where
   pretty SyntaxErrorKind = "Syntax error"
@@ -72,6 +79,13 @@ data Error = Error
   , errorLocation :: !(Maybe SourceLoc)
   , errorFootnote :: !Doc
   } deriving Show
+
+-- TODO remove
+instance Hashable Error where
+  hashWithSalt s (Error k _ l _) = s `hashWithSalt` k `hashWithSalt` l
+
+instance Eq Error where
+  Error k1 _ l1 _ == Error k2 _ l2 _ = k1 == k2 && l1 == l2
 
 {-# COMPLETE SyntaxError, TypeError, CommandLineError, InternalError #-}
 pattern SyntaxError :: Doc -> Maybe SourceLoc -> Doc -> Error
