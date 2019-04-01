@@ -85,7 +85,7 @@ Vector (Succ n) A = Pair A (Vector n A)
 
 boxed
 type Array A where
-  MkArray : (n : Nat) -> (Vector n A) -> Array A
+  MkArray : (n : Nat) -> Vector n A -> Array A
 
 Byte : Type
 Byte = MkType 1
