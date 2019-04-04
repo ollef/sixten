@@ -5,7 +5,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-module Command.LanguageServer.Hover where
+module LanguageServer.Hover where
 
 import Protolude
 
@@ -39,16 +39,16 @@ data HoverEnv = HoverEnv
 makeLenses ''HoverEnv
 
 instance HasFreshEnv HoverEnv where
-  freshEnv = Command.LanguageServer.Hover.freshEnv
+  freshEnv = LanguageServer.Hover.freshEnv
 
 instance HasContext (Expr Void Var) HoverEnv where
-  context = Command.LanguageServer.Hover.context
+  context = LanguageServer.Hover.context
 
 instance HasLogEnv HoverEnv where
-  logEnv = Command.LanguageServer.Hover.logEnv
+  logEnv = LanguageServer.Hover.logEnv
 
 instance HasReportEnv HoverEnv where
-  reportEnv = Command.LanguageServer.Hover.reportEnv
+  reportEnv = LanguageServer.Hover.reportEnv
 
 newtype Hover a = Hover { unHover :: ListT (ReaderT HoverEnv (Task Query)) a }
   deriving (Functor, Applicative, Alternative, Monad, MonadIO, Semigroup, Monoid, MonadContext (Expr Void Var), MonadFresh, MonadLog, MonadReport, MonadFetch Query)

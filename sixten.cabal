@@ -70,7 +70,6 @@ library
                        Command.Compile
                        Command.Compile.Options
                        Command.LanguageServer
-                       Command.LanguageServer.Hover
                        Command.Run
                        Command.Test
                        Driver
@@ -104,6 +103,8 @@ library
                        Frontend.DupCheck
                        Frontend.Parse
                        Frontend.ResolveNames
+                       LanguageServer
+                       LanguageServer.Hover
                        Paths_sixten
                        Pretty
                        Syntax
