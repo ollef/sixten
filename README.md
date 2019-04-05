@@ -218,7 +218,6 @@ type Ptr a = Ref a
 
 ## Planned features
 
-* Editor integration (there's already Vim syntax highlighting though!!)
 * Records
 * Effects and IO
 * Standard library
@@ -372,6 +371,53 @@ To build Sixten programs, you'll need:
   to look for these.
 * The Boehm–Demers–Weiser garbage collector library.
 * pkg-config (used to find the Boehm–Demers–Weiser GC library).
+
+### Editor integration
+
+#### Language server
+
+The compiler has a work-in-progress language server.
+
+To install it, set up your editor's language client to use the command
+`sixten language-server`.
+
+The language server currently has the following limitations:
+
+* Only diagnostic reporting and hovering is supported.
+* Hovering only works in certain contexts.
+* Only single file projects are supported.
+* Everything is recompiled on each save.
+
+#### Vim
+
+Here's how to set up Sixten with
+[LanguageClient-neovim](https://github.com/autozimu/LanguageClient-neovim/)
+using
+[vim-plug](https://github.com/junegunn/vim-plug):
+:
+
+
+```viml
+Plug 'autozimu/LanguageClient-neovim', {
+  \ 'branch': 'next',
+  \ 'do': './install.sh'
+  \ }
+
+let g:LanguageClient_serverCommands = {
+  \ 'sixten': ['~/.local/bin/sixten', 'language-server']
+  \ }
+```
+
+The above assumes that the `sixten` binary is installed locally in
+`~/.local/bin`.
+
+There are syntax highlighting definitions in the `vim` directory of the
+repository. To install it using
+[vim-plug](https://github.com/junegunn/vim-plug), use:
+
+```viml
+Plug 'ollef/sixten', { 'rtp': 'vim' }
+```
 
 ### Bash command completion
 
