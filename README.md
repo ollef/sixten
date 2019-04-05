@@ -374,9 +374,7 @@ To build Sixten programs, you'll need:
 
 ### Editor integration
 
-#### Language server
-
-The compiler has a work-in-progress language server.
+The compiler has a work-in-progress language server following the [Language Server Protocol](https://langserver.org/).
 
 To install it, set up your editor's language client to use the command
 `sixten language-server`.
@@ -398,11 +396,16 @@ using
 
 
 ```viml
+" Language client plugin
 Plug 'autozimu/LanguageClient-neovim', {
   \ 'branch': 'next',
   \ 'do': './install.sh'
   \ }
 
+" Syntax highlighting and filetype detection
+Plug 'ollef/sixten', { 'rtp': 'vim' }
+
+" Use the Sixten language server for vix files
 let g:LanguageClient_serverCommands = {
   \ 'sixten': ['~/.local/bin/sixten', 'language-server']
   \ }
@@ -410,14 +413,6 @@ let g:LanguageClient_serverCommands = {
 
 The above assumes that the `sixten` binary is installed locally in
 `~/.local/bin`.
-
-There are syntax highlighting definitions in the `vim` directory of the
-repository. To install it using
-[vim-plug](https://github.com/junegunn/vim-plug), use:
-
-```viml
-Plug 'ollef/sixten', { 'rtp': 'vim' }
-```
 
 ### Bash command completion
 
