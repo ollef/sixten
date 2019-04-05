@@ -2,6 +2,9 @@
 
 ## 2019
 
+### April
+- Added rudimentary support for reporting errors through the language server.
+
 ### March
 - Added pattern exhaustiveness and redundancy checks.
 - Added support for forced patterns (sometimes called dot patterns) (#137).
