@@ -392,8 +392,6 @@ Here's how to set up Sixten with
 [LanguageClient-neovim](https://github.com/autozimu/LanguageClient-neovim/)
 using
 [vim-plug](https://github.com/junegunn/vim-plug):
-:
-
 
 ```viml
 " Language client plugin
