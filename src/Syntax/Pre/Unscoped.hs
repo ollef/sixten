@@ -11,18 +11,22 @@ import Protolude hiding (Type)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.List.NonEmpty(NonEmpty)
 import Data.Vector(Vector)
+import qualified Text.Parsix as Parsix
 
 import Syntax hiding (Definition)
 import qualified Syntax.Pre.Literal as Pre
 
-data Expr
+data Expr = Located !SourceLoc Expr'
+  deriving (Show, Generic, Hashable)
+
+data Expr'
   = Var PreName
   | Lit Pre.Literal
-  | Pi !Plicitness (Pat PreName Pre.Literal PreName Type) Expr
-  | Lam !Plicitness (Pat PreName Pre.Literal PreName Type) Expr
-  | App Expr !Plicitness Expr
-  | Let (Vector (SourceLoc, ConstantDef Expr)) Expr
-  | Case Expr [(SourceLoc, Pat PreName Pre.Literal PreName Type, Expr)]
+  | Pi !Plicitness (Pat PreName Pre.Literal PreName Type) !Expr
+  | Lam !Plicitness (Pat PreName Pre.Literal PreName Type) !Expr
+  | App !Expr !Plicitness !Expr
+  | Let (Vector (SourceLoc, ConstantDef Expr)) !Expr
+  | Case !Expr [(SourceLoc, Pat PreName Pre.Literal PreName Type, Expr)]
   | ExternCode (Extern Expr)
   | Wildcard
   | SourceLoc !SourceLoc Type
@@ -61,13 +65,13 @@ data Clause e
 -------------------------------------------------------------------------------
 -- Smart constructors
 pis
-  :: [(Plicitness, Pat PreName Pre.Literal PreName Type)]
+  :: [(Parsix.Position, Plicitness, Pat PreName Pre.Literal PreName Type)]
   -> Expr
   -> Expr
 pis ps e = foldr (uncurry Pi) e ps
 
 lams
-  :: [(Plicitness, Pat PreName Pre.Literal PreName Type)]
+  :: [(Parsix.Position, Plicitness, Pat PreName Pre.Literal PreName Type)]
   -> Expr
   -> Expr
 lams ps e = foldr (uncurry Lam)  e ps

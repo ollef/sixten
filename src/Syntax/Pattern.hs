@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -27,15 +28,17 @@ import Syntax.Annotation
 import Syntax.Name
 import Util
 
-data Pat con lit b typ
+data Pat con lit b typ = LocatedPat !SourceLoc (Pat' con lit b typ)
+  deriving (Eq, Foldable, Functor, Show, Traversable, Generic, Hashable, Generic1, Hashable1)
+
+data Pat' con lit b typ
   = VarPat b
   | WildcardPat
   | LitPat lit
   | ConPat con (Vector (Plicitness, Pat con lit b typ))
-  | AnnoPat (Pat con lit b typ) typ
-  | ViewPat typ (Pat con lit b typ)
-  | ForcedPat typ
-  | PatLoc !SourceLoc (Pat con lit b typ)
+  | AnnoPat !(Pat con lit b typ) !typ
+  | ViewPat !typ !(Pat con lit b typ)
+  | ForcedPat !typ
   deriving (Eq, Foldable, Functor, Show, Traversable, Generic, Hashable, Generic1, Hashable1)
 
 type PatternScope = Scope PatternVar
@@ -50,26 +53,22 @@ unPatternVar (PatternVar i) = i
 -------------------------------------------------------------------------------
 -- Helpers
 patternHint :: Monoid b => Pat con lit b typ -> b
-patternHint (unPatLoc -> VarPat b) = b
+patternHint (LocatedPat _ (VarPat b)) = b
 patternHint _ = mempty
 
-unPatLoc :: Pat con lit typ b -> Pat con lit typ b
-unPatLoc (PatLoc _ p) = unPatLoc p
-unPatLoc p = p
-
 bindPatLits
-  :: (lit -> Pat con lit' b typ)
+  :: (lit -> Pat' con lit' b typ)
   -> Pat con lit b typ
   -> Pat con lit' b typ
-bindPatLits f pat = case pat of
-  VarPat v -> VarPat v
-  WildcardPat -> WildcardPat
-  LitPat l -> f l
-  ConPat c ps -> ConPat c (second (bindPatLits f) <$> ps)
-  AnnoPat p t -> AnnoPat (bindPatLits f p) t
-  ViewPat e p -> ViewPat e (bindPatLits f p)
-  ForcedPat t -> ForcedPat t
-  PatLoc loc p -> PatLoc loc (bindPatLits f p)
+bindPatLits f (LocatedPat loc pat) =
+  LocatedPat loc $ case pat of
+    VarPat v -> VarPat v
+    WildcardPat -> WildcardPat
+    LitPat l -> f l
+    ConPat c ps -> ConPat c (second (bindPatLits f) <$> ps)
+    AnnoPat p t -> AnnoPat (bindPatLits f p) t
+    ViewPat e p -> ViewPat e (bindPatLits f p)
+    ForcedPat t -> ForcedPat t
 
 patternAbstraction
   :: (Eq b, Hashable b)
@@ -112,15 +111,15 @@ instance Bifunctor (Pat con lit) where bimap = bimapDefault
 instance Bifoldable (Pat con lit) where bifoldMap = bifoldMapDefault
 
 instance Bitraversable (Pat con lit) where
-  bitraverse f g pat = case pat of
-    VarPat b -> VarPat <$> f b
-    WildcardPat -> pure WildcardPat
-    LitPat l -> pure $ LitPat l
-    ConPat c pats -> ConPat c <$> traverse (traverse (bitraverse f g)) pats
-    AnnoPat p t -> AnnoPat <$> bitraverse f g p <*> g t
-    ViewPat t p -> ViewPat <$> g t <*> bitraverse f g p
-    ForcedPat t -> ForcedPat <$> g t
-    PatLoc loc p -> PatLoc loc <$> bitraverse f g p
+  bitraverse f g (LocatedPat loc pat) =
+    LocatedPat loc <$> case pat of
+      VarPat b -> VarPat <$> f b
+      WildcardPat -> pure WildcardPat
+      LitPat l -> pure $ LitPat l
+      ConPat c pats -> ConPat c <$> traverse (traverse (bitraverse f g)) pats
+      AnnoPat p t -> AnnoPat <$> bitraverse f g p <*> g t
+      ViewPat t p -> ViewPat <$> g t <*> bitraverse f g p
+      ForcedPat t -> ForcedPat <$> g t
 
 prettyPattern
   :: (Pretty con, Pretty lit, Pretty typ)
@@ -130,7 +129,7 @@ prettyPattern
 prettyPattern names = prettyM . first ((names Vector.!) . fst) . firstIndexed
 
 instance (Pretty con, Pretty lit, Pretty typ, Pretty b) => Pretty (Pat con lit b typ) where
-  prettyM pat = case pat of
+  prettyM (LocatedPat _ pat) = case pat of
     VarPat b -> prettyM b
     WildcardPat -> "_"
     LitPat l -> prettyM l
@@ -140,8 +139,10 @@ instance (Pretty con, Pretty lit, Pretty typ, Pretty b) => Pretty (Pat con lit b
     ViewPat t p -> parens `above` arrPrec $
       prettyM t <+> "->" <+> prettyM p
     ForcedPat t -> prettyTightApp "~" $ prettyM t
-    PatLoc _ p -> prettyM p
 
+deriveEq1 ''Pat'
+deriveOrd1 ''Pat'
+deriveShow1 ''Pat'
 deriveEq1 ''Pat
 deriveOrd1 ''Pat
 deriveShow1 ''Pat
