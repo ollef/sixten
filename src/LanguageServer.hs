@@ -43,7 +43,7 @@ run = do
     )
     (handlers $ atomically . writeTQueue messageQueue)
     options
-    (Just "sixten-lsp.log")
+    Nothing -- (Just "sixten-lsp.log")
   return ()
 
 handlers :: (LSP.FromClientMessage -> IO ()) -> LSP.Handlers
@@ -80,16 +80,18 @@ messagePump lf receiveMessage = do
         sendNotification lf "messagePump: processing NotDidOpenTextDocument"
         let
           document = notification ^. LSP.params . LSP.textDocument . LSP.uri
+          version = notification ^. LSP.params . LSP.textDocument . LSP.version
           fileName = LSP.uriToFilePath document
         sendNotification lf $ "fileName = " <> show fileName
-        sendDiagnostics lf state document
+        sendDiagnostics lf state document $ Just version
 
       LSP.NotDidChangeTextDocument notification -> do
         let
           document = notification ^. LSP.params . LSP.textDocument . LSP.uri
-        (_version, _newFileContents) <- fileContents lf document
+          version = notification ^. LSP.params . LSP.textDocument . LSP.version
 
         sendNotification lf $ "messagePump:processing NotDidChangeTextDocument: uri=" <> show document
+        sendDiagnostics lf state document version
 
       LSP.NotDidSaveTextDocument notification -> do
         sendNotification lf "messagePump: processing NotDidSaveTextDocument"
@@ -97,7 +99,7 @@ messagePump lf receiveMessage = do
           document = notification ^. LSP.params . LSP.textDocument . LSP.uri
           fileName = LSP.uriToFilePath document
         sendNotification lf $ "fileName = " <> show fileName
-        sendDiagnostics lf state document
+        sendDiagnostics lf state document Nothing
 
       LSP.ReqHover req -> do
         sendNotification lf $ "messagePump: HoverRequest: " <> show req
@@ -154,17 +156,27 @@ messagePump lf receiveMessage = do
         return ()
 
 -------------------------------------------------------------------------------
-sendDiagnostics :: LSP.LspFuncs () -> DriverState -> LSP.Uri -> IO ()
-sendDiagnostics lf state document = do
-  (version, contents) <- fileContents lf document
-  let
-    LSP.Uri uriText = document
-    uriStr = Text.unpack uriText
+sendDiagnostics
+  :: LSP.LspFuncs ()
+  -> DriverState
+  -> LSP.Uri
+  -> LSP.TextDocumentVersion
+  -> IO ()
+sendDiagnostics lf state document version = do
+  (currentVersion, contents) <- fileContents lf document
+  case (version, currentVersion) of
+    (Just v, Just cv)
+      | v < cv ->
+        return ()
+    _ -> do
+      let
+        LSP.Uri uriText = document
+        uriStr = Text.unpack uriText
 
-  (_, errors) <- Driver.incrementallyExecuteVirtualFile state uriStr contents $ fetch CheckAll
+      (_, errors) <- Driver.incrementallyExecuteVirtualFile state uriStr contents $ fetch CheckAll
 
-  LSP.publishDiagnosticsFunc lf (length errors) document version
-    $ LSP.partitionBySource $ errorToDiagnostic <$> errors
+      LSP.publishDiagnosticsFunc lf (length errors) document version
+        $ LSP.partitionBySource $ errorToDiagnostic <$> errors
 
 -------------------------------------------------------------------------------
 sendNotification :: LSP.LspFuncs () -> Text -> IO ()

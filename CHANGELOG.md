@@ -6,6 +6,7 @@
 - Added rudimentary support for reporting errors through the language server.
 - Improved parse error recovery around top-level definitions.
 - Made the language server use incremental compilation, reusing compilation results between changes when it can.
+- Made the language server type check on every change, instead of on every save.
 
 ### March
 - Added pattern exhaustiveness and redundancy checks.

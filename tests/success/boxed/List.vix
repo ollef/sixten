@@ -6,3 +6,6 @@ map f Nil = Nil
 map f (Cons a as) = Cons (f a) (map f as)
 
 main = map printInt (Cons 1 (Cons 2 (Cons 3 Nil)))
+
+test : Int
+test = addInt 123 223
