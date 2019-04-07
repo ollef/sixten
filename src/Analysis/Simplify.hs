@@ -63,7 +63,7 @@ simplifyExpr glob expr = go Nothing expr mempty
           Just (Biclosed e') -> go mloc e' es
       | otherwise = done mloc e es
     go mloc Builtin.Zero es = done mloc (Lit $ Natural 0) es
-    go _ (Con Builtin.SuccConstr) ((mloc, Explicit, Lit (Natural n)):es) = done mloc (Lit $ Natural $ n + 1) es
+    go mloc (Con Builtin.SuccConstr) ((mloc', Explicit, Lit (Natural n)):es) = done (mloc <|> mloc') (Lit $ Natural $ n + 1) es
     go mloc e@(Con _) es = done mloc e es
     go mloc e@(Lit _) es = done mloc e es
     go mloc (Pi h p t s) es = do
