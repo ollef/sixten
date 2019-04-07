@@ -126,6 +126,12 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
         | bindingGroup <- resolvedModule
         ]
 
+  ResolvedBindingGroup moduleName_ names -> Task $ noError $ do
+    bindingGroups <- fetch $ ResolvedBindingGroups moduleName_
+    return
+      $ fromMaybe (panic "No such binding group")
+      $ HashMap.lookup names bindingGroups
+
   BindingGroupMap moduleName_ -> Task $ noError $ do
     bindingGroupsMap <- fetch $ ResolvedBindingGroups moduleName_
     return
@@ -151,23 +157,21 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
     builtins <- fetch Builtins
     case traverse (\qn -> (,) (gname qn) <$> HashMap.lookup qn builtins) $ toList names of
       Just results -> return (HashMap.fromList results, [])
-      Nothing -> case toList names of
-        [] -> return mempty
-        name:_ -> do
-          let moduleName_ = qnameModule name
-          bindingGroups <- fetch $ ResolvedBindingGroups moduleName_
-          let
-            bindingGroup
-              = fromMaybe (panic "No such binding group")
-              $ HashMap.lookup names bindingGroups
-          (result, errs) <- withReportEnv $ \reportEnv_ ->
-            runVIX logEnv_ reportEnv_ $ do
-              result <- TypeCheck.runElaborate moduleName_
-                $ TypeCheck.checkAndGeneraliseTopLevelDefs
-                $ toVector bindingGroup
-              cycleCheck result
-          let resultMap = toHashMap $ (\(n, l, d, t) -> (n, (l, d, t))) <$> result
-          return (resultMap, errs)
+      Nothing ->
+        case toList names of
+          [] -> return mempty
+          name:_  -> do
+            let
+              moduleName_ = qnameModule name
+            bindingGroup <- fetch $ ResolvedBindingGroup moduleName_ names
+            (result, errs) <- withReportEnv $ \reportEnv_ ->
+              runVIX logEnv_ reportEnv_ $ do
+                result <- TypeCheck.runElaborate moduleName_
+                  $ TypeCheck.checkAndGeneraliseTopLevelDefs
+                  $ toVector bindingGroup
+                cycleCheck result
+            let resultMap = toHashMap $ (\(n, l, d, t) -> (n, (l, d, t))) <$> result
+            return (resultMap, errs)
 
   SimplifiedGroup names -> Task $ logCoreTerms logEnv_ "simplified" $ do
     defs <- fetch $ ElaboratedGroup names

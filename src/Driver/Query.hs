@@ -52,6 +52,7 @@ data Query a where
   ModuleExports :: ModuleName -> Query (HashSet QName, HashSet QConstr)
   ResolvedModule :: ModuleName -> Query ResolvedModule
   ResolvedBindingGroups :: ModuleName -> Query (HashMap BindingGroup ResolvedBindingGroup)
+  ResolvedBindingGroup :: ModuleName -> BindingGroup -> Query ResolvedBindingGroup
   BindingGroupMap :: ModuleName -> Query (HashMap QName BindingGroup)
   BindingGroup :: QName -> Query BindingGroup
   ElaboratedGroup :: BindingGroup -> Query ElaboratedGroup
@@ -100,6 +101,7 @@ instance HashTag Query where
     ModuleExports {} -> hash
     ResolvedModule {} -> hash
     ResolvedBindingGroups {} -> hash
+    ResolvedBindingGroup {} -> hash
     BindingGroupMap {} -> hash
     BindingGroup {} -> hash
     ElaboratedGroup {} -> hash
