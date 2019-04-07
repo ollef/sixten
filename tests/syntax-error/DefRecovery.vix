@@ -1,0 +1,5 @@
+test = 610
+
+test2
+
+main = printInt test

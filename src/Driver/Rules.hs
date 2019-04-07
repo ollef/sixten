@@ -68,7 +68,10 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
       Left err -> do
         let mh = ModuleHeader "Main" noneExposed mempty
         return ((mh, mempty), pure err)
-      Right a -> return (a, mempty)
+      Right (moduleHeader, errDefs) -> do
+        let
+          (errs, defs) = partitionEithers errDefs
+        return ((moduleHeader, defs), errs)
 
   ModuleHeaders -> Task $ do
     fileNames <- fetch Files

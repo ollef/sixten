@@ -164,17 +164,17 @@ p <**>% q = p <**> (sameLineOrIndented >> q)
 
 -------------------------------------------------------------------------------
 -- * Error recovery
-recover :: (Error -> a) -> Parsix.ErrorInfo -> Parser a
-recover k errInfo = do
+recover :: (Error -> a) -> Parsix.ErrorInfo -> Parsix.Position -> Parser a
+recover k errInfo pos = do
   (loc, _) <- located skipToAnchorLevel
   let reason = pretty $ fromMaybe mempty $ Parsix.errorInfoReason errInfo
       expected = case Set.toList $ Parsix.errorInfoExpected errInfo of
         [] -> mempty
         xs -> "expected:" PP.<+> PP.hsep (PP.punctuate PP.comma $ PP.pretty <$> xs)
-  return $ k $ SyntaxError reason (Just loc) expected
+  return $ k $ SyntaxError reason (Just loc { sourceLocSpan = Parsix.Span pos pos }) expected
 
 skipToAnchorLevel :: Parser ()
-skipToAnchorLevel = Parsix.skipMany (sameLineOrIndented >> Parsix.anyChar)
+skipToAnchorLevel = Parsix.token $ Parsix.skipSome (sameLineOrIndented >> Parsix.anyChar)
 
 -------------------------------------------------------------------------------
 -- * Tokens
@@ -416,8 +416,10 @@ literal
 -------------------------------------------------------------------------------
 -- * Definitions
 -- | A definition or type declaration on the top-level
-def :: Parser (SourceLoc, Pre.Definition)
-def = located
+def :: Parser (Either Error (SourceLoc, Pre.Definition))
+def = Parsix.withRecovery (recover Left)
+  $ fmap Right
+  $ located
   $ dataDef
   <|> classDef
   <|> instanceDef
@@ -471,7 +473,7 @@ instanceDef = InstanceDefinition <$ reserved "instance" <*>% exprWithoutWhere
 
 -------------------------------------------------------------------------------
 -- * Module
-modul :: Parser (ModuleHeader, [(SourceLoc, Pre.Definition)])
+modul :: Parser (ModuleHeader, [(Either Error (SourceLoc, Pre.Definition))])
 modul = Parsix.whiteSpace >> dropAnchor
   ((,) <$> moduleHeader <*> manySameCol (dropAnchor def))
 
