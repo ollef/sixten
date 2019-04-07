@@ -3,7 +3,7 @@
 {-# LANGUAGE DisambiguateRecordFields #-}
 module LanguageServer where
 
-import Protolude hiding (handle)
+import Protolude hiding (state)
 
 import Control.Concurrent.STM as STM
 import Control.Lens hiding (unsnoc)
@@ -48,7 +48,8 @@ run = do
 
 handlers :: (LSP.FromClientMessage -> IO ()) -> LSP.Handlers
 handlers sendMessage = def
-  { LSP.hoverHandler = Just $ sendMessage . LSP.ReqHover
+  { LSP.initializedHandler = Just $ sendMessage . LSP.NotInitialized
+  , LSP.hoverHandler = Just $ sendMessage . LSP.ReqHover
   , LSP.didOpenTextDocumentNotificationHandler = Just $ sendMessage . LSP.NotDidOpenTextDocument
   , LSP.didSaveTextDocumentNotificationHandler = Just $ sendMessage . LSP.NotDidSaveTextDocument
   , LSP.didChangeTextDocumentNotificationHandler = Just $ sendMessage . LSP.NotDidChangeTextDocument
@@ -67,107 +68,103 @@ options = def
   }
 
 messagePump :: LSP.LspFuncs () -> IO LSP.FromClientMessage -> IO ()
-messagePump lf receiveMessage = forever $ do
-  message <- receiveMessage
-  case message of
-    LSP.NotDidOpenTextDocument notification -> do
-      sendNotification lf "messagePump: processing NotDidOpenTextDocument"
-      let
-        document = notification ^. LSP.params . LSP.textDocument . LSP.uri
-        fileName = LSP.uriToFilePath document
-      sendNotification lf $ "fileName = " <> show fileName
-      sendDiagnostics lf document
+messagePump lf receiveMessage = do
+  state <- Driver.initialState
+  forever $ do
+    message <- receiveMessage
+    case message of
+      LSP.NotInitialized _ ->
+        return ()
 
-    LSP.NotDidChangeTextDocument notification -> do
-      let
-        document = notification ^. LSP.params . LSP.textDocument . LSP.uri
-      (_version, _newFileContents) <- fileContents lf document
+      LSP.NotDidOpenTextDocument notification -> do
+        sendNotification lf "messagePump: processing NotDidOpenTextDocument"
+        let
+          document = notification ^. LSP.params . LSP.textDocument . LSP.uri
+          fileName = LSP.uriToFilePath document
+        sendNotification lf $ "fileName = " <> show fileName
+        sendDiagnostics lf state document
 
-      sendNotification lf $ "messagePump:processing NotDidChangeTextDocument: uri=" <> show document
+      LSP.NotDidChangeTextDocument notification -> do
+        let
+          document = notification ^. LSP.params . LSP.textDocument . LSP.uri
+        (_version, _newFileContents) <- fileContents lf document
 
-    LSP.NotDidSaveTextDocument notification -> do
-      sendNotification lf "messagePump: processing NotDidSaveTextDocument"
-      let
-        document = notification ^. LSP.params . LSP.textDocument . LSP.uri
-        fileName = LSP.uriToFilePath document
-      sendNotification lf $ "fileName = " <> show fileName
-      sendDiagnostics lf document
+        sendNotification lf $ "messagePump:processing NotDidChangeTextDocument: uri=" <> show document
 
-    LSP.ReqHover req -> do
-      sendNotification lf $ "messagePump: HoverRequest: " <> show req
-      let
-        LSP.TextDocumentPositionParams
-          (LSP.TextDocumentIdentifier document)
-          pos@(LSP.Position line char)
-            = req ^. LSP.params
+      LSP.NotDidSaveTextDocument notification -> do
+        sendNotification lf "messagePump: processing NotDidSaveTextDocument"
+        let
+          document = notification ^. LSP.params . LSP.textDocument . LSP.uri
+          fileName = LSP.uriToFilePath document
+        sendNotification lf $ "fileName = " <> show fileName
+        sendDiagnostics lf state document
 
-      sendNotification lf $ shower document
-      sendNotification lf $ shower pos
-      (_version, contents) <- fileContents lf document
-      let
-        LSP.Uri uriText = document
-        uriStr = Text.unpack uriText
-        onError_ _ = return ()
-      (types, typeOfErrs) <- Driver.executeVirtualFile uriStr contents onError_ $ do
-        defs <- fetch CheckAll
-        runHover $ do
-          (span, expr) <- hoverDefs (Hover.inside line char)
-            [ (n, loc, d, t)
-            | (n, (loc, d, t)) <- concatMap HashMap.toList defs
-            ]
-          typ <- typeOf' voidArgs expr
-          ctx <- Context.getContext
-          return (span, ctx, expr, typ)
-      sendNotification lf $ "result " <> shower typeOfErrs
-      let
-        response = case types of
-          [] -> Nothing
-          _ -> do
-            let Just (_, (range, ctx, expr, typ)) = unsnoc types
-            Just $ LSP.Hover
-              { LSP._contents =
-                LSP.List
-                  [ LSP.PlainString
-                    $ showWide
-                    $ pretty (traverse Context.prettyVar expr ctx)
-                    <> " : "
-                    <> pretty (traverse Context.prettyVar typ ctx)
-                  ]
-              , LSP._range = Just
-                $ LSP.Range
-                { LSP._start = LSP.Position
-                  (visualRow $ spanStart range)
-                  (visualColumn $ spanStart range)
-                , LSP._end = LSP.Position
-                  (visualRow $ spanEnd range)
-                  (visualColumn $ spanEnd range)
+      LSP.ReqHover req -> do
+        sendNotification lf $ "messagePump: HoverRequest: " <> show req
+        let
+          LSP.TextDocumentPositionParams
+            (LSP.TextDocumentIdentifier document)
+            pos@(LSP.Position line char)
+              = req ^. LSP.params
+
+        sendNotification lf $ shower document
+        sendNotification lf $ shower pos
+        (_version, contents) <- fileContents lf document
+        let
+          LSP.Uri uriText = document
+          uriStr = Text.unpack uriText
+        ((types, typeOfErrs), _) <- Driver.incrementallyExecuteVirtualFile state uriStr contents $ do
+          defs <- fetch CheckAll
+          runHover $ do
+            (span, expr) <- hoverDefs (Hover.inside line char)
+              [ (n, loc, d, t)
+              | (n, (loc, d, t)) <- concatMap HashMap.toList defs
+              ]
+            typ <- typeOf' voidArgs expr
+            ctx <- Context.getContext
+            return (span, ctx, expr, typ)
+        sendNotification lf $ "result " <> shower typeOfErrs
+        let
+          response = case types of
+            [] -> Nothing
+            _ -> do
+              let Just (_, (range, ctx, expr, typ)) = unsnoc types
+              Just $ LSP.Hover
+                { LSP._contents =
+                  LSP.List
+                    [ LSP.PlainString
+                      $ showWide
+                      $ pretty (traverse Context.prettyVar expr ctx)
+                      <> " : "
+                      <> pretty (traverse Context.prettyVar typ ctx)
+                    ]
+                , LSP._range = Just
+                  $ LSP.Range
+                  { LSP._start = LSP.Position
+                    (visualRow $ spanStart range)
+                    (visualColumn $ spanStart range)
+                  , LSP._end = LSP.Position
+                    (visualRow $ spanEnd range)
+                    (visualColumn $ spanEnd range)
+                  }
                 }
-              }
-      LSP.sendFunc lf $ LSP.RspHover $ LSP.makeResponseMessage req response
+        LSP.sendFunc lf $ LSP.RspHover $ LSP.makeResponseMessage req response
 
-    _ ->
-      return ()
+      _ ->
+        return ()
 
 -------------------------------------------------------------------------------
-sendDiagnostics :: LSP.LspFuncs () -> LSP.Uri -> IO ()
-sendDiagnostics lf document = do
+sendDiagnostics :: LSP.LspFuncs () -> DriverState -> LSP.Uri -> IO ()
+sendDiagnostics lf state document = do
   (version, contents) <- fileContents lf document
-  LSP.flushDiagnosticsBySourceFunc lf 100 $ Just diagnosticSource
-  diagnosticsVar <- newMVar mempty
   let
-    onError_ err = do
-      diagnostics <- modifyMVar diagnosticsVar $ \diagnostics -> do
-        let
-          newValue = errorToDiagnostic err : diagnostics
-        return (newValue, newValue)
-      LSP.publishDiagnosticsFunc lf 100 document version
-        $ LSP.partitionBySource $ reverse diagnostics
     LSP.Uri uriText = document
     uriStr = Text.unpack uriText
 
-  Driver.executeVirtualFile uriStr contents onError_ $ do
-    _ <- fetch CheckAll
-    return ()
+  (_, errors) <- Driver.incrementallyExecuteVirtualFile state uriStr contents $ fetch CheckAll
+
+  LSP.publishDiagnosticsFunc lf (length errors) document version
+    $ LSP.partitionBySource $ errorToDiagnostic <$> errors
 
 -------------------------------------------------------------------------------
 sendNotification :: LSP.LspFuncs () -> Text -> IO ()
