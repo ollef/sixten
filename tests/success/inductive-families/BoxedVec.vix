@@ -1,0 +1,43 @@
+boxed
+type Vec (n : Nat) (a : Type) where
+  Nil : Vec Zero a
+  Cons : forall m. a -> Vec m a -> Vec (Succ m) a
+
+xs0 : Vec Zero Int
+xs0 = Nil
+
+n1 = Succ Zero
+
+xs1 : Vec n1 Int
+xs1 = Cons 1 Nil
+
+n2 = Succ n1
+
+xs2 : Vec n2 Int
+xs2 = Cons 1 (Cons 2 Nil)
+
+n3 = Succ n2
+
+xs3 : Vec n3 Int
+xs3 = Cons 1 (Cons 2 (Cons 3 Nil))
+
+map : forall a b n. (a -> b) -> Vec n a -> Vec n b
+map f Nil = Nil
+map f (Cons x xs) = Cons (f x) (map f xs)
+
+addNat : Nat -> Nat -> Nat
+addNat Zero n = n
+addNat (Succ m) n = Succ (addNat m n)
+
+append : forall a m n. Vec m a -> Vec n a -> Vec (addNat m n) a
+append Nil ys = ys
+append (Cons x xs) ys = Cons x (append xs ys)
+
+sum : forall n. Vec n Int -> Int
+sum Nil = 0
+sum (Cons x xs) = addInt x (sum xs)
+
+main = printInt (sum xs3)
+
+vecZero : forall a. Vec Zero a -> Unit
+vecZero Nil = MkUnit

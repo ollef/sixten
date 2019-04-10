@@ -1,0 +1,39 @@
+boxed
+type Fin (n : Nat) where
+  Zero : forall m. Fin (Succ m)
+  Succ : forall m. Fin m -> Fin (Succ m)
+
+f1 : Fin (Succ (Succ (Succ Zero)))
+f1 = Succ Zero
+
+f2 : Fin (Succ (Succ (Succ Zero)))
+f2 = Succ (Succ Zero)
+
+addNat : Nat -> Nat -> Nat
+addNat Zero n = n
+addNat (Succ m) n = Succ (addNat m n)
+
+succIndex : forall n. Fin n -> Fin (Succ n)
+succIndex Zero = Zero
+succIndex (Succ x) = Succ (succIndex x)
+
+addIndex : forall n. (m : Nat) -> Fin n -> Fin (addNat m n)
+addIndex Zero x = x
+addIndex (Succ n) x = succIndex (addIndex n x)
+
+addFin : forall m n. Fin m -> Fin n -> Fin (addNat m n)
+addFin @m Zero y = addIndex m y
+addFin (Succ x) y = Succ (addFin x y)
+
+toInt : forall n. Fin n -> Int
+toInt Zero = 0
+toInt (Succ n) = addInt 1 (toInt n)
+
+main = printInt (toInt f2)
+
+impossible : forall a. Fin Zero -> a
+impossible fz = case fz of
+
+onlyZero : Fin (Succ Zero) -> Unit
+onlyZero Zero = MkUnit
+onlyZero (Succ f) = case f of
