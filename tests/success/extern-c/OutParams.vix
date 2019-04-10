@@ -1,3 +1,7 @@
+intToNat : Int -> Nat
+intToNat 0 = Zero
+intToNat n = Succ (intToNat (subInt n 1))
+
 test : Vector (intToNat 10) Byte
 test = (C|
   return_[0] = 'a';

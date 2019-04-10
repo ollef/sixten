@@ -67,13 +67,13 @@ pattern SizeOfName :: QName
 pattern SizeOfName <- ((==) "Sixten.Builtin.sizeOf" -> True) where SizeOfName = "Sixten.Builtin.sizeOf"
 
 pattern EqualsName :: QName
-pattern EqualsName <- ((==) "Sixten.Builtin.__Equals__" -> True) where EqualsName = "Sixten.Builtin.__Equals__"
+pattern EqualsName <- ((==) "Sixten.Builtin.Equals" -> True) where EqualsName = "Sixten.Builtin.Equals"
 pattern Equals :: Type m t -> Expr m t -> Expr m t -> Expr m t
 pattern Equals typ e1 e2 =
   App (App (App (Global (GName EqualsName Mempty)) Implicit typ) Explicit e1) Explicit e2
 
 pattern ReflConstrName :: Constr
-pattern ReflConstrName <- ((==) "__Refl__" -> True) where ReflConstrName = "__Refl__"
+pattern ReflConstrName <- ((==) "Refl" -> True) where ReflConstrName = "Refl"
 pattern ReflConstr :: QConstr
 pattern ReflConstr = QConstr EqualsName ReflConstrName
 pattern Refl :: Type m t -> Expr m t -> Expr m t -> Expr m t
@@ -100,7 +100,7 @@ pattern Fail :: Expr m t -> Expr m t
 pattern Fail t = App (Global (GName FailName Mempty)) Explicit t
 
 pattern PiTypeName :: QName
-pattern PiTypeName <- ((==) "Sixten.Builtin.Pi_" -> True) where PiTypeName = "Sixten.Builtin.Pi_"
+pattern PiTypeName <- ((==) "Sixten.Builtin.Pi" -> True) where PiTypeName = "Sixten.Builtin.Pi"
 
 pattern NatName :: QName
 pattern NatName <- ((==) "Sixten.Builtin.Nat" -> True) where NatName = "Sixten.Builtin.Nat"
