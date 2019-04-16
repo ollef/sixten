@@ -18,8 +18,8 @@ import Data.Functor.Classes
 import Data.Vector(Vector)
 
 import Effect.Context as Context
-import Error
 import Pretty
+import SourceLoc
 import Syntax.GlobalBind
 import Syntax.Name
 import Syntax.Telescope

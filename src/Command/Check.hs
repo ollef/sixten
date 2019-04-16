@@ -3,19 +3,20 @@ module Command.Check where
 
 import Protolude
 
+import qualified Backend.Target as Target
 import qualified Data.Text as Text
+import Data.Text.Prettyprint.Doc.Render.Terminal
 import Data.Time.Clock (NominalDiffTime)
 import Options.Applicative as Options
 import System.Directory
 import System.FilePath
 import System.FSNotify
-import Util
 
-import qualified Backend.Target as Target
 import Command.Check.Options
 import qualified Driver
+import Driver.Query
 import Effect.Log
-import Error
+import Util
 
 optionsParserInfo :: ParserInfo Options
 optionsParserInfo = info (helper <*> optionsParser)
@@ -107,9 +108,10 @@ checkSimple opts = withLogHandle (logFile opts) $ \logHandle -> do
     , Driver.logHandle = logHandle
     , Driver.logCategories = \(Category c) ->
       any (`Text.isPrefixOf` c) (logPrefixes opts)
-    , Driver.onError = \err ->
-      modifyMVar_ anyErrorsVar $ \_ -> do
-        printError err
+    , Driver.onError = \err -> do
+      perr <- prettyError err
+      liftIO $ modifyMVar_ anyErrorsVar $ \_ -> do
+        putDoc perr
         return True
     }
   anyErrors <- readMVar anyErrorsVar

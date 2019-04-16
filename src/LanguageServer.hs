@@ -1,6 +1,7 @@
+{-# LANGUAGE DisambiguateRecordFields #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DisambiguateRecordFields #-}
 module LanguageServer where
 
 import Protolude hiding (state)
@@ -29,6 +30,7 @@ import Driver.Query
 import qualified Effect.Context as Context
 import Elaboration.TypeOf
 import LanguageServer.Hover as Hover
+import SourceLoc
 import Syntax
 import Util
 
@@ -176,7 +178,7 @@ sendDiagnostics lf state document version = do
       (_, errors) <- Driver.incrementallyExecuteVirtualFile state uriStr contents $ fetch CheckAll
 
       LSP.publishDiagnosticsFunc lf (length errors) document version
-        $ LSP.partitionBySource $ errorToDiagnostic <$> errors
+        $ LSP.partitionBySource $ uncurry errorToDiagnostic <$> errors
 
 -------------------------------------------------------------------------------
 sendNotification :: LSP.LspFuncs () -> Text -> IO ()
@@ -188,17 +190,23 @@ sendNotification lf s = LSP.sendFunc lf
 diagnosticSource :: LSP.DiagnosticSource
 diagnosticSource = "sixten"
 
-sendError :: LSP.LspFuncs () -> LSP.Uri -> LSP.TextDocumentVersion -> Error -> IO ()
-sendError lf uri version e =
+sendError
+  :: LSP.LspFuncs ()
+  -> LSP.Uri
+  -> LSP.TextDocumentVersion
+  -> Error
+  -> Maybe AbsoluteSourceLoc
+  -> IO ()
+sendError lf uri version e loc =
   LSP.publishDiagnosticsFunc lf 10 uri version $
-    Map.singleton (Just diagnosticSource) [errorToDiagnostic e]
+    Map.singleton (Just diagnosticSource) [errorToDiagnostic e loc]
 
-errorToDiagnostic :: Error -> LSP.Diagnostic
-errorToDiagnostic err = LSP.Diagnostic
+errorToDiagnostic :: Error -> Maybe AbsoluteSourceLoc -> LSP.Diagnostic
+errorToDiagnostic err loc = LSP.Diagnostic
   { _range = maybe
     (LSP.Range (LSP.Position 0 0) (LSP.Position 0 0))
-    (spanToRange . sourceLocSpan)
-    (errorLocation err)
+    (spanToRange . absoluteSpan)
+    loc
   , _severity = Just LSP.DsError
   , _code = Nothing
   , _source = Just diagnosticSource

@@ -16,7 +16,6 @@ import qualified Data.Vector as Vector
 
 import Effect
 import qualified Effect.Context as Context
-import Error
 import Syntax
 import Syntax.Core
 import Util
@@ -44,14 +43,13 @@ instance Hashable MetaVar where
   hashWithSalt s = hashWithSalt s . metaId
 
 instance Show MetaVar where
-  showsPrec d (MetaVar i (Closed t) a h p loc _) = showParen (d > 10) $
+  showsPrec d (MetaVar i (Closed t) a h p _ _) = showParen (d > 10) $
     showString "MetaVar" . showChar ' ' .
     showsPrec 11 i . showChar ' ' .
     showsPrec 11 (t :: Expr MetaVar Void) . showChar ' ' .
     showsPrec 11 a . showChar ' ' .
     showsPrec 11 h . showChar ' ' .
     showsPrec 11 p . showChar ' ' .
-    showsPrec 11 (pretty <$> loc) . showChar ' ' .
     showString "<Ref>"
 
 explicitExists

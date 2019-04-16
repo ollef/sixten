@@ -107,6 +107,7 @@ library
                        LanguageServer.Hover
                        Paths_sixten
                        Pretty
+                       SourceLoc
                        Syntax
                        Syntax.Annotation
                        Syntax.Branches
@@ -157,6 +158,7 @@ library
                        deriving-gcompare,
                        directory,
                        filepath,
+                       fingertree,
                        fsnotify,
                        hashable,
                        haskell-lsp,

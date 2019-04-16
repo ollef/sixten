@@ -1,5 +1,7 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE QuantifiedConstraints #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Util.Orphans where
 
@@ -7,6 +9,9 @@ import Protolude
 
 import Data.Bifunctor.Flip
 import Data.Hashable.Lifted
+import Data.IntervalMap.FingerTree(IntervalMap)
+import Text.Parser.Token.Highlight
+import Data.IntervalMap.FingerTree as IntervalMap
 import Data.Vector(Vector)
 import Data.Vector.Instances()
 import qualified LLVM.AST as LLVM
@@ -35,9 +40,16 @@ instance Hashable Position where
 
 instance Hashable Span where
 
+deriving instance Generic Highlight
+instance Hashable Highlight
+
 instance Hashable1 NonEmpty where
 
 instance Hashable (g b a) => Hashable (Flip g a b) where
+
+instance Hashable a => Hashable (IntervalMap.Interval a) where
+instance (Ord v, Hashable v, Hashable a) => Hashable (IntervalMap v a) where
+  hashWithSalt s i = hashWithSalt s $ (`IntervalMap.intersections` i) <$> IntervalMap.bounds i
 
 instance Hashable LLVM.AddrSpace where
 instance Hashable LLVM.BasicBlock where

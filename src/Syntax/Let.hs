@@ -24,8 +24,8 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import Effect
+import SourceLoc
 import qualified Effect.Context as Context
-import Error
 import Pretty
 import Syntax.Annotation
 import Syntax.GlobalBind

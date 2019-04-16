@@ -5,8 +5,8 @@ import Protolude
 import Data.String
 import Data.Text(Text)
 
-import Error
 import Pretty
+import SourceLoc
 import Util
 
 -- | An unresolved name

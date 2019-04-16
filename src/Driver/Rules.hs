@@ -48,32 +48,42 @@ rules
   -> [FilePath]
   -> (FilePath -> IO Text)
   -> Target
-  -> GenRules (Writer [Error] Query) Query
-rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
-  Files -> noError $ do
+  -> GenRules (Writer [Error] (Writer TaskKind Query)) Query
+rules logEnv_ inputFiles readFile_ target (Writer (Writer query)) = case query of
+  Files -> input $ do
     builtinFile <- liftIO $ getDataFileName "rts/Builtin.vix"
-    return $ inputFiles <> pure builtinFile
+    return (inputFiles <> pure builtinFile)
 
-  File file -> noError $ liftIO $ readFile_ file
+  File file -> input $ liftIO $ readFile_ file
 
-  Driver.Query.Target -> noError $ return target
+  Driver.Query.Target -> input $ return target
 
   Builtins -> noError $ do
     target_ <- fetch Driver.Query.Target
     return $ Builtin.environment target_
 
-  ParsedModule file -> do
+  ParsedModule file -> nonInput $ do
     text <- fetch $ File file
     case Parse.parseText Parse.modul text file of
-      Left err -> do
+      (Left err, highlights) -> do
         let mh = ModuleHeader "Main" noneExposed mempty
-        return ((mh, mempty), pure err)
-      Right (moduleHeader, errDefs) -> do
+        return ((mh, mempty, highlights), pure err)
+      (Right (moduleHeader, errDefs), highlights) -> do
         let
           (errs, defs) = partitionEithers errDefs
-        return ((moduleHeader, defs), errs)
+        return ((moduleHeader, defs, highlights), errs)
 
-  ModuleHeaders -> do
+  Driver.Query.AbsoluteSourceLoc name -> noError $ do
+    mfile <- fetch $ ModuleFile $ qnameModule name
+    case mfile of
+      Nothing -> panic "fetch AbsoluteSourceLoc no file"
+      Just file -> do
+        (_, defs, _) <- fetch $ ParsedModule file
+        return $ case find ((==) name . fst3) defs of
+          Nothing -> panic "fetch AbsoluteSourceLoc no def"
+          Just (_, loc, _) -> loc
+
+  ModuleHeaders -> nonInput $ do
     fileNames <- fetch Files
     result <- for fileNames $ \file ->
       (,) file <$> fetchModuleHeader file
@@ -90,30 +100,30 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
   ModuleFile moduleName_ -> noError $
     HashMap.lookup moduleName_ <$> fetch ModuleFiles
 
-  DupCheckedModule moduleName_ -> do
+  DupCheckedModule moduleName_ -> nonInput $ do
     maybeFile <- fetch $ ModuleFile moduleName_
     case maybeFile of
       Nothing -> return mempty
       Just file -> do
-        (moduleHeader_, defs) <- fetch $ ParsedModule file
-        return $ DupCheck.dupCheck (moduleName moduleHeader_) defs
+        (_, defs, _) <- fetch $ ParsedModule file
+        DupCheck.dupCheck defs
 
   ModuleExports moduleName_ -> noError $ do
     maybeFile <- fetch $ ModuleFile moduleName_
     case maybeFile of
       Nothing -> return mempty
       Just file -> do
-        (moduleHeader_, _) <- fetch $ ParsedModule file
+        (moduleHeader_, _, _) <- fetch $ ParsedModule file
         defs <- fetch $ DupCheckedModule moduleName_
         return $ ResolveNames.moduleExports moduleHeader_ defs
 
-  ResolvedModule moduleName_ -> do
+  ResolvedModule moduleName_ -> nonInput $ do
     defs <- fetch $ DupCheckedModule moduleName_
     maybeFile <- fetch $ ModuleFile moduleName_
     case maybeFile of
       Nothing -> return mempty
       Just file -> do
-        (moduleHeader_, _) <- fetch $ ParsedModule file
+        (moduleHeader_, _, _) <- fetch $ ParsedModule file
         withReportEnv $ \reportEnv_ ->
           runVIX logEnv_ reportEnv_ $
             ResolveNames.resolveModule moduleHeader_ defs
@@ -152,7 +162,7 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
         -- cleaner solution?
         HashMap.lookupDefault mempty name <$> fetch (BindingGroupMap module_)
 
-  ElaboratedGroup names -> logCoreTerms logEnv_ "elaborated" $ do
+  ElaboratedGroup names -> nonInput $ logCoreTerms logEnv_ "elaborated" $ do
     -- TODO check for Sixten.Builtin prefix first?
     builtins <- fetch Builtins
     case traverse (\qn -> (,) (gname qn) <$> HashMap.lookup qn builtins) $ toList names of
@@ -173,7 +183,7 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
             let resultMap = toHashMap $ (\(n, l, d, t) -> (n, (l, d, t))) <$> result
             return (resultMap, errs)
 
-  SimplifiedGroup names -> logCoreTerms logEnv_ "simplified" $ do
+  SimplifiedGroup names -> nonInput $ logCoreTerms logEnv_ "simplified" $ do
     defs <- fetch $ ElaboratedGroup names
     withReportEnv $ \reportEnv_ ->
       runVIX logEnv_ reportEnv_ $ withContextEnvT $
@@ -218,7 +228,7 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
     dupChecked <- fetch $ DupCheckedModule $ qnameModule className
     let (_loc, def) = HashMap.lookupDefault (panic "fetch ClassMethods") className dupChecked
     case def of
-      Unscoped.ClassDefinition _ _ methods ->
+      Unscoped.ClassDefinition _ methods ->
         return $ Just $ (\(Method name loc _) -> (name, loc)) <$> methods
       _ -> return Nothing
 
@@ -259,7 +269,7 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
             Just i -> return $ Just $ fromIntegral i
       ConstantDefinition {} -> panic "fetch ConstrIndex ConstantDefinition"
 
-  LambdaLifted bindingGroup -> logTerms logEnv_ "lifted" fst snd $ do
+  LambdaLifted bindingGroup -> nonInput $ logTerms logEnv_ "lifted" fst snd $ do
     coreDefs <- fetch $ SimplifiedGroup bindingGroup
     withReportEnv $ \reportEnv_ ->
       fmap concat $ for (HashMap.toList coreDefs) $ \(name, (_, ClosedDefinition def, _)) ->
@@ -268,7 +278,7 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
           let def'' = denatAnno def'
           liftToDefinition name $ close (panic "LambdaLifted close") def''
 
-  ConvertedSignatures bindingGroup -> do
+  ConvertedSignatures bindingGroup -> nonInput $ do
     liftedDefs <- fetch $ LambdaLifted bindingGroup
     withReportEnv $ \reportEnv_ ->
       fmap HashMap.fromList $ for liftedDefs $ \(name, def) ->
@@ -285,7 +295,7 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
     target_ <- fetch Driver.Query.Target
     return $ Builtin.convertedEnvironment target_
 
-  Converted bindingGroup -> logTerms logEnv_ "converted" fst snd $
+  Converted bindingGroup -> nonInput $ logTerms logEnv_ "converted" fst snd $
     case qnameModule <$> toList bindingGroup of
       Builtin.RuntimeModuleName:_ -> do
         runtimeDefs <- fetch RuntimeDefinitions
@@ -307,7 +317,7 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
               convertedDefs <- runConvertDefinition name def
               return $ convertedSigDefs <> convertedDefs
 
-  DirectionSignatures bindingGroup -> do
+  DirectionSignatures bindingGroup -> nonInput $ do
     convertedDefs <- fetch $ Converted bindingGroup
     withReportEnv $ \reportEnv_ ->
       runVIX logEnv_ reportEnv_ $ do
@@ -334,14 +344,14 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
             (HashMap.lookup name . Extracted.extractedSignatures . snd3)
             extracted
 
-  Extracted bindingGroup -> logTerms logEnv_ "extracted" fst3 thd3 $ do
+  Extracted bindingGroup -> nonInput $ logTerms logEnv_ "extracted" fst3 thd3 $ do
     defs <- fetch $ DirectionSignatures bindingGroup
     withReportEnv $ \reportEnv_ ->
       runVIX logEnv_ reportEnv_ $
         fmap concat $ for (HashMap.toList defs) $ \(name, (def, _sig)) ->
           ExtractExtern.extractDef name def
 
-  GeneratedSubmodules bindingGroup -> do
+  GeneratedSubmodules bindingGroup -> nonInput $ do
     extracted <- fetch $ Extracted bindingGroup
     withReportEnv $ \reportEnv_ ->
       runVIX logEnv_ reportEnv_ $
@@ -370,8 +380,14 @@ rules logEnv_ inputFiles readFile_ target (Writer query) = case query of
     target_ <- fetch Driver.Query.Target
     liftIO $ Backend.Compile.compileModules outputFile target_ opts (runtimeSubmodule : submodules)
 
-noError :: (Monoid w, Functor f) => f a -> f (a, w)
-noError = fmap (, mempty)
+noError :: (Monoid w, Functor f) => f a -> f ((a, TaskKind), w)
+noError = fmap ((, mempty) . (, NonInput))
+
+nonInput :: Functor f => f (a, w) -> f ((a, TaskKind), w)
+nonInput = fmap $ first (, NonInput)
+
+input :: (Monoid w, Functor f) => f a -> f ((a, TaskKind), w)
+input = fmap ((, mempty) . (, Input))
 
 withReportEnv :: MonadIO m => (ReportEnv -> m a) -> m (a, [Error])
 withReportEnv f = do

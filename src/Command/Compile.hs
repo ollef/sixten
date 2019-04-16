@@ -5,6 +5,7 @@ module Command.Compile where
 import Protolude hiding ((<.>))
 
 import qualified Data.Text as Text
+import Data.Text.Prettyprint.Doc.Render.Terminal
 import Options.Applicative
 
 import qualified Backend.Target as Target
@@ -12,6 +13,7 @@ import qualified Command.Check as Check
 import qualified Command.Check.Options as Check
 import Command.Compile.Options
 import qualified Driver
+import Driver.Query
 import Effect.Log
 import Error
 import Util
@@ -71,26 +73,32 @@ optionsParser = (,)
 compile
   :: Check.Options
   -> Options
-  -> (Error -> IO ())
+  -> (Error -> Task Query ())
   -> (Maybe FilePath -> IO k)
   -> IO k
-compile checkOpts opts onError onResult
-  = case maybe (Right Target.defaultTarget) Target.findTarget $ target opts of
-    Left err -> do
-      onError err
-      onResult Nothing
-    Right tgt ->
-      withLogHandle (Check.logFile checkOpts) $ \logHandle -> do
+compile checkOpts opts onError onResult =
+  withLogHandle (Check.logFile checkOpts) $ \logHandle -> do
+    let
+      args sourceFiles tgt = Driver.Arguments
+        { Driver.sourceFiles = sourceFiles
+        , Driver.readSourceFile = readFile
+        , Driver.target = tgt
+        , Driver.logHandle = logHandle
+        , Driver.logCategories = \(Category c) ->
+          any (`Text.isPrefixOf` c) (Check.logPrefixes checkOpts)
+        , Driver.onError = onError
+        }
+    case maybe (Right Target.defaultTarget) Target.findTarget $ target opts of
+      Left err -> do
+        Driver.execute
+          (args mempty Target.defaultTarget)
+          $ onError err
+        onResult Nothing
+      Right tgt -> do
         sourceFiles <- Check.flattenDirectories $ Check.inputFiles checkOpts
-        Driver.compileFiles opts Driver.Arguments
-          { Driver.sourceFiles = sourceFiles
-          , Driver.readSourceFile = readFile
-          , Driver.target = tgt
-          , Driver.logHandle = logHandle
-          , Driver.logCategories = \(Category c) ->
-            any (`Text.isPrefixOf` c) (Check.logPrefixes checkOpts)
-          , Driver.onError = onError
-          }
+        Driver.compileFiles
+          opts
+          (args sourceFiles tgt)
           $ onResult . Just
   where
     withLogHandle Nothing k = k stdout
@@ -102,9 +110,10 @@ command = go <$> optionsParserInfo
     go (checkOpts, opts) = do
       anyErrorsVar <- newMVar False
       let
-        onError err =
-          modifyMVar_ anyErrorsVar $ \_ -> do
-            printError err
+        onError err = do
+          perr <- prettyError err
+          liftIO $ modifyMVar_ anyErrorsVar $ \_ -> do
+            putDoc perr
             return True
       compile checkOpts opts onError $ \mfp -> do
         anyErrors <- readMVar anyErrorsVar

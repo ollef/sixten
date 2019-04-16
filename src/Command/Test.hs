@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Command.Test where
@@ -11,6 +12,7 @@ import System.Process
 import qualified Command.Check.Options as Check
 import qualified Command.Compile as Compile
 import qualified Command.Compile.Options as Compile
+import Driver.Query
 import Error
 
 data Options = Options
@@ -53,10 +55,10 @@ test opts = Compile.compile (checkOptions opts) (compileOptions opts) onCompileE
   where
     onCompileError err = case err of
       SyntaxError {}
-        | expectSyntaxError opts -> success
+        | expectSyntaxError opts -> liftIO success
         | otherwise -> failed "No syntax error" $ printError err
       TypeError {}
-        | expectTypeError opts -> success
+        | expectTypeError opts -> liftIO success
         | otherwise -> failed "No type error" $ printError err
       CommandLineError {}
         -> failed "No command-line error" $ printError err
@@ -77,12 +79,13 @@ test opts = Compile.compile (checkOptions opts) (compileOptions opts) onCompileE
       putStrLn $ "OK: " ++ intercalate ", " (toList . Check.inputFiles . checkOptions $ opts)
       exitSuccess
     failed expected actual = do
-      putStrLn $ "FAILED: " ++ intercalate ", " (toList . Check.inputFiles . checkOptions $ opts)
-      putText "Expected:"
-      putText expected
-      putText "But got:"
+      liftIO $ do
+        putStrLn $ "FAILED: " ++ intercalate ", " (toList . Check.inputFiles . checkOptions $ opts)
+        putText "Expected:"
+        putText expected
+        putText "But got:"
       () <- actual
-      exitFailure
+      liftIO exitFailure
 
 command :: ParserInfo (IO ())
 command = test <$> optionsParserInfo

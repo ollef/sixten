@@ -17,6 +17,7 @@ import Driver.Query
 import Effect
 import qualified Effect.Context as Context
 import Elaboration.Normalise
+import SourceLoc
 import Syntax
 import Syntax.Core
 import Util

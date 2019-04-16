@@ -7,6 +7,7 @@ import Control.Monad.Morph as X
 import qualified Util
 
 import Error as X
+import SourceLoc as X
 import Pretty as X
 import Syntax.Annotation as X
 import Syntax.Branches as X

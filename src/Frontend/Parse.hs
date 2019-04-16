@@ -1,7 +1,12 @@
-{-# LANGUAGE DeriveFoldable, DeriveFunctor, DeriveTraversable, GeneralizedNewtypeDeriving, OverloadedStrings #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Frontend.Parse where
 
-import Protolude hiding (Type)
+import Protolude hiding (Type, moduleName)
 
 import Control.Applicative((<**>), (<|>), Alternative)
 import Data.Char
@@ -19,15 +24,20 @@ import qualified Text.Parser.LookAhead as LookAhead
 import qualified Text.Parser.Token.Highlight as Highlight
 import qualified Text.Parsix as Parsix
 import Text.Parsix(Position(Position, visualRow, visualColumn), (<?>))
+import Text.Parsix.Highlight(Highlights)
 
 import Error
+import SourceLoc
 import Syntax hiding (classDef, dataDef)
 import Syntax.Pre.Literal as Pre
 import Syntax.Pre.Unscoped as Pre
+import Util
 
 data ParseEnv = ParseEnv
   { parseEnvIndentAnchor :: !Position
   , parseEnvSourceFile :: FilePath
+  , parseEnvModuleName :: !ModuleName
+  , parseEnvRelativeToName :: !(Maybe (QName, Position))
   }
 
 newtype Parser a = Parser {runParser :: ReaderT ParseEnv Parsix.Parser a}
@@ -40,28 +50,35 @@ newtype Parser a = Parser {runParser :: ReaderT ParseEnv Parsix.Parser a}
 parseTest :: (MonadIO m, Show a) => Parser a -> String -> m ()
 parseTest p s = liftIO $ print $ parseText p (fromString s) "<interactive>"
 
-parseText :: Parser a -> Text -> FilePath -> Either Error a
+parseText :: Parser a -> Text -> FilePath -> (Either Error a, Highlights)
 parseText p s fp =
-  case Parsix.parseText (runReaderT (runParser p) env <* Parsix.eof) s fp of
-    Parsix.Failure e -> Left
-      $ SyntaxError
-        (pretty $ fromMaybe mempty $ Parsix.errorReason e)
-        (Just loc)
-        $ case Set.toList $ Parsix.errorExpected e of
-          [] -> mempty
-          expected -> "expected:" PP.<+> PP.hsep (PP.punctuate PP.comma $ PP.pretty <$> expected)
+  case Parsix.parseText ((,) <$> runReaderT (runParser p) env <* Parsix.eof <*> Parsix.highlights) s fp of
+    Parsix.Failure e ->
+      (Left
+        $ SyntaxError
+          (pretty $ fromMaybe mempty $ Parsix.errorReason e)
+          (Just loc)
+          $ case Set.toList $ Parsix.errorExpected e of
+            [] -> mempty
+            expected -> "expected:" PP.<+> PP.hsep (PP.punctuate PP.comma $ PP.pretty <$> expected)
+      , Parsix.errorHighlights e
+      )
       where
-        loc = SourceLocation
-          { sourceLocFile = Parsix.errorFilePath e
-          , sourceLocSpan = Parsix.Span (Parsix.errorPosition e) (Parsix.errorPosition e)
-          , sourceLocSource = Parsix.errorSourceText e
-          , sourceLocHighlights = Parsix.errorHighlights e
+        loc = Absolute AbsoluteSourceLoc
+          { absoluteFile = Parsix.errorFilePath e
+          , absoluteSpan = Parsix.Span (Parsix.errorPosition e) (Parsix.errorPosition e)
+          , absoluteHighlights = Just $ Parsix.errorHighlights e
           }
-    Parsix.Success a -> Right a
+    Parsix.Success (a, highlights) -> (Right a, highlights)
   where
-    env = ParseEnv (Position 0 0 0) fp
+    env = ParseEnv
+      { parseEnvIndentAnchor = Position 0 0 0
+      , parseEnvSourceFile = fp
+      , parseEnvRelativeToName = Nothing
+      , parseEnvModuleName = ""
+      }
 
-parseFromFileEx :: MonadIO m => Parser a -> FilePath -> m (Either Error a)
+parseFromFileEx :: MonadIO m => Parser a -> FilePath -> m (Either Error a, Highlights)
 parseFromFileEx p fp = do
   s <- liftIO $ Text.readFile fp
   return $ parseText p s fp
@@ -87,6 +104,13 @@ multilineComment =
     inner =  Parsix.string "-}"
          <|> multilineComment *> inner
          <|> Parsix.anyChar *> inner
+
+manyIndexed :: (Int -> Parser a) -> Parser [a]
+manyIndexed f = go 0
+  where
+    go !i
+      = (:) <$> f i <*> go (i + 1)
+      <|> pure []
 
 -------------------------------------------------------------------------------
 -- * Indentation parsing
@@ -166,12 +190,24 @@ p <**>% q = p <**> (sameLineOrIndented >> q)
 -- * Error recovery
 recover :: (Error -> a) -> Parsix.ErrorInfo -> Parsix.Position -> Parser a
 recover k errInfo pos = do
-  (loc, _) <- located skipToAnchorLevel
+  file <- asks parseEnvSourceFile
+  skipToAnchorLevel
+  highlights <- Parser $ lift $ Parsix.highlights
   let reason = pretty $ fromMaybe mempty $ Parsix.errorInfoReason errInfo
       expected = case Set.toList $ Parsix.errorInfoExpected errInfo of
         [] -> mempty
         xs -> "expected:" PP.<+> PP.hsep (PP.punctuate PP.comma $ PP.pretty <$> xs)
-  return $ k $ SyntaxError reason (Just loc { sourceLocSpan = Parsix.Span pos pos }) expected
+  return
+    $ k
+    $ SyntaxError
+      reason
+      (Just $ Absolute AbsoluteSourceLoc
+        { absoluteFile = file
+        , absoluteSpan = Parsix.Span pos pos
+        , absoluteHighlights = Just highlights
+        }
+      )
+      expected
 
 skipToAnchorLevel :: Parser ()
 skipToAnchorLevel = Parsix.token $ Parsix.skipSome (sameLineOrIndented >> Parsix.anyChar)
@@ -233,10 +269,12 @@ integer = Parsix.try Parsix.integer
 located :: Parser a -> Parser (SourceLoc, a)
 located p = do
   (s, a) <- Parsix.spanned p
-  file <- asks parseEnvSourceFile
-  inp <- Parser $ lift Parsix.input
-  hl <- Parser $ lift Parsix.highlights
-  return (SourceLocation file s inp hl, a)
+  env <- ask
+  let
+    loc = case parseEnvRelativeToName env of
+      Nothing -> Absolute $ AbsoluteSourceLoc (parseEnvSourceFile env) s Nothing
+      Just (n, pos) -> Relative $ RelativeSourceLoc n $ spanRelativeTo pos s
+  return (loc, a)
 
 -------------------------------------------------------------------------------
 -- * Patterns
@@ -338,7 +376,7 @@ atomicExpr = locatedExpr
   where
     letExpr
       = dropAnchor
-      $ mkLet <$ reserved "let" <*>% dropAnchor (someSameCol $ located constantDef)
+      $ mkLet <$ reserved "let" <*>% dropAnchor (someSameCol localConstantDef)
       <*>
         ((sameLineOrIndented <|> sameCol) *> reserved "in" *>% exprWithoutWhere
         <|> sameCol *> exprWithoutWhere
@@ -354,7 +392,7 @@ branches = manyIndentedOrSameCol branch
 
 expr :: Parser Expr
 expr = exprWithoutWhere <**>
-  (mkLet <$% reserved "where" <*>% dropAnchor (someSameCol $ located constantDef)
+  (mkLet <$% reserved "where" <*>% dropAnchor (someSameCol localConstantDef)
   <|> pure identity
   )
   where
@@ -416,66 +454,108 @@ literal
 -------------------------------------------------------------------------------
 -- * Definitions
 -- | A definition or type declaration on the top-level
-def :: Parser (Either Error (SourceLoc, Pre.Definition))
-def = Parsix.withRecovery (recover Left)
+def :: Int -> Parser (Either Error (QName, AbsoluteSourceLoc, Pre.Definition))
+def i = Parsix.withRecovery (recover Left)
   $ fmap Right
-  $ located
   $ dataDef
   <|> classDef
-  <|> instanceDef
-  <|> Pre.ConstantDefinition <$> constantDef
+  <|> instanceDef i
+  <|> second Pre.ConstantDefinition <$> constantDef positionedRelativeTo
 
-constantDef :: Parser (Pre.ConstantDef Pre.Expr)
-constantDef = do
+constantDef
+  :: (Name -> Parsix.Position -> Parser (Pre.ConstantDef Pre.Expr) -> Parser a)
+  -> Parser a
+constantDef k = do
+  pos <- Parsix.position
   abstr
     <- Abstract <$ reserved "abstract" <* sameCol
     <|> pure Concrete
   dropAnchor $ do
     n <- name
     sameLineOrIndented
-    let namedClause
-          = dropAnchor
-          $ (wildcard <|> void (reserved $ fromName n))
-          *>% clause -- Parsix.withRecovery (recover $ Pre.Clause mempty . Pre.Error) clause
-    (mtyp, clauses)
-      <- (,) . Just <$> typeSig <*> someSameCol namedClause
-      <|> (,) Nothing <$> ((:) <$> clause <*> manySameCol namedClause)
-    return (Pre.ConstantDef n abstr (NonEmpty.fromList clauses) mtyp)
+    k n pos $ do
+      let namedClause
+            = dropAnchor
+            $ (wildcard <|> void (reserved $ fromName n))
+            *>% clause -- Parsix.withRecovery (recover $ Pre.Clause mempty . Pre.Error) clause
+      (mtyp, clauses)
+        <- (,) . Just <$> typeSig <*> someSameCol namedClause
+        <|> (,) Nothing <$> ((:) <$> clause <*> manySameCol namedClause)
+      return (Pre.ConstantDef abstr (NonEmpty.fromList clauses) mtyp)
   where
     typeSig = symbol ":" *> exprWithRecoverySI
     clause = fmap mkClause $ located $ (,) <$> (Vector.fromList <$> manyPlicitPatterns) <*% symbol "=" <*> exprWithRecoverySI
     mkClause (loc, (pats, e)) = Clause loc pats e
 
-dataDef :: Parser Pre.Definition
+localConstantDef :: Parser (Name, SourceLoc, Pre.ConstantDef Pre.Expr)
+localConstantDef = do
+  (loc, (n, d)) <- located $ constantDef $ \n _ p -> (,) n <$> p
+  return (n, loc, d)
+
+dataDef :: Parser (QName, AbsoluteSourceLoc, Pre.Definition)
 dataDef = do
+  pos <- Parsix.position
   boxed
     <- Boxed <$ reserved "boxed" <* sameCol
     <|> pure Unboxed
-  Pre.DataDefinition boxed <$ reserved "type" <*>% name <*> manyTypedBindings <*>%
-    (concat <$% reserved "where" <*> manyIndentedOrSameCol conDef
-    <|> identity <$% symbol "=" <*>% sepBySI adtConDef (symbol "|"))
+  n <- reserved "type" *>% name
+  positionedRelativeTo n pos $
+    Pre.DataDefinition boxed <$> manyTypedBindings <*>%
+      (concat <$% reserved "where" <*> manyIndentedOrSameCol conDef
+      <|> identity <$% symbol "=" <*>% sepBySI adtConDef (symbol "|"))
   where
     conDef = constrDefs <$> ((:) <$> constructor <*> manySI constructor)
       <*% symbol ":" <*>% expr
     constrDefs cs t = [GADTConstrDef c t | c <- cs]
     adtConDef = ADTConstrDef <$> constructor <*> manySI atomicExpr
 
-classDef :: Parser Pre.Definition
-classDef = ClassDefinition <$ reserved "class" <*>% name <*> manyTypedBindings
-  <*% reserved "where" <*> manyIndentedOrSameCol (mkMethodDef <$> located ((,) <$> name <*% symbol ":" <*>% expr))
+classDef :: Parser (QName, AbsoluteSourceLoc, Pre.Definition)
+classDef = do
+  pos <- Parsix.position
+  n <- reserved "class" *>% name
+  positionedRelativeTo n pos $
+    Pre.ClassDefinition
+      <$> manyTypedBindings
+      <*% reserved "where" <*> manyIndentedOrSameCol (mkMethodDef <$> located ((,) <$> name <*% symbol ":" <*>% expr))
   where
-    mkMethodDef (loc, (n, e)) = Method n loc e
+  mkMethodDef (loc, (n, e)) = Method n loc e
 
+instanceDef :: Int -> Parser (QName, AbsoluteSourceLoc, Pre.Definition)
+instanceDef i = do
+  pos <- Parsix.position
+  let
+    n = "instance-" <> shower i
+  positionedRelativeTo n pos $
+    InstanceDefinition <$ reserved "instance" <*>% exprWithoutWhere
+      <*% reserved "where" <*> manyIndentedOrSameCol localConstantDef
 
-instanceDef :: Parser Pre.Definition
-instanceDef = InstanceDefinition <$ reserved "instance" <*>% exprWithoutWhere
-  <*% reserved "where" <*> manyIndentedOrSameCol (located constantDef)
+positionedRelativeTo
+  :: Name
+  -> Parsix.Position
+  -> Parser a
+  -> Parser (QName, AbsoluteSourceLoc, a)
+positionedRelativeTo n startPos p = do
+  env <- ask
+  let
+    mname = parseEnvModuleName env
+    file = parseEnvSourceFile env
+    qn = QName mname n
+  a <- local (\env' -> env' { parseEnvRelativeToName = Just (qn, startPos) }) p
+  endPos <- Parsix.position
+  return (qn, AbsoluteSourceLoc file (Parsix.Span startPos endPos) Nothing, a)
 
 -------------------------------------------------------------------------------
 -- * Module
-modul :: Parser (ModuleHeader, [(Either Error (SourceLoc, Pre.Definition))])
-modul = Parsix.whiteSpace >> dropAnchor
-  ((,) <$> moduleHeader <*> manySameCol (dropAnchor def))
+modul :: Parser (ModuleHeader, [(Either Error (QName, AbsoluteSourceLoc, Pre.Definition))])
+modul = do
+  Parsix.whiteSpace
+  dropAnchor $ do
+    header <- moduleHeader
+    ds <- local (\env -> env { parseEnvModuleName = moduleName header }) $
+      manyIndexed $ \i -> do
+        sameCol
+        dropAnchor $ def i
+    return (header, ds)
 
 moduleHeader :: Parser ModuleHeader
 moduleHeader = moduleExposing <*> manySameCol (dropAnchor impor)
