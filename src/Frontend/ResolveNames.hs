@@ -57,14 +57,13 @@ resolveModule modul defs = do
         $ localConstrAliases defs <> importedConstrAliases
 
   checkedDefDeps <- forM (HashMap.toList defs) $ \(n, (loc, def)) -> do
-    (def', deps) <- runResolveNames (resolveTopLevelDefinition modul def) env
+    (def', deps) <- runResolveNames (resolveTopLevelDefinition n def) env
     return (n, loc, def', deps)
 
   let aliases = localAliases defs <> importedNameAliases
       lookupAlias preName
         | HashSet.size candidates == 1 = return $ pure $ fromMaybe (panic "resolveModule impossible") $ head $ HashSet.toList candidates
         | HashSet.size candidates == 0 = do
-          logCategory "resolve" "aaa"
           report
             $ TypeError ("Not in scope:" PP.<+> red (pretty preName)) (preNameSourceLoc preName) mempty
           let err = Scoped.App
@@ -73,7 +72,6 @@ resolveModule modul defs = do
                 (Scoped.Lit $ Literal.String "error\n")
           return err
         | otherwise = do
-          logCategory "resolve" "bbb"
           report
             $ TypeError ("Ambiguous occurrence:" PP.<+> red (pretty preName)) (preNameSourceLoc preName) $ PP.vcat
               [ "It could refer to" PP.<+> prettyHumanList "or" (dullBlue . pretty <$> toList candidates) <> "."
@@ -121,7 +119,7 @@ localConstrAliases contents = MultiHashMap.fromList $ concat
     , (fromModuleName (qnameModule n) <> "." <> k, QConstr n c)
     , (fromQName n <> "." <> k, QConstr n c)
     ]
-  | (n, (_, Unscoped.DataDefinition _ _ _ cs)) <- HashMap.toList contents
+  | (n, (_, Unscoped.DataDefinition _ _ cs)) <- HashMap.toList contents
   , c <- Unscoped.constrName <$> cs
   , let k = fromConstr c
   ]
@@ -141,7 +139,7 @@ localAliases contents = MultiHashMap.fromList $ concat
       [ [ (fromName m, qn)
         , (fromQName qn, qn)
         ]
-      | (n, (_, Unscoped.ClassDefinition _ _ ms)) <- HashMap.toList contents
+      | (n, (_, Unscoped.ClassDefinition _ ms)) <- HashMap.toList contents
       , m <- methodName <$> ms
       , let qn = QName (qnameModule n) m
       ]
@@ -151,7 +149,7 @@ methodClasses
   -> HashMap QName QName
 methodClasses contents = HashMap.fromList
   [ (QName (qnameModule n) m, n)
-  | (n, (_, Unscoped.ClassDefinition _ _ ms)) <- HashMap.toList contents
+  | (n, (_, Unscoped.ClassDefinition _ ms)) <- HashMap.toList contents
   , m <- methodName <$> ms
   ]
 
@@ -200,17 +198,17 @@ importedAliases (Import modName asName exposed) = do
 
 -- | Distinguish variables from constructors, resolve scopes
 resolveTopLevelDefinition
-  :: ModuleHeader
+  :: QName
   -> Unscoped.Definition
   -> ResolveNames (Scoped.Definition Scoped.Expr PreName)
 resolveTopLevelDefinition _ (Unscoped.ConstantDefinition d) =
-  Scoped.ConstantDefinition . snd <$> resolveDefinition d
-resolveTopLevelDefinition modul (Unscoped.DataDefinition boxiness name params cs) = do
+  Scoped.ConstantDefinition <$> resolveDefinition d
+resolveTopLevelDefinition name (Unscoped.DataDefinition boxiness params cs) = do
   (params', abstr) <- resolveParams params
   let
     dataType
       = Unscoped.apps
-        (Unscoped.Var $ fromQName $ QName (moduleName modul) name)
+        (Unscoped.Var $ fromQName name)
         [(p, Unscoped.Var $ fromName n) | (p, n, _) <- params]
   cs' <- forM cs $ \case
     Unscoped.ADTConstrDef c types -> do
@@ -222,18 +220,18 @@ resolveTopLevelDefinition modul (Unscoped.DataDefinition boxiness name params cs
     Unscoped.GADTConstrDef c typ ->
       ConstrDef c . abstr <$> resolveExpr typ
   return $ Scoped.DataDefinition $ DataDef boxiness params' cs'
-resolveTopLevelDefinition _ (Unscoped.ClassDefinition _name params ms) = do
+resolveTopLevelDefinition _ (Unscoped.ClassDefinition params ms) = do
   (params', abstr) <- resolveParams params
   ms' <- mapM (mapM (fmap abstr . resolveExpr)) ms
   return $ Scoped.ClassDefinition $ ClassDef params' ms'
 resolveTopLevelDefinition _ (Unscoped.InstanceDefinition typ ms) = do
   typ' <- resolveExpr typ
-  ms' <- mapM (\(loc, m) -> (,) loc <$> resolveDefinition m) ms
+  ms' <- forM ms $ \(n, loc, m) -> do
+    m' <- resolveDefinition m
+    return $ Method n loc m'
   return
     $ Scoped.InstanceDefinition
-    $ Scoped.InstanceDef typ'
-    $ (\(loc, (n, d)) -> Method n loc d)
-    <$> ms'
+    $ Scoped.InstanceDef typ' ms'
 
 resolveParams
   :: Monad f
@@ -249,10 +247,9 @@ resolveParams params = do
 
 resolveDefinition
   :: Unscoped.ConstantDef Unscoped.Expr
-  -> ResolveNames (Name, Scoped.ConstantDef Scoped.Expr PreName)
-resolveDefinition (Unscoped.ConstantDef name a clauses mtyp) = do
-  res <- Scoped.ConstantDef a <$> mapM resolveClause clauses <*> mapM resolveExpr mtyp
-  return (name, res)
+  -> ResolveNames (Scoped.ConstantDef Scoped.Expr PreName)
+resolveDefinition (Unscoped.ConstantDef a clauses mtyp) =
+  Scoped.ConstantDef a <$> mapM resolveClause clauses <*> mapM resolveExpr mtyp
 
 resolveClause
   :: Unscoped.Clause Unscoped.Expr
@@ -285,18 +282,18 @@ resolveExpr expr = case expr of
     <*> pure p
     <*> resolveExpr e2
   Unscoped.Let defs body -> do
-    defs' <- traverse (bitraverse pure resolveDefinition) defs
+    defs' <- traverse (\(n, loc, d) -> (,,) n loc <$> resolveDefinition d) defs
     body' <- resolveExpr body
     let sortedDefs = topoSortWith
-          (\(_, (name, _)) -> fromName name)
-          (\(_, (_, d)) -> toHashSet d)
+          (\(name, _, _) -> fromName name)
+          (\(_, _, d) -> toHashSet d)
           defs'
 
         go ds e = do
           let ds' = Vector.fromList ds
-              abstr = letAbstraction $ fromName . fst . snd <$> ds'
+              abstr = letAbstraction $ fromName . fst3 <$> ds'
           Scoped.Let
-            (Scoped.LetRec $ (\(loc, (name, def)) -> Scoped.LetBinding loc (fromName name) $ Scoped.abstractConstantDef abstr def) <$> ds')
+            (Scoped.LetRec $ (\(name, loc, def) -> Scoped.LetBinding loc (fromName name) $ Scoped.abstractConstantDef abstr def) <$> ds')
             (abstract abstr e)
 
     return $ foldr go body' $ flattenSCC <$> sortedDefs
@@ -312,7 +309,7 @@ resolveExpr expr = case expr of
       $ Scoped.App
         (global Builtin.StaticErrorName)
         Explicit
-        (Scoped.Lit $ Literal.String $ shower $ pretty e)
+        (Scoped.Lit $ Literal.String "name resolution error")
 
 resolvePat
   :: Pat PreName Scoped.Literal PreName Unscoped.Expr
@@ -368,13 +365,13 @@ moduleExports moduleHeader_ defs = do
     defNames = HashSet.filter (p . qnameName) $ HashSet.fromMap $ void defs
     conNames = HashSet.fromList
       [ QConstr n c
-      | (n, (_, Unscoped.DataDefinition _ _ _ cs)) <- HashMap.toList defs
+      | (n, (_, Unscoped.DataDefinition _ _ cs)) <- HashMap.toList defs
       , c <- Unscoped.constrName <$> cs
       , p $ qnameName n
       ]
     methods = HashSet.fromList
       [ QName n m
-      | (QName n _, (_, Unscoped.ClassDefinition _ _ ms)) <- HashMap.toList defs
+      | (QName n _, (_, Unscoped.ClassDefinition _ ms)) <- HashMap.toList defs
       , m <- methodName <$> ms
       , p m
       ]

@@ -21,8 +21,8 @@ import Data.Hashable.Lifted
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import Error
 import Pretty
+import SourceLoc
 import Syntax.Annotation
 import Syntax.Name
 import Util

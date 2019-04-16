@@ -22,6 +22,7 @@ import qualified Data.List.Class as ListT
 
 import Error
 import Pretty
+import SourceLoc
 
 class Monad m => MonadReport m where
   report :: Error -> m ()

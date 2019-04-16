@@ -13,13 +13,13 @@ import Control.Monad
 import Control.Monad.Trans.Maybe
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
-import qualified Data.List.NonEmpty as NonEmpty
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
+import Data.IORef
+import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
-import Data.IORef
 
 import {-# SOURCE #-} Elaboration.TypeCheck.Expr
 import qualified Builtin.Names as Builtin
@@ -35,6 +35,7 @@ import Elaboration.Monad
 import Elaboration.TypeCheck.Literal
 import Elaboration.Unify
 import qualified Elaboration.Unify.Indices as Indices
+import SourceLoc
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Literal as Core

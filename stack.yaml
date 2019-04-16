@@ -3,8 +3,8 @@ packages:
 - '.'
 extra-deps:
 - llvm-hs-pretty-0.6.1.0
-- parsix-0.2.0.0
+- parsix-0.2.1.0
 - git: https://github.com/ollef/deriving-gcompare.git
   commit: 6d26b859fce3fcae181bde4c8d1b3a6d98e26068
 - git: https://github.com/ollef/rock.git
-  commit: f6c02b1e638f40586a5d61db0b25147db53fbd9f
+  commit: 5915da824ae7e61cda15af346ad3f9731667b9bb

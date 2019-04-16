@@ -1,16 +1,18 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 module Command.Run where
 
 import Prelude(String, words)
 import Protolude
 
+import Data.Text.Prettyprint.Doc.Render.Terminal
 import Options.Applicative
 import System.Process
 
 import qualified Command.Check.Options as Check
 import qualified Command.Compile as Compile
 import qualified Command.Compile.Options as Compile
-import Error
+import Driver.Query
 
 data Options = Options
   { checkOptions :: Check.Options
@@ -37,9 +39,10 @@ run :: Options -> IO ()
 run opts = do
   anyErrorsVar <- newMVar False
   let
-    onError err =
-      modifyMVar_ anyErrorsVar $ \_ -> do
-        printError err
+    onError err = do
+      perr <- prettyError err
+      liftIO $ modifyMVar_ anyErrorsVar $ \_ -> do
+        putDoc perr
         return True
   Compile.compile (checkOptions opts) (compileOptions opts) onError $ \case
     Nothing -> exitFailure

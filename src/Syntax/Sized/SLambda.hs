@@ -18,6 +18,7 @@ import Data.Deriving
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
+import SourceLoc
 import Effect
 import qualified Effect.Context as Context
 import Syntax

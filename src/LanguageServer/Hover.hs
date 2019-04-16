@@ -97,7 +97,8 @@ hoverClosedDef
   -> (GName, SourceLoc, ClosedDefinition Expr, Biclosed Expr)
   -> Hover (Span, Expr Void Var)
 hoverClosedDef f (_, loc, ClosedDefinition def, Biclosed e) = do
-  guard $ f $ sourceLocSpan loc
+  aloc <- fetchAbsoluteSourceLoc loc
+  guard $ f $ absoluteSpan aloc
   hoverDef f def <> hoverExpr f e
 
 hoverDef
@@ -130,19 +131,22 @@ hoverExpr f expr = case expr of
   App e1 _ e2 -> hoverExpr f e1 <> hoverExpr f e2
   Let ds scope -> fold
     [ fold $ forLet ds $ \_ loc _ t -> do
-      guard $ f $ sourceLocSpan loc
+      aloc <- fetchAbsoluteSourceLoc loc
+      guard $ f $ absoluteSpan aloc
       hoverExpr f t
     , letExtendContext ds $ \vs ->
       fold (forLet ds $ \_ loc s _ -> do
-        guard $ f $ sourceLocSpan loc
+        aloc <- fetchAbsoluteSourceLoc loc
+        guard $ f $ absoluteSpan aloc
         hoverExpr f $ instantiateLet pure vs s)
       <> hoverExpr f (instantiateLet pure vs scope)
     ]
   Case e brs _ -> hoverExpr f e <> hoverBranches f brs
   ExternCode e _ -> fold $ hoverExpr f <$> e
   SourceLoc loc e -> do
-    guard $ f $ sourceLocSpan loc
-    emitCons (sourceLocSpan loc, e) $ hoverExpr f e
+    aloc <- fetchAbsoluteSourceLoc loc
+    guard $ f $ absoluteSpan aloc
+    emitCons (absoluteSpan aloc, e) $ hoverExpr f e
 
 hoverBranches
   :: (Span -> Bool)

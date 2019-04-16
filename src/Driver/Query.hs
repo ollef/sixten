@@ -8,12 +8,17 @@
 {-# LANGUAGE TypeOperators #-}
 module Driver.Query (module Rock, module Driver.Query) where
 
-import Protolude hiding (TypeRep)
+import Protolude hiding (TypeError, TypeRep)
 
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
+import Data.Text.Prettyprint.Doc(line)
+import qualified Data.Text.Prettyprint.Doc as PP
+import Data.Text.Prettyprint.Doc.Render.Terminal
 import Rock
+import Text.Parsix.Highlight
+import Text.Parsix.Position
 import Util.MultiHashMap(MultiHashMap)
 import qualified Util.MultiHashMap as MultiHashMap
 
@@ -22,6 +27,7 @@ import Backend.Target as Target
 import Command.Compile.Options as Compile
 import Data.GADT.Compare.Deriving
 import Error
+import SourceLoc
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Definition as Pre
@@ -31,6 +37,7 @@ import qualified Syntax.Sized.Definition as Sized
 import qualified Syntax.Sized.Extracted as Extracted
 import qualified Syntax.Sized.Lifted as Lifted
 import TypeRep
+import Util
 
 type BindingGroup = HashSet QName
 type ModuleDefinitions = HashMap QName (SourceLoc, Unscoped.Definition)
@@ -44,7 +51,8 @@ data Query a where
   File :: FilePath -> Query Text
   Target :: Query Target
   Builtins :: Query (HashMap QName ElaboratedDef)
-  ParsedModule :: FilePath -> Query (ModuleHeader, [(SourceLoc, Unscoped.Definition)])
+  ParsedModule :: FilePath -> Query (ModuleHeader, [(QName, AbsoluteSourceLoc, Unscoped.Definition)], Highlights)
+  AbsoluteSourceLoc :: QName -> Query AbsoluteSourceLoc
   ModuleHeaders :: Query (HashMap FilePath ModuleHeader)
   ModuleFiles :: Query (HashMap ModuleName FilePath)
   ModuleFile :: ModuleName -> Query (Maybe FilePath)
@@ -94,6 +102,7 @@ instance HashTag Query where
     Driver.Query.Target {} -> hash
     Builtins {} -> hash
     ParsedModule {} -> hash
+    Driver.Query.AbsoluteSourceLoc {} -> hash
     ModuleHeaders {} -> hash
     ModuleFiles {} -> hash
     ModuleFile {} -> hash
@@ -127,7 +136,7 @@ instance HashTag Query where
 
 -- Derived queries
 fetchModuleHeader :: MonadFetch Query m => FilePath -> m ModuleHeader
-fetchModuleHeader file = fst <$> fetch (ParsedModule file)
+fetchModuleHeader file = fst3 <$> fetch (ParsedModule file)
 
 fetchDefinition :: MonadFetch Query m => GName -> m (Definition (Core.Expr meta) v)
 fetchDefinition name = openDefinition <$> fetch (Definition name)
@@ -168,3 +177,47 @@ fetchModules = HashSet.fromMap . void <$> fetch ModuleFiles
 fetchBindingGroups :: MonadFetch Query m => ModuleName -> m (HashSet BindingGroup)
 fetchBindingGroups mname
   = HashSet.fromMap . void <$> fetch (ResolvedBindingGroups mname)
+
+fetchLocationRendering :: MonadFetch Query m => SourceLoc -> m Doc
+fetchLocationRendering loc = do
+  SourceLoc.AbsoluteSourceLoc file span maybeHighlights <- fetchAbsoluteSourceLoc loc
+  source <- fetch $ File file
+  -- We would get a circular query if we always fetched highlights from the
+  -- parse query, so we avoid doing that by storing them in the source loc
+  -- in errors from the parser.
+  highlights <- case maybeHighlights of
+    Just highlights -> return highlights
+    Nothing -> do
+      (_, _, highlights) <- fetch $ ParsedModule file
+      return highlights
+  return $ prettySpan
+    defaultStyle
+    span
+    source
+    highlights
+
+fetchAbsoluteSourceLoc :: MonadFetch Query m => SourceLoc -> m AbsoluteSourceLoc
+fetchAbsoluteSourceLoc src = case src of
+  Relative (RelativeSourceLoc name (Span rstart rend)) -> do
+    SourceLoc.AbsoluteSourceLoc file (Span start _) hl <- fetch $ Driver.Query.AbsoluteSourceLoc name
+    return $ SourceLoc.AbsoluteSourceLoc file (Span (start <> rstart) (start <> rend)) hl
+  Absolute a ->
+    return a
+
+printError :: (MonadFetch Query m, MonadIO m) => Error -> m ()
+printError = liftIO . putDoc <=< prettyError
+
+prettyError :: MonadFetch Query m => Error -> m Doc
+prettyError (Error kind summary (Just loc) footnote) = do
+  aloc <- fetchAbsoluteSourceLoc loc
+  renderedLoc <- fetchLocationRendering loc
+  return
+    $ pretty aloc <> ":" PP.<+> red (pretty kind) <> ":" PP.<+> summary
+    <> line <> renderedLoc
+    <> line <> footnote
+    <> line
+prettyError (Error kind summary Nothing footnote) =
+  return
+    $ red (pretty kind) <> ":" <> summary
+    <> line <> footnote
+    <> line

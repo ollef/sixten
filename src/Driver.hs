@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 module Driver where
@@ -26,7 +28,7 @@ data Arguments = Arguments
   , target :: !Target
   , logHandle :: !Handle
   , logCategories :: !(Category -> Bool)
-  , onError :: !(Error -> IO ())
+  , onError :: !(Error -> Task Query ())
   }
 
 execute :: Arguments -> Task Query a -> IO a
@@ -38,22 +40,28 @@ execute args task = do
       { _logCategories = Driver.logCategories args
       , _logAction = Text.hPutStrLn $ logHandle args
       }
-    traceFetch_ :: Rules Query -> Rules Query
+    ignoreTaskKind :: GenRules (Writer TaskKind f) f -> Rules f
+    ignoreTaskKind rs key = fst <$> rs (Writer key)
+    traceFetch_ :: GenRules (Writer TaskKind Query) Query -> GenRules (Writer TaskKind Query) Query
     traceFetch_ =
       if _logCategories logEnv_ "fetch" then
         traceFetch
-          (\key -> modifyMVar_ printVar $ \n -> do
+          (\(Writer key) -> liftIO $ modifyMVar_ printVar $ \n -> do
             _logAction logEnv_ $ fold (replicate n "| ") <> "fetching " <> show key
             return $ n + 1)
-          (\_ _ -> modifyMVar_ printVar $ \n -> do
+          (\_ _ -> liftIO $ modifyMVar_ printVar $ \n -> do
             _logAction logEnv_ $ fold (replicate (n - 1) "| ") <> "*"
             return $ n - 1)
         else
           identity
+
+    writeErrors :: q -> [Error] -> Task Query ()
     writeErrors _ errs =
       forM_ errs $ onError args
+    tasks :: Rules Query
     tasks
       = memoise startedVar
+      $ ignoreTaskKind
       $ traceFetch_
       $ writer writeErrors
       $ rules logEnv_ (sourceFiles args) (readSourceFile args) (target args)
@@ -91,7 +99,7 @@ compileFiles opts args k =
 -- Incremental execution
 data DriverState = DriverState
   { _tracesVar :: !(MVar (Traces Query))
-  , _errorsVar :: !(MVar (DMap Query (Const [Error])))
+  , _errorsVar :: !(MVar (DMap Query (Const [(Error, Maybe AbsoluteSourceLoc)])))
   }
 
 initialState :: IO DriverState
@@ -108,8 +116,8 @@ incrementallyExecuteVirtualFile
   -> FilePath
   -> Text
   -> Task Query a
-  -> IO (a, [Error])
-incrementallyExecuteVirtualFile state file text task = do
+  -> IO (a, [(Error, Maybe AbsoluteSourceLoc)])
+incrementallyExecuteVirtualFile state file text task = handleEx $ do
   startedVar <- newMVar mempty
   printVar <- newMVar 0
   let
@@ -120,22 +128,30 @@ incrementallyExecuteVirtualFile state file text task = do
       { _logCategories = (==) "fetch"
       , _logAction = Text.hPutStrLn stderr
       }
-    traceFetch_ :: Rules Query -> Rules Query
+    traceFetch_ :: GenRules (Writer TaskKind Query) Query -> GenRules (Writer TaskKind Query) Query
     traceFetch_ =
       if _logCategories logEnv_ "fetch" then
         traceFetch
-          (\key -> modifyMVar_ printVar $ \n -> do
+          (\(Writer key) -> liftIO $ modifyMVar_ printVar $ \n -> do
             _logAction logEnv_ $ fold (replicate n "| ") <> "fetching " <> show key
             return $ n + 1)
-          (\_ _ -> modifyMVar_ printVar $ \n -> do
+          (\_ _ -> liftIO $ modifyMVar_ printVar $ \n -> do
             _logAction logEnv_ $ fold (replicate (n - 1) "| ") <> "*"
             return $ n - 1)
         else
           identity
-    writeErrors key errs = do
-      Text.hPutStrLn stderr $ "writeErrors " <> show key <> " " <> show (pretty errs)
-      modifyMVar_ (_errorsVar state) $
-        pure . DMap.insert key (Const errs)
+    writeErrors :: Writer TaskKind Query a -> [Error] -> Task Query ()
+    writeErrors (Writer key) errs = do
+      perrs <- mapM prettyError errs
+      errLocs <- forM errs $ \err -> do
+        loc <- mapM fetchAbsoluteSourceLoc $ errorLocation err
+        return (err, loc)
+      liftIO $ do
+        unless (null perrs) $
+          Text.hPutStrLn stderr $ "writeErrors " <> show key <> " " <> show (pretty perrs)
+        modifyMVar_ (_errorsVar state) $
+          pure . DMap.insert key (Const errLocs)
+    tasks :: Rules Query
     tasks
       = memoise startedVar
       $ verifyTraces (_tracesVar state)
@@ -154,6 +170,13 @@ incrementallyExecuteVirtualFile state file text task = do
     errors = do
       (_ DMap.:=> Const errs) <- DMap.toList errorsMap
       errs
-  Text.hPutStrLn stderr $ "all errors length " <> show (DMap.size errorsMap)
-  Text.hPutStrLn stderr $ "all errors " <> show (pretty errors)
+  Text.hPutStrLn stderr $ "all errors length " <> show (length errors)
   return (result, errors)
+  where
+    handleEx m = do
+      mres <- try m
+      case mres of
+        Left e -> do
+          Text.hPutStrLn stderr $ "exception! " <> show (e :: SomeException)
+          panic "a"
+        Right res -> return res

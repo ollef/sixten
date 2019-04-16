@@ -14,6 +14,7 @@ import Backend.Target(Target)
 import Builtin.Names
 import Effect
 import qualified Effect.Context as Context
+import SourceLoc
 import Syntax
 import Syntax.Core as Core
 import Syntax.Sized.Anno
