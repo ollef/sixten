@@ -39,49 +39,51 @@ trySolveConstraint
   :: MonadElaborate m
   => MetaVar
   -> m (Maybe (Closed (Expr MetaVar)))
-trySolveConstraint m = modifyContext (const mempty) $ do
-  logShow "tc.constraint" "trySolveConstraint" $ metaId m
-  withInstantiatedMetaType m $ \vs typ -> do
-    ctx <- getContext
-    typ' <- whnf typ
-    case typ' of
-      Builtin.Equals _typ expr1 expr2 -> do
-        runUnify (unify [] expr1 expr2) report
-        openSol <- lams vs $ Builtin.Refl typ expr1 expr2
-        let sol = close (panic "trySolveConstraint equals not closed") openSol
-        solve m sol
-        return $ Just sol
-      (appsView -> (unSourceLoc -> Builtin.QGlobal className, _)) -> do
-        -- Try subsumption on all instances of the class until a match is found
-        mname <- view currentModule
-        globalClassInstances <- fetchInstances className mname
-        let
-          go [] = do
-            logCategory "tc.constraint" "No matching instance"
-            return Nothing
-          go (inst:candidates') = do
-            instanceType <- typeOf inst
-            mres <- untouchable
-              $ runSubtype (Just . ($ inst) <$> subtypeE instanceType typ')
-              $ \_err -> return Nothing
-            case mres of
-              Nothing -> go candidates'
-              Just matchingInstance -> do
-                logMeta "tc.constraint" "Matching instance" $ zonk matchingInstance
-                logMeta "tc.constraint" "Matching instance typ" $ zonk typ'
-                openSol <- lams vs matchingInstance
-                let sol = close (panic "trySolveConstraint not closed") openSol
-                solve m sol
-                return $ Just sol
-          candidates
-            = [pure v | v <- toList vs, Context.lookupPlicitness v ctx == Constraint]
-            <> [Global $ gname g | g <- HashSet.toList globalClassInstances]
-        logShow "tc.constraint" "Candidates" $ length candidates
-        go candidates
-      _ -> do
-        logMeta "tc.constraint" "Malformed" $ zonk typ'
-        reportLocated "Malformed constraint" -- TODO error message
-        return Nothing
+trySolveConstraint m =
+  modifyContext (const mempty) $
+  maybe identity located (metaSourceLoc m) $ do
+    logShow "tc.constraint" "trySolveConstraint" $ metaId m
+    withInstantiatedMetaType m $ \vs typ -> do
+      ctx <- getContext
+      typ' <- whnf typ
+      case typ' of
+        Builtin.Equals _typ expr1 expr2 -> do
+          runUnify (unify [] expr1 expr2) report
+          openSol <- lams vs $ Builtin.Refl typ expr1 expr2
+          let sol = close (panic "trySolveConstraint equals not closed") openSol
+          solve m sol
+          return $ Just sol
+        (appsView -> (unSourceLoc -> Builtin.QGlobal className, _)) -> do
+          -- Try subsumption on all instances of the class until a match is found
+          mname <- view currentModule
+          globalClassInstances <- fetchInstances className mname
+          let
+            go [] = do
+              logCategory "tc.constraint" "No matching instance"
+              return Nothing
+            go (inst:candidates') = do
+              instanceType <- typeOf inst
+              mres <- untouchable
+                $ runSubtype (Just . ($ inst) <$> subtypeE instanceType typ')
+                $ \_err -> return Nothing
+              case mres of
+                Nothing -> go candidates'
+                Just matchingInstance -> do
+                  logMeta "tc.constraint" "Matching instance" $ zonk matchingInstance
+                  logMeta "tc.constraint" "Matching instance typ" $ zonk typ'
+                  openSol <- lams vs matchingInstance
+                  let sol = close (panic "trySolveConstraint not closed") openSol
+                  solve m sol
+                  return $ Just sol
+            candidates
+              = [pure v | v <- toList vs, Context.lookupPlicitness v ctx == Constraint]
+              <> [Global $ gname g | g <- HashSet.toList globalClassInstances]
+          logShow "tc.constraint" "Candidates" $ length candidates
+          go candidates
+        _ -> do
+          logMeta "tc.constraint" "Malformed" $ zonk typ'
+          reportLocated "Malformed constraint" -- TODO error message
+          return Nothing
 
 solveExprConstraints
   :: CoreM
