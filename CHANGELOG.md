@@ -8,6 +8,7 @@
 - Made the language server use incremental compilation, reusing compilation results between changes when it can.
 - Made the language server type check on every change, instead of on every save.
 - Improved caching in the incremental compiler by storing relative source locations in the syntax tree such that they don't change when they move in the file.
+- Added a check for duplicate error names (fixing #130, #131).
 
 ### March
 - Added pattern exhaustiveness and redundancy checks.
