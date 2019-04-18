@@ -14,17 +14,11 @@ import Driver.Query
 import Syntax
 import qualified Syntax.Pre.Unscoped as Pre
 
-data DupState = DupState
-  { instanceNumber :: !Int
-  , errors :: [Error]
-  }
-
 dupCheck
   :: [(QName, AbsoluteSourceLoc, Pre.Definition)]
   -> Task Query (HashMap QName (SourceLoc, Pre.Definition), [Error])
 dupCheck
-  = fmap (second errors)
-  . flip runStateT (DupState 0 [])
+  = flip runStateT []
   . foldM go mempty
   where
     go defs (name, loc@(Syntax.AbsoluteSourceLoc _ span _), def)
@@ -41,7 +35,7 @@ dupCheck
               [ "Previous definition at " <> pretty aprevLoc
               , renderedPrevLoc
               ]
-        modify' $ \s -> s { errors = err : errors s }
+        modify' (err :)
         return defs
       | otherwise = do
         let
