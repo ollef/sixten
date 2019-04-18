@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Frontend.DupCheck where
 
-import Protolude hiding (TypeError)
+import Protolude hiding (TypeError, moduleName)
 
 import Control.Monad.State
 import Data.HashMap.Lazy(HashMap)
@@ -44,3 +44,32 @@ dupCheck
             $ RelativeSourceLoc name
             $ spanRelativeTo (spanStart span) span
         return $ HashMap.insert name (loc', def) defs
+
+dupCheckModules
+  :: HashMap FilePath ModuleHeader
+  -> Task Query (HashMap ModuleName FilePath, [Error])
+dupCheckModules
+  = flip runStateT []
+  . foldM go mempty
+  . HashMap.toList
+  where
+    go modules (file, header)
+      | moduleName header `HashMap.member` modules = do
+        let
+          loc = Syntax.AbsoluteSourceLoc file (Span mempty mempty) Nothing
+          prevFile = modules HashMap.! moduleName header
+          prevLoc = Syntax.AbsoluteSourceLoc prevFile (Span mempty mempty) Nothing
+          prettyModuleName = pretty $ moduleName header
+        renderedPrevLoc <- fetchLocationRendering $ Absolute prevLoc
+        let
+          err = TypeError
+            ("Duplicate module " <> red prettyModuleName)
+            (Just $ Absolute loc)
+            $ PP.vcat
+              [ dullBlue prettyModuleName <> " was previously defined at " <> pretty prevLoc
+              , renderedPrevLoc
+              ]
+        modify' (err :)
+        return modules
+      | otherwise =
+        return $ HashMap.insert (moduleName header) file modules

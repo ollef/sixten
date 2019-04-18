@@ -91,11 +91,9 @@ rules logEnv_ inputFiles readFile_ target (Writer (Writer query)) = case query o
       flip runReaderT reportEnv_
       $ HashMap.fromList <$> cycleCheckModules result
 
-  ModuleFiles -> noError $ do
+  ModuleFiles -> nonInput $ do
     moduleHeaders <- fetch ModuleHeaders
-    return
-      $ HashMap.fromList
-      [(moduleName mh, fp) | (fp, mh) <- HashMap.toList moduleHeaders]
+    DupCheck.dupCheckModules moduleHeaders
 
   ModuleFile moduleName_ -> noError $
     HashMap.lookup moduleName_ <$> fetch ModuleFiles
@@ -365,11 +363,12 @@ rules logEnv_ inputFiles readFile_ target (Writer (Writer query)) = case query o
         fetch $ ElaboratedGroup names
 
   CompileAll outputFile opts -> noError $ do
-    moduleHeaders <- fetch ModuleHeaders
-    submodules <- for (HashMap.elems moduleHeaders) $ \moduleHeader -> do
-      bindingGroups <- fetch $ ResolvedModule $ moduleName moduleHeader
+    modules <- fetch ModuleFiles
+    submodules <- for (HashMap.toList modules) $ \(moduleName_, file) -> do
+      bindingGroups <- fetch $ ResolvedModule moduleName_
       submodules <- for bindingGroups $ \defs ->
         fetch $ GeneratedSubmodules $ bindingGroupNames defs
+      moduleHeader <- (HashMap.! file) <$> fetch ModuleHeaders
       return (moduleHeader, concat submodules)
 
     runtimeSubmodule <- do
