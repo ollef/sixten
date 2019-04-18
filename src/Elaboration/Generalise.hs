@@ -94,7 +94,7 @@ collectMetas mpred mode defs = do
     metas <- metaVars varType
     logMeta "tc.gen" "varType" $ zonk varType
     logShow "tc.gen" "collectMetas" metas
-    filtered <- filterMSet (\m -> if not (mpred m) then return False else isUnsolved m) metas
+    filtered <- filterMSet (\m -> if mpred m then isUnsolved m else return False) metas
     logShow "tc.gen" "collectMetas filtered" filtered
     return filtered
 
