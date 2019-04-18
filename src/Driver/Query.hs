@@ -218,6 +218,6 @@ prettyError (Error kind summary (Just loc) footnote) = do
     <> line
 prettyError (Error kind summary Nothing footnote) =
   return
-    $ red (pretty kind) <> ":" <> summary
+    $ red (pretty kind) <> ":" PP.<+> summary
     <> line <> footnote
     <> line
