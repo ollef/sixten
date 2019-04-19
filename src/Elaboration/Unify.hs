@@ -105,15 +105,14 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
         Nothing -> do
           let vs = snd <$> pvs
           t' <- prune (toHashSet vs) t
-          -- TODO: Do less normalisation
-          normt' <- normalise t
-          lamt <- plicitLams pvs normt'
+          t'' <- expandValueBindings t'
+          lamt <- plicitLams pvs t''
           normLamt <- normalise lamt
           logPretty "tc.unify.context" "context" $ Context.prettyContext $ prettyMeta <=< zonk
           logShow "tc.unify" "vs" vs
           logMeta "tc.unify" ("solving t " <> show (metaId m)) $ zonk t
           logMeta "tc.unify" ("solving t' " <> show (metaId m)) $ zonk t'
-          logMeta "tc.unify" ("solving normt' " <> show (metaId m)) $ zonk normt'
+          logMeta "tc.unify" ("solving t'' " <> show (metaId m)) $ zonk t''
           logMeta "tc.unify" ("solving lamt " <> show (metaId m)) $ zonk lamt
           logMeta "tc.unify" ("solving normlamt " <> show (metaId m)) $ zonk normLamt
           occurs cxt m normLamt
@@ -173,6 +172,16 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
         err = "Type mismatch" <> PP.line <> PP.vcat printedCxt
       logCategory "tc.unify.error" $ shower err
       throwError $ TypeError err loc mempty
+
+expandValueBindings :: MonadElaborate m => CoreM -> m CoreM
+expandValueBindings expr = do
+  ctx <- getContext
+  return $ expr >>= go ctx
+  where
+    go ctx v =
+      case Context.lookupValue v ctx of
+        Just e -> e >>= go ctx
+        Nothing -> pure v
 
 occurs
   :: (MonadElaborate m, MonadError Error m)
