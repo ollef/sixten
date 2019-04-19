@@ -104,26 +104,20 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
       case msol of
         Nothing -> do
           let vs = snd <$> pvs
-          t' <- prune (toHashSet vs) t
-          t'' <- expandValueBindings t'
-          lamt <- plicitLams pvs t''
-          normLamt <- normalise lamt
+          t' <- expandValueBindings t
+          lamt <- plicitLams pvs t'
+          prunedLamt <- prune mempty lamt
+          occurs cxt m prunedLamt
           logPretty "tc.unify.context" "context" $ Context.prettyContext $ prettyMeta <=< zonk
           logShow "tc.unify" "vs" vs
           logMeta "tc.unify" ("solving t " <> show (metaId m)) $ zonk t
           logMeta "tc.unify" ("solving t' " <> show (metaId m)) $ zonk t'
-          logMeta "tc.unify" ("solving t'' " <> show (metaId m)) $ zonk t''
           logMeta "tc.unify" ("solving lamt " <> show (metaId m)) $ zonk lamt
-          logMeta "tc.unify" ("solving normlamt " <> show (metaId m)) $ zonk normLamt
-          occurs cxt m normLamt
-          case closed normLamt of
-            Nothing -> do
-              logCategory "tc.unify" "solveVar not closed"
-              can'tUnify
-            Just closedLamt -> do
-              lamtType <- typeOf normLamt
-              recurse cxt (open $ metaType m) lamtType
-              solve m $ close identity closedLamt
+          logMeta "tc.unify" ("solving prunedLamt " <> show (metaId m)) $ zonk prunedLamt
+          closeM prunedLamt typeMismatch $ \closedLamt -> do
+            lamtType <- typeOf lamt
+            recurse cxt (open $ metaType m) lamtType
+            solve m closedLamt
         Just c -> recurse cxt (apps (open c) $ second pure <$> pvs) t
 
     sameVar m pes1 pes2 = do
@@ -140,25 +134,21 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
       else
         withInstantiatedMetaType' (Vector.length pes1) m $ \vs typ -> do
           let vs' = snd <$> Vector.filter fst (Vector.zip keep vs)
-          prunedType <- prune (toHashSet vs') typ
-          newMetaType <- pis vs' prunedType
-          newMetaType' <- normalise newMetaType
+          newMetaType <- pis vs' typ
+          newMetaType' <- prune mempty newMetaType
 
-          case closed newMetaType' of
-            Nothing -> do
-              logCategory "tc.unify" "sameVar not closed"
-              can'tUnify
-            Just newMetaType'' -> do
-              m' <- explicitExists
-                (metaHint m)
-                (metaPlicitness m)
-                (close identity newMetaType'')
-                (Vector.length vs')
-                (metaSourceLoc m)
-              ctx <- getContext
-              let e = Meta m' $ (\v -> (Context.lookupPlicitness v ctx, pure v)) <$> vs'
-              e' <- lams vs e
-              solve m $ close (panic "unify sameVar not closed") e'
+          closeM newMetaType' typeMismatch $ \closedNewMetaType' -> do
+            m' <- explicitExists
+              (metaHint m)
+              (metaPlicitness m)
+              closedNewMetaType'
+              (Vector.length vs')
+              (metaSourceLoc m)
+            ctx <- getContext
+            let e = Meta m' $ (\v -> (Context.lookupPlicitness v ctx, pure v)) <$> vs'
+            e' <- lams vs e
+            closeM e' typeMismatch $ \closede' -> do
+              solve m closede'
               unify cxt expr1 expr2
 
     can'tUnify = do
@@ -172,6 +162,21 @@ unify' cxt touchable expr1 expr2 = case (expr1, expr2) of
         err = "Type mismatch" <> PP.line <> PP.vcat printedCxt
       logCategory "tc.unify.error" $ shower err
       throwError $ TypeError err loc mempty
+
+closeM
+  :: (MonadIO m, MonadElaborate m)
+  => CoreM
+  -> m k
+  -> (Closed (Expr MetaVar) -> m k)
+  -> m k
+closeM expr onFail onSuccess = go (normalise >=> go (const onFail)) expr
+  where
+    go onFail' expr' =
+      case closed expr' of
+        Nothing ->
+          onFail' expr'
+        Just result ->
+          onSuccess $ close identity result
 
 expandValueBindings :: MonadElaborate m => CoreM -> m CoreM
 expandValueBindings expr = do
@@ -189,26 +194,30 @@ occurs
   -> MetaVar
   -> CoreM
   -> m ()
-occurs cxt mv expr = do
-  mvs <- metaVars expr
-  when (mv `HashSet.member` mvs) $ do
-    printedMv <- prettyMetaVar mv
-    expr' <- zonk expr
-    printedExpr <- prettyMeta expr'
-    printedCxt <- prettyContext cxt
-    loc <- getCurrentLocation
-    throwError $ TypeError
-      ("Cannot construct the infinite type"
-      <> PP.line
-      <> PP.vcat
-        ([ dullBlue printedMv
-        , "="
-        , dullBlue printedExpr
-        , ""
-        , "while trying to unify"
-        ] ++ printedCxt))
-        loc
-        mempty
+occurs cxt mv = go (normalise >=> go failed)
+  where
+    go onFail expr = do
+      mvs <- metaVars expr
+      when (mv `HashSet.member` mvs) $
+        onFail expr
+    failed expr = do
+      printedMv <- prettyMetaVar mv
+      expr' <- zonk expr
+      printedExpr <- prettyMeta expr'
+      printedCxt <- prettyContext cxt
+      loc <- getCurrentLocation
+      throwError $ TypeError
+        ("Cannot construct the infinite type"
+        <> PP.line
+        <> PP.vcat
+          ([ dullBlue printedMv
+          , "="
+          , dullBlue printedExpr
+          , ""
+          , "while trying to unify"
+          ] ++ printedCxt))
+          loc
+          mempty
 
 prettyContext
   :: MonadElaborate m
@@ -263,7 +272,7 @@ prune allowed expr = Log.indent $ do
             -- logMeta "tc.prune" "prune newMetaType'" $ zonk newMetaType'
             -- logShow "tc.prune" "prune vs" vs
             -- logShow "tc.prune" "prune vs'" vs'
-            maybeNewMetaType <- pruneMetaType (toList $ fst <$> allowedes') $ metaType m
+            maybeNewMetaType <- pruneMetaType (toList $ fst <$> allowedes') (metaType m)
             case maybeNewMetaType of
               Nothing -> do
                 logCategory "tc.prune" "prune not closed newMetaType'"
@@ -284,14 +293,10 @@ prune allowed expr = Log.indent $ do
                 -- logShow 30 "prune vs'" $ varId <$> vs'
                 -- logShow 30 "prune varTypes'" =<< mapM (prettyMeta . varType) vs'
                 logMeta "tc.prune" "prune e'" $ zonk e
-                case closed e of
-                  Nothing -> do
-                    logCategory "tc.prune" "prune not closed e'"
-                    return $ Meta m es'
-                  Just closedSol -> do
-                    logMeta "tc.prune" "prune closed" $ vacuous <$> zonk closedSol
-                    solve m $ close identity closedSol
-                    return $ Meta m' es''
+                closeM e (return $ Meta m es') $ \closedSol -> do
+                  logMeta "tc.prune" "prune closed" $ vacuous <$> zonk (open closedSol)
+                  solve m closedSol
+                  return $ Meta m' es''
           where
             isAllowedExpr (_, Var v) = v > localVarMarker || v `HashSet.member` allowed
             isAllowedExpr _ = True
@@ -303,7 +308,7 @@ pruneMetaType
   -> m (Maybe (Closed (Expr MetaVar)))
 pruneMetaType filt (Closed expr) = do
   result <- go mempty filt expr
-  return $ close identity <$> closed result
+  closeM result (return Nothing) (return . Just)
   where
     go allowed [] e = prune allowed e
     go allowed (True:xs) (Pi h p t s) = do
