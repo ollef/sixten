@@ -33,6 +33,7 @@ import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
 import Elaboration.TypeCheck.Literal
+import Elaboration.TypeOf
 import Elaboration.Unify
 import qualified Elaboration.Unify.Indices as Indices
 import SourceLoc
@@ -382,7 +383,7 @@ splitLit config x literal typ loc k = do
 
   branches <- forM lits $ \lit -> do
     let
-      litType = inferCoreLit lit
+      litType = typeOfLiteral lit
     maybe identity located loc $ runUnify (unify [] litType typ) report
     branch <- Context.set x (Core.Lit lit) $ match config k
     return $ LitBranch lit branch

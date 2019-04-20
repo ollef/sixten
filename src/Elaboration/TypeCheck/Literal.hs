@@ -21,12 +21,6 @@ inferLit :: Pre.Literal -> (Core.Expr m v, Core.Expr m v)
 inferLit (Pre.Integer i) = (Core.Lit $ Core.Integer i, Builtin.IntType)
 inferLit (Pre.String s) = (string s, Builtin.StringType)
 
-inferCoreLit :: Core.Literal -> Core.Expr m v
-inferCoreLit (Core.Integer _) = Builtin.IntType
-inferCoreLit (Core.Natural _) = Builtin.Nat
-inferCoreLit (Core.Byte _) = Builtin.ByteType
-inferCoreLit (Core.TypeRep _) = Builtin.Type
-
 litPat :: Pre.Literal -> Pat (HashSet QConstr) Core.Literal typ v
 litPat (Pre.Integer i) = LitPat (Core.Integer i)
 litPat (Pre.String s) = stringPat s
