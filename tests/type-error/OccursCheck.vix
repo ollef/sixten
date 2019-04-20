@@ -1,0 +1,4 @@
+boxed
+type List a = Nil | Cons a (List a)
+
+test MkUnit = Cons (test MkUnit) Nil
