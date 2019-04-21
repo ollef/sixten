@@ -122,7 +122,7 @@ whnf' args expr exprs = Log.indent $ do
     go (Case e brs retType) es = do
       e' <- whnf0 e
       case chooseBranch e' brs of
-        Nothing -> Case e' brs <$> whnf0 retType
+        Nothing -> return $ apps (Case e' brs retType) es
         Just chosen -> whnf' args chosen es
     go (ExternCode c retType) es = do
       c' <- mapM whnf0 c
