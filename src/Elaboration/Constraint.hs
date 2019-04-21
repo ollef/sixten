@@ -88,11 +88,14 @@ trySolveConstraint m =
 solveExprConstraints
   :: CoreM
   -> Elaborate CoreM
-solveExprConstraints = bindMetas $ \m es -> do
+solveExprConstraints = bindMetas' $ \m es -> do
   sol <- trySolveMetaVar m
   case sol of
     Nothing -> Meta m <$> traverse (traverse solveExprConstraints) es
-    Just e -> solveExprConstraints $ betaApps (open e) es
+    Just e -> do
+      _e' <- solveExprConstraints $ open e
+      return $ Meta m es
+      -- solveExprConstraints $ betaApps (open e) es
 
 solveDefConstraints
   :: Definition (Expr MetaVar) Var

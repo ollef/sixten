@@ -123,7 +123,7 @@ generaliseMetas metas = do
           Nothing -> return $ case HashMap.lookup m' sub of
             Nothing -> Meta m' es
             Just (v, _) -> pure v
-          Just e -> bindMetas' go $ betaApps (open e) es
+          Just _ -> return $ Meta m' es -- bindMetas' go $ betaApps (open e) es
     instTyp' <- bindMetas' go instTyp
     let
       localDeps = toHashSet instTyp' `HashSet.intersection` toHashSet instVs
@@ -155,7 +155,7 @@ replaceMetas
     )
 replaceMetas varMap defs = forM defs $ \(v, name, loc, d) -> do
   logShow "tc.gen" "replaceMetas varMap" varMap
-  logDefMeta "tc.gen" "replaceMetas def" $ zonkDef d
+  logDefMeta "tc.gen" "replaceMetas def" $ pure d
   t <- Context.lookupType v
   d' <- bindDefMetas' go d
   t' <- bindMetas' go t

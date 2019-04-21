@@ -4,17 +4,17 @@ id x = x
 idid : forall a. a -> a
 idid =
   id id id id id id id id id id
-  id id id id id id id id id id
-  id id id id id id id id id id
-  id id id id id id id id id id
-  id id id id id id id id id id
-  id id id id id id id id id id
-  id id id id id id id id id id
-  id id id id id id id id id id
-  id id id id id id id id id id
-  id id id id id id id id id id
-  id id id id id id id id id id
-  id id id id id id id id id id
-  id id id id id id id id id id
-  id id id id id id id id id id
-  id id id id id id id id id id
+--   id id id id id id id id id id
+--   id id id id id id id id id id
+--   id id id id id id id id id id
+--   id id id id id id id id id id
+--   id id id id id id id id id id
+--   id id id id id id id id id id
+--   id id id id id id id id id id
+--   id id id id id id id id id id
+--   id id id id id id id id id id
+--   id id id id id id id id id id
+--   id id id id id id id id id id
+--   id id id id id id id id id id
+--   id id id id id id id id id id
+--   id id id id id id id id id id

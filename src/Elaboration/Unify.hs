@@ -253,15 +253,16 @@ prune allowed expr = Log.indent $ do
       -- logShow 30 "prune" $ metaId m
       sol <- solution m
       case sol of
-        Just e ->
-          bindMetas (go localVarMarker) $ betaApps (open e) es
+        Just e -> do
+          _ <- bindMetas (go localVarMarker) $ betaApps (open e) es
+          return $ Meta m es
         Nothing -> do
           es' <- mapM (mapM whnf) es
           let
             allowedes' = map (\x -> (isAllowedExpr x, x)) es'
             es'' = snd <$> Vector.filter fst allowedes'
           if Vector.length es'' == Vector.length es' then
-            return $ Meta m es'
+            return $ Meta m es
           else do
             -- newMetaType <- pruneType (open $ metaType m) (fst <$> allowedes')
 
@@ -276,7 +277,7 @@ prune allowed expr = Log.indent $ do
             case maybeNewMetaType of
               Nothing -> do
                 logCategory "tc.prune" "prune not closed newMetaType'"
-                return $ Meta m es'
+                return $ Meta m es
               Just newMetaType -> do
                 m' <- explicitExists
                   (metaHint m)
@@ -293,7 +294,7 @@ prune allowed expr = Log.indent $ do
                 -- logShow 30 "prune vs'" $ varId <$> vs'
                 -- logShow 30 "prune varTypes'" =<< mapM (prettyMeta . varType) vs'
                 logMeta "tc.prune" "prune e'" $ zonk e
-                closeM e (return $ Meta m es') $ \closedSol -> do
+                closeM e (return $ Meta m es) $ \closedSol -> do
                   logMeta "tc.prune" "prune closed" $ vacuous <$> zonk (open closedSol)
                   solve m closedSol
                   return $ Meta m' es''

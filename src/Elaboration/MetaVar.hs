@@ -118,7 +118,7 @@ prettyMetaVar x = do
       p <- getLogCategories
       sol' <- prettyMeta $ open sol
       if p "tc.metavar" then
-        return $ PP.parens $ name PP.<+> "=" PP.<+> sol'
+        return $ PP.parens $ name PP.<+> "= ..." -- PP.<+> sol'
       else
         return $ PP.parens sol'
 
