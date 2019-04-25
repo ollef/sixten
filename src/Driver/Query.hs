@@ -10,6 +10,7 @@ module Driver.Query (module Rock, module Driver.Query) where
 
 import Protolude hiding (TypeError, TypeRep)
 
+import Data.GADT.Compare.TH
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
@@ -25,7 +26,6 @@ import qualified Util.MultiHashMap as MultiHashMap
 import qualified Backend.Generate.Submodule as Generate
 import Backend.Target as Target
 import Command.Compile.Options as Compile
-import Data.GADT.Compare.Deriving
 import Error
 import SourceLoc
 import Syntax
