@@ -1,9 +1,9 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Elaboration.TypeCheck.Expr where
 
 import Protolude
 
-import Data.IORef
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
@@ -26,16 +26,25 @@ import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
 import Util
 
-data Expected typ
-  = Infer (IORef typ) InstUntil
-  | Check typ
+data Expected result where
+  Infer :: InstUntil -> Expected (CoreM, CoreM)
+  Check :: Rhotype -> Expected CoreM
+
+mapResult :: Expected result -> (CoreM -> CoreM) -> result -> result
+mapResult (Infer _) f (expr, typ) = (f expr, typ)
+mapResult (Check _) f expr = f expr
+
+mapMResult :: Monad m => Expected result -> (CoreM -> m CoreM) -> result -> m result
+mapMResult (Infer _) f (expr, typ) = do
+  expr' <- f expr
+  return (expr', typ)
+mapMResult (Check _) f expr = f expr
 
 -- | instExpected t2 t1 = e => e : t1 -> t2
-instExpected :: Expected Rhotype -> Polytype -> Elaborate (CoreM -> CoreM)
-instExpected (Infer r instUntil) t = do
+instExpected :: Expected result -> Polytype -> Elaborate (CoreM -> result)
+instExpected (Infer instUntil) t = do
   (t', f) <- instantiateForalls t instUntil
-  liftIO $ writeIORef r t'
-  return f
+  return $ \e -> (f e, t')
 instExpected (Check t2) t1 = subtype t1 t2
 
 --------------------------------------------------------------------------------
@@ -103,13 +112,10 @@ inferRho expr instUntil expectedAppResult = do
   return (resExpr, resType)
 
 inferRho' :: PreM -> InstUntil -> Maybe Rhotype -> Elaborate (CoreM, Rhotype)
-inferRho' expr instUntil expectedAppResult = do
-  ref <- liftIO $ newIORef $ panic "inferRho: empty result"
-  expr' <- tcRho expr (Infer ref instUntil) expectedAppResult
-  typ <- liftIO $ readIORef ref
-  return (expr', typ)
+inferRho' expr instUntil =
+  tcRho expr $ Infer instUntil
 
-tcRho :: PreM -> Expected Rhotype -> Maybe Rhotype -> Elaborate CoreM
+tcRho :: PreM -> Expected result -> Maybe Rhotype -> Elaborate result
 tcRho expr expected expectedAppResult = case expr of
   Pre.Var v -> do
     t <- Context.lookupType v
@@ -193,15 +199,15 @@ tcRho expr expected expectedAppResult = case expr of
     x <- exists mempty Explicit t
     return $ f x
   Pre.SourceLoc loc e -> located loc
-    $ Core.SourceLoc loc
+    $ mapResult expected (Core.SourceLoc loc)
     <$> tcRho e expected expectedAppResult
 
 tcLet
   :: Pre.LetRec Pre.Expr Var
   -> Scope LetVar Pre.Expr Var
-  -> Expected Rhotype
+  -> Expected result
   -> Maybe Rhotype
-  -> Elaborate CoreM
+  -> Elaborate result
 tcLet (Pre.LetRec ds) scope expected expectedAppResult = do
   bindingDefs <- forM ds $ \(Pre.LetBinding loc h def) -> do
     typ <- existsType h
@@ -230,14 +236,14 @@ tcLet (Pre.LetRec ds) scope expected expectedAppResult = do
 
     body <- foldr (.) identity (snd <$> ds')
       $ tcRho (instantiateLet pure vars scope) expected expectedAppResult
-    Core.let_ (fst <$> ds') body
+    mapMResult expected (Core.let_ (fst <$> ds')) body
 
 tcBranches
   :: PreM
   -> Pre.Branches Pre.Expr Var
-  -> Expected Rhotype
+  -> Expected result
   -> Maybe Rhotype
-  -> Elaborate CoreM
+  -> Elaborate result
 tcBranches expr pbrs expected expectedAppResult = do
   (expr', exprType) <- inferRho expr (InstUntil Explicit) Nothing
 
@@ -245,7 +251,7 @@ tcBranches expr pbrs expected expectedAppResult = do
     Check resType ->
       matchBranches expr' exprType pbrs resType checkPoly
 
-    Infer _ instUntil -> do
+    Infer instUntil -> do
       resType <- existsType mempty
       res <- matchBranches expr' exprType pbrs resType $ \body bodyType -> do
         (body', bodyType') <- inferRho body instUntil expectedAppResult
