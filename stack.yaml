@@ -4,5 +4,4 @@ packages:
 extra-deps:
 - llvm-hs-pretty-0.6.1.0
 - parsix-0.2.1.0
-- git: https://github.com/ollef/rock.git
-  commit: 5915da824ae7e61cda15af346ad3f9731667b9bb
+- rock-0.1.0.1
