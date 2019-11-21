@@ -10,6 +10,8 @@
 Sixten is an experimental functional programming language where all data is
 unboxed by default. Functional programming with fewer indirections!
 
+NOTE: Sixten is not dead! A new frontend is currently being built over at [Sixty](https://github.com/ollef/sixty), which will be merged into Sixten eventually.
+
 Below follow some of Sixten's features that work now.
 
 ### Unboxed stack- or heap-allocated data types
