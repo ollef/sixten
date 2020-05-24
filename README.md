@@ -209,7 +209,8 @@ type List a = Nil | Cons a (List a)
 ```
 
 This means that all values of type `List t` are indirected through a pointer,
-as if using `Ptr (List t)`.
+as if using `Ptr (List t)`. Boxed types can sometimes be represented more efficiently than pointers to unboxed types, because
+their size does not need to be padded to be uniform with the biggest constructor.
 
 The `Ptr` type from the `Builtin` module is defined using `boxed`:
 
